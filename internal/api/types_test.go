@@ -371,6 +371,168 @@ func TestAPIErrorParameterMissing(t *testing.T) {
 	}
 }
 
+func TestModelSearchRequestJSON(t *testing.T) {
+	req := &ModelSearchRequest{
+		TaskType:     "modelSearch",
+		TaskUUID:     "test-uuid-1234",
+		Search:       "flux",
+		Category:     "checkpoint",
+		Architecture: "flux1d",
+		Limit:        10,
+		Offset:       20,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	expectedFields := []string{"taskType", "taskUUID", "search", "category", "architecture", "limit", "offset"}
+	for _, field := range expectedFields {
+		if _, ok := parsed[field]; !ok {
+			t.Errorf("missing expected field %q in JSON output", field)
+		}
+	}
+}
+
+func TestModelSearchRequestOmitempty(t *testing.T) {
+	req := &ModelSearchRequest{
+		TaskType: "modelSearch",
+		TaskUUID: "test-uuid",
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	omittedFields := []string{"search", "category", "architecture", "limit", "offset"}
+	for _, field := range omittedFields {
+		if _, ok := parsed[field]; ok {
+			t.Errorf("%s should be omitted when zero/empty", field)
+		}
+	}
+}
+
+func TestModelSearchResponseJSON(t *testing.T) {
+	jsonData := `{
+		"taskType": "modelSearch",
+		"taskUUID": "abc-123",
+		"totalResults": 42,
+		"results": [
+			{
+				"name": "FLUX.1 [dev]",
+				"air": "civitai:618692@691639",
+				"tags": ["flux", "base model"],
+				"heroImage": "https://example.com/hero.jpg",
+				"category": "checkpoint",
+				"private": false,
+				"version": "v1.0",
+				"architecture": "flux1d",
+				"nsfwLevel": 0,
+				"defaultWidth": 1024,
+				"defaultHeight": 1024,
+				"defaultSteps": 28,
+				"defaultScheduler": "euler",
+				"defaultCFG": 3.5
+			},
+			{
+				"name": "Some LoRA",
+				"air": "civitai:12345@67890",
+				"tags": ["lora"],
+				"heroImage": "",
+				"category": "lora",
+				"private": true,
+				"version": "v2.0",
+				"architecture": "sdxl",
+				"nsfwLevel": 1,
+				"type": "lora",
+				"defaultWeight": 0.8
+			}
+		]
+	}`
+
+	var result ModelSearchResponse
+	if err := json.Unmarshal([]byte(jsonData), &result); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if result.TaskType != "modelSearch" {
+		t.Errorf("taskType = %q, want %q", result.TaskType, "modelSearch")
+	}
+	if result.TotalResults != 42 {
+		t.Errorf("totalResults = %d, want %d", result.TotalResults, 42)
+	}
+	if len(result.Results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(result.Results))
+	}
+
+	first := result.Results[0]
+	if first.Name != "FLUX.1 [dev]" {
+		t.Errorf("name = %q, want %q", first.Name, "FLUX.1 [dev]")
+	}
+	if first.AIR != "civitai:618692@691639" {
+		t.Errorf("air = %q, want %q", first.AIR, "civitai:618692@691639")
+	}
+	if first.Category != "checkpoint" {
+		t.Errorf("category = %q, want %q", first.Category, "checkpoint")
+	}
+	if first.Architecture != "flux1d" {
+		t.Errorf("architecture = %q, want %q", first.Architecture, "flux1d")
+	}
+	if first.DefaultWidth != 1024 {
+		t.Errorf("defaultWidth = %d, want %d", first.DefaultWidth, 1024)
+	}
+	if first.DefaultCFG != 3.5 {
+		t.Errorf("defaultCFG = %f, want %f", first.DefaultCFG, 3.5)
+	}
+	if len(first.Tags) != 2 {
+		t.Errorf("expected 2 tags, got %d", len(first.Tags))
+	}
+
+	second := result.Results[1]
+	if !second.Private {
+		t.Error("second result should be private")
+	}
+	if second.DefaultWeight != 0.8 {
+		t.Errorf("defaultWeight = %f, want %f", second.DefaultWeight, 0.8)
+	}
+	if second.Type != "lora" {
+		t.Errorf("type = %q, want %q", second.Type, "lora")
+	}
+}
+
+func TestModelSearchResponseEmpty(t *testing.T) {
+	jsonData := `{
+		"taskType": "modelSearch",
+		"taskUUID": "abc-123",
+		"totalResults": 0,
+		"results": []
+	}`
+
+	var result ModelSearchResponse
+	if err := json.Unmarshal([]byte(jsonData), &result); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if result.TotalResults != 0 {
+		t.Errorf("totalResults = %d, want 0", result.TotalResults)
+	}
+	if len(result.Results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(result.Results))
+	}
+}
+
 func TestNewUUID(t *testing.T) {
 	id1 := NewUUID()
 	id2 := NewUUID()
