@@ -79,3 +79,45 @@ type UsagePeriod struct {
 	Credits  float64 `json:"credits"`
 	Requests int     `json:"requests"`
 }
+
+// ModelSearchRequest contains fields for the modelSearch task type.
+type ModelSearchRequest struct {
+	TaskType     string `json:"taskType"`
+	TaskUUID     string `json:"taskUUID"`
+	Search       string `json:"search,omitempty"`
+	Category     string `json:"category,omitempty"`
+	Architecture string `json:"architecture,omitempty"`
+	Limit        int    `json:"limit,omitempty"`
+	Offset       int    `json:"offset,omitempty"`
+}
+
+// ModelSearchResponse is the response wrapper from modelSearch.
+type ModelSearchResponse struct {
+	TaskType     string        `json:"taskType"`
+	TaskUUID     string        `json:"taskUUID"`
+	Results      []ModelResult `json:"results"`
+	TotalResults int           `json:"totalResults"`
+}
+
+// ModelResult is a single model from the search results.
+type ModelResult struct {
+	Name                 string   `json:"name"`
+	AIR                  string   `json:"air"`
+	Tags                 []string `json:"tags"`
+	HeroImage            string   `json:"heroImage"`
+	Category             string   `json:"category"`
+	Private              bool     `json:"private"`
+	Version              string   `json:"version"`
+	Architecture         string   `json:"architecture"`
+	NSFWLevel            int      `json:"nsfwLevel"`
+	Type                 string   `json:"type,omitempty"`
+	DefaultWeight        float64  `json:"defaultWeight,omitempty"`
+	DefaultWidth         int      `json:"defaultWidth,omitempty"`
+	DefaultHeight        int      `json:"defaultHeight,omitempty"`
+	DefaultSteps         int      `json:"defaultSteps,omitempty"`
+	DefaultScheduler     string   `json:"defaultScheduler,omitempty"`
+	DefaultCFG           float64  `json:"defaultCFG,omitempty"`
+	DefaultStrength      float64  `json:"defaultStrength,omitempty"`
+	PositiveTriggerWords string   `json:"positiveTriggerWords,omitempty"`
+	NegativeTriggerWords string   `json:"negativeTriggerWords,omitempty"`
+}

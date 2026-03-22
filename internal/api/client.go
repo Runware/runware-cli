@@ -17,6 +17,7 @@ type Client interface {
 	Ping(ctx context.Context) (*PingResult, error)
 	ImageInference(ctx context.Context, req *ImageInferenceRequest) ([]ImageInferenceResult, error)
 	AccountDetails(ctx context.Context) (*AccountResult, error)
+	ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error)
 	// Raw sends arbitrary tasks and returns the raw response. Useful for --dry-run previewing.
 	Raw(ctx context.Context, tasks []interface{}) (*APIResponse, error)
 }
@@ -180,6 +181,32 @@ func (c *RestClient) AccountDetails(ctx context.Context) (*AccountResult, error)
 	var result AccountResult
 	if err := json.Unmarshal(resp.Data[0], &result); err != nil {
 		return nil, fmt.Errorf("failed to parse account response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// ModelSearch searches for available models.
+func (c *RestClient) ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error) {
+	req.TaskType = "modelSearch"
+	if req.TaskUUID == "" {
+		req.TaskUUID = NewUUID()
+	}
+
+	tasks := []interface{}{req}
+
+	resp, err := c.do(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp.Data) == 0 {
+		return nil, fmt.Errorf("empty response from model search")
+	}
+
+	var result ModelSearchResponse
+	if err := json.Unmarshal(resp.Data[0], &result); err != nil {
+		return nil, fmt.Errorf("failed to parse model search response: %w", err)
 	}
 
 	return &result, nil
