@@ -50,9 +50,10 @@ var presetListCmd = &cobra.Command{
 }
 
 var presetShowCmd = &cobra.Command{
-	Use:   "show [name]",
-	Short: "Show preset details",
-	Args:  cobra.ExactArgs(1),
+	Use:               "show [name]",
+	Short:             "Show preset details",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completePresetNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		preset := config.GetPreset(args[0])
 		if preset == nil {
@@ -115,9 +116,10 @@ var presetSaveCmd = &cobra.Command{
 }
 
 var presetDeleteCmd = &cobra.Command{
-	Use:   "delete [name]",
-	Short: "Delete a preset",
-	Args:  cobra.ExactArgs(1),
+	Use:               "delete [name]",
+	Short:             "Delete a preset",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completePresetNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		if config.GetPreset(name) == nil {

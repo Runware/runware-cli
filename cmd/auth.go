@@ -126,6 +126,9 @@ var authSwitchCmd = &cobra.Command{
 	Use:   "switch [production|staging]",
 	Short: "Switch between environments",
 	Args:  cobra.ExactArgs(1),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"production", "staging"}, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		env := strings.ToLower(args[0])
 		if env != "production" && env != "staging" {

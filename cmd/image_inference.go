@@ -51,6 +51,47 @@ func init() {
 	f.String("mask", "", "Mask image path for inpainting")
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
+
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{
+			"euler\tEuler",
+			"euler_a\tEuler Ancestral",
+			"dpm++_2m\tDPM++ 2M",
+			"dpm++_2m_karras\tDPM++ 2M Karras",
+			"dpm++_sde\tDPM++ SDE",
+			"dpm++_sde_karras\tDPM++ SDE Karras",
+			"ddim\tDDIM",
+			"lms\tLMS",
+			"lms_karras\tLMS Karras",
+			"heun\tHeun",
+			"dpm_2\tDPM 2",
+			"dpm_2_karras\tDPM 2 Karras",
+			"dpm_2_a\tDPM 2 Ancestral",
+			"dpm_2_a_karras\tDPM 2 Ancestral Karras",
+			"uni_pc\tUniPC",
+		}, cobra.ShellCompDirectiveNoFileComp
+	})
+
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"png", "jpg", "webp"}, cobra.ShellCompDirectiveNoFileComp
+	})
+
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	})
+
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("mask", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	})
+}
+
+// completePresetNames provides dynamic completion for preset names from config.
+func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	// Ensure config is loaded for completion context
+	_ = config.Init()
+	return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp
 }
 
 func runImageInference(cmd *cobra.Command, args []string) error {

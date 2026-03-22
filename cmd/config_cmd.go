@@ -58,6 +58,24 @@ var configSetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
 	Short: "Set a config value",
 	Args:  cobra.ExactArgs(2),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return []string{
+				"environment",
+				"mode",
+				"defaults.model",
+				"defaults.width",
+				"defaults.height",
+				"defaults.steps",
+				"defaults.cfg_scale",
+				"defaults.scheduler",
+				"defaults.output_dir",
+				"defaults.output_format",
+				"defaults.format",
+			}, cobra.ShellCompDirectiveNoFileComp
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 		value := args[1]
