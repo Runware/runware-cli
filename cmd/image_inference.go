@@ -104,15 +104,17 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	prompt := args[0]
 
-	// Start with config defaults
+	// Start with config defaults for universal fields
 	model := cfg.Defaults.Model
 	width := cfg.Defaults.Width
 	height := cfg.Defaults.Height
-	steps := cfg.Defaults.Steps
-	cfgScale := cfg.Defaults.CFGScale
-	scheduler := cfg.Defaults.Scheduler
 	outputDir := cfg.Defaults.OutputDir
 	outputFormat := cfg.Defaults.OutputFormat
+
+	// Model-specific fields — only sent when explicitly set via flag or preset
+	var steps int
+	var cfgScale float64
+	var scheduler string
 
 	// Apply preset if specified
 	presetName, _ := cmd.Flags().GetString("preset")
@@ -181,7 +183,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--mask requires --source to be set")
 	}
 
-	// Build request
+	// Build request — universal fields always included
 	req := &api.ImageInferenceRequest{
 		TaskType:       "imageInference",
 		TaskUUID:       api.NewUUID(),
@@ -189,13 +191,20 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		Model:          model,
 		Width:          width,
 		Height:         height,
-		Steps:          steps,
 		NumberResults:  count,
-		CFGScale:       cfgScale,
-		Scheduler:      scheduler,
 		OutputFormat:   outputFormat,
 	}
 
+	// Model-specific fields — only included when explicitly set
+	if steps > 0 {
+		req.Steps = steps
+	}
+	if cfgScale > 0 {
+		req.CFGScale = cfgScale
+	}
+	if scheduler != "" {
+		req.Scheduler = scheduler
+	}
 	if negative != "" {
 		req.NegativePrompt = negative
 	}
