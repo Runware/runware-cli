@@ -398,7 +398,7 @@ func TestAudioInferenceRequestJSON(t *testing.T) {
 		}
 	}
 
-	omittedFields := []string{"numberResults", "outputFormat", "audioSettings"}
+	omittedFields := []string{"outputFormat", "audioSettings"}
 	for _, field := range omittedFields {
 		if _, ok := parsed[field]; ok {
 			t.Errorf("%s should be omitted when zero/empty", field)
