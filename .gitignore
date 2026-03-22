@@ -1,0 +1,5 @@
+runware
+dist/
+.DS_Store
+*.exe
+outputs/
