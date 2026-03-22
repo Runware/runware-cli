@@ -144,6 +144,233 @@ func TestAccountResultJSON(t *testing.T) {
 	}
 }
 
+func TestVideoInferenceRequestJSON(t *testing.T) {
+	req := &VideoInferenceRequest{
+		TaskType:       "videoInference",
+		TaskUUID:       "test-uuid-1234",
+		Model:          "klingai:5@3",
+		PositivePrompt: "a cat on the moon",
+		Width:          1280,
+		Height:         720,
+		Duration:       5.0,
+		DeliveryMethod: "async",
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	// Verify key field names match the Runware API
+	expectedFields := []string{"taskType", "taskUUID", "model", "positivePrompt", "width", "height", "duration", "deliveryMethod"}
+	for _, field := range expectedFields {
+		if _, ok := parsed[field]; !ok {
+			t.Errorf("missing expected field %q in JSON output", field)
+		}
+	}
+
+	// Verify omitempty works for optional fields
+	omittedFields := []string{"negativePrompt", "seed", "steps", "CFGScale", "frameImages", "outputFormat"}
+	for _, field := range omittedFields {
+		if _, ok := parsed[field]; ok {
+			t.Errorf("%s should be omitted when zero/empty", field)
+		}
+	}
+}
+
+func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
+	req := &VideoInferenceRequest{
+		TaskType:       "videoInference",
+		TaskUUID:       "test-uuid",
+		Model:          "klingai:5@3",
+		PositivePrompt: "animate this",
+		DeliveryMethod: "async",
+		FrameImages: []FrameImage{
+			{InputImage: "data:image/png;base64,abc123", Frame: "first"},
+			{InputImage: "data:image/png;base64,def456", Frame: "last"},
+		},
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	frames, ok := parsed["frameImages"].([]interface{})
+	if !ok {
+		t.Fatal("frameImages is not an array")
+	}
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 frameImages, got %d", len(frames))
+	}
+
+	first := frames[0].(map[string]interface{})
+	if first["frame"] != "first" {
+		t.Errorf("first frame = %q, want %q", first["frame"], "first")
+	}
+}
+
+func TestVideoInferenceResultJSON(t *testing.T) {
+	jsonData := `{
+		"taskType": "videoInference",
+		"taskUUID": "abc-123",
+		"videoUUID": "vid-456",
+		"videoURL": "https://cdn.runware.ai/video/vid-456.mp4",
+		"seed": 98765,
+		"cost": 0.1234
+	}`
+
+	var result VideoInferenceResult
+	if err := json.Unmarshal([]byte(jsonData), &result); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if result.TaskType != "videoInference" {
+		t.Errorf("taskType = %q, want %q", result.TaskType, "videoInference")
+	}
+	if result.VideoURL == "" {
+		t.Error("videoURL is empty")
+	}
+	if result.VideoUUID != "vid-456" {
+		t.Errorf("videoUUID = %q, want %q", result.VideoUUID, "vid-456")
+	}
+	if result.Seed != 98765 {
+		t.Errorf("seed = %d, want %d", result.Seed, 98765)
+	}
+	if result.Cost != 0.1234 {
+		t.Errorf("cost = %f, want %f", result.Cost, 0.1234)
+	}
+}
+
+func TestVideoInferenceResultWithMediaFields(t *testing.T) {
+	jsonData := `{
+		"taskType": "videoInference",
+		"taskUUID": "abc-123",
+		"mediaUUID": "media-789",
+		"mediaURL": "https://cdn.runware.ai/media/media-789.mp4"
+	}`
+
+	var result VideoInferenceResult
+	if err := json.Unmarshal([]byte(jsonData), &result); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if result.MediaURL == "" {
+		t.Error("mediaURL is empty")
+	}
+	if result.MediaUUID != "media-789" {
+		t.Errorf("mediaUUID = %q, want %q", result.MediaUUID, "media-789")
+	}
+	// videoURL should be empty when media fields are used
+	if result.VideoURL != "" {
+		t.Errorf("videoURL should be empty, got %q", result.VideoURL)
+	}
+}
+
+func TestGetResponseRequestJSON(t *testing.T) {
+	req := &GetResponseRequest{
+		TaskType: "getResponse",
+		TaskUUID: "poll-uuid-123",
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if parsed["taskType"] != "getResponse" {
+		t.Errorf("taskType = %q, want %q", parsed["taskType"], "getResponse")
+	}
+	if parsed["taskUUID"] != "poll-uuid-123" {
+		t.Errorf("taskUUID = %q, want %q", parsed["taskUUID"], "poll-uuid-123")
+	}
+}
+
+func TestAPIErrorParameterString(t *testing.T) {
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "invalidParameter",
+			"message": "bad param",
+			"parameter": "model"
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if len(resp.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
+	}
+
+	param := resp.Errors[0].Parameter()
+	if param != "model" {
+		t.Errorf("Parameter() = %q, want %q", param, "model")
+	}
+}
+
+func TestAPIErrorParameterArray(t *testing.T) {
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "invalidParameter",
+			"message": "bad params",
+			"parameter": ["positivePrompt", "model"]
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if len(resp.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
+	}
+
+	param := resp.Errors[0].Parameter()
+	if param != "positivePrompt" {
+		t.Errorf("Parameter() = %q, want %q", param, "positivePrompt")
+	}
+}
+
+func TestAPIErrorParameterMissing(t *testing.T) {
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "serverError",
+			"message": "internal error"
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	param := resp.Errors[0].Parameter()
+	if param != "" {
+		t.Errorf("Parameter() = %q, want empty string", param)
+	}
+}
+
 func TestNewUUID(t *testing.T) {
 	id1 := NewUUID()
 	id2 := NewUUID()

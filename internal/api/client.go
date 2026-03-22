@@ -16,6 +16,8 @@ import (
 type Client interface {
 	Ping(ctx context.Context) (*PingResult, error)
 	ImageInference(ctx context.Context, req *ImageInferenceRequest) ([]ImageInferenceResult, error)
+	VideoInference(ctx context.Context, req *VideoInferenceRequest) ([]VideoInferenceResult, error)
+	GetResponse(ctx context.Context, taskUUID string) ([]json.RawMessage, error)
 	AccountDetails(ctx context.Context) (*AccountResult, error)
 	ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error)
 	// Raw sends arbitrary tasks and returns the raw response. Useful for --dry-run previewing.
@@ -184,6 +186,53 @@ func (c *RestClient) AccountDetails(ctx context.Context) (*AccountResult, error)
 	}
 
 	return &result, nil
+}
+
+// VideoInference submits a video inference task.
+// Video generation is async: the API returns immediately and results are polled via GetResponse.
+func (c *RestClient) VideoInference(ctx context.Context, req *VideoInferenceRequest) ([]VideoInferenceResult, error) {
+	req.TaskType = "videoInference"
+	if req.TaskUUID == "" {
+		req.TaskUUID = NewUUID()
+	}
+	if req.DeliveryMethod == "" {
+		req.DeliveryMethod = "async"
+	}
+
+	tasks := []interface{}{req}
+
+	resp, err := c.do(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []VideoInferenceResult
+	for _, raw := range resp.Data {
+		var r VideoInferenceResult
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return nil, fmt.Errorf("failed to parse video result: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	return results, nil
+}
+
+// GetResponse polls for async task results.
+func (c *RestClient) GetResponse(ctx context.Context, taskUUID string) ([]json.RawMessage, error) {
+	tasks := []interface{}{
+		&GetResponseRequest{
+			TaskType: "getResponse",
+			TaskUUID: taskUUID,
+		},
+	}
+
+	resp, err := c.do(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
 }
 
 // ModelSearch searches for available models.

@@ -10,13 +10,34 @@ type APIResponse struct {
 
 // APIError represents an error returned by the API.
 type APIError struct {
-	Code          string   `json:"code"`
-	Message       string   `json:"message"`
-	Parameter     string   `json:"parameter,omitempty"`
-	Type          string   `json:"type,omitempty"`
-	Documentation string   `json:"documentation,omitempty"`
-	TaskUUID      string   `json:"taskUUID,omitempty"`
-	AllowedValues []string `json:"allowedValues,omitempty"`
+	Code          string          `json:"code"`
+	Message       string          `json:"message"`
+	RawParameter  json.RawMessage `json:"parameter,omitempty"`
+	Type          string          `json:"type,omitempty"`
+	Documentation string          `json:"documentation,omitempty"`
+	TaskUUID      string          `json:"taskUUID,omitempty"`
+	AllowedValues []string        `json:"allowedValues,omitempty"`
+}
+
+// Parameter returns the parameter field as a string, handling both string and array forms from the API.
+func (e APIError) Parameter() string {
+	if len(e.RawParameter) == 0 {
+		return ""
+	}
+	// Try string first
+	var s string
+	if err := json.Unmarshal(e.RawParameter, &s); err == nil {
+		return s
+	}
+	// Try array of strings
+	var arr []string
+	if err := json.Unmarshal(e.RawParameter, &arr); err == nil {
+		if len(arr) > 0 {
+			return arr[0]
+		}
+		return ""
+	}
+	return string(e.RawParameter)
 }
 
 func (e APIError) Error() string {
@@ -78,6 +99,51 @@ type AccountUsage struct {
 type UsagePeriod struct {
 	Credits  float64 `json:"credits"`
 	Requests int     `json:"requests"`
+}
+
+// VideoInferenceRequest contains fields for the videoInference task type.
+type VideoInferenceRequest struct {
+	TaskType        string            `json:"taskType"`
+	TaskUUID        string            `json:"taskUUID"`
+	Model           string            `json:"model"`
+	PositivePrompt  string            `json:"positivePrompt,omitempty"`
+	NegativePrompt  string            `json:"negativePrompt,omitempty"`
+	Width           int               `json:"width,omitempty"`
+	Height          int               `json:"height,omitempty"`
+	Duration        float64           `json:"duration,omitempty"`
+	Steps           int               `json:"steps,omitempty"`
+	CFGScale        float64           `json:"CFGScale,omitempty"`
+	Seed            int64             `json:"seed,omitempty"`
+	NumberResults   int               `json:"numberResults,omitempty"`
+	OutputFormat    string            `json:"outputFormat,omitempty"`
+	DeliveryMethod  string            `json:"deliveryMethod,omitempty"`
+	FrameImages     []FrameImage      `json:"frameImages,omitempty"`
+	IncludeCost     bool              `json:"includeCost,omitempty"`
+}
+
+// FrameImage constrains a specific frame with an input image.
+type FrameImage struct {
+	InputImage string      `json:"inputImage"`
+	Frame      interface{} `json:"frame"` // "first", "last", or int
+}
+
+// VideoInferenceResult is a single video result from the API.
+type VideoInferenceResult struct {
+	TaskType  string  `json:"taskType"`
+	TaskUUID  string  `json:"taskUUID"`
+	Status    string  `json:"status,omitempty"`
+	VideoUUID string  `json:"videoUUID,omitempty"`
+	VideoURL  string  `json:"videoURL,omitempty"`
+	MediaUUID string  `json:"mediaUUID,omitempty"`
+	MediaURL  string  `json:"mediaURL,omitempty"`
+	Seed      int64   `json:"seed,omitempty"`
+	Cost      float64 `json:"cost,omitempty"`
+}
+
+// GetResponseRequest is used to poll for async task results.
+type GetResponseRequest struct {
+	TaskType string `json:"taskType"`
+	TaskUUID string `json:"taskUUID"`
 }
 
 // ModelSearchRequest contains fields for the modelSearch task type.
