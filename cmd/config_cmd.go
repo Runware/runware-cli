@@ -77,7 +77,7 @@ var configSetCmd = &cobra.Command{
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		key := args[0]
+		key := normalizeConfigKey(args[0])
 		value := args[1]
 
 		viper.Set(key, value)
@@ -127,6 +127,21 @@ var configPathCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println(config.ConfigPath())
 	},
+}
+
+// defaultsKeys are config keys that live under the "defaults" namespace.
+var defaultsKeys = map[string]bool{
+	"model": true, "width": true, "height": true, "steps": true,
+	"cfg_scale": true, "scheduler": true, "output_dir": true,
+	"output_format": true, "format": true,
+}
+
+// normalizeConfigKey maps shorthand keys like "steps" to "defaults.steps".
+func normalizeConfigKey(key string) string {
+	if defaultsKeys[key] {
+		return "defaults." + key
+	}
+	return key
 }
 
 func init() {
