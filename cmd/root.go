@@ -49,6 +49,7 @@ func init() {
 	rootCmd.AddCommand(pingCmd)
 	rootCmd.AddCommand(imageInferenceCmd)
 	rootCmd.AddCommand(videoInferenceCmd)
+	rootCmd.AddCommand(audioInferenceCmd)
 	rootCmd.AddCommand(modelSearchCmd)
 	rootCmd.AddCommand(accountCmd)
 	rootCmd.AddCommand(configCmd)

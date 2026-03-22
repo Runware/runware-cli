@@ -146,6 +146,36 @@ type GetResponseRequest struct {
 	TaskUUID string `json:"taskUUID"`
 }
 
+// AudioInferenceRequest contains fields for the audioInference task type.
+type AudioInferenceRequest struct {
+	TaskType       string         `json:"taskType"`
+	TaskUUID       string         `json:"taskUUID"`
+	Model          string         `json:"model"`
+	PositivePrompt string         `json:"positivePrompt,omitempty"`
+	Duration       float64        `json:"duration"`
+	NumberResults  int            `json:"numberResults"`
+	OutputFormat   string         `json:"outputFormat,omitempty"`
+	DeliveryMethod string         `json:"deliveryMethod,omitempty"`
+	IncludeCost    bool           `json:"includeCost,omitempty"`
+	AudioSettings  *AudioSettings `json:"audioSettings,omitempty"`
+}
+
+// AudioSettings configures technical audio quality parameters.
+type AudioSettings struct {
+	SampleRate int `json:"sampleRate,omitempty"`
+	Bitrate    int `json:"bitrate,omitempty"`
+}
+
+// AudioInferenceResult is a single audio result from the API.
+type AudioInferenceResult struct {
+	TaskType  string  `json:"taskType"`
+	TaskUUID  string  `json:"taskUUID"`
+	Status    string  `json:"status,omitempty"`
+	AudioUUID string  `json:"audioUUID,omitempty"`
+	AudioURL  string  `json:"audioURL,omitempty"`
+	Cost      float64 `json:"cost,omitempty"`
+}
+
 // ModelSearchRequest contains fields for the modelSearch task type.
 type ModelSearchRequest struct {
 	TaskType     string `json:"taskType"`

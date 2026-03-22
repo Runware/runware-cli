@@ -371,6 +371,125 @@ func TestAPIErrorParameterMissing(t *testing.T) {
 	}
 }
 
+func TestAudioInferenceRequestJSON(t *testing.T) {
+	req := &AudioInferenceRequest{
+		TaskType:       "audioInference",
+		TaskUUID:       "test-uuid-1234",
+		Model:          "elevenlabs:1@1",
+		PositivePrompt: "jazz piano solo",
+		Duration:       30,
+		DeliveryMethod: "async",
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	expectedFields := []string{"taskType", "taskUUID", "model", "positivePrompt", "duration", "deliveryMethod"}
+	for _, field := range expectedFields {
+		if _, ok := parsed[field]; !ok {
+			t.Errorf("missing expected field %q in JSON output", field)
+		}
+	}
+
+	omittedFields := []string{"numberResults", "outputFormat", "audioSettings"}
+	for _, field := range omittedFields {
+		if _, ok := parsed[field]; ok {
+			t.Errorf("%s should be omitted when zero/empty", field)
+		}
+	}
+}
+
+func TestAudioInferenceRequestWithSettings(t *testing.T) {
+	req := &AudioInferenceRequest{
+		TaskType:       "audioInference",
+		TaskUUID:       "test-uuid",
+		Model:          "elevenlabs:1@1",
+		PositivePrompt: "ocean waves",
+		Duration:       60,
+		DeliveryMethod: "async",
+		AudioSettings: &AudioSettings{
+			SampleRate: 48000,
+			Bitrate:    320,
+		},
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	settings, ok := parsed["audioSettings"].(map[string]interface{})
+	if !ok {
+		t.Fatal("audioSettings is missing or not an object")
+	}
+	if settings["sampleRate"] != float64(48000) {
+		t.Errorf("sampleRate = %v, want 48000", settings["sampleRate"])
+	}
+	if settings["bitrate"] != float64(320) {
+		t.Errorf("bitrate = %v, want 320", settings["bitrate"])
+	}
+}
+
+func TestAudioInferenceResultJSON(t *testing.T) {
+	jsonData := `{
+		"taskType": "audioInference",
+		"taskUUID": "abc-123",
+		"audioUUID": "aud-456",
+		"audioURL": "https://am.runware.ai/audio/ws/0.5/ai/abc-123.mp3",
+		"cost": 0.045
+	}`
+
+	var result AudioInferenceResult
+	if err := json.Unmarshal([]byte(jsonData), &result); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if result.TaskType != "audioInference" {
+		t.Errorf("taskType = %q, want %q", result.TaskType, "audioInference")
+	}
+	if result.AudioUUID != "aud-456" {
+		t.Errorf("audioUUID = %q, want %q", result.AudioUUID, "aud-456")
+	}
+	if result.AudioURL == "" {
+		t.Error("audioURL is empty")
+	}
+	if result.Cost != 0.045 {
+		t.Errorf("cost = %f, want %f", result.Cost, 0.045)
+	}
+}
+
+func TestAudioInferenceResultProcessing(t *testing.T) {
+	jsonData := `{
+		"taskType": "audioInference",
+		"taskUUID": "abc-123",
+		"status": "processing"
+	}`
+
+	var result AudioInferenceResult
+	if err := json.Unmarshal([]byte(jsonData), &result); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if result.Status != "processing" {
+		t.Errorf("status = %q, want %q", result.Status, "processing")
+	}
+	if result.AudioURL != "" {
+		t.Errorf("audioURL should be empty during processing, got %q", result.AudioURL)
+	}
+}
+
 func TestModelSearchRequestJSON(t *testing.T) {
 	req := &ModelSearchRequest{
 		TaskType:     "modelSearch",

@@ -17,6 +17,7 @@ type Client interface {
 	Ping(ctx context.Context) (*PingResult, error)
 	ImageInference(ctx context.Context, req *ImageInferenceRequest) ([]ImageInferenceResult, error)
 	VideoInference(ctx context.Context, req *VideoInferenceRequest) ([]VideoInferenceResult, error)
+	AudioInference(ctx context.Context, req *AudioInferenceRequest) ([]AudioInferenceResult, error)
 	GetResponse(ctx context.Context, taskUUID string) ([]json.RawMessage, error)
 	AccountDetails(ctx context.Context) (*AccountResult, error)
 	ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error)
@@ -211,6 +212,32 @@ func (c *RestClient) VideoInference(ctx context.Context, req *VideoInferenceRequ
 		var r VideoInferenceResult
 		if err := json.Unmarshal(raw, &r); err != nil {
 			return nil, fmt.Errorf("failed to parse video result: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	return results, nil
+}
+
+// AudioInference submits an audio inference task.
+func (c *RestClient) AudioInference(ctx context.Context, req *AudioInferenceRequest) ([]AudioInferenceResult, error) {
+	req.TaskType = "audioInference"
+	if req.TaskUUID == "" {
+		req.TaskUUID = NewUUID()
+	}
+
+	tasks := []interface{}{req}
+
+	resp, err := c.do(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []AudioInferenceResult
+	for _, raw := range resp.Data {
+		var r AudioInferenceResult
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return nil, fmt.Errorf("failed to parse audio result: %w", err)
 		}
 		results = append(results, r)
 	}
