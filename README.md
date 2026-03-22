@@ -14,7 +14,29 @@ make build
 
 ### From release
 
-Download the latest binary from [Releases](https://github.com/runware/runware-cli/releases) for your platform (macOS/Linux, amd64/arm64).
+Download the latest archive from [Releases](https://github.com/runware/runware-cli/releases) for your platform.
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/runware/runware-cli/releases/latest/download/runware_darwin_arm64.tar.gz -o runware.tar.gz
+
+# macOS (Intel)
+curl -L https://github.com/runware/runware-cli/releases/latest/download/runware_darwin_amd64.tar.gz -o runware.tar.gz
+
+# Linux (x86_64)
+curl -L https://github.com/runware/runware-cli/releases/latest/download/runware_linux_amd64.tar.gz -o runware.tar.gz
+
+# Linux (ARM64)
+curl -L https://github.com/runware/runware-cli/releases/latest/download/runware_linux_arm64.tar.gz -o runware.tar.gz
+```
+
+Extract and move to your PATH:
+
+```bash
+tar xzf runware.tar.gz
+sudo mv runware /usr/local/bin/
+runware version
+```
 
 ## Quick start
 
