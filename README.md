@@ -87,6 +87,46 @@ runware imageInference "a sunset" --no-download
 runware imageInference "a sunset" --dry-run
 ```
 
+### Text generation
+
+```bash
+# Simple question
+runware textInference "What is the capital of France?"
+
+# With a system prompt
+runware textInference "Write a haiku about coding" --system "You are a poet"
+
+# With options
+runware textInference "Explain quantum computing" \
+  --model runware:qwen3-thinking@1 \
+  --max-tokens 500 --temperature 0.8
+
+# Get JSON output from the LLM
+runware textInference "List 3 facts about Mars" --output-format json
+
+# Pipe-friendly — single result prints text directly to stdout
+runware textInference "summarize this" | pbcopy
+
+# Preview the API request without sending it
+runware textInference "hello" --dry-run
+```
+
+### Audio generation
+
+```bash
+# Text-to-audio
+runware audioInference "a jazz piano solo with soft drums" \
+  --model elevenlabs:1@1 --duration 30
+
+# With audio settings
+runware audioInference "ocean waves crashing on rocks" \
+  --model elevenlabs:1@1 --duration 60 --sample-rate 48000
+
+# Just get the URL, don't download
+runware audioInference "upbeat electronic music" \
+  --model elevenlabs:1@1 --duration 120 --no-download
+```
+
 ### Authentication
 
 ```bash
@@ -106,7 +146,7 @@ runware account credits         # Credit balance and usage stats
 ### Model search
 
 ```bash
-runware modelSearch "flux"      # Search available models (coming soon)
+runware modelSearch "flux"      # Search available models
 ```
 
 ### Presets
