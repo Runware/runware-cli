@@ -91,24 +91,26 @@ runware imageInference "a sunset" --dry-run
 
 ```bash
 # Simple question
-runware textInference "What is the capital of France?"
+runware textInference "What is the capital of France?" --model minimax:m2.7@highspeed
 
 # With a system prompt
-runware textInference "Write a haiku about coding" --system "You are a poet"
+runware textInference "Write a haiku about coding" \
+  --model minimax:m2.7@highspeed --system "You are a poet"
 
 # With options
 runware textInference "Explain quantum computing" \
-  --model runware:qwen3-thinking@1 \
+  --model minimax:m2.7@highspeed \
   --max-tokens 500 --temperature 0.8
 
 # Get JSON output from the LLM
-runware textInference "List 3 facts about Mars" --output-format json
+runware textInference "List 3 facts about Mars" \
+  --model minimax:m2.7@highspeed --output-format json
 
 # Pipe-friendly — single result prints text directly to stdout
-runware textInference "summarize this" | pbcopy
+runware textInference "summarize this" --model minimax:m2.7@highspeed | pbcopy
 
 # Preview the API request without sending it
-runware textInference "hello" --dry-run
+runware textInference "hello" --model minimax:m2.7@highspeed --dry-run
 ```
 
 ### Audio generation
