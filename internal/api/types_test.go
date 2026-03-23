@@ -652,6 +652,95 @@ func TestModelSearchResponseEmpty(t *testing.T) {
 	}
 }
 
+func TestTextInferenceRequestJSON(t *testing.T) {
+	req := &TextInferenceRequest{
+		TaskType: "textInference",
+		TaskUUID: "test-uuid-1234",
+		Model:    "runware:qwen3-thinking@1",
+		Messages: []Message{
+			{Role: "user", Content: "What is Go?"},
+		},
+		MaxTokens:    500,
+		Temperature:  0.8,
+		SystemPrompt: "You are helpful",
+		IncludeCost:  true,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	expectedFields := []string{"taskType", "taskUUID", "model", "messages", "maxTokens", "temperature", "systemPrompt", "includeCost"}
+	for _, field := range expectedFields {
+		if _, ok := parsed[field]; !ok {
+			t.Errorf("missing expected field %q in JSON output", field)
+		}
+	}
+
+	// Verify omitempty works for optional fields
+	omittedFields := []string{"topP", "topK", "seed", "stopSequences", "numberResults", "outputFormat"}
+	for _, field := range omittedFields {
+		if _, ok := parsed[field]; ok {
+			t.Errorf("%s should be omitted when zero/empty", field)
+		}
+	}
+
+	// Verify messages structure
+	msgs, ok := parsed["messages"].([]interface{})
+	if !ok {
+		t.Fatal("messages is not an array")
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	msg := msgs[0].(map[string]interface{})
+	if msg["role"] != "user" {
+		t.Errorf("message role = %q, want %q", msg["role"], "user")
+	}
+}
+
+func TestTextInferenceResultJSON(t *testing.T) {
+	jsonData := `{
+		"taskType": "textInference",
+		"taskUUID": "abc-123",
+		"text": "Go is a programming language designed at Google.",
+		"finishReason": "stop",
+		"usage": {
+			"inputTokens": 10,
+			"outputTokens": 25,
+			"totalTokens": 35
+		},
+		"cost": 0.000123
+	}`
+
+	var result TextInferenceResult
+	if err := json.Unmarshal([]byte(jsonData), &result); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if result.TaskType != "textInference" {
+		t.Errorf("taskType = %q, want %q", result.TaskType, "textInference")
+	}
+	if result.Text == "" {
+		t.Error("text is empty")
+	}
+	if result.FinishReason != "stop" {
+		t.Errorf("finishReason = %q, want %q", result.FinishReason, "stop")
+	}
+	if result.Usage.TotalTokens != 35 {
+		t.Errorf("totalTokens = %d, want %d", result.Usage.TotalTokens, 35)
+	}
+	if result.Cost != 0.000123 {
+		t.Errorf("cost = %f, want %f", result.Cost, 0.000123)
+	}
+}
+
 func TestNewUUID(t *testing.T) {
 	id1 := NewUUID()
 	id2 := NewUUID()

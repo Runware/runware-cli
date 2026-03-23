@@ -18,6 +18,7 @@ type Client interface {
 	ImageInference(ctx context.Context, req *ImageInferenceRequest) ([]ImageInferenceResult, error)
 	VideoInference(ctx context.Context, req *VideoInferenceRequest) ([]VideoInferenceResult, error)
 	AudioInference(ctx context.Context, req *AudioInferenceRequest) ([]AudioInferenceResult, error)
+	TextInference(ctx context.Context, req *TextInferenceRequest) ([]TextInferenceResult, error)
 	GetResponse(ctx context.Context, taskUUID string) ([]json.RawMessage, error)
 	AccountDetails(ctx context.Context) (*AccountResult, error)
 	ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error)
@@ -238,6 +239,32 @@ func (c *RestClient) AudioInference(ctx context.Context, req *AudioInferenceRequ
 		var r AudioInferenceResult
 		if err := json.Unmarshal(raw, &r); err != nil {
 			return nil, fmt.Errorf("failed to parse audio result: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	return results, nil
+}
+
+// TextInference runs a text inference task.
+func (c *RestClient) TextInference(ctx context.Context, req *TextInferenceRequest) ([]TextInferenceResult, error) {
+	req.TaskType = "textInference"
+	if req.TaskUUID == "" {
+		req.TaskUUID = NewUUID()
+	}
+
+	tasks := []interface{}{req}
+
+	resp, err := c.do(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []TextInferenceResult
+	for _, raw := range resp.Data {
+		var r TextInferenceResult
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return nil, fmt.Errorf("failed to parse text result: %w", err)
 		}
 		results = append(results, r)
 	}

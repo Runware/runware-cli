@@ -50,6 +50,7 @@ func init() {
 	rootCmd.AddCommand(imageInferenceCmd)
 	rootCmd.AddCommand(videoInferenceCmd)
 	rootCmd.AddCommand(audioInferenceCmd)
+	rootCmd.AddCommand(textInferenceCmd)
 	rootCmd.AddCommand(modelSearchCmd)
 	rootCmd.AddCommand(accountCmd)
 	rootCmd.AddCommand(configCmd)

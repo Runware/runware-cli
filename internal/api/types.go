@@ -176,6 +176,47 @@ type AudioInferenceResult struct {
 	Cost      float64 `json:"cost,omitempty"`
 }
 
+// Message represents a single message in a text inference conversation.
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// TextInferenceRequest contains fields for the textInference task type.
+type TextInferenceRequest struct {
+	TaskType      string    `json:"taskType"`
+	TaskUUID      string    `json:"taskUUID"`
+	Model         string    `json:"model"`
+	Messages      []Message `json:"messages"`
+	MaxTokens     int       `json:"maxTokens,omitempty"`
+	Temperature   float64   `json:"temperature,omitempty"`
+	TopP          float64   `json:"topP,omitempty"`
+	TopK          int       `json:"topK,omitempty"`
+	Seed          int64     `json:"seed,omitempty"`
+	StopSequences []string  `json:"stopSequences,omitempty"`
+	NumberResults int       `json:"numberResults,omitempty"`
+	SystemPrompt  string    `json:"systemPrompt,omitempty"`
+	OutputFormat  string    `json:"outputFormat,omitempty"`
+	IncludeCost   bool      `json:"includeCost,omitempty"`
+}
+
+// TextInferenceUsage contains token usage statistics.
+type TextInferenceUsage struct {
+	InputTokens  int `json:"inputTokens,omitempty"`
+	OutputTokens int `json:"outputTokens,omitempty"`
+	TotalTokens  int `json:"totalTokens,omitempty"`
+}
+
+// TextInferenceResult is a single text result from the API.
+type TextInferenceResult struct {
+	TaskType     string             `json:"taskType"`
+	TaskUUID     string             `json:"taskUUID"`
+	Text         string             `json:"text"`
+	FinishReason string             `json:"finishReason,omitempty"`
+	Usage        TextInferenceUsage `json:"usage,omitempty"`
+	Cost         float64            `json:"cost,omitempty"`
+}
+
 // ModelSearchRequest contains fields for the modelSearch task type.
 type ModelSearchRequest struct {
 	TaskType     string `json:"taskType"`
