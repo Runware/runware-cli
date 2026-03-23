@@ -335,7 +335,11 @@ func encodeImageFile(path string) (string, error) {
 
 // downloadImage downloads a URL to a local file.
 func downloadImage(url, destPath string) error {
-	resp, err := http.Get(url) //nolint:gosec // URL comes from API response
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}

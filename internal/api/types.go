@@ -90,9 +90,9 @@ type AccountResult struct {
 }
 
 type AccountUsage struct {
-	Total     UsagePeriod `json:"total"`
-	Today     UsagePeriod `json:"today"`
-	Last7Days UsagePeriod `json:"last7Days"`
+	Total      UsagePeriod `json:"total"`
+	Today      UsagePeriod `json:"today"`
+	Last7Days  UsagePeriod `json:"last7Days"`
 	Last30Days UsagePeriod `json:"last30Days"`
 }
 
@@ -103,22 +103,22 @@ type UsagePeriod struct {
 
 // VideoInferenceRequest contains fields for the videoInference task type.
 type VideoInferenceRequest struct {
-	TaskType        string            `json:"taskType"`
-	TaskUUID        string            `json:"taskUUID"`
-	Model           string            `json:"model"`
-	PositivePrompt  string            `json:"positivePrompt,omitempty"`
-	NegativePrompt  string            `json:"negativePrompt,omitempty"`
-	Width           int               `json:"width,omitempty"`
-	Height          int               `json:"height,omitempty"`
-	Duration        float64           `json:"duration,omitempty"`
-	Steps           int               `json:"steps,omitempty"`
-	CFGScale        float64           `json:"CFGScale,omitempty"`
-	Seed            int64             `json:"seed,omitempty"`
-	NumberResults   int               `json:"numberResults,omitempty"`
-	OutputFormat    string            `json:"outputFormat,omitempty"`
-	DeliveryMethod  string            `json:"deliveryMethod,omitempty"`
-	FrameImages     []FrameImage      `json:"frameImages,omitempty"`
-	IncludeCost     bool              `json:"includeCost,omitempty"`
+	TaskType       string       `json:"taskType"`
+	TaskUUID       string       `json:"taskUUID"`
+	Model          string       `json:"model"`
+	PositivePrompt string       `json:"positivePrompt,omitempty"`
+	NegativePrompt string       `json:"negativePrompt,omitempty"`
+	Width          int          `json:"width,omitempty"`
+	Height         int          `json:"height,omitempty"`
+	Duration       float64      `json:"duration,omitempty"`
+	Steps          int          `json:"steps,omitempty"`
+	CFGScale       float64      `json:"CFGScale,omitempty"`
+	Seed           int64        `json:"seed,omitempty"`
+	NumberResults  int          `json:"numberResults,omitempty"`
+	OutputFormat   string       `json:"outputFormat,omitempty"`
+	DeliveryMethod string       `json:"deliveryMethod,omitempty"`
+	FrameImages    []FrameImage `json:"frameImages,omitempty"`
+	IncludeCost    bool         `json:"includeCost,omitempty"`
 }
 
 // FrameImage constrains a specific frame with an input image.

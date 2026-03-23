@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,18 +11,18 @@ import (
 )
 
 const (
-	DefaultBaseURL    = "https://api.runware.ai/v1"
-	DefaultModel      = "runware:100@1"
-	DefaultWidth      = 1024
-	DefaultHeight     = 1024
-	DefaultSteps      = 28
-	DefaultCFGScale   = 3.5
-	DefaultScheduler  = "euler"
-	DefaultOutputDir  = "./outputs"
-	DefaultOutputFmt  = "png"
-	DefaultFormat     = "table"
-	DefaultEnv        = "production"
-	DefaultMode       = "public"
+	DefaultBaseURL   = "https://api.runware.ai/v1"
+	DefaultModel     = "runware:100@1"
+	DefaultWidth     = 1024
+	DefaultHeight    = 1024
+	DefaultSteps     = 28
+	DefaultCFGScale  = 3.5
+	DefaultScheduler = "euler"
+	DefaultOutputDir = "./outputs"
+	DefaultOutputFmt = "png"
+	DefaultFormat    = "table"
+	DefaultEnv       = "production"
+	DefaultMode      = "public"
 )
 
 // Defaults holds default values for inference commands.
@@ -90,7 +91,8 @@ func Init() error {
 	_ = viper.BindEnv("environment", "RUNWARE_ENV")
 
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
 			return fmt.Errorf("error reading config: %w", err)
 		}
 		// Config file not found is fine — we use defaults

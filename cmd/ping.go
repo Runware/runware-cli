@@ -41,8 +41,8 @@ var pingCmd = &cobra.Command{
 
 		format := output.ParseFormat(getFormat())
 		data := map[string]interface{}{
-			"status":     "ok",
-			"latency_ms": latencyMs,
+			"status":      "ok",
+			"latency_ms":  latencyMs,
 			"environment": env,
 		}
 

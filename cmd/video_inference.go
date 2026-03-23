@@ -271,14 +271,14 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	if noDownload {
 		headers := []interface{}{"#", "URL", "Seed"}
 		var rows [][]interface{}
-		for i, r := range results {
-			url := r.VideoURL
+		for i := range results {
+			url := results[i].VideoURL
 			if url == "" {
-				url = r.MediaURL
+				url = results[i].MediaURL
 			}
-			row := []interface{}{i + 1, url, r.Seed}
+			row := []interface{}{i + 1, url, results[i].Seed}
 			if includeCost {
-				row = append(row, fmt.Sprintf("%.4f", r.Cost))
+				row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 			}
 			rows = append(rows, row)
 		}
@@ -299,7 +299,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	}
 	var rows [][]interface{}
 
-	for i, r := range results {
+	for i := range results {
 		ext := outputFormat
 		if ext == "" {
 			ext = "mp4"
@@ -307,9 +307,9 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-		url := r.VideoURL
+		url := results[i].VideoURL
 		if url == "" {
-			url = r.MediaURL
+			url = results[i].MediaURL
 		}
 
 		if err := downloadFile(url, destPath); err != nil {
@@ -317,9 +317,9 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		row := []interface{}{i + 1, destPath, r.Seed}
+		row := []interface{}{i + 1, destPath, results[i].Seed}
 		if includeCost {
-			row = append(row, fmt.Sprintf("%.4f", r.Cost))
+			row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 		}
 		rows = append(rows, row)
 	}

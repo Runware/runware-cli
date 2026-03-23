@@ -37,11 +37,11 @@ var accountCreditsCmd = &cobra.Command{
 		format := output.ParseFormat(getFormat())
 
 		data := map[string]interface{}{
-			"balance":    result.Balance,
-			"today":      result.Usage.Today,
-			"last_7d":    result.Usage.Last7Days,
-			"last_30d":   result.Usage.Last30Days,
-			"total":      result.Usage.Total,
+			"balance":  result.Balance,
+			"today":    result.Usage.Today,
+			"last_7d":  result.Usage.Last7Days,
+			"last_30d": result.Usage.Last30Days,
+			"total":    result.Usage.Total,
 		}
 
 		return output.Print(format, data,

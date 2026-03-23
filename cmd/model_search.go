@@ -89,7 +89,8 @@ func runModelSearch(cmd *cobra.Command, args []string) error {
 
 	headers := []interface{}{"AIR", "Name", "Category", "Arch", "Version"}
 	var rows [][]interface{}
-	for _, m := range result.Results {
+	for i := range result.Results {
+		m := &result.Results[i]
 		name := truncate(m.Name, 45)
 		rows = append(rows, []interface{}{m.AIR, name, m.Category, m.Architecture, m.Version})
 	}
@@ -102,10 +103,10 @@ func runModelSearch(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func truncate(s string, max int) string {
+func truncate(s string, maxLen int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) <= max {
+	if len(s) <= maxLen {
 		return s
 	}
-	return s[:max-3] + "..."
+	return s[:maxLen-3] + "..."
 }

@@ -1,0 +1,77 @@
+version: "2"
+
+linters:
+  enable:
+    # Bugs & correctness
+    - bodyclose
+    - nilerr
+    - nilnesserr
+    - noctx
+    - durationcheck
+    - copyloopvar
+    - errorlint
+
+    # Security
+    - gosec
+
+    # Style & clarity
+    - revive
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+    - nakedret
+    - goconst
+    - predeclared
+    - usestdlibvars
+    - whitespace
+
+    # Performance
+    - intrange
+
+  settings:
+    gosec:
+      excludes:
+        - G115  # uintptr->int for term.IsTerminal is standard
+        - G117  # Marshaling API key to config file is intentional
+        - G301  # 0755 for output dirs is fine for a CLI
+        - G304  # File paths from variables are expected in a CLI
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: var-declaration
+        - name: var-naming
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - hugeParam
+
+    nakedret:
+      max-func-lines: 20
+
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+
+formatters:
+  enable:
+    - gofmt
+
+  exclusions:
+    paths:
+      - "third_party$"
+      - "builtin$"
+      - "examples$"

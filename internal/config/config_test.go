@@ -50,10 +50,10 @@ func TestSaveAndLoad(t *testing.T) {
 		},
 		Presets: map[string]Preset{
 			"fast": {
-				Model: "fast-model",
-				Width: 256,
+				Model:  "fast-model",
+				Width:  256,
 				Height: 256,
-				Steps: 1,
+				Steps:  1,
 			},
 		},
 	}
@@ -107,10 +107,10 @@ func TestPresetOperations(t *testing.T) {
 
 	// Save a preset
 	preset := Preset{
-		Model: "test-model",
-		Width: 768,
+		Model:  "test-model",
+		Width:  768,
 		Height: 768,
-		Steps: 20,
+		Steps:  20,
 	}
 	if err := SavePreset("test-preset", preset); err != nil {
 		t.Fatalf("SavePreset() error: %v", err)
