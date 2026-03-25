@@ -7,7 +7,7 @@ A command-line tool for interacting with the [Runware](https://runware.ai) infer
 ### From source
 
 ```bash
-git clone https://github.com/Runware/runware-cli.git
+git clone https://github.com/runware/runware-cli.git
 cd runware-cli
 make build
 ```
@@ -28,13 +28,22 @@ gh release download --repo Runware/runware-cli --pattern "runware_linux_amd64.ta
 
 # Linux (ARM64)
 gh release download --repo Runware/runware-cli --pattern "runware_linux_arm64.tar.gz"
+
+# Windows (x86_64)
+gh release download --repo Runware/runware-cli --pattern "runware_windows_amd64.zip"
 ```
 
 Extract and move to your PATH:
 
 ```bash
+# macOS/Linux
 tar xzf runware_*.tar.gz
 sudo mv runware /usr/local/bin/
+
+# Windows: unzip and add runware.exe to your PATH
+```
+
+```bash
 runware version
 ```
 
@@ -87,48 +96,6 @@ runware imageInference "a sunset" --no-download
 runware imageInference "a sunset" --dry-run
 ```
 
-### Text generation
-
-```bash
-# Simple question
-runware textInference "What is the capital of France?" --model minimax:m2.7@highspeed
-
-# With a system prompt
-runware textInference "Write a haiku about coding" \
-  --model minimax:m2.7@highspeed --system "You are a poet"
-
-# With options
-runware textInference "Explain quantum computing" \
-  --model minimax:m2.7@highspeed \
-  --max-tokens 500 --temperature 0.8
-
-# Get JSON output from the LLM
-runware textInference "List 3 facts about Mars" \
-  --model minimax:m2.7@highspeed --output-format json
-
-# Pipe-friendly — single result prints text directly to stdout
-runware textInference "summarize this" --model minimax:m2.7@highspeed | pbcopy
-
-# Preview the API request without sending it
-runware textInference "hello" --model minimax:m2.7@highspeed --dry-run
-```
-
-### Audio generation
-
-```bash
-# Text-to-audio
-runware audioInference "a jazz piano solo with soft drums" \
-  --model elevenlabs:1@1 --duration 30
-
-# With audio settings
-runware audioInference "ocean waves crashing on rocks" \
-  --model elevenlabs:1@1 --duration 60 --sample-rate 48000
-
-# Just get the URL, don't download
-runware audioInference "upbeat electronic music" \
-  --model elevenlabs:1@1 --duration 120 --no-download
-```
-
 ### Authentication
 
 ```bash
@@ -148,7 +115,7 @@ runware account credits         # Credit balance and usage stats
 ### Model search
 
 ```bash
-runware modelSearch "flux"      # Search available models
+runware modelSearch "flux"      # Search available models (coming soon)
 ```
 
 ### Presets
