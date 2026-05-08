@@ -332,13 +332,17 @@ func encodeImageFile(path string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mime, encoded), nil
 }
 
+// downloadClient is used for fetching generated images. It enforces an overall
+// timeout so a hung server cannot stall the CLI indefinitely.
+var downloadClient = &http.Client{Timeout: 5 * time.Minute}
+
 // downloadImage downloads a URL to a local file.
 func downloadImage(url, destPath string) error {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := downloadClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
