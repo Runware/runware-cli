@@ -13,7 +13,7 @@ func TestMaskKey(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"gcuTZLxvUU3tb9TGfyAUkGiLmFS2Dvqn", "gcuT****Dvqn"},
+		{"abcdEFGHijklMNOPqrstUVWXyz0123456", "abcd****3456"},
 		{"short", "****"},
 		{"12345678", "****"},
 		{"123456789", "1234****6789"},
