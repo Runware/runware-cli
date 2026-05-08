@@ -121,7 +121,7 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	if topK > 0 {
 		req.TopK = topK
 	}
-	if seed > 0 {
+	if cmd.Flags().Changed("seed") {
 		req.Seed = seed
 	}
 	if len(stopSequences) > 0 {
