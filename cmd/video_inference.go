@@ -227,18 +227,13 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	var results []api.VideoInferenceResult
 
 	for time.Now().Before(deadline) {
-		time.Sleep(interval)
-
 		rawData, err := client.GetResponse(context.Background(), taskUUID)
 		if err != nil {
 			// getResponse may return an error if results aren't ready yet — keep polling
 			if flagVerbose {
 				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
 			}
-			continue
-		}
-
-		if len(rawData) == 0 {
+			time.Sleep(interval)
 			continue
 		}
 
@@ -257,6 +252,8 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		if len(results) > 0 {
 			break
 		}
+
+		time.Sleep(interval)
 	}
 
 	if s != nil {
