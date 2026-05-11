@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -78,16 +79,19 @@ var configSetCmd = &cobra.Command{
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := normalizeConfigKey(args[0])
-		value := args[1]
+		typed, err := parseConfigValue(key, args[1])
+		if err != nil {
+			return err
+		}
 
-		viper.Set(key, value)
+		viper.Set(key, typed)
 
 		cfg := config.Get()
 		if err := config.Save(cfg); err != nil {
 			return fmt.Errorf("failed to save config: %w", err)
 		}
 
-		output.Success(fmt.Sprintf("Set %s = %s", key, value))
+		output.Success(fmt.Sprintf("Set %s = %v", key, typed))
 		return nil
 	},
 }
@@ -142,6 +146,36 @@ func normalizeConfigKey(key string) string {
 		return "defaults." + key
 	}
 	return key
+}
+
+// configKeyTypes maps the normalized key path to the expected scalar type
+// so `runware config set` can store typed values instead of raw strings.
+var configKeyTypes = map[string]string{
+	"defaults.width":     "int",
+	"defaults.height":    "int",
+	"defaults.steps":     "int",
+	"defaults.cfg_scale": "float",
+}
+
+// parseConfigValue converts the raw CLI argument into the type viper expects
+// for the given key. Unknown keys default to string.
+func parseConfigValue(key, raw string) (interface{}, error) {
+	switch configKeyTypes[key] {
+	case "int":
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid integer for %s: %q", key, raw)
+		}
+		return n, nil
+	case "float":
+		f, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid number for %s: %q", key, raw)
+		}
+		return f, nil
+	default:
+		return raw, nil
+	}
 }
 
 func init() {
