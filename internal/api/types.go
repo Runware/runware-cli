@@ -123,8 +123,8 @@ type VideoInferenceRequest struct {
 
 // FrameImage constrains a specific frame with an input image.
 type FrameImage struct {
-	InputImage string      `json:"inputImage"`
-	Frame      interface{} `json:"frame"` // "first", "last", or int
+	InputImage string `json:"inputImage"`
+	Frame      any    `json:"frame"` // "first", "last", or int
 }
 
 // VideoInferenceResult is a single video result from the API.
@@ -213,7 +213,7 @@ type TextInferenceResult struct {
 	TaskUUID     string             `json:"taskUUID"`
 	Text         string             `json:"text"`
 	FinishReason string             `json:"finishReason,omitempty"`
-	Usage        TextInferenceUsage `json:"usage,omitempty"`
+	Usage        TextInferenceUsage `json:"usage"`
 	Cost         float64            `json:"cost,omitempty"`
 }
 

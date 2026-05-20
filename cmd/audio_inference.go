@@ -129,7 +129,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Dry run
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -213,13 +213,13 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Table output
 	if noDownload {
-		headers := []interface{}{"#", "URL"}
+		headers := []any{"#", "URL"}
 		if includeCost {
 			headers = append(headers, "Cost")
 		}
-		var rows [][]interface{}
+		var rows [][]any
 		for i, r := range results {
-			row := []interface{}{i + 1, r.AudioURL}
+			row := []any{i + 1, r.AudioURL}
 			if includeCost {
 				row = append(row, fmt.Sprintf("%.4f", r.Cost))
 			}
@@ -233,11 +233,11 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []interface{}{"#", "File"}
+	headers := []any{"#", "File"}
 	if includeCost {
 		headers = append(headers, "Cost")
 	}
-	var rows [][]interface{}
+	var rows [][]any
 
 	for i, r := range results {
 		ext := outputFormat
@@ -252,7 +252,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		row := []interface{}{i + 1, destPath}
+		row := []any{i + 1, destPath}
 		if includeCost {
 			row = append(row, fmt.Sprintf("%.4f", r.Cost))
 		}

@@ -40,7 +40,7 @@ var pingCmd = &cobra.Command{
 		latencyMs := elapsed.Milliseconds()
 
 		format := output.ParseFormat(getFormat())
-		data := map[string]interface{}{
+		data := map[string]any{
 			"status":      "ok",
 			"latency_ms":  latencyMs,
 			"environment": env,

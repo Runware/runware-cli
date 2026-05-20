@@ -178,7 +178,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 	// Dry run — print request and exit
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -269,14 +269,14 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 	// Table output — download or print URLs
 	if noDownload {
-		headers := []interface{}{"#", "URL", "Seed"}
-		var rows [][]interface{}
+		headers := []any{"#", "URL", "Seed"}
+		var rows [][]any
 		for i := range results {
 			url := results[i].VideoURL
 			if url == "" {
 				url = results[i].MediaURL
 			}
-			row := []interface{}{i + 1, url, results[i].Seed}
+			row := []any{i + 1, url, results[i].Seed}
 			if includeCost {
 				row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 			}
@@ -293,11 +293,12 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []interface{}{"#", "File", "Seed"}
+	headers := []any{"#", "File", "Seed"}
 	if includeCost {
 		headers = append(headers, "Cost")
 	}
-	var rows [][]interface{}
+
+	var rows [][]any
 	var downloadFailures int
 
 	for i := range results {
@@ -319,7 +320,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		row := []interface{}{i + 1, destPath, results[i].Seed}
+		row := []any{i + 1, destPath, results[i].Seed}
 		if includeCost {
 			row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 		}

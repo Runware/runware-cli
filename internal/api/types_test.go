@@ -25,7 +25,7 @@ func TestImageInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestVideoInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -201,12 +201,12 @@ func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	frames, ok := parsed["frameImages"].([]interface{})
+	frames, ok := parsed["frameImages"].([]any)
 	if !ok {
 		t.Fatal("frameImages is not an array")
 	}
@@ -214,7 +214,7 @@ func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
 		t.Fatalf("expected 2 frameImages, got %d", len(frames))
 	}
 
-	first := frames[0].(map[string]interface{})
+	first := frames[0].(map[string]any)
 	if first["frame"] != "first" {
 		t.Errorf("first frame = %q, want %q", first["frame"], "first")
 	}
@@ -288,7 +288,7 @@ func TestGetResponseRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -386,7 +386,7 @@ func TestAudioInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -425,12 +425,12 @@ func TestAudioInferenceRequestWithSettings(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	settings, ok := parsed["audioSettings"].(map[string]interface{})
+	settings, ok := parsed["audioSettings"].(map[string]any)
 	if !ok {
 		t.Fatal("audioSettings is missing or not an object")
 	}
@@ -506,7 +506,7 @@ func TestModelSearchRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestModelSearchRequestOmitempty(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -671,7 +671,7 @@ func TestTextInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -692,14 +692,14 @@ func TestTextInferenceRequestJSON(t *testing.T) {
 	}
 
 	// Verify messages structure
-	msgs, ok := parsed["messages"].([]interface{})
+	msgs, ok := parsed["messages"].([]any)
 	if !ok {
 		t.Fatal("messages is not an array")
 	}
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
-	msg := msgs[0].(map[string]interface{})
+	msg := msgs[0].(map[string]any)
 	if msg["role"] != "user" {
 		t.Errorf("message role = %q, want %q", msg["role"], "user")
 	}

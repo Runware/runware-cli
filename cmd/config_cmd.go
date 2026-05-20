@@ -35,8 +35,8 @@ var configShowCmd = &cobra.Command{
 		}
 
 		return output.Print(format, display,
-			[]interface{}{"Setting", "Value"},
-			[][]interface{}{
+			[]any{"Setting", "Value"},
+			[][]any{
 				{"Environment", display.Environment},
 				{"API Key", display.APIKey},
 				{"Mode", display.Mode},

@@ -233,7 +233,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Dry run — print request and exit
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -274,10 +274,10 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Table output — download or print URLs
 	if noDownload {
-		headers := []interface{}{"#", "URL", "Seed"}
-		var rows [][]interface{}
+		headers := []any{"#", "URL", "Seed"}
+		var rows [][]any
 		for i, r := range results {
-			rows = append(rows, []interface{}{i + 1, r.ImageURL, r.Seed})
+			rows = append(rows, []any{i + 1, r.ImageURL, r.Seed})
 		}
 		return output.Print(format, results, headers, rows)
 	}
@@ -287,8 +287,8 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []interface{}{"#", "File", "Seed"}
-	var rows [][]interface{}
+	headers := []any{"#", "File", "Seed"}
+	var rows [][]any
 
 	for i, r := range results {
 		ext := outputFormat
@@ -303,7 +303,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		rows = append(rows, []interface{}{i + 1, destPath, r.Seed})
+		rows = append(rows, []any{i + 1, destPath, r.Seed})
 	}
 
 	return output.Print(format, results, headers, rows)

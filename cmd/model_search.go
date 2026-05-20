@@ -87,12 +87,12 @@ func runModelSearch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	headers := []interface{}{"AIR", "Name", "Category", "Arch", "Version"}
-	var rows [][]interface{}
+	headers := []any{"AIR", "Name", "Category", "Arch", "Version"}
+	var rows [][]any
 	for i := range result.Results {
 		m := &result.Results[i]
 		name := truncate(m.Name, 45)
-		rows = append(rows, []interface{}{m.AIR, name, m.Category, m.Architecture, m.Version})
+		rows = append(rows, []any{m.AIR, name, m.Category, m.Architecture, m.Version})
 	}
 
 	if err := output.Print(format, result, headers, rows); err != nil {

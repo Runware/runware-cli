@@ -136,7 +136,7 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 
 	// Dry run
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -182,17 +182,17 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	}
 
 	// Multiple results or cost requested — use table
-	headers := []interface{}{"#", "Text"}
+	headers := []any{"#", "Text"}
 	if includeCost {
 		headers = append(headers, "Cost")
 	}
-	var rows [][]interface{}
+	var rows [][]any
 	for i, r := range results {
 		text := r.Text
 		if len(text) > 100 {
 			text = text[:100] + "..."
 		}
-		row := []interface{}{i + 1, text}
+		row := []any{i + 1, text}
 		if includeCost {
 			row = append(row, fmt.Sprintf("%.6f", r.Cost))
 		}
