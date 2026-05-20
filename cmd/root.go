@@ -41,7 +41,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show request/response details")
 	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "Show full debug output")
 
-	_ = rootCmd.RegisterFlagCompletionFunc("format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	rootCmd.RegisterFlagCompletionFunc("format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []string{"table", "json", "yaml"}, cobra.ShellCompDirectiveNoFileComp
 	})
 

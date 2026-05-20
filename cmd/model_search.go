@@ -32,11 +32,11 @@ func init() {
 	f.Int("limit", 20, "Maximum number of results")
 	f.Int("offset", 0, "Offset for pagination")
 
-	_ = modelSearchCmd.RegisterFlagCompletionFunc("category", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	modelSearchCmd.RegisterFlagCompletionFunc("category", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []string{"checkpoint", "lora", "controlnet", "vae", "embedding"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = modelSearchCmd.RegisterFlagCompletionFunc("architecture", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	modelSearchCmd.RegisterFlagCompletionFunc("architecture", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []string{"flux1d", "flux1s", "sdxl", "sd15", "sd3"}, cobra.ShellCompDirectiveNoFileComp
 	})
 }
@@ -99,7 +99,7 @@ func runModelSearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "\nShowing %d of %d results\n", len(result.Results), result.TotalResults)
+	fmt.Fprintf(cmd.ErrOrStderr(), "\nShowing %d of %d results\n", len(result.Results), result.TotalResults) //nolint:errcheck,gosec
 	return nil
 }
 

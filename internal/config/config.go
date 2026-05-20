@@ -89,8 +89,8 @@ func Init() error {
 
 	// Environment variable overrides
 	viper.SetEnvPrefix("")
-	_ = viper.BindEnv("api_key", "RUNWARE_API_KEY")
-	_ = viper.BindEnv("environment", "RUNWARE_ENV")
+	viper.BindEnv("api_key", "RUNWARE_API_KEY") //nolint:errcheck,gosec
+	viper.BindEnv("environment", "RUNWARE_ENV") //nolint:errcheck,gosec
 
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
@@ -106,7 +106,7 @@ func Init() error {
 // Get returns the current merged config.
 func Get() *Config {
 	var cfg Config
-	_ = viper.Unmarshal(&cfg)
+	viper.Unmarshal(&cfg) //nolint:errcheck,gosec
 	return &cfg
 }
 
@@ -172,7 +172,7 @@ func Save(cfg *Config) error {
 	}
 
 	// Re-read so Viper picks up the changes
-	_ = viper.ReadInConfig()
+	viper.ReadInConfig() //nolint:errcheck,gosec
 
 	return nil
 }

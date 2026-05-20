@@ -52,7 +52,7 @@ func init() {
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []string{
 			"euler\tEuler",
 			"euler_a\tEuler Ancestral",
@@ -72,17 +72,17 @@ func init() {
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	imageInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+	imageInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	imageInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatJPEG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("mask", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	imageInferenceCmd.RegisterFlagCompletionFunc("mask", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatJPEG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 }
@@ -90,7 +90,7 @@ func init() {
 // completePresetNames provides dynamic completion for preset names from config.
 func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	// Ensure config is loaded for completion context
-	_ = config.Init()
+	config.Init() //nolint:errcheck,gosec
 	return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp
 }
 
@@ -342,7 +342,7 @@ func downloadImage(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close() //nolint:errcheck,gosec
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned status %d", resp.StatusCode)
@@ -352,7 +352,7 @@ func downloadImage(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	defer f.Close() //nolint:errcheck,gosec
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)

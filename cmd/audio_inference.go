@@ -44,11 +44,11 @@ func init() {
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 300, "Maximum wait time in seconds for audio generation")
 
-	_ = audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{string(api.OutputFormatMP3)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = audioInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+	audioInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec
 }
 
 func runAudioInference(cmd *cobra.Command, args []string) error {
@@ -171,7 +171,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		rawData, err := client.GetResponse(context.Background(), taskUUID)
 		if err != nil {
 			if flagVerbose {
-				_, _ = fmt.Fprintf(os.Stderr, "Poll: %s\n", err)
+				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
 			}
 			continue
 		}

@@ -50,17 +50,17 @@ func init() {
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 600, "Maximum wait time in seconds for video generation")
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []string{"mp4", "webm"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+	videoInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	videoInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{string(api.OutputFormatMP4)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("source-last", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	videoInferenceCmd.RegisterFlagCompletionFunc("source-last", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{string(api.OutputFormatMP4)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 }
@@ -225,7 +225,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			// getResponse may return an error if results aren't ready yet — keep polling
 			if flagVerbose {
-				_, _ = fmt.Fprintf(os.Stderr, "Poll: %s\n", err)
+				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
 			}
 			continue
 		}
