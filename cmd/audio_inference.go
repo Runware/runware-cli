@@ -44,8 +44,8 @@ func init() {
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 300, "Maximum wait time in seconds for audio generation")
 
-	_ = audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"mp3"}, cobra.ShellCompDirectiveNoFileComp
+	_ = audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return []cobra.Completion{string(api.OutputFormatMP3)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	_ = audioInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
@@ -102,18 +102,17 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.AudioInferenceRequest{
-		TaskType:       "audioInference",
 		TaskUUID:       api.NewUUID(),
 		Model:          model,
 		PositivePrompt: prompt,
 		Duration:       duration,
-		DeliveryMethod: "async",
+		DeliveryMethod: api.DeliveryMethodAsync,
 		IncludeCost:    includeCost,
 	}
 
 	req.NumberResults = count
 	if outputFormat != "" {
-		req.OutputFormat = outputFormat
+		req.OutputFormat = api.OutputFormat(outputFormat)
 	}
 
 	// Audio settings
@@ -213,9 +212,9 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Table output
 	if noDownload {
-		headers := []any{"#", "URL"}
+		headers := []any{tableHeaderNum, tableHeaderURL}
 		if includeCost {
-			headers = append(headers, "Cost")
+			headers = append(headers, tableHeaderCost)
 		}
 		var rows [][]any
 		for i, r := range results {
@@ -233,16 +232,16 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []any{"#", "File"}
+	headers := []any{tableHeaderNum, tableHeaderFile}
 	if includeCost {
-		headers = append(headers, "Cost")
+		headers = append(headers, tableHeaderCost)
 	}
 	var rows [][]any
 
 	for i, r := range results {
 		ext := outputFormat
 		if ext == "" {
-			ext = "mp3"
+			ext = string(api.OutputFormatMP3)
 		}
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)

@@ -97,7 +97,6 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.TextInferenceRequest{
-		TaskType: "textInference",
 		TaskUUID: api.NewUUID(),
 		Model:    model,
 		Messages: []api.Message{
@@ -131,7 +130,7 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 		req.NumberResults = count
 	}
 	if outputFmt != "" {
-		req.OutputFormat = outputFmt
+		req.OutputFormat = api.OutputFormat(outputFmt)
 	}
 
 	// Dry run

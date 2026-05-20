@@ -14,7 +14,7 @@ func IsAuthError(err error) bool {
 	}
 	var apiErr APIError
 	if errors.As(err, &apiErr) {
-		return apiErr.Code == "invalidApiKey"
+		return apiErr.Code == invalidAPIKeyCode
 	}
 	return false
 }

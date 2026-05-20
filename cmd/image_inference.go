@@ -72,18 +72,18 @@ func init() {
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "webp"}, cobra.ShellCompDirectiveNoFileComp
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	_ = imageInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatJPEG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("mask", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	_ = imageInferenceCmd.RegisterFlagCompletionFunc("mask", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatJPEG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 }
 
@@ -185,14 +185,13 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Build request — universal fields always included
 	req := &api.ImageInferenceRequest{
-		TaskType:       "imageInference",
 		TaskUUID:       api.NewUUID(),
 		PositivePrompt: prompt,
 		Model:          model,
 		Width:          width,
 		Height:         height,
 		NumberResults:  count,
-		OutputFormat:   outputFormat,
+		OutputFormat:   api.OutputFormat(outputFormat),
 	}
 
 	// Model-specific fields — only included when explicitly set
@@ -274,7 +273,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Table output — download or print URLs
 	if noDownload {
-		headers := []any{"#", "URL", "Seed"}
+		headers := []any{tableHeaderNum, tableHeaderURL, tableHeaderSeed}
 		var rows [][]any
 		for i, r := range results {
 			rows = append(rows, []any{i + 1, r.ImageURL, r.Seed})
@@ -287,13 +286,13 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []any{"#", "File", "Seed"}
+	headers := []any{tableHeaderNum, tableHeaderFile, tableHeaderSeed}
 	var rows [][]any
 
 	for i, r := range results {
 		ext := outputFormat
 		if ext == "" {
-			ext = "jpg"
+			ext = string(api.OutputFormatJPG)
 		}
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)

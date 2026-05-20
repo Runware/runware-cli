@@ -97,7 +97,7 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 
 	if len(apiResp.Errors) > 0 {
 		first := apiResp.Errors[0]
-		if first.Code == "invalidApiKey" {
+		if first.Code == invalidAPIKeyCode {
 			return &apiResp, ErrUnauthorized
 		}
 		return &apiResp, first
@@ -115,8 +115,8 @@ func (c *RestClient) Raw(ctx context.Context, tasks []any) (*APIResponse, error)
 func (c *RestClient) Ping(ctx context.Context) (*PingResult, error) {
 	tasks := []any{
 		map[string]string{
-			"taskType": "ping",
-			"taskUUID": NewUUID(),
+			jsonKeyTaskType: string(taskTypePing),
+			jsonKeyTaskUUID: NewUUID(),
 		},
 	}
 
@@ -139,7 +139,7 @@ func (c *RestClient) Ping(ctx context.Context) (*PingResult, error) {
 
 // ImageInference runs an image inference task.
 func (c *RestClient) ImageInference(ctx context.Context, req *ImageInferenceRequest) ([]ImageInferenceResult, error) {
-	req.TaskType = "imageInference"
+	req.TaskType = taskTypeImageInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
@@ -167,9 +167,9 @@ func (c *RestClient) ImageInference(ctx context.Context, req *ImageInferenceRequ
 func (c *RestClient) AccountDetails(ctx context.Context) (*AccountResult, error) {
 	tasks := []any{
 		map[string]string{
-			"taskType":  "accountManagement",
-			"taskUUID":  NewUUID(),
-			"operation": "getDetails",
+			jsonKeyTaskType:  string(taskTypeAccountManagement),
+			jsonKeyTaskUUID:  NewUUID(),
+			jsonKeyOperation: "getDetails",
 		},
 	}
 
@@ -193,12 +193,12 @@ func (c *RestClient) AccountDetails(ctx context.Context) (*AccountResult, error)
 // VideoInference submits a video inference task.
 // Video generation is async: the API returns immediately and results are polled via GetResponse.
 func (c *RestClient) VideoInference(ctx context.Context, req *VideoInferenceRequest) ([]VideoInferenceResult, error) {
-	req.TaskType = "videoInference"
+	req.TaskType = taskTypeVideoInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
 	if req.DeliveryMethod == "" {
-		req.DeliveryMethod = "async"
+		req.DeliveryMethod = DeliveryMethodAsync
 	}
 
 	tasks := []any{req}
@@ -222,7 +222,7 @@ func (c *RestClient) VideoInference(ctx context.Context, req *VideoInferenceRequ
 
 // AudioInference submits an audio inference task.
 func (c *RestClient) AudioInference(ctx context.Context, req *AudioInferenceRequest) ([]AudioInferenceResult, error) {
-	req.TaskType = "audioInference"
+	req.TaskType = taskTypeAudioInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
@@ -248,7 +248,7 @@ func (c *RestClient) AudioInference(ctx context.Context, req *AudioInferenceRequ
 
 // TextInference runs a text inference task.
 func (c *RestClient) TextInference(ctx context.Context, req *TextInferenceRequest) ([]TextInferenceResult, error) {
-	req.TaskType = "textInference"
+	req.TaskType = taskTypeTextInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
@@ -276,7 +276,7 @@ func (c *RestClient) TextInference(ctx context.Context, req *TextInferenceReques
 func (c *RestClient) GetResponse(ctx context.Context, taskUUID string) ([]json.RawMessage, error) {
 	tasks := []any{
 		&GetResponseRequest{
-			TaskType: "getResponse",
+			TaskType: taskTypeGetResponse,
 			TaskUUID: taskUUID,
 		},
 	}
@@ -291,7 +291,7 @@ func (c *RestClient) GetResponse(ctx context.Context, taskUUID string) ([]json.R
 
 // ModelSearch searches for available models.
 func (c *RestClient) ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error) {
-	req.TaskType = "modelSearch"
+	req.TaskType = taskTypeModelSearch
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}

@@ -23,6 +23,8 @@ const (
 	DefaultFormat    = "table"
 	DefaultEnv       = "production"
 	DefaultMode      = "public"
+
+	maskedKey = "****"
 )
 
 // Defaults holds default values for inference commands.
@@ -250,7 +252,7 @@ func ListPresets() []string {
 // MaskKey masks an API key for display, showing first 4 and last 4 characters.
 func MaskKey(key string) string {
 	if len(key) <= 8 {
-		return "****"
+		return maskedKey
 	}
-	return key[:4] + "****" + key[len(key)-4:]
+	return key[:4] + maskedKey + key[len(key)-4:]
 }
