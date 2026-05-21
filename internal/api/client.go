@@ -61,7 +61,7 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 
 	if c.verbose {
 		var pretty bytes.Buffer
-		json.Indent(&pretty, body, "", "  ")                                    //nolint:errcheck,gosec
+		json.Indent(&pretty, body, "", "  ")                                  //nolint:errcheck,gosec
 		fmt.Fprintf(os.Stderr, "→ POST %s\n%s\n", c.baseURL, pretty.String()) //nolint:errcheck,gosec
 	}
 
