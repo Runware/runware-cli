@@ -143,7 +143,6 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 	_, err := client.AudioInference(context.Background(), req)
-
 	if err != nil {
 		if s != nil {
 			s.Stop()

@@ -44,8 +44,8 @@ func init() {
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
 
-	textInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []string{"text", "json"}, cobra.ShellCompDirectiveNoFileComp
+	textInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatText), string(api.OutputFormatJSON)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	textInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec

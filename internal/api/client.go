@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,7 +62,7 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 	if c.verbose {
 		var pretty bytes.Buffer
 		json.Indent(&pretty, body, "", "  ")                                    //nolint:errcheck,gosec
-		fmt.Fprintf(getStderr(), "→ POST %s\n%s\n", c.baseURL, pretty.String()) //nolint:errcheck,gosec
+		fmt.Fprintf(os.Stderr, "→ POST %s\n%s\n", c.baseURL, pretty.String()) //nolint:errcheck,gosec
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
@@ -87,7 +88,7 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 	}
 
 	if c.verbose {
-		fmt.Fprintf(getStderr(), "← %d (%s)\n%s\n", resp.StatusCode, elapsed.Round(time.Millisecond), string(respBody)) //nolint:errcheck,gosec
+		fmt.Fprintf(os.Stderr, "← %d (%s)\n%s\n", resp.StatusCode, elapsed.Round(time.Millisecond), string(respBody)) //nolint:errcheck,gosec
 	}
 
 	var apiResp APIResponse

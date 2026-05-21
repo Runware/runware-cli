@@ -50,8 +50,8 @@ func init() {
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 600, "Maximum wait time in seconds for video generation")
 
-	videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []string{"mp4", "webm"}, cobra.ShellCompDirectiveNoFileComp
+	videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{"mp4", "webm"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	videoInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec

@@ -29,6 +29,8 @@ const (
 	OutputFormatWebP OutputFormat = "webp"
 	OutputFormatMP3  OutputFormat = "mp3"
 	OutputFormatMP4  OutputFormat = "mp4"
+	OutputFormatText OutputFormat = "text"
+	OutputFormatJSON OutputFormat = "json"
 )
 
 const (

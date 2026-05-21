@@ -52,8 +52,8 @@ func init() {
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
 
-	imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []string{
+	imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{
 			"euler\tEuler",
 			"euler_a\tEuler Ancestral",
 			"dpm++_2m\tDPM++ 2M",
@@ -88,7 +88,7 @@ func init() {
 }
 
 // completePresetNames provides dynamic completion for preset names from config.
-func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	// Ensure config is loaded for completion context
 	config.Init() //nolint:errcheck,gosec
 	return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp

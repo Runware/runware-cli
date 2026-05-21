@@ -3,8 +3,10 @@ package api
 import "errors"
 
 var (
+	// ErrUnauthorized is returned when the API rejects the request due to an invalid or missing API key.
 	ErrUnauthorized = errors.New("unauthorized: invalid or missing API key")
-	ErrNoAPIKey     = errors.New("no API key configured")
+	// ErrNoAPIKey is returned when no API key is present in the local configuration.
+	ErrNoAPIKey = errors.New("no API key configured")
 )
 
 // IsAuthError checks if an API error is an authentication error.
