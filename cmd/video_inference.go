@@ -298,6 +298,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		headers = append(headers, "Cost")
 	}
 	var rows [][]interface{}
+	var downloadFailures int
 
 	for i := range results {
 		ext := outputFormat
@@ -314,6 +315,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 		if err := downloadFile(url, destPath); err != nil {
 			output.Error(fmt.Sprintf("Failed to download video %d: %s", i+1, err))
+			downloadFailures++
 			continue
 		}
 
@@ -324,7 +326,17 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		rows = append(rows, row)
 	}
 
-	return output.Print(format, results, headers, rows)
+	if downloadFailures == len(results) {
+		return fmt.Errorf("all %d video downloads failed", len(results))
+	}
+
+	if err := output.Print(format, results, headers, rows); err != nil {
+		return err
+	}
+	if downloadFailures > 0 {
+		return fmt.Errorf("%d of %d video downloads failed", downloadFailures, len(results))
+	}
+	return nil
 }
 
 // downloadFile downloads a URL to a local file (works for any file type).
