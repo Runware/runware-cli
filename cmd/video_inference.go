@@ -144,7 +144,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	if cfgScale > 0 {
 		req.CFGScale = cfgScale
 	}
-	if seed != 0 {
+	if cmd.Flags().Changed("seed") {
 		req.Seed = seed
 	}
 	if count > 1 {

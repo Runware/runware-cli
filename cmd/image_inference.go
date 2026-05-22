@@ -208,7 +208,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	if negative != "" {
 		req.NegativePrompt = negative
 	}
-	if seed != 0 {
+	if cmd.Flags().Changed("seed") {
 		req.Seed = seed
 	}
 
