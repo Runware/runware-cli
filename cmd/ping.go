@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -22,11 +23,8 @@ var pingCmd = &cobra.Command{
 
 		client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 
-		ctx, cancel := contextWithTimeout(cmd)
-		defer cancel()
-
 		start := time.Now()
-		_, err := client.Ping(ctx)
+		_, err := client.Ping(context.Background())
 		if err != nil {
 			if api.IsAuthError(err) {
 				output.Error("Authentication failed. Run 'runware auth login' to set your API key.")

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -48,11 +49,8 @@ var authLoginCmd = &cobra.Command{
 		}
 
 		// Validate key by pinging the API
-		ctx, cancel := contextWithTimeout(cmd)
-		defer cancel()
-
 		client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-		_, err := client.Ping(ctx)
+		_, err := client.Ping(context.Background())
 		if err != nil {
 			output.Error("Invalid API key. Authentication failed.")
 			return err
@@ -95,11 +93,8 @@ var authStatusCmd = &cobra.Command{
 		if key != "" {
 			maskedKey = config.MaskKey(key)
 			// Verify the key
-			ctx, cancel := contextWithTimeout(cmd)
-			defer cancel()
-
 			client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-			_, err := client.Ping(ctx)
+			_, err := client.Ping(context.Background())
 			if err != nil {
 				status = "invalid"
 			} else {

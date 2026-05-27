@@ -46,7 +46,6 @@ func init() {
 	f.String("output", "", "Output directory")
 	f.String("output-format", "", "Image format: png, jpg, webp")
 	f.Bool("no-download", false, "Print image URLs instead of downloading")
-	f.Int("download-timeout", defaultDownloadTimeoutSeconds, "Per-image download timeout in seconds (0 = no timeout)")
 	f.String("source", "", "Source image path for img2img")
 	f.Float64("strength", 0.7, "img2img strength (0.0-1.0)")
 	f.String("mask", "", "Mask image path for inpainting")
@@ -247,11 +246,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-
-	ctx, cancel := contextWithTimeout(cmd)
-	defer cancel()
-
-	results, err := client.ImageInference(ctx, req)
+	results, err := client.ImageInference(context.Background(), req)
 
 	if s != nil {
 		s.Stop()
@@ -291,8 +286,6 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	downloadTimeoutSecs, _ := cmd.Flags().GetInt("download-timeout")
-
 	headers := []any{tableHeaderNum, tableHeaderFile, tableHeaderSeed}
 	var rows [][]any
 
@@ -304,7 +297,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-		if err := downloadImageResult(ctx, r.ImageURL, destPath, time.Duration(downloadTimeoutSecs)*time.Second); err != nil {
+		if err := downloadImage(r.ImageURL, destPath); err != nil {
 			output.Error(fmt.Sprintf("Failed to download image %d: %s", i+1, err))
 			continue
 		}
@@ -339,27 +332,17 @@ func encodeImageFile(path string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mime, encoded), nil
 }
 
-// downloadImageResult downloads a single image inference result to destPath,
-// applying a per-download context timeout (0 = no timeout).
-func downloadImageResult(ctx context.Context, url, destPath string, timeout time.Duration) error {
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-	} else {
-		ctx, cancel = context.WithCancel(ctx)
-	}
-	defer cancel()
-
-	return downloadImage(ctx, url, destPath)
-}
+// downloadClient is used for fetching generated images. It enforces an overall
+// timeout so a hung server cannot stall the CLI indefinitely.
+var downloadClient = &http.Client{Timeout: 5 * time.Minute}
 
 // downloadImage downloads a URL to a local file.
-func downloadImage(ctx context.Context, url, destPath string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func downloadImage(url, destPath string) error {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := downloadClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}

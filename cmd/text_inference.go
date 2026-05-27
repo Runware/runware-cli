@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -148,11 +149,7 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-
-	ctx, cancel := contextWithTimeout(cmd)
-	defer cancel()
-
-	results, err := client.TextInference(ctx, req)
+	results, err := client.TextInference(context.Background(), req)
 
 	if s != nil {
 		s.Stop()

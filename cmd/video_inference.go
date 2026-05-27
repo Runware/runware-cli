@@ -191,11 +191,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-
-	ctx, cancel := contextWithTimeout(cmd)
-	defer cancel()
-
-	submitResults, err := client.VideoInference(ctx, req)
+	submitResults, err := client.VideoInference(context.Background(), req)
 
 	if err != nil {
 		if s != nil {
@@ -225,7 +221,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	for time.Now().Before(deadline) {
 		time.Sleep(interval)
 
-		rawData, err := client.GetResponse(ctx, taskUUID)
+		rawData, err := client.GetResponse(context.Background(), taskUUID)
 		if err != nil {
 			// getResponse may return an error if results aren't ready yet — keep polling
 			if flagVerbose {
@@ -317,7 +313,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			url = results[i].MediaURL
 		}
 
-		if err := downloadFile(ctx, url, destPath); err != nil {
+		if err := downloadFile(url, destPath); err != nil {
 			output.Error(fmt.Sprintf("Failed to download video %d: %s", i+1, err))
 			downloadFailures++
 			continue
@@ -344,6 +340,6 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 }
 
 // downloadFile downloads a URL to a local file (works for any file type).
-func downloadFile(ctx context.Context, url, destPath string) error {
-	return downloadImage(ctx, url, destPath)
+func downloadFile(url, destPath string) error {
+	return downloadImage(url, destPath)
 }
