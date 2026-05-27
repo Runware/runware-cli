@@ -55,7 +55,7 @@ func TestDo_Non2xx_ValidJSON_NoErrors(t *testing.T) {
 }
 
 // TestDo_Non2xx_ValidJSON_WithErrors: non-200 with a structured errors field —
-// with "status first" the HTTP error takes precedence over the errors field.
+// errors field checked first, so structured API error surfaces over HTTP status.
 func TestDo_Non2xx_ValidJSON_WithErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -69,9 +69,9 @@ func TestDo_Non2xx_ValidJSON_WithErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	// Status-first: we expect the HTTP error, not the structured error message.
-	if !strings.Contains(err.Error(), "400") {
-		t.Errorf("expected HTTP 400 error (status first), got: %v", err)
+	// Errors-first: structured message surfaces, not the HTTP status.
+	if !strings.Contains(err.Error(), "bad input") {
+		t.Errorf("expected structured API error message (errors first), got: %v", err)
 	}
 }
 
@@ -111,8 +111,7 @@ func TestDo_200_WithErrors(t *testing.T) {
 	}
 }
 
-// TestDo_UnauthorizedOn401: with status-first, a 401 returns an HTTP status
-// error regardless of the body content.
+// TestDo_UnauthorizedOn401: 401 with invalidApiKey in errors field returns ErrUnauthorized.
 func TestDo_UnauthorizedOn401(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -124,9 +123,9 @@ func TestDo_UnauthorizedOn401(t *testing.T) {
 	c := NewClient("test-key", srv.URL, false)
 	_, err := c.Ping(context.Background())
 	if err == nil {
-		t.Fatal("expected error for 401, got nil")
+		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "401") {
-		t.Errorf("expected HTTP 401 error (status first), got: %v", err)
+	if !IsAuthError(err) {
+		t.Errorf("expected IsAuthError true for invalidApiKey, got: %v", err)
 	}
 }

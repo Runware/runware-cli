@@ -38,10 +38,12 @@ type RestClient struct {
 // NewClient creates a new REST API client.
 func NewClient(apiKey, baseURL string, verbose bool) *RestClient {
 	return &RestClient{
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		verbose:    verbose,
-		httpClient: &http.Client{},
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		verbose: verbose,
+		httpClient: &http.Client{
+			Timeout: 120 * time.Second,
+		},
 	}
 }
 
@@ -94,16 +96,17 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 		return nil, fmt.Errorf("failed to parse response (HTTP %d): %w", resp.StatusCode, err)
 	}
 
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
-	}
-
 	if len(apiResp.Errors) > 0 {
 		if IsAuthError(apiResp.Errors[0]) {
 			return nil, ErrUnauthorized
 		}
 		return nil, apiResp.Errors[0]
 	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
+	}
+
 	return &apiResp, nil
 }
 
