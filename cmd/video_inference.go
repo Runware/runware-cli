@@ -12,6 +12,7 @@ import (
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
+	rhttp "github.com/runware/runware-cli/pkg/http"
 	"github.com/spf13/cobra"
 )
 
@@ -49,6 +50,7 @@ func init() {
 	f.Bool("dry-run", false, "Print the API request without executing")
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 600, "Maximum wait time in seconds for video generation")
+	f.Duration("download-timeout", defaultVideoDownloadTimeout, "timeout to use when downloading video inference results")
 
 	videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"mp4", "webm"}, cobra.ShellCompDirectiveNoFileComp
@@ -66,6 +68,11 @@ func init() {
 }
 
 func runVideoInference(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	key := config.GetAPIKey()
 	if key == "" {
 		output.Error("No API key configured. Run 'runware auth login' to authenticate.")
@@ -115,6 +122,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	sourceLastPath, _ := cmd.Flags().GetString("source-last")
 	pollInterval, _ := cmd.Flags().GetInt("poll-interval")
 	timeout, _ := cmd.Flags().GetInt("timeout")
+	downloadTimeout, _ := cmd.Flags().GetDuration("download-timeout")
 
 	// Build request
 	req := &api.VideoInferenceRequest{
@@ -313,7 +321,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			url = results[i].MediaURL
 		}
 
-		if err := downloadFile(url, destPath); err != nil {
+		if err := rhttp.Download(ctx, url, destPath, downloadTimeout); err != nil {
 			output.Error(fmt.Sprintf("Failed to download video %d: %s", i+1, err))
 			downloadFailures++
 			continue
@@ -337,9 +345,4 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%d of %d video downloads failed", downloadFailures, len(results))
 	}
 	return nil
-}
-
-// downloadFile downloads a URL to a local file (works for any file type).
-func downloadFile(url, destPath string) error {
-	return downloadImage(url, destPath)
 }

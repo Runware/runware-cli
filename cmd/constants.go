@@ -1,5 +1,7 @@
 package cmd
 
+import "time"
+
 // tableHeader represents headers used in table output.
 type tableHeader string
 
@@ -9,4 +11,10 @@ const (
 	tableHeaderURL  tableHeader = "URL"
 	tableHeaderFile tableHeader = "File"
 	tableHeaderCost tableHeader = "Cost"
+)
+
+const (
+	defaultImageDownloadTimeout = 1 * time.Minute
+	defaultAudioDownloadTimeout = 5 * time.Minute
+	defaultVideoDownloadTimeout = 10 * time.Minute
 )

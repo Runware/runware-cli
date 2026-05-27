@@ -12,6 +12,7 @@ import (
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
+	rhttp "github.com/runware/runware-cli/pkg/http"
 	"github.com/spf13/cobra"
 )
 
@@ -43,6 +44,7 @@ func init() {
 	f.Bool("dry-run", false, "Print the API request without executing")
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 300, "Maximum wait time in seconds for audio generation")
+	f.Duration("download-timeout", defaultAudioDownloadTimeout, "timeout to use when downloading audio inference results")
 
 	audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{string(api.OutputFormatMP3)}, cobra.ShellCompDirectiveNoFileComp
@@ -52,6 +54,11 @@ func init() {
 }
 
 func runAudioInference(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	key := config.GetAPIKey()
 	if key == "" {
 		output.Error("No API key configured. Run 'runware auth login' to authenticate.")
@@ -94,6 +101,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	bitrate, _ := cmd.Flags().GetInt("bitrate")
 	pollInterval, _ := cmd.Flags().GetInt("poll-interval")
 	timeout, _ := cmd.Flags().GetInt("timeout")
+	downloadTimeout, _ := cmd.Flags().GetDuration("download-timeout")
 
 	// Validation
 	if duration <= 0 {
@@ -245,7 +253,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-		if err := downloadFile(r.AudioURL, destPath); err != nil {
+		if err := rhttp.Download(ctx, r.AudioURL, destPath, downloadTimeout); err != nil {
 			output.Error(fmt.Sprintf("Failed to download audio %d: %s", i+1, err))
 			continue
 		}
