@@ -97,6 +97,7 @@ var authStatusCmd = &cobra.Command{
 			// Verify the key
 			ctx, cancel := contextWithTimeout(cmd)
 			defer cancel()
+
 			client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 			_, err := client.Ping(ctx)
 			if err != nil {
