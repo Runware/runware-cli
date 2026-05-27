@@ -32,12 +32,12 @@ func init() {
 	f.Int("limit", 20, "Maximum number of results")
 	f.Int("offset", 0, "Offset for pagination")
 
-	_ = modelSearchCmd.RegisterFlagCompletionFunc("category", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"checkpoint", "lora", "controlnet", "vae", "embedding"}, cobra.ShellCompDirectiveNoFileComp
+	modelSearchCmd.RegisterFlagCompletionFunc("category", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{"checkpoint", "lora", "controlnet", "vae", "embedding"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = modelSearchCmd.RegisterFlagCompletionFunc("architecture", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"flux1d", "flux1s", "sdxl", "sd15", "sd3"}, cobra.ShellCompDirectiveNoFileComp
+	modelSearchCmd.RegisterFlagCompletionFunc("architecture", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{"flux1d", "flux1s", "sdxl", "sd15", "sd3"}, cobra.ShellCompDirectiveNoFileComp
 	})
 }
 
@@ -87,19 +87,19 @@ func runModelSearch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	headers := []interface{}{"AIR", "Name", "Category", "Arch", "Version"}
-	var rows [][]interface{}
+	headers := []any{"AIR", "Name", "Category", "Arch", "Version"}
+	var rows [][]any
 	for i := range result.Results {
 		m := &result.Results[i]
 		name := truncate(m.Name, 45)
-		rows = append(rows, []interface{}{m.AIR, name, m.Category, m.Architecture, m.Version})
+		rows = append(rows, []any{m.AIR, name, m.Category, m.Architecture, m.Version})
 	}
 
 	if err := output.Print(format, result, headers, rows); err != nil {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "\nShowing %d of %d results\n", len(result.Results), result.TotalResults)
+	fmt.Fprintf(cmd.ErrOrStderr(), "\nShowing %d of %d results\n", len(result.Results), result.TotalResults) //nolint:errcheck,gosec
 	return nil
 }
 

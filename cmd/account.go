@@ -36,7 +36,7 @@ var accountCreditsCmd = &cobra.Command{
 
 		format := output.ParseFormat(getFormat())
 
-		data := map[string]interface{}{
+		data := map[string]any{
 			"balance":  result.Balance,
 			"today":    result.Usage.Today,
 			"last_7d":  result.Usage.Last7Days,
@@ -45,8 +45,8 @@ var accountCreditsCmd = &cobra.Command{
 		}
 
 		return output.Print(format, data,
-			[]interface{}{"Period", "Credits", "Requests"},
-			[][]interface{}{
+			[]any{"Period", "Credits", "Requests"},
+			[][]any{
 				{"Balance", fmt.Sprintf("%.5f", result.Balance), "—"},
 				{"Today", fmt.Sprintf("%.5f", result.Usage.Today.Credits), result.Usage.Today.Requests},
 				{"Last 7 days", fmt.Sprintf("%.5f", result.Usage.Last7Days.Credits), result.Usage.Last7Days.Requests},

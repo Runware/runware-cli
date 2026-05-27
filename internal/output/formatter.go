@@ -35,7 +35,7 @@ func ParseFormat(s string) Format {
 // Print outputs data in the specified format.
 // For table format, provide headers and rows.
 // For json/yaml, data is serialized directly.
-func Print(format Format, data interface{}, headers []interface{}, rows [][]interface{}) error {
+func Print(format Format, data any, headers []any, rows [][]any) error {
 	switch format {
 	case FormatJSON:
 		enc := json.NewEncoder(os.Stdout)

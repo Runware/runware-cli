@@ -23,6 +23,8 @@ const (
 	DefaultFormat    = "table"
 	DefaultEnv       = "production"
 	DefaultMode      = "public"
+
+	maskedKey = "****"
 )
 
 // Defaults holds default values for inference commands.
@@ -87,8 +89,8 @@ func Init() error {
 
 	// Environment variable overrides
 	viper.SetEnvPrefix("")
-	_ = viper.BindEnv("api_key", "RUNWARE_API_KEY")
-	_ = viper.BindEnv("environment", "RUNWARE_ENV")
+	viper.BindEnv("api_key", "RUNWARE_API_KEY") //nolint:errcheck,gosec
+	viper.BindEnv("environment", "RUNWARE_ENV") //nolint:errcheck,gosec
 
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
@@ -104,7 +106,7 @@ func Init() error {
 // Get returns the current merged config.
 func Get() *Config {
 	var cfg Config
-	_ = viper.Unmarshal(&cfg)
+	viper.Unmarshal(&cfg) //nolint:errcheck,gosec
 	return &cfg
 }
 
@@ -170,7 +172,7 @@ func Save(cfg *Config) error {
 	}
 
 	// Re-read so Viper picks up the changes
-	_ = viper.ReadInConfig()
+	viper.ReadInConfig() //nolint:errcheck,gosec
 
 	return nil
 }
@@ -250,7 +252,7 @@ func ListPresets() []string {
 // MaskKey masks an API key for display, showing first 4 and last 4 characters.
 func MaskKey(key string) string {
 	if len(key) <= 8 {
-		return "****"
+		return maskedKey
 	}
-	return key[:4] + "****" + key[len(key)-4:]
+	return key[:4] + maskedKey + key[len(key)-4:]
 }

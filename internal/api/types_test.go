@@ -5,10 +5,17 @@ import (
 	"testing"
 )
 
+const (
+	testUUID         = "test-uuid-1234"
+	jsonKeyModel     = "model"
+	jsonKeyOutputFmt = "outputFormat"
+	jsonKeyPosPrompt = "positivePrompt"
+)
+
 func TestImageInferenceRequestJSON(t *testing.T) {
 	req := &ImageInferenceRequest{
-		TaskType:       "imageInference",
-		TaskUUID:       "test-uuid-1234",
+		TaskType:       taskTypeImageInference,
+		TaskUUID:       testUUID,
 		PositivePrompt: "a cat",
 		Model:          "runware:100@1",
 		Width:          1024,
@@ -17,7 +24,7 @@ func TestImageInferenceRequestJSON(t *testing.T) {
 		NumberResults:  1,
 		CFGScale:       3.5,
 		Scheduler:      "euler",
-		OutputFormat:   "png",
+		OutputFormat:   OutputFormatPNG,
 	}
 
 	data, err := json.Marshal(req)
@@ -25,13 +32,13 @@ func TestImageInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
 	// Verify key field names match the Runware API
-	expectedFields := []string{"taskType", "taskUUID", "positivePrompt", "model", "width", "height", "steps", "numberResults", "CFGScale", "scheduler", "outputFormat"}
+	expectedFields := []string{jsonKeyTaskType, jsonKeyTaskUUID, jsonKeyPosPrompt, jsonKeyModel, "width", "height", "steps", "numberResults", "CFGScale", "scheduler", jsonKeyOutputFmt}
 	for _, field := range expectedFields {
 		if _, ok := parsed[field]; !ok {
 			t.Errorf("missing expected field %q in JSON output", field)
@@ -64,8 +71,8 @@ func TestImageInferenceResultJSON(t *testing.T) {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if result.TaskType != "imageInference" {
-		t.Errorf("taskType = %q, want %q", result.TaskType, "imageInference")
+	if result.TaskType != taskTypeImageInference {
+		t.Errorf("taskType = %q, want %q", result.TaskType, taskTypeImageInference)
 	}
 	if result.ImageURL == "" {
 		t.Error("imageURL is empty")
@@ -83,8 +90,8 @@ func TestPingResultJSON(t *testing.T) {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if result.TaskType != "ping" {
-		t.Errorf("taskType = %q, want %q", result.TaskType, "ping")
+	if result.TaskType != taskTypePing {
+		t.Errorf("taskType = %q, want %q", result.TaskType, taskTypePing)
 	}
 	if !result.Pong {
 		t.Error("pong = false, want true")
@@ -111,8 +118,8 @@ func TestAPIErrorJSON(t *testing.T) {
 		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
 	}
 
-	if resp.Errors[0].Code != "invalidApiKey" {
-		t.Errorf("error code = %q, want %q", resp.Errors[0].Code, "invalidApiKey")
+	if resp.Errors[0].Code != invalidAPIKeyCode {
+		t.Errorf("error code = %q, want %q", resp.Errors[0].Code, invalidAPIKeyCode)
 	}
 }
 
@@ -146,14 +153,14 @@ func TestAccountResultJSON(t *testing.T) {
 
 func TestVideoInferenceRequestJSON(t *testing.T) {
 	req := &VideoInferenceRequest{
-		TaskType:       "videoInference",
-		TaskUUID:       "test-uuid-1234",
+		TaskType:       taskTypeVideoInference,
+		TaskUUID:       testUUID,
 		Model:          "klingai:5@3",
 		PositivePrompt: "a cat on the moon",
 		Width:          1280,
 		Height:         720,
 		Duration:       5.0,
-		DeliveryMethod: "async",
+		DeliveryMethod: DeliveryMethodAsync,
 	}
 
 	data, err := json.Marshal(req)
@@ -161,13 +168,13 @@ func TestVideoInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
 	// Verify key field names match the Runware API
-	expectedFields := []string{"taskType", "taskUUID", "model", "positivePrompt", "width", "height", "duration", "deliveryMethod"}
+	expectedFields := []string{jsonKeyTaskType, jsonKeyTaskUUID, jsonKeyModel, jsonKeyPosPrompt, "width", "height", "duration", "deliveryMethod"}
 	for _, field := range expectedFields {
 		if _, ok := parsed[field]; !ok {
 			t.Errorf("missing expected field %q in JSON output", field)
@@ -175,7 +182,7 @@ func TestVideoInferenceRequestJSON(t *testing.T) {
 	}
 
 	// Verify omitempty works for optional fields
-	omittedFields := []string{"negativePrompt", "seed", "steps", "CFGScale", "frameImages", "outputFormat"}
+	omittedFields := []string{"negativePrompt", "seed", "steps", "CFGScale", "frameImages", jsonKeyOutputFmt}
 	for _, field := range omittedFields {
 		if _, ok := parsed[field]; ok {
 			t.Errorf("%s should be omitted when zero/empty", field)
@@ -185,11 +192,11 @@ func TestVideoInferenceRequestJSON(t *testing.T) {
 
 func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
 	req := &VideoInferenceRequest{
-		TaskType:       "videoInference",
+		TaskType:       taskTypeVideoInference,
 		TaskUUID:       "test-uuid",
 		Model:          "klingai:5@3",
 		PositivePrompt: "animate this",
-		DeliveryMethod: "async",
+		DeliveryMethod: DeliveryMethodAsync,
 		FrameImages: []FrameImage{
 			{InputImage: "data:image/png;base64,abc123", Frame: "first"},
 			{InputImage: "data:image/png;base64,def456", Frame: "last"},
@@ -201,12 +208,12 @@ func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	frames, ok := parsed["frameImages"].([]interface{})
+	frames, ok := parsed["frameImages"].([]any)
 	if !ok {
 		t.Fatal("frameImages is not an array")
 	}
@@ -214,7 +221,7 @@ func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
 		t.Fatalf("expected 2 frameImages, got %d", len(frames))
 	}
 
-	first := frames[0].(map[string]interface{})
+	first := frames[0].(map[string]any)
 	if first["frame"] != "first" {
 		t.Errorf("first frame = %q, want %q", first["frame"], "first")
 	}
@@ -235,8 +242,8 @@ func TestVideoInferenceResultJSON(t *testing.T) {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if result.TaskType != "videoInference" {
-		t.Errorf("taskType = %q, want %q", result.TaskType, "videoInference")
+	if result.TaskType != taskTypeVideoInference {
+		t.Errorf("taskType = %q, want %q", result.TaskType, taskTypeVideoInference)
 	}
 	if result.VideoURL == "" {
 		t.Error("videoURL is empty")
@@ -279,7 +286,7 @@ func TestVideoInferenceResultWithMediaFields(t *testing.T) {
 
 func TestGetResponseRequestJSON(t *testing.T) {
 	req := &GetResponseRequest{
-		TaskType: "getResponse",
+		TaskType: taskTypeGetResponse,
 		TaskUUID: "poll-uuid-123",
 	}
 
@@ -288,16 +295,16 @@ func TestGetResponseRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if parsed["taskType"] != "getResponse" {
-		t.Errorf("taskType = %q, want %q", parsed["taskType"], "getResponse")
+	if parsed[jsonKeyTaskType] != "getResponse" {
+		t.Errorf("taskType = %q, want %q", parsed[jsonKeyTaskType], "getResponse")
 	}
-	if parsed["taskUUID"] != "poll-uuid-123" {
-		t.Errorf("taskUUID = %q, want %q", parsed["taskUUID"], "poll-uuid-123")
+	if parsed[jsonKeyTaskUUID] != "poll-uuid-123" {
+		t.Errorf("taskUUID = %q, want %q", parsed[jsonKeyTaskUUID], "poll-uuid-123")
 	}
 }
 
@@ -321,8 +328,8 @@ func TestAPIErrorParameterString(t *testing.T) {
 	}
 
 	param := resp.Errors[0].Parameter()
-	if param != "model" {
-		t.Errorf("Parameter() = %q, want %q", param, "model")
+	if param != jsonKeyModel {
+		t.Errorf("Parameter() = %q, want %q", param, jsonKeyModel)
 	}
 }
 
@@ -346,8 +353,8 @@ func TestAPIErrorParameterArray(t *testing.T) {
 	}
 
 	param := resp.Errors[0].Parameter()
-	if param != "positivePrompt" {
-		t.Errorf("Parameter() = %q, want %q", param, "positivePrompt")
+	if param != jsonKeyPosPrompt {
+		t.Errorf("Parameter() = %q, want %q", param, jsonKeyPosPrompt)
 	}
 }
 
@@ -373,12 +380,12 @@ func TestAPIErrorParameterMissing(t *testing.T) {
 
 func TestAudioInferenceRequestJSON(t *testing.T) {
 	req := &AudioInferenceRequest{
-		TaskType:       "audioInference",
-		TaskUUID:       "test-uuid-1234",
+		TaskType:       taskTypeAudioInference,
+		TaskUUID:       testUUID,
 		Model:          "elevenlabs:1@1",
 		PositivePrompt: "jazz piano solo",
 		Duration:       30,
-		DeliveryMethod: "async",
+		DeliveryMethod: DeliveryMethodAsync,
 	}
 
 	data, err := json.Marshal(req)
@@ -386,19 +393,19 @@ func TestAudioInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	expectedFields := []string{"taskType", "taskUUID", "model", "positivePrompt", "duration", "deliveryMethod"}
+	expectedFields := []string{jsonKeyTaskType, jsonKeyTaskUUID, jsonKeyModel, jsonKeyPosPrompt, "duration", "deliveryMethod"}
 	for _, field := range expectedFields {
 		if _, ok := parsed[field]; !ok {
 			t.Errorf("missing expected field %q in JSON output", field)
 		}
 	}
 
-	omittedFields := []string{"outputFormat", "audioSettings"}
+	omittedFields := []string{jsonKeyOutputFmt, "audioSettings"}
 	for _, field := range omittedFields {
 		if _, ok := parsed[field]; ok {
 			t.Errorf("%s should be omitted when zero/empty", field)
@@ -408,12 +415,12 @@ func TestAudioInferenceRequestJSON(t *testing.T) {
 
 func TestAudioInferenceRequestWithSettings(t *testing.T) {
 	req := &AudioInferenceRequest{
-		TaskType:       "audioInference",
+		TaskType:       taskTypeAudioInference,
 		TaskUUID:       "test-uuid",
 		Model:          "elevenlabs:1@1",
 		PositivePrompt: "ocean waves",
 		Duration:       60,
-		DeliveryMethod: "async",
+		DeliveryMethod: DeliveryMethodAsync,
 		AudioSettings: &AudioSettings{
 			SampleRate: 48000,
 			Bitrate:    320,
@@ -425,12 +432,12 @@ func TestAudioInferenceRequestWithSettings(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	settings, ok := parsed["audioSettings"].(map[string]interface{})
+	settings, ok := parsed["audioSettings"].(map[string]any)
 	if !ok {
 		t.Fatal("audioSettings is missing or not an object")
 	}
@@ -456,8 +463,8 @@ func TestAudioInferenceResultJSON(t *testing.T) {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if result.TaskType != "audioInference" {
-		t.Errorf("taskType = %q, want %q", result.TaskType, "audioInference")
+	if result.TaskType != taskTypeAudioInference {
+		t.Errorf("taskType = %q, want %q", result.TaskType, taskTypeAudioInference)
 	}
 	if result.AudioUUID != "aud-456" {
 		t.Errorf("audioUUID = %q, want %q", result.AudioUUID, "aud-456")
@@ -492,7 +499,7 @@ func TestAudioInferenceResultProcessing(t *testing.T) {
 
 func TestModelSearchRequestJSON(t *testing.T) {
 	req := &ModelSearchRequest{
-		TaskType:     "modelSearch",
+		TaskType:     taskTypeModelSearch,
 		TaskUUID:     "test-uuid-1234",
 		Search:       "flux",
 		Category:     "checkpoint",
@@ -506,12 +513,12 @@ func TestModelSearchRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	expectedFields := []string{"taskType", "taskUUID", "search", "category", "architecture", "limit", "offset"}
+	expectedFields := []string{jsonKeyTaskType, jsonKeyTaskUUID, "search", "category", "architecture", "limit", "offset"}
 	for _, field := range expectedFields {
 		if _, ok := parsed[field]; !ok {
 			t.Errorf("missing expected field %q in JSON output", field)
@@ -521,7 +528,7 @@ func TestModelSearchRequestJSON(t *testing.T) {
 
 func TestModelSearchRequestOmitempty(t *testing.T) {
 	req := &ModelSearchRequest{
-		TaskType: "modelSearch",
+		TaskType: taskTypeModelSearch,
 		TaskUUID: "test-uuid",
 	}
 
@@ -530,7 +537,7 @@ func TestModelSearchRequestOmitempty(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -586,8 +593,8 @@ func TestModelSearchResponseJSON(t *testing.T) {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if result.TaskType != "modelSearch" {
-		t.Errorf("taskType = %q, want %q", result.TaskType, "modelSearch")
+	if result.TaskType != taskTypeModelSearch {
+		t.Errorf("taskType = %q, want %q", result.TaskType, taskTypeModelSearch)
 	}
 	if result.TotalResults != 42 {
 		t.Errorf("totalResults = %d, want %d", result.TotalResults, 42)
@@ -654,7 +661,7 @@ func TestModelSearchResponseEmpty(t *testing.T) {
 
 func TestTextInferenceRequestJSON(t *testing.T) {
 	req := &TextInferenceRequest{
-		TaskType: "textInference",
+		TaskType: taskTypeTextInference,
 		TaskUUID: "test-uuid-1234",
 		Model:    "runware:qwen3-thinking@1",
 		Messages: []Message{
@@ -671,12 +678,12 @@ func TestTextInferenceRequestJSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	expectedFields := []string{"taskType", "taskUUID", "model", "messages", "maxTokens", "temperature", "systemPrompt", "includeCost"}
+	expectedFields := []string{jsonKeyTaskType, jsonKeyTaskUUID, jsonKeyModel, "messages", "maxTokens", "temperature", "systemPrompt", "includeCost"}
 	for _, field := range expectedFields {
 		if _, ok := parsed[field]; !ok {
 			t.Errorf("missing expected field %q in JSON output", field)
@@ -684,7 +691,7 @@ func TestTextInferenceRequestJSON(t *testing.T) {
 	}
 
 	// Verify omitempty works for optional fields
-	omittedFields := []string{"topP", "topK", "seed", "stopSequences", "numberResults", "outputFormat"}
+	omittedFields := []string{"topP", "topK", "seed", "stopSequences", "numberResults", jsonKeyOutputFmt}
 	for _, field := range omittedFields {
 		if _, ok := parsed[field]; ok {
 			t.Errorf("%s should be omitted when zero/empty", field)
@@ -692,14 +699,14 @@ func TestTextInferenceRequestJSON(t *testing.T) {
 	}
 
 	// Verify messages structure
-	msgs, ok := parsed["messages"].([]interface{})
+	msgs, ok := parsed["messages"].([]any)
 	if !ok {
 		t.Fatal("messages is not an array")
 	}
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
-	msg := msgs[0].(map[string]interface{})
+	msg := msgs[0].(map[string]any)
 	if msg["role"] != "user" {
 		t.Errorf("message role = %q, want %q", msg["role"], "user")
 	}
@@ -724,8 +731,8 @@ func TestTextInferenceResultJSON(t *testing.T) {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if result.TaskType != "textInference" {
-		t.Errorf("taskType = %q, want %q", result.TaskType, "textInference")
+	if result.TaskType != taskTypeTextInference {
+		t.Errorf("taskType = %q, want %q", result.TaskType, taskTypeTextInference)
 	}
 	if result.Text == "" {
 		t.Error("text is empty")

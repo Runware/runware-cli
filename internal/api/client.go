@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +24,7 @@ type Client interface {
 	AccountDetails(ctx context.Context) (*AccountResult, error)
 	ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error)
 	// Raw sends arbitrary tasks and returns the raw response. Useful for --dry-run previewing.
-	Raw(ctx context.Context, tasks []interface{}) (*APIResponse, error)
+	Raw(ctx context.Context, tasks []any) (*APIResponse, error)
 }
 
 // RestClient implements Client using the Runware REST API.
@@ -52,7 +53,7 @@ func NewUUID() string {
 }
 
 // do sends the raw request to the API and returns the parsed response.
-func (c *RestClient) do(ctx context.Context, tasks []interface{}) (*APIResponse, error) {
+func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) {
 	body, err := json.Marshal(tasks)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -60,8 +61,8 @@ func (c *RestClient) do(ctx context.Context, tasks []interface{}) (*APIResponse,
 
 	if c.verbose {
 		var pretty bytes.Buffer
-		_ = json.Indent(&pretty, body, "", "  ")
-		_, _ = fmt.Fprintf(getStderr(), "→ POST %s\n%s\n", c.baseURL, pretty.String())
+		json.Indent(&pretty, body, "", "  ")                                  //nolint:errcheck,gosec
+		fmt.Fprintf(os.Stderr, "→ POST %s\n%s\n", c.baseURL, pretty.String()) //nolint:errcheck,gosec
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
@@ -79,7 +80,7 @@ func (c *RestClient) do(ctx context.Context, tasks []interface{}) (*APIResponse,
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close() //nolint:errcheck,gosec
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -87,7 +88,7 @@ func (c *RestClient) do(ctx context.Context, tasks []interface{}) (*APIResponse,
 	}
 
 	if c.verbose {
-		_, _ = fmt.Fprintf(getStderr(), "← %d (%s)\n%s\n", resp.StatusCode, elapsed.Round(time.Millisecond), string(respBody))
+		fmt.Fprintf(os.Stderr, "← %d (%s)\n%s\n", resp.StatusCode, elapsed.Round(time.Millisecond), string(respBody)) //nolint:errcheck,gosec
 	}
 
 	var apiResp APIResponse
@@ -97,7 +98,7 @@ func (c *RestClient) do(ctx context.Context, tasks []interface{}) (*APIResponse,
 
 	if len(apiResp.Errors) > 0 {
 		first := apiResp.Errors[0]
-		if first.Code == "invalidApiKey" {
+		if first.Code == invalidAPIKeyCode {
 			return &apiResp, ErrUnauthorized
 		}
 		return &apiResp, first
@@ -107,16 +108,16 @@ func (c *RestClient) do(ctx context.Context, tasks []interface{}) (*APIResponse,
 }
 
 // Raw sends arbitrary tasks and returns the raw response.
-func (c *RestClient) Raw(ctx context.Context, tasks []interface{}) (*APIResponse, error) {
+func (c *RestClient) Raw(ctx context.Context, tasks []any) (*APIResponse, error) {
 	return c.do(ctx, tasks)
 }
 
 // Ping checks API connectivity.
 func (c *RestClient) Ping(ctx context.Context) (*PingResult, error) {
-	tasks := []interface{}{
+	tasks := []any{
 		map[string]string{
-			"taskType": "ping",
-			"taskUUID": NewUUID(),
+			jsonKeyTaskType: string(taskTypePing),
+			jsonKeyTaskUUID: NewUUID(),
 		},
 	}
 
@@ -139,12 +140,12 @@ func (c *RestClient) Ping(ctx context.Context) (*PingResult, error) {
 
 // ImageInference runs an image inference task.
 func (c *RestClient) ImageInference(ctx context.Context, req *ImageInferenceRequest) ([]ImageInferenceResult, error) {
-	req.TaskType = "imageInference"
+	req.TaskType = taskTypeImageInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
 
-	tasks := []interface{}{req}
+	tasks := []any{req}
 
 	resp, err := c.do(ctx, tasks)
 	if err != nil {
@@ -165,11 +166,11 @@ func (c *RestClient) ImageInference(ctx context.Context, req *ImageInferenceRequ
 
 // AccountDetails fetches account information.
 func (c *RestClient) AccountDetails(ctx context.Context) (*AccountResult, error) {
-	tasks := []interface{}{
+	tasks := []any{
 		map[string]string{
-			"taskType":  "accountManagement",
-			"taskUUID":  NewUUID(),
-			"operation": "getDetails",
+			jsonKeyTaskType:  string(taskTypeAccountManagement),
+			jsonKeyTaskUUID:  NewUUID(),
+			jsonKeyOperation: "getDetails",
 		},
 	}
 
@@ -193,15 +194,15 @@ func (c *RestClient) AccountDetails(ctx context.Context) (*AccountResult, error)
 // VideoInference submits a video inference task.
 // Video generation is async: the API returns immediately and results are polled via GetResponse.
 func (c *RestClient) VideoInference(ctx context.Context, req *VideoInferenceRequest) ([]VideoInferenceResult, error) {
-	req.TaskType = "videoInference"
+	req.TaskType = taskTypeVideoInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
 	if req.DeliveryMethod == "" {
-		req.DeliveryMethod = "async"
+		req.DeliveryMethod = DeliveryMethodAsync
 	}
 
-	tasks := []interface{}{req}
+	tasks := []any{req}
 
 	resp, err := c.do(ctx, tasks)
 	if err != nil {
@@ -222,12 +223,12 @@ func (c *RestClient) VideoInference(ctx context.Context, req *VideoInferenceRequ
 
 // AudioInference submits an audio inference task.
 func (c *RestClient) AudioInference(ctx context.Context, req *AudioInferenceRequest) ([]AudioInferenceResult, error) {
-	req.TaskType = "audioInference"
+	req.TaskType = taskTypeAudioInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
 
-	tasks := []interface{}{req}
+	tasks := []any{req}
 
 	resp, err := c.do(ctx, tasks)
 	if err != nil {
@@ -248,12 +249,12 @@ func (c *RestClient) AudioInference(ctx context.Context, req *AudioInferenceRequ
 
 // TextInference runs a text inference task.
 func (c *RestClient) TextInference(ctx context.Context, req *TextInferenceRequest) ([]TextInferenceResult, error) {
-	req.TaskType = "textInference"
+	req.TaskType = taskTypeTextInference
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
 
-	tasks := []interface{}{req}
+	tasks := []any{req}
 
 	resp, err := c.do(ctx, tasks)
 	if err != nil {
@@ -274,9 +275,9 @@ func (c *RestClient) TextInference(ctx context.Context, req *TextInferenceReques
 
 // GetResponse polls for async task results.
 func (c *RestClient) GetResponse(ctx context.Context, taskUUID string) ([]json.RawMessage, error) {
-	tasks := []interface{}{
+	tasks := []any{
 		&GetResponseRequest{
-			TaskType: "getResponse",
+			TaskType: taskTypeGetResponse,
 			TaskUUID: taskUUID,
 		},
 	}
@@ -291,12 +292,12 @@ func (c *RestClient) GetResponse(ctx context.Context, taskUUID string) ([]json.R
 
 // ModelSearch searches for available models.
 func (c *RestClient) ModelSearch(ctx context.Context, req *ModelSearchRequest) (*ModelSearchResponse, error) {
-	req.TaskType = "modelSearch"
+	req.TaskType = taskTypeModelSearch
 	if req.TaskUUID == "" {
 		req.TaskUUID = NewUUID()
 	}
 
-	tasks := []interface{}{req}
+	tasks := []any{req}
 
 	resp, err := c.do(ctx, tasks)
 	if err != nil {

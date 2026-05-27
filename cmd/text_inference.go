@@ -44,11 +44,11 @@ func init() {
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
 
-	_ = textInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"text", "json"}, cobra.ShellCompDirectiveNoFileComp
+	textInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatText), string(api.OutputFormatJSON)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = textInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+	textInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec
 }
 
 func runTextInference(cmd *cobra.Command, args []string) error {
@@ -97,7 +97,6 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.TextInferenceRequest{
-		TaskType: "textInference",
 		TaskUUID: api.NewUUID(),
 		Model:    model,
 		Messages: []api.Message{
@@ -131,12 +130,12 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 		req.NumberResults = count
 	}
 	if outputFmt != "" {
-		req.OutputFormat = outputFmt
+		req.OutputFormat = api.OutputFormat(outputFmt)
 	}
 
 	// Dry run
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -182,17 +181,17 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	}
 
 	// Multiple results or cost requested — use table
-	headers := []interface{}{"#", "Text"}
+	headers := []any{"#", "Text"}
 	if includeCost {
 		headers = append(headers, "Cost")
 	}
-	var rows [][]interface{}
+	var rows [][]any
 	for i, r := range results {
 		text := r.Text
 		if len(text) > 100 {
 			text = text[:100] + "..."
 		}
-		row := []interface{}{i + 1, text}
+		row := []any{i + 1, text}
 		if includeCost {
 			row = append(row, fmt.Sprintf("%.6f", r.Cost))
 		}

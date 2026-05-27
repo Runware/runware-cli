@@ -111,8 +111,8 @@ var authStatusCmd = &cobra.Command{
 		}
 
 		return output.Print(format, data,
-			[]interface{}{"Field", "Value"},
-			[][]interface{}{
+			[]any{"Field", "Value"},
+			[][]any{
 				{"Environment", env},
 				{"API Key", maskedKey},
 				{"Status", status},

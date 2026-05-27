@@ -52,8 +52,8 @@ func init() {
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{
+	imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{
 			"euler\tEuler",
 			"euler_a\tEuler Ancestral",
 			"dpm++_2m\tDPM++ 2M",
@@ -72,25 +72,25 @@ func init() {
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "webp"}, cobra.ShellCompDirectiveNoFileComp
+	imageInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+	imageInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	imageInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatJPEG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 
-	_ = imageInferenceCmd.RegisterFlagCompletionFunc("mask", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	imageInferenceCmd.RegisterFlagCompletionFunc("mask", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatPNG), string(api.OutputFormatJPG), string(api.OutputFormatJPEG), string(api.OutputFormatWebP)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 }
 
 // completePresetNames provides dynamic completion for preset names from config.
-func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	// Ensure config is loaded for completion context
-	_ = config.Init()
+	config.Init() //nolint:errcheck,gosec
 	return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp
 }
 
@@ -185,14 +185,13 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Build request — universal fields always included
 	req := &api.ImageInferenceRequest{
-		TaskType:       "imageInference",
 		TaskUUID:       api.NewUUID(),
 		PositivePrompt: prompt,
 		Model:          model,
 		Width:          width,
 		Height:         height,
 		NumberResults:  count,
-		OutputFormat:   outputFormat,
+		OutputFormat:   api.OutputFormat(outputFormat),
 	}
 
 	// Model-specific fields — only included when explicitly set
@@ -233,7 +232,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Dry run — print request and exit
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -274,10 +273,10 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Table output — download or print URLs
 	if noDownload {
-		headers := []interface{}{"#", "URL", "Seed"}
-		var rows [][]interface{}
+		headers := []any{tableHeaderNum, tableHeaderURL, tableHeaderSeed}
+		var rows [][]any
 		for i, r := range results {
-			rows = append(rows, []interface{}{i + 1, r.ImageURL, r.Seed})
+			rows = append(rows, []any{i + 1, r.ImageURL, r.Seed})
 		}
 		return output.Print(format, results, headers, rows)
 	}
@@ -287,13 +286,13 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []interface{}{"#", "File", "Seed"}
-	var rows [][]interface{}
+	headers := []any{tableHeaderNum, tableHeaderFile, tableHeaderSeed}
+	var rows [][]any
 
 	for i, r := range results {
 		ext := outputFormat
 		if ext == "" {
-			ext = "jpg"
+			ext = string(api.OutputFormatJPG)
 		}
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
@@ -303,7 +302,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		rows = append(rows, []interface{}{i + 1, destPath, r.Seed})
+		rows = append(rows, []any{i + 1, destPath, r.Seed})
 	}
 
 	return output.Print(format, results, headers, rows)
@@ -343,7 +342,7 @@ func downloadImage(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close() //nolint:errcheck,gosec
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned status %d", resp.StatusCode)
@@ -353,7 +352,7 @@ func downloadImage(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	defer f.Close() //nolint:errcheck,gosec
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)

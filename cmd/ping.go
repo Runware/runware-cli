@@ -25,8 +25,6 @@ var pingCmd = &cobra.Command{
 
 		start := time.Now()
 		_, err := client.Ping(context.Background())
-		elapsed := time.Since(start)
-
 		if err != nil {
 			if api.IsAuthError(err) {
 				output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
@@ -36,11 +34,12 @@ var pingCmd = &cobra.Command{
 			return err
 		}
 
+		elapsed := time.Since(start)
 		env := config.GetEnvironment()
 		latencyMs := elapsed.Milliseconds()
 
 		format := output.ParseFormat(getFormat())
-		data := map[string]interface{}{
+		data := map[string]any{
 			"status":      "ok",
 			"latency_ms":  latencyMs,
 			"environment": env,

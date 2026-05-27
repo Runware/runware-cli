@@ -31,11 +31,11 @@ var presetListCmd = &cobra.Command{
 		}
 		sort.Strings(names)
 
-		headers := []interface{}{"Name", "Model", "Width", "Height", "Steps", "CFG", "Scheduler"}
-		var rows [][]interface{}
+		headers := []any{"Name", "Model", "Width", "Height", "Steps", "CFG", "Scheduler"}
+		var rows [][]any
 		for _, name := range names {
 			p := cfg.Presets[name]
-			rows = append(rows, []interface{}{
+			rows = append(rows, []any{
 				name, p.Model, p.Width, p.Height, p.Steps, p.CFGScale, p.Scheduler,
 			})
 		}
@@ -66,8 +66,8 @@ var presetShowCmd = &cobra.Command{
 		}
 
 		return output.Print(format, preset,
-			[]interface{}{"Setting", "Value"},
-			[][]interface{}{
+			[]any{"Setting", "Value"},
+			[][]any{
 				{"Model", preset.Model},
 				{"Width", preset.Width},
 				{"Height", preset.Height},

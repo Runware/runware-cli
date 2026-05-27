@@ -50,18 +50,18 @@ func init() {
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 600, "Maximum wait time in seconds for video generation")
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"mp4", "webm"}, cobra.ShellCompDirectiveNoFileComp
+	videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{"mp4", "webm"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+	videoInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	videoInferenceCmd.RegisterFlagCompletionFunc("source", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatMP4)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 
-	_ = videoInferenceCmd.RegisterFlagCompletionFunc("source-last", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"png", "jpg", "jpeg", "webp"}, cobra.ShellCompDirectiveFilterFileExt
+	videoInferenceCmd.RegisterFlagCompletionFunc("source-last", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatMP4)}, cobra.ShellCompDirectiveFilterFileExt
 	})
 }
 
@@ -118,11 +118,10 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.VideoInferenceRequest{
-		TaskType:       "videoInference",
 		TaskUUID:       api.NewUUID(),
 		Model:          model,
 		PositivePrompt: prompt,
-		DeliveryMethod: "async",
+		DeliveryMethod: api.DeliveryMethodAsync,
 		IncludeCost:    includeCost,
 	}
 
@@ -151,7 +150,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		req.NumberResults = count
 	}
 	if outputFormat != "" {
-		req.OutputFormat = outputFormat
+		req.OutputFormat = api.OutputFormat(outputFormat)
 	}
 
 	// Handle source images (image-to-video)
@@ -178,7 +177,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 	// Dry run — print request and exit
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -226,7 +225,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			// getResponse may return an error if results aren't ready yet — keep polling
 			if flagVerbose {
-				_, _ = fmt.Fprintf(os.Stderr, "Poll: %s\n", err)
+				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
 			}
 			continue
 		}
@@ -269,21 +268,21 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 	// Table output — download or print URLs
 	if noDownload {
-		headers := []interface{}{"#", "URL", "Seed"}
-		var rows [][]interface{}
+		headers := []any{tableHeaderNum, tableHeaderURL, tableHeaderSeed}
+		var rows [][]any
 		for i := range results {
 			url := results[i].VideoURL
 			if url == "" {
 				url = results[i].MediaURL
 			}
-			row := []interface{}{i + 1, url, results[i].Seed}
+			row := []any{i + 1, url, results[i].Seed}
 			if includeCost {
 				row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 			}
 			rows = append(rows, row)
 		}
 		if includeCost {
-			headers = append(headers, "Cost")
+			headers = append(headers, tableHeaderCost)
 		}
 		return output.Print(format, results, headers, rows)
 	}
@@ -293,11 +292,12 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []interface{}{"#", "File", "Seed"}
+	headers := []any{tableHeaderNum, tableHeaderFile, tableHeaderSeed}
 	if includeCost {
-		headers = append(headers, "Cost")
+		headers = append(headers, tableHeaderCost)
 	}
-	var rows [][]interface{}
+
+	var rows [][]any
 	var downloadFailures int
 
 	for i := range results {
@@ -319,7 +319,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		row := []interface{}{i + 1, destPath, results[i].Seed}
+		row := []any{i + 1, destPath, results[i].Seed}
 		if includeCost {
 			row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 		}

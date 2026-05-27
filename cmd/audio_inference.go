@@ -44,11 +44,11 @@ func init() {
 	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
 	f.Int("timeout", 300, "Maximum wait time in seconds for audio generation")
 
-	_ = audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"mp3"}, cobra.ShellCompDirectiveNoFileComp
+	audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{string(api.OutputFormatMP3)}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	_ = audioInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames)
+	audioInferenceCmd.RegisterFlagCompletionFunc("preset", completePresetNames) //nolint:errcheck,gosec
 }
 
 func runAudioInference(cmd *cobra.Command, args []string) error {
@@ -102,18 +102,17 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.AudioInferenceRequest{
-		TaskType:       "audioInference",
 		TaskUUID:       api.NewUUID(),
 		Model:          model,
 		PositivePrompt: prompt,
 		Duration:       duration,
-		DeliveryMethod: "async",
+		DeliveryMethod: api.DeliveryMethodAsync,
 		IncludeCost:    includeCost,
 	}
 
 	req.NumberResults = count
 	if outputFormat != "" {
-		req.OutputFormat = outputFormat
+		req.OutputFormat = api.OutputFormat(outputFormat)
 	}
 
 	// Audio settings
@@ -129,7 +128,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Dry run
 	if dryRun {
-		data, _ := json.MarshalIndent([]interface{}{req}, "", "  ")
+		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
@@ -144,7 +143,6 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 	_, err := client.AudioInference(context.Background(), req)
-
 	if err != nil {
 		if s != nil {
 			s.Stop()
@@ -172,7 +170,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		rawData, err := client.GetResponse(context.Background(), taskUUID)
 		if err != nil {
 			if flagVerbose {
-				_, _ = fmt.Fprintf(os.Stderr, "Poll: %s\n", err)
+				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
 			}
 			continue
 		}
@@ -213,13 +211,13 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Table output
 	if noDownload {
-		headers := []interface{}{"#", "URL"}
+		headers := []any{tableHeaderNum, tableHeaderURL}
 		if includeCost {
-			headers = append(headers, "Cost")
+			headers = append(headers, tableHeaderCost)
 		}
-		var rows [][]interface{}
+		var rows [][]any
 		for i, r := range results {
-			row := []interface{}{i + 1, r.AudioURL}
+			row := []any{i + 1, r.AudioURL}
 			if includeCost {
 				row = append(row, fmt.Sprintf("%.4f", r.Cost))
 			}
@@ -233,16 +231,16 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	headers := []interface{}{"#", "File"}
+	headers := []any{tableHeaderNum, tableHeaderFile}
 	if includeCost {
-		headers = append(headers, "Cost")
+		headers = append(headers, tableHeaderCost)
 	}
-	var rows [][]interface{}
+	var rows [][]any
 
 	for i, r := range results {
 		ext := outputFormat
 		if ext == "" {
-			ext = "mp3"
+			ext = string(api.OutputFormatMP3)
 		}
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
@@ -252,7 +250,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		row := []interface{}{i + 1, destPath}
+		row := []any{i + 1, destPath}
 		if includeCost {
 			row = append(row, fmt.Sprintf("%.4f", r.Cost))
 		}
