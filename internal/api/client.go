@@ -94,26 +94,19 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 	var apiResp APIResponse
 	parseErr := json.Unmarshal(respBody, &apiResp)
 
+	if err = json.Unmarshal(respBody, &apiResp); err != nil {
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
+		}
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
 	if len(apiResp.Errors) > 0 {
-		first := apiResp.Errors[0]
-		if first.Code == invalidAPIKeyCode {
-			return &apiResp, ErrUnauthorized
+		if IsAuthError(apiResp.Errors[0]) {
+			return nil, ErrUnauthorized
 		}
-		return &apiResp, first
+		return nil, apiResp.Errors[0]
 	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet := string(respBody)
-		if len(snippet) > 500 {
-			snippet = snippet[:500] + "…"
-		}
-		return &apiResp, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, snippet)
-	}
-
-	if parseErr != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", parseErr)
-	}
-
 	return &apiResp, nil
 }
 
