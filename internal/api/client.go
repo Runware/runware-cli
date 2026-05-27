@@ -38,9 +38,9 @@ type RestClient struct {
 // NewClient creates a new REST API client.
 func NewClient(apiKey, baseURL string, verbose bool) *RestClient {
 	return &RestClient{
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		verbose: verbose,
+		apiKey:     apiKey,
+		baseURL:    baseURL,
+		verbose:    verbose,
 		httpClient: &http.Client{},
 	}
 }
