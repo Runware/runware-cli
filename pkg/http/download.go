@@ -11,7 +11,10 @@ import (
 
 // Download downloads a URL to a local file.
 func Download(ctx context.Context, url, destPath string, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	cancel := func() {}
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	}
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
