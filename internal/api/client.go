@@ -91,10 +91,11 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 
 	var apiResp APIResponse
 	if err = json.Unmarshal(respBody, &apiResp); err != nil {
-		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-			return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
-		}
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse response (HTTP %d): %w", resp.StatusCode, err)
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
 	}
 
 	if len(apiResp.Errors) > 0 {
