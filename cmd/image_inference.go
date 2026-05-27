@@ -304,18 +304,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-		dlCtx := context.Background()
-		var dlCancel context.CancelFunc
-		if downloadTimeoutSecs > 0 {
-			dlCtx, dlCancel = context.WithTimeout(context.Background(), time.Duration(downloadTimeoutSecs)*time.Second)
-		} else {
-			dlCtx, dlCancel = context.WithCancel(context.Background())
-		}
-
-		err := downloadImage(dlCtx, r.ImageURL, destPath)
-		dlCancel()
-
-		if err != nil {
+		if err := downloadImageResult(ctx, r.ImageURL, destPath, time.Duration(downloadTimeoutSecs)*time.Second); err != nil {
 			output.Error(fmt.Sprintf("Failed to download image %d: %s", i+1, err))
 			continue
 		}
@@ -348,6 +337,20 @@ func encodeImageFile(path string) (string, error) {
 
 	encoded := base64.StdEncoding.EncodeToString(data)
 	return fmt.Sprintf("data:%s;base64,%s", mime, encoded), nil
+}
+
+// downloadImageResult downloads a single image inference result to destPath,
+// applying a per-download context timeout (0 = no timeout).
+func downloadImageResult(ctx context.Context, url, destPath string, timeout time.Duration) error {
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	defer cancel()
+
+	return downloadImage(ctx, url, destPath)
 }
 
 // downloadImage downloads a URL to a local file.

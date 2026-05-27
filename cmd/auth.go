@@ -50,6 +50,7 @@ var authLoginCmd = &cobra.Command{
 		// Validate key by pinging the API
 		ctx, cancel := contextWithTimeout(cmd)
 		defer cancel()
+
 		client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 		_, err := client.Ping(ctx)
 		if err != nil {
