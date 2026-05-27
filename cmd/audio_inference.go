@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -142,7 +141,11 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-	_, err := client.AudioInference(context.Background(), req)
+
+	ctx, cancel := contextWithTimeout(cmd)
+	defer cancel()
+
+	_, err := client.AudioInference(ctx, req)
 	if err != nil {
 		if s != nil {
 			s.Stop()
@@ -167,7 +170,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	for time.Now().Before(deadline) {
 		time.Sleep(interval)
 
-		rawData, err := client.GetResponse(context.Background(), taskUUID)
+		rawData, err := client.GetResponse(ctx, taskUUID)
 		if err != nil {
 			if flagVerbose {
 				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
@@ -245,7 +248,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-		if err := downloadFile(r.AudioURL, destPath); err != nil {
+		if err := downloadFile(ctx, r.AudioURL, destPath); err != nil {
 			output.Error(fmt.Sprintf("Failed to download audio %d: %s", i+1, err))
 			continue
 		}

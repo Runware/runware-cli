@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/runware/runware-cli/internal/api"
@@ -25,8 +24,11 @@ var accountCreditsCmd = &cobra.Command{
 			return api.ErrNoAPIKey
 		}
 
+		ctx, cancel := contextWithTimeout(cmd)
+		defer cancel()
+
 		client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-		result, err := client.AccountDetails(context.Background())
+		result, err := client.AccountDetails(ctx)
 		if err != nil {
 			if api.IsAuthError(err) {
 				output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
