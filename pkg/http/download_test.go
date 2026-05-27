@@ -15,7 +15,7 @@ func TestDownload_Success(t *testing.T) {
 	content := "video content bytes"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(content)) //nolint:errcheck
+		w.Write([]byte(content)) //nolint:errcheck,gosec
 	}))
 	defer srv.Close()
 
@@ -35,7 +35,6 @@ func TestDownload_Success(t *testing.T) {
 
 func TestDownload_BadStatusCode(t *testing.T) {
 	for _, code := range []int{http.StatusNotFound, http.StatusInternalServerError, http.StatusForbidden} {
-		code := code
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(code)
@@ -87,7 +86,7 @@ func TestDownload_ContextAlreadyCancelled(t *testing.T) {
 func TestDownload_FailToCreateFile(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("data")) //nolint:errcheck
+		w.Write([]byte("data")) //nolint:errcheck,gosec
 	}))
 	defer srv.Close()
 

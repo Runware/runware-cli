@@ -33,7 +33,6 @@ func TestDo_Non2xx_InvalidJSON(t *testing.T) {
 func TestDo_Non2xx_ValidJSON_NoErrors(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{"data": []any{}})
 	for _, code := range []int{http.StatusBadRequest, http.StatusForbidden, http.StatusInternalServerError} {
-		code := code
 		t.Run(http.StatusText(code), func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
