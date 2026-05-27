@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +14,7 @@ import (
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
+	rhttp "github.com/runware/runware-cli/pkg/http"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +50,7 @@ func init() {
 	f.String("mask", "", "Mask image path for inpainting")
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
+	f.Duration("download-timeout", defaultImageDownloadTimeout, "timeout to use when downloading image inference results")
 
 	imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{
@@ -95,6 +95,11 @@ func completePresetNames(cmd *cobra.Command, args []string, toComplete string) (
 }
 
 func runImageInference(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	key := config.GetAPIKey()
 	if key == "" {
 		output.Error("No API key configured. Run 'runware auth login' to authenticate.")
@@ -177,6 +182,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	sourcePath, _ := cmd.Flags().GetString("source")
 	strength, _ := cmd.Flags().GetFloat64("strength")
 	maskPath, _ := cmd.Flags().GetString("mask")
+	downloadTimeout, _ := cmd.Flags().GetDuration("download-timeout")
 
 	// Validation
 	if maskPath != "" && sourcePath == "" {
@@ -246,7 +252,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-	results, err := client.ImageInference(context.Background(), req)
+	results, err := client.ImageInference(ctx, req)
 
 	if s != nil {
 		s.Stop()
@@ -297,7 +303,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-		if err := downloadImage(r.ImageURL, destPath); err != nil {
+		if err := rhttp.Download(ctx, r.ImageURL, destPath, downloadTimeout); err != nil {
 			output.Error(fmt.Sprintf("Failed to download image %d: %s", i+1, err))
 			continue
 		}
@@ -330,33 +336,4 @@ func encodeImageFile(path string) (string, error) {
 
 	encoded := base64.StdEncoding.EncodeToString(data)
 	return fmt.Sprintf("data:%s;base64,%s", mime, encoded), nil
-}
-
-// downloadImage downloads a URL to a local file.
-func downloadImage(url, destPath string) error {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download: %w", err)
-	}
-	defer resp.Body.Close() //nolint:errcheck,gosec
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download returned status %d", resp.StatusCode)
-	}
-
-	f, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer f.Close() //nolint:errcheck,gosec
-
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
 }

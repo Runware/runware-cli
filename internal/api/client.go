@@ -92,16 +92,19 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 	}
 
 	var apiResp APIResponse
-	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err = json.Unmarshal(respBody, &apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response (HTTP %d): %w", resp.StatusCode, err)
 	}
 
 	if len(apiResp.Errors) > 0 {
-		first := apiResp.Errors[0]
-		if first.Code == invalidAPIKeyCode {
-			return &apiResp, ErrUnauthorized
+		if IsAuthError(apiResp.Errors[0]) {
+			return nil, ErrUnauthorized
 		}
-		return &apiResp, first
+		return nil, apiResp.Errors[0]
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
 	}
 
 	return &apiResp, nil
@@ -314,4 +317,13 @@ func (c *RestClient) ModelSearch(ctx context.Context, req *ModelSearchRequest) (
 	}
 
 	return &result, nil
+}
+
+// truncate returns raw truncated to a maximum length of n.
+func truncate(raw string, n int) string {
+	if len(raw) < n {
+		return raw
+	}
+
+	return raw[:n] + "..."
 }
