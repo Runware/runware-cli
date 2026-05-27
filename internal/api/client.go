@@ -92,8 +92,6 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 	}
 
 	var apiResp APIResponse
-	parseErr := json.Unmarshal(respBody, &apiResp)
-
 	if err = json.Unmarshal(respBody, &apiResp); err != nil {
 		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 			return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
@@ -317,4 +315,13 @@ func (c *RestClient) ModelSearch(ctx context.Context, req *ModelSearchRequest) (
 	}
 
 	return &result, nil
+}
+
+// truncate returns raw truncated to a maximum length of n.
+func truncate(raw string, n int) string {
+	if len(raw) < n {
+		return raw
+	}
+
+	return raw[:n] + "..."
 }
