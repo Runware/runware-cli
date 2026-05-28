@@ -256,7 +256,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-	
+
 	results, err := client.ImageInference(ctx, req)
 	if err != nil {
 		if api.IsAuthError(err) {
@@ -296,18 +296,14 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	var rows [][]any
 
 	for i, r := range results {
-	ext := outputFormat
+		ext := outputFormat
 		if ext == "" {
 			ext = string(api.OutputFormatJPG)
 		}
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-<<<<<<< HEAD
 		if err := rhttp.Download(ctx, r.ImageURL, destPath, downloadTimeout); err != nil {
-=======
-		if err := downloadImage(ctx, r.ImageURL, destPath); err != nil {
->>>>>>> 1c31eae (Use context for HTTP timeouts rather than set at the client level, enabling robust cancelation and propagation)
 			output.Error(fmt.Sprintf("Failed to download image %d: %s", i+1, err))
 			continue
 		}
