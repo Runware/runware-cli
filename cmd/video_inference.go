@@ -199,11 +199,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-
-	ctx, cancel := contextWithTimeout(cmd)
-	defer cancel()
-
-	submitResults, err := client.VideoInference(ctx, req)
+	submitResults, err := client.VideoInference(context.Background(), req)
 
 	if err != nil {
 		if s != nil {
@@ -231,7 +227,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	var results []api.VideoInferenceResult
 
 	for time.Now().Before(deadline) {
-		rawData, err := client.GetResponse(ctx, taskUUID)
+		rawData, err := client.GetResponse(context.Background(), taskUUID)
 		if err != nil {
 			// getResponse may return an error if results aren't ready yet — keep polling
 			if flagVerbose {

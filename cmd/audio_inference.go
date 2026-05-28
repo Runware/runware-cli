@@ -150,11 +150,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-
-	ctx, cancel := contextWithTimeout(cmd)
-	defer cancel()
-
-	_, err := client.AudioInference(ctx, req)
+	_, err := client.AudioInference(context.Background(), req)
 	if err != nil {
 		if s != nil {
 			s.Stop()
@@ -177,7 +173,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	var results []api.AudioInferenceResult
 
 	for time.Now().Before(deadline) {
-		rawData, err := client.GetResponse(ctx, taskUUID)
+		rawData, err := client.GetResponse(context.Background(), taskUUID)
 		if err != nil {
 			if flagVerbose {
 				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec

@@ -41,7 +41,9 @@ func NewClient(apiKey, baseURL string, verbose bool) *RestClient {
 		apiKey:  apiKey,
 		baseURL: baseURL,
 		verbose: verbose,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{
+			Timeout: 120 * time.Second,
+		},
 	}
 }
 

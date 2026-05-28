@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -66,11 +67,8 @@ func runModelSearch(cmd *cobra.Command, args []string) error {
 		req.Offset = v
 	}
 
-	ctx, cancel := contextWithTimeout(cmd)
-	defer cancel()
-
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-	result, err := client.ModelSearch(ctx, req)
+	result, err := client.ModelSearch(context.Background(), req)
 	if err != nil {
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")

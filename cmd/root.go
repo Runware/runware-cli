@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
@@ -42,7 +40,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "", "Output format: table, json, yaml")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show request/response details")
 	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "Show full debug output")
-	rootCmd.PersistentFlags().Int("request-timeout", defaultRequestTimeoutSeconds, "HTTP request timeout in seconds (0 = no timeout)")
 
 	rootCmd.RegisterFlagCompletionFunc("format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"table", "json", "yaml"}, cobra.ShellCompDirectiveNoFileComp
@@ -76,14 +73,4 @@ func getFormat() string {
 		return flagFormat
 	}
 	return config.Get().Defaults.Format
-}
-
-// contextWithTimeout builds a context from the cobra command's context,
-// applying --request-timeout if set (0 = no timeout).
-func contextWithTimeout(cmd *cobra.Command) (context.Context, context.CancelFunc) {
-	secs, _ := cmd.Flags().GetInt("request-timeout")
-	if secs <= 0 {
-		return context.WithCancel(cmd.Context())
-	}
-	return context.WithTimeout(cmd.Context(), time.Duration(secs)*time.Second)
 }
