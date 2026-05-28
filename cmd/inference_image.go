@@ -18,7 +18,7 @@ import (
 )
 
 var imageInferenceCmd = &cobra.Command{
-	Use:   "imageInference [prompt]",
+	Use:   "image [prompt]",
 	Short: "Generate images from text or image input",
 	Long: `Generate images using text-to-image, image-to-image, or inpainting.
 

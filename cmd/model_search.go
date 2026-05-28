@@ -12,7 +12,7 @@ import (
 )
 
 var modelSearchCmd = &cobra.Command{
-	Use:   "modelSearch [query]",
+	Use:   "search [query]",
 	Short: "Search available models",
 	Long: `Search for models available on Runware.
 

@@ -16,7 +16,7 @@ import (
 )
 
 var videoInferenceCmd = &cobra.Command{
-	Use:   "videoInference [prompt]",
+	Use:   "video [prompt]",
 	Short: "Generate videos from text or image input",
 	Long: `Generate videos using text-to-video or image-to-video.
 

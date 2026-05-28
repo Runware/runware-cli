@@ -16,7 +16,7 @@ import (
 )
 
 var audioInferenceCmd = &cobra.Command{
-	Use:   "audioInference [prompt]",
+	Use:   "audio [prompt]",
 	Short: "Generate audio from text descriptions",
 	Long: `Generate audio using text-to-audio, music generation, or sound effects.
 

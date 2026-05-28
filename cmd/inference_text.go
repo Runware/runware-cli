@@ -12,7 +12,7 @@ import (
 )
 
 var textInferenceCmd = &cobra.Command{
-	Use:   "textInference [message]",
+	Use:   "text [message]",
 	Short: "Generate text using a language model",
 	Long: `Send a message to a language model and get a text response.
 
