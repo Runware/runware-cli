@@ -38,7 +38,7 @@ func PollResults[T any](ctx context.Context, client Client, taskUUID string, int
 
 		select {
 		case <-ctx.Done():
-			return nil, nil
+			return nil, ctx.Err()
 		case <-ticker.C:
 		}
 	}

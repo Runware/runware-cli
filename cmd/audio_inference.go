@@ -41,8 +41,8 @@ func init() {
 	f.Int("bitrate", 0, "Bitrate in kbps (32-320, compressed formats only)")
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
-	f.Duration("poll-interval", defaultPollInterval, "Polling interval in seconds for async results")
-	f.Duration("timeout", defaultAudioGenerationTimeout, "Maximum wait time in seconds for audio generation")
+	f.Duration("poll-interval", defaultPollInterval, "Polling interval for async results")
+	f.Duration("timeout", defaultAudioGenerationTimeout, "Maximum wait time for audio generation")
 	f.Duration("download-timeout", defaultAudioDownloadTimeout, "timeout to use when downloading audio inference results")
 
 	audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
@@ -179,7 +179,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	)
 	if err != nil {
 		s.Stop()
-		output.Error("Audo generation failed")
+		output.Error("Audio generation failed")
 		return err
 	}
 
