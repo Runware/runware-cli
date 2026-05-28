@@ -313,11 +313,11 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		rows = append(rows, row)
 	}
 
+	s.Stop()
+
 	if downloadFailures == len(results) {
 		return fmt.Errorf("all %d video downloads failed", len(results))
 	}
-
-	s.Stop()
 
 	if err := output.Print(format, results, headers, rows); err != nil {
 		return err

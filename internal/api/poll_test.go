@@ -194,12 +194,9 @@ func TestPollResults_ContextCancelled(t *testing.T) {
 		},
 	}
 
-	results, err := PollResults(ctx, client, "uuid", time.Millisecond, false, parseString)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if results != nil {
-		t.Errorf("expected nil results on cancelled context, got %v", results)
+	_, err := PollResults(ctx, client, "uuid", time.Millisecond, false, parseString)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected %v, got error: %v", context.Canceled, err)
 	}
 }
 
@@ -211,11 +208,8 @@ func TestPollResults_ContextTimeout(t *testing.T) {
 	// Never return success — mock returns nil indefinitely.
 	client := &mockClient{}
 
-	results, err := PollResults(ctx, client, "uuid", time.Millisecond, false, parseString)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if results != nil {
-		t.Errorf("expected nil results on timeout, got %v", results)
+	_, err := PollResults(ctx, client, "uuid", time.Millisecond, false, parseString)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected %v, got error: %v", context.DeadlineExceeded, err)
 	}
 }
