@@ -25,4 +25,8 @@ const (
 	defaultImageDownloadTimeout = 1 * time.Minute
 	defaultAudioDownloadTimeout = 5 * time.Minute
 	defaultVideoDownloadTimeout = 10 * time.Minute
+
+	// Audio defaults.
+	defaultMinAudioDuration = 10.0
+	maxAudioDuration        = 300.0
 )
