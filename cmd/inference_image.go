@@ -67,7 +67,7 @@ func init() {
 	f.StringVarP(&imageFlags.outputFormat, "output-format", "f", "", "Format of generated images: png, jpg, webp")
 	f.BoolVarP(&imageFlags.noDownload, "no-download", "D", false, "Print image URLs instead of downloading")
 	f.StringVarP(&imageFlags.sourcePath, "source", "i", "", "Source image path for img2img")
-	f.Float64VarP(&imageFlags.strength, "strength", "k", 0.7, "img2img strength (0.0-1.0)")
+	f.Float64VarP(&imageFlags.strength, "strength", "R", 0.7, "img2img strength (0.0-1.0)")
 	f.StringVarP(&imageFlags.maskPath, "mask", "M", "", "Mask image path for inpainting")
 	f.StringVarP(&imageFlags.preset, "preset", "p", "", "Named preset to apply")
 	f.BoolVarP(&imageFlags.dryRun, "dry-run", "X", false, "Print the API request without executing")

@@ -42,18 +42,18 @@ Examples:
 	RunE:    runTextInference,
 }
 
-var model string
+var resolvedTextModel string
 
 func init() {
 	f := textInferenceCmd.Flags()
 	f.StringVarP(&textFlags.model, "model", "m", "", "Model identifier (e.g. runware:qwen3-thinking@1)")
-	f.StringVarP(&textFlags.system, "system", "s", "", "System prompt")
+	f.StringVarP(&textFlags.system, "system", "y", "", "System prompt")
 	f.IntVarP(&textFlags.maxTokens, "max-tokens", "M", 0, "Maximum tokens in response (1-128000)")
-	f.Float64VarP(&textFlags.temperature, "temperature", "t", 0, "Sampling temperature (0-2)")
+	f.Float64VarP(&textFlags.temperature, "temperature", "q", 0, "Sampling temperature (0-2)")
 	f.Float64VarP(&textFlags.topP, "top-p", "P", 0, "Nucleus sampling parameter (0-1)")
-	f.IntVarP(&textFlags.topK, "top-k", "k", 0, "Top-k sampling parameter (1-100)")
+	f.IntVarP(&textFlags.topK, "top-k", "K", 0, "Top-k sampling parameter (1-100)")
 	f.Int64VarP(&textFlags.seed, "seed", "e", 0, "Random seed for reproducibility")
-	f.StringSliceVarP(&textFlags.stop, "stop", "S", nil, "Stop sequences (max 5)")
+	f.StringSliceVarP(&textFlags.stop, "stop", "Z", nil, "Stop sequences (max 5)")
 	f.IntVarP(&textFlags.count, "count", "n", 1, "Number of results to generate (1-4)")
 	f.StringVarP(&textFlags.outputFormat, "output-format", "f", "", "Format of the model response: text, json")
 	f.BoolVarP(&textFlags.includeCost, "include-cost", "C", false, "Include cost info in response")
@@ -69,16 +69,16 @@ func init() {
 
 func preRunTextInference(cmd *cobra.Command, _ []string) error {
 	// Resolve model from preset or flag for early validation
-	model = config.Get().Defaults.Model
+	resolvedTextModel = config.Get().Defaults.Model
 	if textFlags.preset != "" {
 		if preset := config.GetPreset(textFlags.preset); preset != nil && preset.Model != "" {
-			model = preset.Model
+			resolvedTextModel = preset.Model
 		}
 	}
 	if cmd.Flags().Changed("model") {
-		model = textFlags.model
+		resolvedTextModel = textFlags.model
 	}
-	if model == "" {
+	if resolvedTextModel == "" {
 		return fmt.Errorf("--model is required (e.g. minimax:m2.7@highspeed)")
 	}
 	if textFlags.count < 1 || textFlags.count > 4 {
@@ -99,7 +99,7 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	// Build request
 	req := &api.TextInferenceRequest{
 		TaskUUID: api.NewUUID(),
-		Model:    model,
+		Model:    resolvedTextModel,
 		Messages: []api.Message{
 			{Role: "user", Content: message},
 		},
