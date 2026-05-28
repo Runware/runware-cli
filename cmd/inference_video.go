@@ -15,6 +15,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var videoFlags struct {
+	model           string
+	width           int
+	height          int
+	duration        float64
+	steps           int
+	cfgScale        float64
+	seed            int64
+	negative        string
+	count           int
+	outputDir       string
+	outputFormat    string
+	noDownload      bool
+	sourcePath      string
+	sourceLastPath  string
+	includeCost     bool
+	preset          string
+	dryRun          bool
+	pollInterval    time.Duration
+	timeout         time.Duration
+	downloadTimeout time.Duration
+}
+
 var videoInferenceCmd = &cobra.Command{
 	Use:   "video [prompt]",
 	Short: "Generate videos from text or image input",
@@ -30,26 +53,26 @@ Examples:
 
 func init() {
 	f := videoInferenceCmd.Flags()
-	f.String("model", "", "Model identifier (e.g. klingai:5@3, google:3@2)")
-	f.Int("width", 0, "Video width in pixels")
-	f.Int("height", 0, "Video height in pixels")
-	f.Float64("duration", 0, "Video duration in seconds")
-	f.Int("steps", 0, "Number of inference steps")
-	f.Float64("cfg", 0, "CFG scale")
-	f.Int64("seed", 0, "Seed for reproducibility")
-	f.String("negative", "", "Negative prompt")
-	f.Int("count", 1, "Number of videos to generate")
-	f.String("output", "", "Output directory")
-	f.String("output-format", "", "Video format: mp4, webm")
-	f.Bool("no-download", false, "Print video URLs instead of downloading")
-	f.String("source", "", "Source image path for image-to-video")
-	f.String("source-last", "", "Last frame image path")
-	f.Bool("include-cost", false, "Include cost info in response")
-	f.String("preset", "", "Named preset to apply")
-	f.Bool("dry-run", false, "Print the API request without executing")
-	f.Duration("poll-interval", defaultPollInterval, "Polling interval for async results")
-	f.Duration("timeout", defaultVideoGenerationTimeout, "Maximum wait time for video generation")
-	f.Duration("download-timeout", defaultVideoDownloadTimeout, "timeout to use when downloading video inference results")
+	f.StringVarP(&videoFlags.model, "model", "m", "", "Model identifier (e.g. klingai:5@3, google:3@2)")
+	f.IntVarP(&videoFlags.width, "width", "W", 0, "Video width in pixels")
+	f.IntVarP(&videoFlags.height, "height", "H", 0, "Video height in pixels")
+	f.Float64VarP(&videoFlags.duration, "duration", "d", 0, "Video duration in seconds")
+	f.IntVarP(&videoFlags.steps, "steps", "s", 0, "Number of inference steps")
+	f.Float64VarP(&videoFlags.cfgScale, "cfg", "c", 0, "CFG scale")
+	f.Int64VarP(&videoFlags.seed, "seed", "e", 0, "Seed for reproducibility")
+	f.StringVarP(&videoFlags.negative, "negative", "N", "", "Negative prompt")
+	f.IntVarP(&videoFlags.count, "count", "n", 1, "Number of videos to generate")
+	f.StringVarP(&videoFlags.outputDir, "output", "o", "", "Output directory")
+	f.StringVarP(&videoFlags.outputFormat, "output-format", "f", "", "Format of generated videos: mp4, webm")
+	f.BoolVarP(&videoFlags.noDownload, "no-download", "D", false, "Print video URLs instead of downloading")
+	f.StringVarP(&videoFlags.sourcePath, "source", "i", "", "Source image path for image-to-video")
+	f.StringVarP(&videoFlags.sourceLastPath, "source-last", "L", "", "Last frame image path")
+	f.BoolVarP(&videoFlags.includeCost, "include-cost", "C", false, "Include cost info in response")
+	f.StringVarP(&videoFlags.preset, "preset", "p", "", "Named preset to apply")
+	f.BoolVarP(&videoFlags.dryRun, "dry-run", "X", false, "Print the API request without executing")
+	f.DurationVarP(&videoFlags.pollInterval, "poll-interval", "I", defaultPollInterval, "Polling interval for async results")
+	f.DurationVarP(&videoFlags.timeout, "timeout", "t", defaultVideoGenerationTimeout, "Maximum wait time for video generation")
+	f.DurationVarP(&videoFlags.downloadTimeout, "download-timeout", "T", defaultVideoDownloadTimeout, "Timeout for downloading video results")
 
 	videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"mp4", "webm"}, cobra.ShellCompDirectiveNoFileComp
@@ -81,16 +104,14 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	prompt := args[0]
 
-	// Start with config defaults for shared fields
 	model := cfg.Defaults.Model
 	outputDir := cfg.Defaults.OutputDir
 
-	// Apply preset if specified (reuses image preset structure for shared fields)
-	presetName, _ := cmd.Flags().GetString("preset")
-	if presetName != "" {
-		preset := config.GetPreset(presetName)
+	// Apply preset if specified
+	if videoFlags.preset != "" {
+		preset := config.GetPreset(videoFlags.preset)
 		if preset == nil {
-			return fmt.Errorf("preset '%s' not found", presetName)
+			return fmt.Errorf("preset '%s' not found", videoFlags.preset)
 		}
 		if preset.Model != "" {
 			model = preset.Model
@@ -99,29 +120,11 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 	// Override with explicit CLI flags
 	if cmd.Flags().Changed("model") {
-		model, _ = cmd.Flags().GetString("model")
+		model = videoFlags.model
 	}
 	if cmd.Flags().Changed("output") {
-		outputDir, _ = cmd.Flags().GetString("output")
+		outputDir = videoFlags.outputDir
 	}
-
-	width, _ := cmd.Flags().GetInt("width")
-	height, _ := cmd.Flags().GetInt("height")
-	duration, _ := cmd.Flags().GetFloat64("duration")
-	steps, _ := cmd.Flags().GetInt("steps")
-	cfgScale, _ := cmd.Flags().GetFloat64("cfg")
-	seed, _ := cmd.Flags().GetInt64("seed")
-	negative, _ := cmd.Flags().GetString("negative")
-	count, _ := cmd.Flags().GetInt("count")
-	outputFormat, _ := cmd.Flags().GetString("output-format")
-	noDownload, _ := cmd.Flags().GetBool("no-download")
-	includeCost, _ := cmd.Flags().GetBool("include-cost")
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	sourcePath, _ := cmd.Flags().GetString("source")
-	sourceLastPath, _ := cmd.Flags().GetString("source-last")
-	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
-	timeout, _ := cmd.Flags().GetDuration("timeout")
-	downloadTimeout, _ := cmd.Flags().GetDuration("download-timeout")
 
 	// Build request
 	req := &api.VideoInferenceRequest{
@@ -129,40 +132,40 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		Model:          model,
 		PositivePrompt: prompt,
 		DeliveryMethod: api.DeliveryMethodAsync,
-		IncludeCost:    includeCost,
+		IncludeCost:    videoFlags.includeCost,
 	}
 
-	if negative != "" {
-		req.NegativePrompt = negative
+	if videoFlags.negative != "" {
+		req.NegativePrompt = videoFlags.negative
 	}
-	if width > 0 {
-		req.Width = width
+	if videoFlags.width > 0 {
+		req.Width = videoFlags.width
 	}
-	if height > 0 {
-		req.Height = height
+	if videoFlags.height > 0 {
+		req.Height = videoFlags.height
 	}
-	if duration > 0 {
-		req.Duration = duration
+	if videoFlags.duration > 0 {
+		req.Duration = videoFlags.duration
 	}
-	if steps > 0 {
-		req.Steps = steps
+	if videoFlags.steps > 0 {
+		req.Steps = videoFlags.steps
 	}
-	if cfgScale > 0 {
-		req.CFGScale = cfgScale
+	if videoFlags.cfgScale > 0 {
+		req.CFGScale = videoFlags.cfgScale
 	}
 	if cmd.Flags().Changed("seed") {
-		req.Seed = seed
+		req.Seed = videoFlags.seed
 	}
-	if count > 1 {
-		req.NumberResults = count
+	if videoFlags.count > 1 {
+		req.NumberResults = videoFlags.count
 	}
-	if outputFormat != "" {
-		req.OutputFormat = api.OutputFormat(outputFormat)
+	if videoFlags.outputFormat != "" {
+		req.OutputFormat = api.OutputFormat(videoFlags.outputFormat)
 	}
 
 	// Handle source images (image-to-video)
-	if sourcePath != "" {
-		encoded, err := encodeImageFile(sourcePath)
+	if videoFlags.sourcePath != "" {
+		encoded, err := encodeImageFile(videoFlags.sourcePath)
 		if err != nil {
 			return fmt.Errorf("failed to read source image: %w", err)
 		}
@@ -171,8 +174,8 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			Frame:      "first",
 		})
 	}
-	if sourceLastPath != "" {
-		encoded, err := encodeImageFile(sourceLastPath)
+	if videoFlags.sourceLastPath != "" {
+		encoded, err := encodeImageFile(videoFlags.sourceLastPath)
 		if err != nil {
 			return fmt.Errorf("failed to read last frame image: %w", err)
 		}
@@ -182,8 +185,8 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	// Dry run — print request and exit
-	if dryRun {
+	// Dry run
+	if videoFlags.dryRun {
 		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
@@ -213,14 +216,14 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		taskUUID = submitResults[0].TaskUUID
 	}
 
-	pollCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	pollCtx, cancel := context.WithTimeout(cmd.Context(), videoFlags.timeout)
 	defer cancel()
 
 	results, err := api.PollResults(
 		pollCtx,
 		client,
 		taskUUID,
-		pollInterval,
+		videoFlags.pollInterval,
 		flagVerbose,
 		func(raw json.RawMessage) (api.VideoInferenceResult, bool) {
 			var r api.VideoInferenceResult
@@ -239,7 +242,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	if len(results) == 0 {
 		s.Stop()
 		output.Error("Video generation timed out or returned no results")
-		return fmt.Errorf("no video results after %v", timeout)
+		return fmt.Errorf("no video results after %v", videoFlags.timeout)
 	}
 
 	// JSON/YAML output
@@ -249,9 +252,12 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		return output.Print(format, results, nil, nil)
 	}
 
-	// Table output — download or print URLs
-	if noDownload {
+	// Table output — no-download: print URLs
+	if videoFlags.noDownload {
 		headers := []any{tableHeaderNum, tableHeaderURL, tableHeaderSeed}
+		if videoFlags.includeCost {
+			headers = append(headers, tableHeaderCost)
+		}
 		var rows [][]any
 		for i := range results {
 			url := results[i].VideoURL
@@ -259,15 +265,11 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 				url = results[i].MediaURL
 			}
 			row := []any{i + 1, url, results[i].Seed}
-			if includeCost {
+			if videoFlags.includeCost {
 				row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 			}
 			rows = append(rows, row)
 		}
-		if includeCost {
-			headers = append(headers, tableHeaderCost)
-		}
-
 		s.Stop()
 		return output.Print(format, results, headers, rows)
 	}
@@ -280,7 +282,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	}
 
 	headers := []any{tableHeaderNum, tableHeaderFile, tableHeaderSeed}
-	if includeCost {
+	if videoFlags.includeCost {
 		headers = append(headers, tableHeaderCost)
 	}
 
@@ -288,7 +290,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	var downloadFailures int
 
 	for i := range results {
-		ext := outputFormat
+		ext := videoFlags.outputFormat
 		if ext == "" {
 			ext = "mp4"
 		}
@@ -300,14 +302,14 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			url = results[i].MediaURL
 		}
 
-		if err := rhttp.Download(ctx, url, destPath, downloadTimeout); err != nil {
+		if err := rhttp.Download(ctx, url, destPath, videoFlags.downloadTimeout); err != nil {
 			output.Error(fmt.Sprintf("Failed to download video %d: %s", i+1, err))
 			downloadFailures++
 			continue
 		}
 
 		row := []any{i + 1, destPath, results[i].Seed}
-		if includeCost {
+		if videoFlags.includeCost {
 			row = append(row, fmt.Sprintf("%.4f", results[i].Cost))
 		}
 		rows = append(rows, row)
