@@ -12,15 +12,15 @@ import (
 )
 
 var textInferenceCmd = &cobra.Command{
-	Use:   "textInference [message]",
+	Use:   "text [message]",
 	Short: "Generate text using a language model",
 	Long: `Send a message to a language model and get a text response.
 
 Examples:
-  runware textInference "What is the capital of France?" --model minimax:m2.7@highspeed
-  runware textInference "Explain quantum computing" --model minimax:m2.7@highspeed --max-tokens 500
-  runware textInference "Write a haiku about coding" --model minimax:m2.7@highspeed --system "You are a poet" --temperature 0.8
-  runware textInference "List 3 facts about Mars" --model minimax:m2.7@highspeed --output-format json`,
+  runware inference text "What is the capital of France?" --model minimax:m2.7@highspeed
+  runware inference text "Explain quantum computing" --model minimax:m2.7@highspeed --max-tokens 500
+  runware inference text "Write a haiku about coding" --model minimax:m2.7@highspeed --system "You are a poet" --temperature 0.8
+  runware inference text "List 3 facts about Mars" --model minimax:m2.7@highspeed --output-format json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTextInference,
 }

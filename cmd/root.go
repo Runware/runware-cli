@@ -47,11 +47,8 @@ func init() {
 
 	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(pingCmd)
-	rootCmd.AddCommand(imageInferenceCmd)
-	rootCmd.AddCommand(videoInferenceCmd)
-	rootCmd.AddCommand(audioInferenceCmd)
-	rootCmd.AddCommand(textInferenceCmd)
-	rootCmd.AddCommand(modelSearchCmd)
+	rootCmd.AddCommand(inferenceCmd)
+	rootCmd.AddCommand(modelCmd)
 	rootCmd.AddCommand(accountCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(presetCmd)

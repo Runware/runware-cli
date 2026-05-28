@@ -12,15 +12,15 @@ import (
 )
 
 var modelSearchCmd = &cobra.Command{
-	Use:   "modelSearch [query]",
+	Use:   "search [query]",
 	Short: "Search available models",
 	Long: `Search for models available on Runware.
 
 Examples:
-  runware modelSearch "flux"
-  runware modelSearch "sdxl" --category checkpoint
-  runware modelSearch --architecture flux1d --limit 10
-  runware modelSearch "portrait" --category lora --format json`,
+  runware model search "flux"
+  runware model search "sdxl" --category checkpoint
+  runware model search --architecture flux1d --limit 10
+  runware model search "portrait" --category lora --format json`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runModelSearch,
 }

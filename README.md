@@ -57,7 +57,7 @@ runware auth login
 runware ping
 
 # Generate an image
-runware imageInference "a chess match in the park"
+runware inference image "a chess match in the park"
 
 # Check your credits
 runware account credits
@@ -69,31 +69,51 @@ runware account credits
 
 ```bash
 # Simple text-to-image
-runware imageInference "a cat riding a rocket"
+runware inference image "a cat riding a rocket"
 
 # With options
-runware imageInference "a cyberpunk cityscape" \
+runware inference image "a cyberpunk cityscape" \
   --model runware:100@1 \
   --width 1024 --height 576 \
   --steps 28 --cfg 3.5 \
   --count 4
 
 # Image-to-image
-runware imageInference "make it more cinematic" \
+runware inference image "make it more cinematic" \
   --source ./input.png --strength 0.7
 
 # Inpainting
-runware imageInference "replace with a golden retriever" \
+runware inference image "replace with a golden retriever" \
   --source ./photo.png --mask ./mask.png
 
 # Using a preset
-runware imageInference "a portrait" --preset quick-flux
+runware inference image "a portrait" --preset quick-flux
 
 # Just get the URL, don't download
-runware imageInference "a sunset" --no-download
+runware inference image "a sunset" --no-download
 
 # Preview the API request without sending it
-runware imageInference "a sunset" --dry-run
+runware inference image "a sunset" --dry-run
+```
+
+### Video generation
+
+```bash
+runware inference video "a timelapse of a sunset over mountains" --model klingai:5@3
+runware inference video "a cat playing piano" --model google:3@2 --duration 5
+```
+
+### Audio generation
+
+```bash
+runware inference audio "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
+runware inference audio "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
+```
+
+### Text generation
+
+```bash
+runware inference text "explain how transformers work"
 ```
 
 ### Authentication
@@ -115,7 +135,7 @@ runware account credits         # Credit balance and usage stats
 ### Model search
 
 ```bash
-runware modelSearch "flux"      # Search available models (coming soon)
+runware model search "flux"     # Search available models
 ```
 
 ### Presets
