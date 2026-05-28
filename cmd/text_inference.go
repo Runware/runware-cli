@@ -140,11 +140,11 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	// Submit
 	s := output.NewSpinner(" Generating text...")
 	s.Start()
-	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 	results, err := client.TextInference(context.Background(), req)
 	if err != nil {
+		s.Stop()
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 			return err
@@ -152,7 +152,6 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Manually stop the spinner to ensure clean output of results.
 	s.Stop()
 
 	if len(results) == 0 {

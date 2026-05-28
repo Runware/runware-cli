@@ -41,8 +41,8 @@ func init() {
 	f.Int("bitrate", 0, "Bitrate in kbps (32-320, compressed formats only)")
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
-	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
-	f.Int("timeout", 300, "Maximum wait time in seconds for audio generation")
+	f.Duration("poll-interval", defaultPollInterval, "Polling interval in seconds for async results")
+	f.Duration("timeout", defaultAudioGenerationTimeout, "Maximum wait time in seconds for audio generation")
 	f.Duration("download-timeout", defaultAudioDownloadTimeout, "timeout to use when downloading audio inference results")
 
 	audioInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
@@ -98,8 +98,8 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	sampleRate, _ := cmd.Flags().GetInt("sample-rate")
 	bitrate, _ := cmd.Flags().GetInt("bitrate")
-	pollInterval, _ := cmd.Flags().GetInt("poll-interval")
-	timeout, _ := cmd.Flags().GetInt("timeout")
+	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+	timeout, _ := cmd.Flags().GetDuration("timeout")
 	downloadTimeout, _ := cmd.Flags().GetDuration("download-timeout")
 
 	// Validation
@@ -143,11 +143,12 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	// Submit
 	s := output.NewSpinner(" Submitting audio generation task...")
 	s.Start()
-	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 	_, err := client.AudioInference(context.Background(), req)
 	if err != nil {
+		s.Stop()
+
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 			return err
@@ -158,45 +159,40 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	s.Suffix(" Generating audio (this may take a few minutes)...")
 
 	taskUUID := req.TaskUUID
-	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-	interval := time.Duration(pollInterval) * time.Second
-	var results []api.AudioInferenceResult
 
-	for time.Now().Before(deadline) {
-		rawData, err := client.GetResponse(context.Background(), taskUUID)
-		if err != nil {
-			if flagVerbose {
-				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
-			}
-			time.Sleep(interval)
-			continue
-		}
+	pollCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	defer cancel()
 
-		for _, raw := range rawData {
+	results, err := api.PollResults(
+		pollCtx,
+		client,
+		taskUUID,
+		pollInterval,
+		flagVerbose,
+		func(raw json.RawMessage) (api.AudioInferenceResult, bool) {
 			var r api.AudioInferenceResult
 			if err := json.Unmarshal(raw, &r); err != nil {
-				continue
+				return r, false
 			}
-			if r.AudioURL != "" {
-				results = append(results, r)
-			}
-		}
-
-		if len(results) > 0 {
-			break
-		}
-
-		time.Sleep(interval)
+			return r, r.AudioURL != ""
+		},
+	)
+	if err != nil {
+		s.Stop()
+		output.Error("Audo generation failed")
+		return err
 	}
 
 	if len(results) == 0 {
+		s.Stop()
 		output.Error("Audio generation timed out or returned no results")
-		return fmt.Errorf("no audio results after %ds", timeout)
+		return fmt.Errorf("no audio results after %v", timeout)
 	}
 
 	// JSON/YAML output
 	format := output.ParseFormat(getFormat())
 	if format != output.FormatTable {
+		s.Stop()
 		return output.Print(format, results, nil, nil)
 	}
 
@@ -215,9 +211,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 			rows = append(rows, row)
 		}
 
-		// Manually stop the spinner to ensure clean output of results.
 		s.Stop()
-
 		return output.Print(format, results, headers, rows)
 	}
 
@@ -254,8 +248,6 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		rows = append(rows, row)
 	}
 
-	// Manually stop the spinner to ensure clean output of results.
 	s.Stop()
-
 	return output.Print(format, results, headers, rows)
 }

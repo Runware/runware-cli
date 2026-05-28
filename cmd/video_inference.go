@@ -47,8 +47,8 @@ func init() {
 	f.Bool("include-cost", false, "Include cost info in response")
 	f.String("preset", "", "Named preset to apply")
 	f.Bool("dry-run", false, "Print the API request without executing")
-	f.Int("poll-interval", 5, "Polling interval in seconds for async results")
-	f.Int("timeout", 600, "Maximum wait time in seconds for video generation")
+	f.Duration("poll-interval", defaultPollInterval, "Polling interval for async results")
+	f.Duration("timeout", defaultVideoGenerationTimeout, "Maximum wait time for video generation")
 	f.Duration("download-timeout", defaultVideoDownloadTimeout, "timeout to use when downloading video inference results")
 
 	videoInferenceCmd.RegisterFlagCompletionFunc("output-format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
@@ -119,8 +119,8 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	sourcePath, _ := cmd.Flags().GetString("source")
 	sourceLastPath, _ := cmd.Flags().GetString("source-last")
-	pollInterval, _ := cmd.Flags().GetInt("poll-interval")
-	timeout, _ := cmd.Flags().GetInt("timeout")
+	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+	timeout, _ := cmd.Flags().GetDuration("timeout")
 	downloadTimeout, _ := cmd.Flags().GetDuration("download-timeout")
 
 	// Build request
@@ -192,12 +192,12 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	// Submit the video generation task
 	s := output.NewSpinner(" Submitting video generation task...")
 	s.Start()
-	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 
 	submitResults, err := client.VideoInference(context.Background(), req)
 	if err != nil {
+		s.Stop()
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 			return err
@@ -213,48 +213,39 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		taskUUID = submitResults[0].TaskUUID
 	}
 
-	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-	interval := time.Duration(pollInterval) * time.Second
-	var results []api.VideoInferenceResult
+	pollCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	defer cancel()
 
-	for time.Now().Before(deadline) {
-		rawData, err := client.GetResponse(context.Background(), taskUUID)
-		if err != nil {
-			// getResponse may return an error if results aren't ready yet — keep polling
-			if flagVerbose {
-				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
-			}
-			time.Sleep(interval)
-			continue
-		}
-
-		// Parse results
-		for _, raw := range rawData {
+	results, err := api.PollResults(
+		pollCtx,
+		client,
+		taskUUID,
+		pollInterval,
+		flagVerbose,
+		func(raw json.RawMessage) (api.VideoInferenceResult, bool) {
 			var r api.VideoInferenceResult
 			if err := json.Unmarshal(raw, &r); err != nil {
-				continue
+				return r, false
 			}
-			// Check if we have a video URL (indicates completion)
-			if r.VideoURL != "" || r.MediaURL != "" {
-				results = append(results, r)
-			}
-		}
-
-		if len(results) > 0 {
-			break
-		}
-
-		time.Sleep(interval)
+			return r, r.VideoURL != "" || r.MediaURL != ""
+		},
+	)
+	if err != nil {
+		s.Stop()
+		output.Error("Video generation failed")
+		return err
 	}
 
 	if len(results) == 0 {
+		s.Stop()
 		output.Error("Video generation timed out or returned no results")
-		return fmt.Errorf("no video results after %ds", timeout)
+		return fmt.Errorf("no video results after %v", timeout)
 	}
 
 	// JSON/YAML output
 	format := output.ParseFormat(getFormat())
 	if format != output.FormatTable {
+		s.Stop()
 		return output.Print(format, results, nil, nil)
 	}
 
@@ -277,9 +268,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 			headers = append(headers, tableHeaderCost)
 		}
 
-		// Manually stop the spinner to ensure clean output of results.
 		s.Stop()
-
 		return output.Print(format, results, headers, rows)
 	}
 
@@ -328,7 +317,6 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("all %d video downloads failed", len(results))
 	}
 
-	// Manually stop the spinner to ensure clean output of results.
 	s.Stop()
 
 	if err := output.Print(format, results, headers, rows); err != nil {

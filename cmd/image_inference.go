@@ -245,12 +245,12 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	// Start spinner
 	s := output.NewSpinner(" Generating image...")
 	s.Start()
-	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 
 	results, err := client.ImageInference(ctx, req)
 	if err != nil {
+		s.Stop()
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 			return err
@@ -259,6 +259,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(results) == 0 {
+		s.Stop()
 		output.Error("No images returned")
 		return fmt.Errorf("empty result")
 	}
@@ -266,6 +267,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	// JSON/YAML output
 	format := output.ParseFormat(getFormat())
 	if format != output.FormatTable {
+		s.Stop()
 		return output.Print(format, results, nil, nil)
 	}
 
@@ -277,9 +279,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 			rows = append(rows, []any{i + 1, r.ImageURL, r.Seed})
 		}
 
-		// Manually stop the spinner to ensure clean output of results.
 		s.Stop()
-
 		return output.Print(format, results, headers, rows)
 	}
 
@@ -309,9 +309,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		rows = append(rows, []any{i + 1, destPath, r.Seed})
 	}
 
-	// Manually stop the spinner to ensure clean output of results.
 	s.Stop()
-
 	return output.Print(format, results, headers, rows)
 }
 
