@@ -21,9 +21,9 @@ var videoInferenceCmd = &cobra.Command{
 	Long: `Generate videos using text-to-video or image-to-video.
 
 Examples:
-  runware videoInference "a timelapse of a sunset over mountains" --model klingai:5@3
-  runware videoInference "a cat playing piano" --model google:3@2 --duration 4
-  runware videoInference "animate this scene" --model klingai:5@3 --source ./photo.png`,
+  runware inference video "a timelapse of a sunset over mountains" --model klingai:5@3
+  runware inference video "a cat playing piano" --model google:3@2 --duration 4
+  runware inference video "animate this scene" --model klingai:5@3 --source ./photo.png`,
 	Args: cobra.ExactArgs(1),
 	RunE: runVideoInference,
 }

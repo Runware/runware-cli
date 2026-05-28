@@ -21,9 +21,9 @@ var audioInferenceCmd = &cobra.Command{
 	Long: `Generate audio using text-to-audio, music generation, or sound effects.
 
 Examples:
-  runware audioInference "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
-  runware audioInference "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
-  runware audioInference "upbeat electronic music" --model elevenlabs:1@1 --duration 120 --sample-rate 48000`,
+  runware inference audio "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
+  runware inference audio "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
+  runware inference audio "upbeat electronic music" --model elevenlabs:1@1 --duration 120 --sample-rate 48000`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAudioInference,
 }

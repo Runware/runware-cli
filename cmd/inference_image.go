@@ -23,9 +23,9 @@ var imageInferenceCmd = &cobra.Command{
 	Long: `Generate images using text-to-image, image-to-image, or inpainting.
 
 Examples:
-  runware imageInference "a cat riding a rocket"
-  runware imageInference "make it cinematic" --source ./input.png --strength 0.7
-  runware imageInference "replace with a dog" --source ./photo.png --mask ./mask.png`,
+  runware inference image "a cat riding a rocket"
+  runware inference image "make it cinematic" --source ./input.png --strength 0.7
+  runware inference image "replace with a dog" --source ./photo.png --mask ./mask.png`,
 	Args: cobra.ExactArgs(1),
 	RunE: runImageInference,
 }
