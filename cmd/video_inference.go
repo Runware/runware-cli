@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -191,20 +190,14 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	}
 
 	// Submit the video generation task
-	var s *spinner.Spinner
-	if output.IsTTY() {
-		s = spinner.New(spinner.CharSets[14], 100*time.Millisecond, spinner.WithWriter(os.Stderr))
-		s.Suffix = " Submitting video generation task..."
-		s.Start()
-	}
+	s := output.NewSpinner(" Submitting video generation task...")
+	s.Start()
+	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-	submitResults, err := client.VideoInference(context.Background(), req)
 
+	submitResults, err := client.VideoInference(context.Background(), req)
 	if err != nil {
-		if s != nil {
-			s.Stop()
-		}
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 			return err
@@ -212,14 +205,12 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	s.Suffix(" Generating video (this may take a few minutes)...")
+
 	// Poll for completion
 	taskUUID := req.TaskUUID
 	if len(submitResults) > 0 && submitResults[0].TaskUUID != "" {
 		taskUUID = submitResults[0].TaskUUID
-	}
-
-	if s != nil {
-		s.Suffix = " Generating video (this may take a few minutes)..."
 	}
 
 	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
@@ -256,10 +247,6 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		time.Sleep(interval)
 	}
 
-	if s != nil {
-		s.Stop()
-	}
-
 	if len(results) == 0 {
 		output.Error("Video generation timed out or returned no results")
 		return fmt.Errorf("no video results after %ds", timeout)
@@ -289,8 +276,14 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 		if includeCost {
 			headers = append(headers, tableHeaderCost)
 		}
+
+		// Manually stop the spinner to ensure clean output of results.
+		s.Stop()
+
 		return output.Print(format, results, headers, rows)
 	}
+
+	s.Suffix(" Downloading video results...")
 
 	// Download videos
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -334,6 +327,9 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	if downloadFailures == len(results) {
 		return fmt.Errorf("all %d video downloads failed", len(results))
 	}
+
+	// Manually stop the spinner to ensure clean output of results.
+	s.Stop()
 
 	if err := output.Print(format, results, headers, rows); err != nil {
 		return err

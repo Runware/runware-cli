@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -244,16 +243,9 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start spinner
-	var s *spinner.Spinner
-	if output.IsTTY() {
-		s = spinner.New(spinner.CharSets[14], 100*time.Millisecond, spinner.WithWriter(os.Stderr))
-		s.Suffix = " Generating image..."
-		s.Start()
-	}
-
-	if s != nil {
-		s.Stop()
-	}
+	s := output.NewSpinner(" Generating image...")
+	s.Start()
+	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 
@@ -284,8 +276,14 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		for i, r := range results {
 			rows = append(rows, []any{i + 1, r.ImageURL, r.Seed})
 		}
+
+		// Manually stop the spinner to ensure clean output of results.
+		s.Stop()
+
 		return output.Print(format, results, headers, rows)
 	}
+
+	s.Suffix(" Downloading image results...")
 
 	// Download images
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -310,6 +308,9 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 		rows = append(rows, []any{i + 1, destPath, r.Seed})
 	}
+
+	// Manually stop the spinner to ensure clean output of results.
+	s.Stop()
 
 	return output.Print(format, results, headers, rows)
 }

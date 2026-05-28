@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -142,19 +141,13 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 	}
 
 	// Submit
-	var s *spinner.Spinner
-	if output.IsTTY() {
-		s = spinner.New(spinner.CharSets[14], 100*time.Millisecond, spinner.WithWriter(os.Stderr))
-		s.Suffix = " Submitting audio generation task..."
-		s.Start()
-	}
+	s := output.NewSpinner(" Submitting audio generation task...")
+	s.Start()
+	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 	_, err := client.AudioInference(context.Background(), req)
 	if err != nil {
-		if s != nil {
-			s.Stop()
-		}
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 			return err
@@ -162,10 +155,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Poll for completion
-	if s != nil {
-		s.Suffix = " Generating audio..."
-	}
+	s.Suffix(" Generating audio (this may take a few minutes)...")
 
 	taskUUID := req.TaskUUID
 	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
@@ -199,10 +189,6 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		time.Sleep(interval)
 	}
 
-	if s != nil {
-		s.Stop()
-	}
-
 	if len(results) == 0 {
 		output.Error("Audio generation timed out or returned no results")
 		return fmt.Errorf("no audio results after %ds", timeout)
@@ -228,8 +214,14 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 			}
 			rows = append(rows, row)
 		}
+
+		// Manually stop the spinner to ensure clean output of results.
+		s.Stop()
+
 		return output.Print(format, results, headers, rows)
 	}
+
+	s.Suffix(" Downloading audio results...")
 
 	// Download audio files
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -261,6 +253,9 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 		}
 		rows = append(rows, row)
 	}
+
+	// Manually stop the spinner to ensure clean output of results.
+	s.Stop()
 
 	return output.Print(format, results, headers, rows)
 }

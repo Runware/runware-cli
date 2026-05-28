@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -141,20 +138,12 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	}
 
 	// Submit
-	var s *spinner.Spinner
-	if output.IsTTY() {
-		s = spinner.New(spinner.CharSets[14], 100*time.Millisecond, spinner.WithWriter(os.Stderr))
-		s.Suffix = " Generating text..."
-		s.Start()
-	}
+	s := output.NewSpinner(" Generating text...")
+	s.Start()
+	defer s.Stop()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
 	results, err := client.TextInference(context.Background(), req)
-
-	if s != nil {
-		s.Stop()
-	}
-
 	if err != nil {
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
@@ -162,6 +151,9 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 		}
 		return err
 	}
+
+	// Manually stop the spinner to ensure clean output of results.
+	s.Stop()
 
 	if len(results) == 0 {
 		output.Error("No results returned")
