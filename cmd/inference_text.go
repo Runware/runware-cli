@@ -42,6 +42,8 @@ Examples:
 	RunE:    runTextInference,
 }
 
+var model string
+
 func init() {
 	f := textInferenceCmd.Flags()
 	f.StringVarP(&textFlags.model, "model", "m", "", "Model identifier (e.g. runware:qwen3-thinking@1)")
@@ -67,7 +69,7 @@ func init() {
 
 func preRunTextInference(cmd *cobra.Command, _ []string) error {
 	// Resolve model from preset or flag for early validation
-	model := config.Get().Defaults.Model
+	model = config.Get().Defaults.Model
 	if textFlags.preset != "" {
 		if preset := config.GetPreset(textFlags.preset); preset != nil && preset.Model != "" {
 			model = preset.Model
@@ -93,24 +95,6 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 	}
 
 	message := args[0]
-
-	model := config.Get().Defaults.Model
-
-	// Apply preset if specified
-	if textFlags.preset != "" {
-		preset := config.GetPreset(textFlags.preset)
-		if preset == nil {
-			return fmt.Errorf("preset '%s' not found", textFlags.preset)
-		}
-		if preset.Model != "" {
-			model = preset.Model
-		}
-	}
-
-	// Override with explicit CLI flags
-	if cmd.Flags().Changed("model") {
-		model = textFlags.model
-	}
 
 	// Build request
 	req := &api.TextInferenceRequest{
