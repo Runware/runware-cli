@@ -20,13 +20,13 @@ var authCmd = &cobra.Command{
 	Long:  "Login, logout, check status, and switch environments.",
 }
 
+var authLoginKey string
+
 var authLoginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Authenticate with an API key",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		key, _ := cmd.Flags().GetString("key")
-
-		if key == "" {
+		if authLoginKey == "" {
 			fmt.Fprint(os.Stderr, "Enter your Runware API key: ")
 			if term.IsTerminal(int(os.Stdin.Fd())) {
 				raw, err := term.ReadPassword(int(os.Stdin.Fd()))
@@ -34,22 +34,22 @@ var authLoginCmd = &cobra.Command{
 					return fmt.Errorf("failed to read API key: %w", err)
 				}
 				fmt.Fprintln(os.Stderr)
-				key = string(raw)
+				authLoginKey = string(raw)
 			} else {
 				scanner := bufio.NewScanner(os.Stdin)
 				if scanner.Scan() {
-					key = scanner.Text()
+					authLoginKey = scanner.Text()
 				}
 			}
 		}
 
-		key = strings.TrimSpace(key)
-		if key == "" {
+		authLoginKey = strings.TrimSpace(authLoginKey)
+		if authLoginKey == "" {
 			return fmt.Errorf("API key cannot be empty")
 		}
 
 		// Validate key by pinging the API
-		client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
+		client := api.NewClient(authLoginKey, config.GetBaseURL(), flagVerbose)
 		_, err := client.Ping(context.Background())
 		if err != nil {
 			output.Error("Invalid API key. Authentication failed.")
@@ -57,11 +57,11 @@ var authLoginCmd = &cobra.Command{
 		}
 
 		env := config.GetEnvironment()
-		if err := config.SetAPIKey(env, key); err != nil {
+		if err := config.SetAPIKey(env, authLoginKey); err != nil {
 			return fmt.Errorf("failed to save API key: %w", err)
 		}
 
-		output.Success(fmt.Sprintf("Authenticated successfully (%s) — key: %s", env, config.MaskKey(key)))
+		output.Success(fmt.Sprintf("Authenticated successfully (%s) — key: %s", env, config.MaskKey(authLoginKey)))
 		return nil
 	},
 }
@@ -145,7 +145,7 @@ var authSwitchCmd = &cobra.Command{
 }
 
 func init() {
-	authLoginCmd.Flags().String("key", "", "API key (or provide interactively)")
+	authLoginCmd.Flags().StringVarP(&authLoginKey, "key", "k", "", "API key (or provide interactively)")
 	authCmd.AddCommand(authLoginCmd)
 	authCmd.AddCommand(authLogoutCmd)
 	authCmd.AddCommand(authStatusCmd)

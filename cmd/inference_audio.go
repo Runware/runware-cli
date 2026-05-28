@@ -52,7 +52,7 @@ func init() {
 	f.Float64VarP(&audioFlags.duration, "duration", "d", defaultMinAudioDuration, "Audio duration in seconds (10-300)")
 	f.IntVarP(&audioFlags.count, "count", "n", 1, "Number of audio files to generate (max 3)")
 	f.StringVarP(&audioFlags.outputDir, "output", "o", "", "Output directory")
-	f.StringVarP(&audioFlags.outputFormat, "output-format", "f", "", "Audio format: mp3")
+	f.StringVarP(&audioFlags.outputFormat, "output-format", "f", "", "Format of generated audio: mp3")
 	f.BoolVarP(&audioFlags.noDownload, "no-download", "D", false, "Print audio URLs instead of downloading")
 	f.BoolVarP(&audioFlags.includeCost, "include-cost", "c", false, "Include cost info in response")
 	f.IntVarP(&audioFlags.sampleRate, "sample-rate", "r", 0, "Sample rate in Hz (8000-48000)")

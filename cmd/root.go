@@ -37,7 +37,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "", "Output format: table, json, yaml")
+	rootCmd.PersistentFlags().StringVarP(&flagFormat, "format", "F", "", "CLI output format: table, json, yaml")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show request/response details")
 	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "Show full debug output")
 

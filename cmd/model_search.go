@@ -11,6 +11,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var modelSearchFlags struct {
+	category     string
+	architecture string
+	limit        int
+	offset       int
+}
+
 var modelSearchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Search available models",
@@ -27,10 +34,10 @@ Examples:
 
 func init() {
 	f := modelSearchCmd.Flags()
-	f.String("category", "", "Filter by category: checkpoint, lora, etc.")
-	f.String("architecture", "", "Filter by architecture: flux1d, sdxl, sd15, etc.")
-	f.Int("limit", 20, "Maximum number of results")
-	f.Int("offset", 0, "Offset for pagination")
+	f.StringVarP(&modelSearchFlags.category, "category", "C", "", "Filter by category: checkpoint, lora, etc.")
+	f.StringVarP(&modelSearchFlags.architecture, "architecture", "a", "", "Filter by architecture: flux1d, sdxl, sd15, etc.")
+	f.IntVarP(&modelSearchFlags.limit, "limit", "l", 20, "Maximum number of results")
+	f.IntVarP(&modelSearchFlags.offset, "offset", "O", 0, "Offset for pagination")
 
 	modelSearchCmd.RegisterFlagCompletionFunc("category", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"checkpoint", "lora", "controlnet", "vae", "embedding"}, cobra.ShellCompDirectiveNoFileComp
@@ -54,17 +61,17 @@ func runModelSearch(cmd *cobra.Command, args []string) error {
 		req.Search = args[0]
 	}
 
-	if v, _ := cmd.Flags().GetString("category"); v != "" {
-		req.Category = v
+	if modelSearchFlags.category != "" {
+		req.Category = modelSearchFlags.category
 	}
-	if v, _ := cmd.Flags().GetString("architecture"); v != "" {
-		req.Architecture = v
+	if modelSearchFlags.architecture != "" {
+		req.Architecture = modelSearchFlags.architecture
 	}
-	if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
-		req.Limit = v
+	if modelSearchFlags.limit > 0 {
+		req.Limit = modelSearchFlags.limit
 	}
-	if v, _ := cmd.Flags().GetInt("offset"); v > 0 {
-		req.Offset = v
+	if modelSearchFlags.offset > 0 {
+		req.Offset = modelSearchFlags.offset
 	}
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)

@@ -9,6 +9,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var presetSaveFlags struct {
+	model     string
+	width     int
+	height    int
+	steps     int
+	cfgScale  float64
+	scheduler string
+}
+
 var presetCmd = &cobra.Command{
 	Use:   "preset",
 	Short: "Manage named presets",
@@ -87,23 +96,23 @@ var presetSaveCmd = &cobra.Command{
 		name := args[0]
 
 		preset := config.Preset{}
-		if v, _ := cmd.Flags().GetString("model"); v != "" {
-			preset.Model = v
+		if presetSaveFlags.model != "" {
+			preset.Model = presetSaveFlags.model
 		}
-		if v, _ := cmd.Flags().GetInt("width"); v > 0 {
-			preset.Width = v
+		if presetSaveFlags.width > 0 {
+			preset.Width = presetSaveFlags.width
 		}
-		if v, _ := cmd.Flags().GetInt("height"); v > 0 {
-			preset.Height = v
+		if presetSaveFlags.height > 0 {
+			preset.Height = presetSaveFlags.height
 		}
-		if v, _ := cmd.Flags().GetInt("steps"); v > 0 {
-			preset.Steps = v
+		if presetSaveFlags.steps > 0 {
+			preset.Steps = presetSaveFlags.steps
 		}
-		if v, _ := cmd.Flags().GetFloat64("cfg"); v > 0 {
-			preset.CFGScale = v
+		if presetSaveFlags.cfgScale > 0 {
+			preset.CFGScale = presetSaveFlags.cfgScale
 		}
-		if v, _ := cmd.Flags().GetString("scheduler"); v != "" {
-			preset.Scheduler = v
+		if presetSaveFlags.scheduler != "" {
+			preset.Scheduler = presetSaveFlags.scheduler
 		}
 
 		if err := config.SavePreset(name, preset); err != nil {
@@ -136,12 +145,13 @@ var presetDeleteCmd = &cobra.Command{
 }
 
 func init() {
-	presetSaveCmd.Flags().String("model", "", "Model identifier")
-	presetSaveCmd.Flags().Int("width", 0, "Image width")
-	presetSaveCmd.Flags().Int("height", 0, "Image height")
-	presetSaveCmd.Flags().Int("steps", 0, "Inference steps")
-	presetSaveCmd.Flags().Float64("cfg", 0, "CFG scale")
-	presetSaveCmd.Flags().String("scheduler", "", "Scheduler")
+	f := presetSaveCmd.Flags()
+	f.StringVarP(&presetSaveFlags.model, "model", "m", "", "Model identifier")
+	f.IntVarP(&presetSaveFlags.width, "width", "W", 0, "Image width")
+	f.IntVarP(&presetSaveFlags.height, "height", "H", 0, "Image height")
+	f.IntVarP(&presetSaveFlags.steps, "steps", "s", 0, "Inference steps")
+	f.Float64VarP(&presetSaveFlags.cfgScale, "cfg", "c", 0, "CFG scale")
+	f.StringVarP(&presetSaveFlags.scheduler, "scheduler", "S", "", "Scheduler")
 
 	presetCmd.AddCommand(presetListCmd)
 	presetCmd.AddCommand(presetShowCmd)

@@ -17,6 +17,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var imageFlags struct {
+	model           string
+	width           int
+	height          int
+	steps           int
+	cfgScale        float64
+	scheduler       string
+	seed            int64
+	negative        string
+	count           int
+	outputDir       string
+	outputFormat    string
+	noDownload      bool
+	sourcePath      string
+	strength        float64
+	maskPath        string
+	preset          string
+	dryRun          bool
+	downloadTimeout time.Duration
+}
+
 var imageInferenceCmd = &cobra.Command{
 	Use:   "image [prompt]",
 	Short: "Generate images from text or image input",
@@ -26,30 +47,31 @@ Examples:
   runware inference image "a cat riding a rocket"
   runware inference image "make it cinematic" --source ./input.png --strength 0.7
   runware inference image "replace with a dog" --source ./photo.png --mask ./mask.png`,
-	Args: cobra.ExactArgs(1),
-	RunE: runImageInference,
+	Args:    cobra.ExactArgs(1),
+	PreRunE: preRunImageInference,
+	RunE:    runImageInference,
 }
 
 func init() {
 	f := imageInferenceCmd.Flags()
-	f.String("model", "", "Model identifier")
-	f.Int("width", 0, "Image width")
-	f.Int("height", 0, "Image height")
-	f.Int("steps", 0, "Number of inference steps")
-	f.Float64("cfg", 0, "CFG scale")
-	f.String("scheduler", "", "Scheduler (e.g. euler, dpm++)")
-	f.Int64("seed", 0, "Seed for reproducibility")
-	f.String("negative", "", "Negative prompt")
-	f.Int("count", 1, "Number of images to generate")
-	f.String("output", "", "Output directory")
-	f.String("output-format", "", "Image format: png, jpg, webp")
-	f.Bool("no-download", false, "Print image URLs instead of downloading")
-	f.String("source", "", "Source image path for img2img")
-	f.Float64("strength", 0.7, "img2img strength (0.0-1.0)")
-	f.String("mask", "", "Mask image path for inpainting")
-	f.String("preset", "", "Named preset to apply")
-	f.Bool("dry-run", false, "Print the API request without executing")
-	f.Duration("download-timeout", defaultImageDownloadTimeout, "timeout to use when downloading image inference results")
+	f.StringVarP(&imageFlags.model, "model", "m", "", "Model identifier")
+	f.IntVarP(&imageFlags.width, "width", "W", 0, "Image width")
+	f.IntVarP(&imageFlags.height, "height", "H", 0, "Image height")
+	f.IntVarP(&imageFlags.steps, "steps", "s", 0, "Number of inference steps")
+	f.Float64VarP(&imageFlags.cfgScale, "cfg", "c", 0, "CFG scale")
+	f.StringVarP(&imageFlags.scheduler, "scheduler", "S", "", "Scheduler (e.g. euler, dpm++)")
+	f.Int64VarP(&imageFlags.seed, "seed", "e", 0, "Seed for reproducibility")
+	f.StringVarP(&imageFlags.negative, "negative", "N", "", "Negative prompt")
+	f.IntVarP(&imageFlags.count, "count", "n", 1, "Number of images to generate")
+	f.StringVarP(&imageFlags.outputDir, "output", "o", "", "Output directory")
+	f.StringVarP(&imageFlags.outputFormat, "output-format", "f", "", "Format of generated images: png, jpg, webp")
+	f.BoolVarP(&imageFlags.noDownload, "no-download", "D", false, "Print image URLs instead of downloading")
+	f.StringVarP(&imageFlags.sourcePath, "source", "i", "", "Source image path for img2img")
+	f.Float64VarP(&imageFlags.strength, "strength", "k", 0.7, "img2img strength (0.0-1.0)")
+	f.StringVarP(&imageFlags.maskPath, "mask", "M", "", "Mask image path for inpainting")
+	f.StringVarP(&imageFlags.preset, "preset", "p", "", "Named preset to apply")
+	f.BoolVarP(&imageFlags.dryRun, "dry-run", "X", false, "Print the API request without executing")
+	f.DurationVarP(&imageFlags.downloadTimeout, "download-timeout", "T", defaultImageDownloadTimeout, "Timeout for downloading image results")
 
 	imageInferenceCmd.RegisterFlagCompletionFunc("scheduler", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{
@@ -88,9 +110,15 @@ func init() {
 
 // completePresetNames provides dynamic completion for preset names from config.
 func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	// Ensure config is loaded for completion context
 	config.Init() //nolint:errcheck,gosec
 	return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp
+}
+
+func preRunImageInference(cmd *cobra.Command, _ []string) error {
+	if imageFlags.maskPath != "" && imageFlags.sourcePath == "" {
+		return fmt.Errorf("--mask requires --source to be set")
+	}
+	return nil
 }
 
 func runImageInference(cmd *cobra.Command, args []string) error {
@@ -108,7 +136,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	prompt := args[0]
 
-	// Start with config defaults for universal fields
+	// Start with config defaults
 	model := cfg.Defaults.Model
 	width := cfg.Defaults.Width
 	height := cfg.Defaults.Height
@@ -121,11 +149,10 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	var scheduler string
 
 	// Apply preset if specified
-	presetName, _ := cmd.Flags().GetString("preset")
-	if presetName != "" {
-		preset := config.GetPreset(presetName)
+	if imageFlags.preset != "" {
+		preset := config.GetPreset(imageFlags.preset)
 		if preset == nil {
-			return fmt.Errorf("preset '%s' not found", presetName)
+			return fmt.Errorf("preset '%s' not found", imageFlags.preset)
 		}
 		if preset.Model != "" {
 			model = preset.Model
@@ -149,57 +176,41 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Override with explicit CLI flags
 	if cmd.Flags().Changed("model") {
-		model, _ = cmd.Flags().GetString("model")
+		model = imageFlags.model
 	}
 	if cmd.Flags().Changed("width") {
-		width, _ = cmd.Flags().GetInt("width")
+		width = imageFlags.width
 	}
 	if cmd.Flags().Changed("height") {
-		height, _ = cmd.Flags().GetInt("height")
+		height = imageFlags.height
 	}
 	if cmd.Flags().Changed("steps") {
-		steps, _ = cmd.Flags().GetInt("steps")
+		steps = imageFlags.steps
 	}
 	if cmd.Flags().Changed("cfg") {
-		cfgScale, _ = cmd.Flags().GetFloat64("cfg")
+		cfgScale = imageFlags.cfgScale
 	}
 	if cmd.Flags().Changed("scheduler") {
-		scheduler, _ = cmd.Flags().GetString("scheduler")
+		scheduler = imageFlags.scheduler
 	}
 	if cmd.Flags().Changed("output") {
-		outputDir, _ = cmd.Flags().GetString("output")
+		outputDir = imageFlags.outputDir
 	}
 	if cmd.Flags().Changed("output-format") {
-		outputFormat, _ = cmd.Flags().GetString("output-format")
+		outputFormat = imageFlags.outputFormat
 	}
 
-	count, _ := cmd.Flags().GetInt("count")
-	seed, _ := cmd.Flags().GetInt64("seed")
-	negative, _ := cmd.Flags().GetString("negative")
-	noDownload, _ := cmd.Flags().GetBool("no-download")
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	sourcePath, _ := cmd.Flags().GetString("source")
-	strength, _ := cmd.Flags().GetFloat64("strength")
-	maskPath, _ := cmd.Flags().GetString("mask")
-	downloadTimeout, _ := cmd.Flags().GetDuration("download-timeout")
-
-	// Validation
-	if maskPath != "" && sourcePath == "" {
-		return fmt.Errorf("--mask requires --source to be set")
-	}
-
-	// Build request — universal fields always included
+	// Build request
 	req := &api.ImageInferenceRequest{
 		TaskUUID:       api.NewUUID(),
 		PositivePrompt: prompt,
 		Model:          model,
 		Width:          width,
 		Height:         height,
-		NumberResults:  count,
+		NumberResults:  imageFlags.count,
 		OutputFormat:   api.OutputFormat(outputFormat),
 	}
 
-	// Model-specific fields — only included when explicitly set
 	if steps > 0 {
 		req.Steps = steps
 	}
@@ -209,34 +220,34 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	if scheduler != "" {
 		req.Scheduler = scheduler
 	}
-	if negative != "" {
-		req.NegativePrompt = negative
+	if imageFlags.negative != "" {
+		req.NegativePrompt = imageFlags.negative
 	}
 	if cmd.Flags().Changed("seed") {
-		req.Seed = seed
+		req.Seed = imageFlags.seed
 	}
 
 	// Handle source image (img2img)
-	if sourcePath != "" {
-		encoded, err := encodeImageFile(sourcePath)
+	if imageFlags.sourcePath != "" {
+		encoded, err := encodeImageFile(imageFlags.sourcePath)
 		if err != nil {
 			return fmt.Errorf("failed to read source image: %w", err)
 		}
 		req.InputImage = encoded
-		req.Strength = strength
+		req.Strength = imageFlags.strength
 	}
 
 	// Handle mask image (inpainting)
-	if maskPath != "" {
-		encoded, err := encodeImageFile(maskPath)
+	if imageFlags.maskPath != "" {
+		encoded, err := encodeImageFile(imageFlags.maskPath)
 		if err != nil {
 			return fmt.Errorf("failed to read mask image: %w", err)
 		}
 		req.MaskImage = encoded
 	}
 
-	// Dry run — print request and exit
-	if dryRun {
+	// Dry run
+	if imageFlags.dryRun {
 		data, _ := json.MarshalIndent([]any{req}, "", "  ")
 		fmt.Println(string(data))
 		return nil
@@ -247,7 +258,6 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	s.Start()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
-
 	results, err := client.ImageInference(ctx, req)
 	if err != nil {
 		s.Stop()
@@ -271,14 +281,13 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		return output.Print(format, results, nil, nil)
 	}
 
-	// Table output — download or print URLs
-	if noDownload {
+	// Table output — no-download: print URLs
+	if imageFlags.noDownload {
 		headers := []any{tableHeaderNum, tableHeaderURL, tableHeaderSeed}
 		var rows [][]any
 		for i, r := range results {
 			rows = append(rows, []any{i + 1, r.ImageURL, r.Seed})
 		}
-
 		s.Stop()
 		return output.Print(format, results, headers, rows)
 	}
@@ -301,7 +310,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		filename := fmt.Sprintf("runware_%s_%d.%s", time.Now().Format("20060102_150405"), i+1, ext)
 		destPath := filepath.Join(outputDir, filename)
 
-		if err := rhttp.Download(ctx, r.ImageURL, destPath, downloadTimeout); err != nil {
+		if err := rhttp.Download(ctx, r.ImageURL, destPath, imageFlags.downloadTimeout); err != nil {
 			output.Error(fmt.Sprintf("Failed to download image %d: %s", i+1, err))
 			continue
 		}
