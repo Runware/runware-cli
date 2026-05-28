@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -244,21 +243,14 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start spinner
-	var s *spinner.Spinner
-	if output.IsTTY() {
-		s = spinner.New(spinner.CharSets[14], 100*time.Millisecond, spinner.WithWriter(os.Stderr))
-		s.Suffix = " Generating image..."
-		s.Start()
-	}
+	s := output.NewSpinner(" Generating image...")
+	s.Start()
 
 	client := api.NewClient(key, config.GetBaseURL(), flagVerbose)
+
 	results, err := client.ImageInference(ctx, req)
-
-	if s != nil {
-		s.Stop()
-	}
-
 	if err != nil {
+		s.Stop()
 		if api.IsAuthError(err) {
 			output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 			return err
@@ -267,6 +259,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(results) == 0 {
+		s.Stop()
 		output.Error("No images returned")
 		return fmt.Errorf("empty result")
 	}
@@ -274,6 +267,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 	// JSON/YAML output
 	format := output.ParseFormat(getFormat())
 	if format != output.FormatTable {
+		s.Stop()
 		return output.Print(format, results, nil, nil)
 	}
 
@@ -284,8 +278,12 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		for i, r := range results {
 			rows = append(rows, []any{i + 1, r.ImageURL, r.Seed})
 		}
+
+		s.Stop()
 		return output.Print(format, results, headers, rows)
 	}
+
+	s.Suffix(" Downloading image results...")
 
 	// Download images
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -311,6 +309,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 		rows = append(rows, []any{i + 1, destPath, r.Seed})
 	}
 
+	s.Stop()
 	return output.Print(format, results, headers, rows)
 }
 

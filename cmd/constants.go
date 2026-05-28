@@ -14,6 +14,14 @@ const (
 )
 
 const (
+	// Poll intervals.
+	defaultPollInterval = 5 * time.Second
+
+	// Generation timeouts.
+	defaultAudioGenerationTimeout = 5 * time.Minute
+	defaultVideoGenerationTimeout = 10 * time.Minute
+
+	// Download timeouts.
 	defaultImageDownloadTimeout = 1 * time.Minute
 	defaultAudioDownloadTimeout = 5 * time.Minute
 	defaultVideoDownloadTimeout = 10 * time.Minute
