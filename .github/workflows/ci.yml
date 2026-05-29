@@ -33,3 +33,9 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12
+
+      - name: Lint (internal)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          args: --build-tags=internal

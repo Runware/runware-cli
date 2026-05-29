@@ -26,6 +26,7 @@ var configShowCmd = &cobra.Command{
 		if display.APIKey != "" {
 			display.APIKey = config.MaskKey(display.APIKey)
 		}
+		sanitizeConfigForDisplay(&display)
 
 		if format != output.FormatTable {
 			return output.Print(format, display, nil, nil)
