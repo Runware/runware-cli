@@ -36,7 +36,6 @@ func TestSaveAndLoad(t *testing.T) {
 	cfg := &Config{
 		Environment: "production",
 		APIKey:      "test-key-12345678",
-		Mode:        "internal",
 		Defaults: Defaults{
 			Model:        "test-model",
 			Width:        512,
@@ -94,7 +93,6 @@ func TestPresetOperations(t *testing.T) {
 	// Start with empty config
 	cfg := &Config{
 		Environment: "production",
-		Mode:        "public",
 		Defaults: Defaults{
 			Model:  DefaultModel,
 			Width:  DefaultWidth,

@@ -39,7 +39,6 @@ var configShowCmd = &cobra.Command{
 			[][]any{
 				{"Environment", display.Environment},
 				{"API Key", display.APIKey},
-				{"Mode", display.Mode},
 				{"Default Model", display.Defaults.Model},
 				{"Default Width", display.Defaults.Width},
 				{"Default Height", display.Defaults.Height},
@@ -62,7 +61,6 @@ var configSetCmd = &cobra.Command{
 		if len(args) == 0 {
 			return []string{
 				"environment",
-				"mode",
 				"defaults.model",
 				"defaults.width",
 				"defaults.height",
@@ -98,7 +96,6 @@ var configResetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := &config.Config{
 			Environment: config.DefaultEnv,
-			Mode:        config.DefaultMode,
 			Defaults: config.Defaults{
 				Model:        config.DefaultModel,
 				Width:        config.DefaultWidth,
