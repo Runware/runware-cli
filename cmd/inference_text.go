@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -98,7 +99,7 @@ func runTextInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.TextInferenceRequest{
-		TaskUUID: api.NewUUID(),
+		TaskUUID: uuid.New(),
 		Model:    resolvedTextModel,
 		Messages: []api.Message{
 			{Role: "user", Content: message},

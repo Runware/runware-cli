@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -202,7 +203,7 @@ func runImageInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.ImageInferenceRequest{
-		TaskUUID:       api.NewUUID(),
+		TaskUUID:       uuid.New(),
 		PositivePrompt: prompt,
 		Model:          model,
 		Width:          width,
