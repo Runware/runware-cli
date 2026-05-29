@@ -26,9 +26,6 @@ var configShowCmd = &cobra.Command{
 		if display.APIKey != "" {
 			display.APIKey = config.MaskKey(display.APIKey)
 		}
-		if display.StagingKey != "" {
-			display.StagingKey = config.MaskKey(display.StagingKey)
-		}
 
 		if format != output.FormatTable {
 			return output.Print(format, display, nil, nil)
@@ -37,7 +34,6 @@ var configShowCmd = &cobra.Command{
 		return output.Print(format, display,
 			[]any{"Setting", "Value"},
 			[][]any{
-				{"Environment", display.Environment},
 				{"API Key", display.APIKey},
 				{"Default Model", display.Defaults.Model},
 				{"Default Width", display.Defaults.Width},
@@ -60,7 +56,6 @@ var configSetCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
 			return []string{
-				"environment",
 				"defaults.model",
 				"defaults.width",
 				"defaults.height",
@@ -95,7 +90,6 @@ var configResetCmd = &cobra.Command{
 	Short: "Reset configuration to defaults",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := &config.Config{
-			Environment: config.DefaultEnv,
 			Defaults: config.Defaults{
 				Model:        config.DefaultModel,
 				Width:        config.DefaultWidth,

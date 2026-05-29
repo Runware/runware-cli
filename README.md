@@ -123,7 +123,6 @@ runware auth login              # Authenticate with API key
 runware auth login --key <key>  # Non-interactive login
 runware auth logout             # Clear stored credentials
 runware auth status             # Show current auth state
-runware auth switch staging     # Switch to staging environment
 ```
 
 ### Account
@@ -185,12 +184,10 @@ All commands support `--format json` for piping into `jq` or scripts.
 | Variable | Description |
 |----------|-------------|
 | `RUNWARE_API_KEY` | API key (overrides config file) |
-| `RUNWARE_ENV` | Environment: `production` or `staging` |
 
 ### Config file
 
 ```yaml
-environment: production
 api_key: your-api-key
 
 defaults:

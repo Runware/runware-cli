@@ -21,9 +21,6 @@ const (
 	DefaultOutputDir = "./outputs"
 	DefaultOutputFmt = "png"
 	DefaultFormat    = "table"
-	DefaultEnv       = "production"
-
-	maskedKey = "****"
 )
 
 // Defaults holds default values for inference commands.
@@ -51,11 +48,9 @@ type Preset struct {
 
 // Config is the full configuration structure.
 type Config struct {
-	Environment string            `mapstructure:"environment" yaml:"environment"`
-	APIKey      string            `mapstructure:"api_key" yaml:"api_key,omitempty"`
-	StagingKey  string            `mapstructure:"staging_api_key" yaml:"staging_api_key,omitempty"`
-	Defaults    Defaults          `mapstructure:"defaults" yaml:"defaults"`
-	Presets     map[string]Preset `mapstructure:"presets" yaml:"presets,omitempty"`
+	APIKey   string            `mapstructure:"api_key" yaml:"api_key,omitempty"`
+	Defaults Defaults          `mapstructure:"defaults" yaml:"defaults"`
+	Presets  map[string]Preset `mapstructure:"presets" yaml:"presets,omitempty"`
 }
 
 var configDir string
@@ -69,7 +64,6 @@ func Init() error {
 
 	configDir = filepath.Join(home, ".runware")
 
-	viper.SetDefault("environment", DefaultEnv)
 	viper.SetDefault("defaults.model", DefaultModel)
 	viper.SetDefault("defaults.width", DefaultWidth)
 	viper.SetDefault("defaults.height", DefaultHeight)
@@ -87,7 +81,6 @@ func Init() error {
 	// Environment variable overrides
 	viper.SetEnvPrefix("")
 	viper.BindEnv("api_key", "RUNWARE_API_KEY") //nolint:errcheck,gosec
-	viper.BindEnv("environment", "RUNWARE_ENV") //nolint:errcheck,gosec
 
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
@@ -107,20 +100,9 @@ func Get() *Config {
 	return &cfg
 }
 
-// GetAPIKey returns the API key for the current environment.
+// GetAPIKey returns the API key.
 func GetAPIKey() string {
-	env := GetEnvironment()
-	if env == "staging" {
-		if key := viper.GetString("staging_api_key"); key != "" {
-			return key
-		}
-	}
 	return viper.GetString("api_key")
-}
-
-// GetEnvironment returns the current environment.
-func GetEnvironment() string {
-	return viper.GetString("environment")
 }
 
 // GetBaseURL returns the API base URL.
@@ -164,32 +146,17 @@ func Save(cfg *Config) error {
 	return nil
 }
 
-// SetAPIKey saves an API key for the given environment.
-func SetAPIKey(env, key string) error {
+// SetAPIKey saves the API key.
+func SetAPIKey(key string) error {
 	cfg := Get()
-	if env == "staging" {
-		cfg.StagingKey = key
-	} else {
-		cfg.APIKey = key
-	}
+	cfg.APIKey = key
 	return Save(cfg)
 }
 
-// RemoveAPIKey removes the API key for the given environment.
-func RemoveAPIKey(env string) error {
+// RemoveAPIKey clears the stored API key.
+func RemoveAPIKey() error {
 	cfg := Get()
-	if env == "staging" {
-		cfg.StagingKey = ""
-	} else {
-		cfg.APIKey = ""
-	}
-	return Save(cfg)
-}
-
-// SetEnvironment saves the current environment.
-func SetEnvironment(env string) error {
-	cfg := Get()
-	cfg.Environment = env
+	cfg.APIKey = ""
 	return Save(cfg)
 }
 
@@ -236,10 +203,11 @@ func ListPresets() []string {
 	return names
 }
 
-// MaskKey masks an API key for display, showing first 4 and last 4 characters.
+// MaskKey masks an API key for display, showing the first 16 characters followed by "-•••••".
+// If the key is shorter than 16 characters, only "-•••••" is shown.
 func MaskKey(key string) string {
-	if len(key) <= 8 {
-		return maskedKey
+	if len(key) < 16 {
+		return "-•••••"
 	}
-	return key[:4] + maskedKey + key[len(key)-4:]
+	return key[:16] + "-•••••"
 }
