@@ -16,18 +16,18 @@ builds:
       - -X main.date={{.Date}}
 
 archives:
-  - format: tar.gz
-    name_template: "runware_{{ .Os }}_{{ .Arch }}"
+  - name_template: "runware_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: ["zip"]
 
 checksum:
   name_template: "checksums.txt"
 
 changelog:
+  use: git-cliff
   sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
+      - Merge pull request
+      - Merge branch
