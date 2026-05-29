@@ -3,10 +3,13 @@ package api
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
+var testUUID = uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
+
 const (
-	testUUID         = "test-uuid-1234"
 	jsonKeyModel     = "model"
 	jsonKeyOutputFmt = "outputFormat"
 	jsonKeyPosPrompt = "positivePrompt"
@@ -126,8 +129,8 @@ func TestAPIErrorJSON(t *testing.T) {
 func TestAccountResultJSON(t *testing.T) {
 	jsonData := `{
 		"taskType": "accountManagement",
-		"taskUUID": "test-uuid",
-		"organizationUUID": "org-uuid",
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+		"organizationUUID": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 		"organizationName": "Test Org",
 		"balance": 126.95,
 		"usage": {
@@ -193,7 +196,7 @@ func TestVideoInferenceRequestJSON(t *testing.T) {
 func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
 	req := &VideoInferenceRequest{
 		TaskType:       taskTypeVideoInference,
-		TaskUUID:       "test-uuid",
+		TaskUUID:       testUUID,
 		Model:          "klingai:5@3",
 		PositivePrompt: "animate this",
 		DeliveryMethod: DeliveryMethodAsync,
@@ -228,11 +231,12 @@ func TestVideoInferenceRequestWithFrameImages(t *testing.T) {
 }
 
 func TestVideoInferenceResultJSON(t *testing.T) {
+	vidUUID := uuid.MustParse("c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 	jsonData := `{
 		"taskType": "videoInference",
-		"taskUUID": "abc-123",
-		"videoUUID": "vid-456",
-		"videoURL": "https://cdn.runware.ai/video/vid-456.mp4",
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+		"videoUUID": "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+		"videoURL": "https://cdn.runware.ai/video/c0eebc99.mp4",
 		"seed": 98765,
 		"cost": 0.1234
 	}`
@@ -248,8 +252,8 @@ func TestVideoInferenceResultJSON(t *testing.T) {
 	if result.VideoURL == "" {
 		t.Error("videoURL is empty")
 	}
-	if result.VideoUUID != "vid-456" {
-		t.Errorf("videoUUID = %q, want %q", result.VideoUUID, "vid-456")
+	if result.VideoUUID != vidUUID {
+		t.Errorf("videoUUID = %q, want %q", result.VideoUUID, vidUUID)
 	}
 	if result.Seed != 98765 {
 		t.Errorf("seed = %d, want %d", result.Seed, 98765)
@@ -260,11 +264,12 @@ func TestVideoInferenceResultJSON(t *testing.T) {
 }
 
 func TestVideoInferenceResultWithMediaFields(t *testing.T) {
+	mediaUUID := uuid.MustParse("d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 	jsonData := `{
 		"taskType": "videoInference",
-		"taskUUID": "abc-123",
-		"mediaUUID": "media-789",
-		"mediaURL": "https://cdn.runware.ai/media/media-789.mp4"
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+		"mediaUUID": "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+		"mediaURL": "https://cdn.runware.ai/media/d0eebc99.mp4"
 	}`
 
 	var result VideoInferenceResult
@@ -275,8 +280,8 @@ func TestVideoInferenceResultWithMediaFields(t *testing.T) {
 	if result.MediaURL == "" {
 		t.Error("mediaURL is empty")
 	}
-	if result.MediaUUID != "media-789" {
-		t.Errorf("mediaUUID = %q, want %q", result.MediaUUID, "media-789")
+	if result.MediaUUID != mediaUUID {
+		t.Errorf("mediaUUID = %q, want %q", result.MediaUUID, mediaUUID)
 	}
 	// videoURL should be empty when media fields are used
 	if result.VideoURL != "" {
@@ -285,9 +290,10 @@ func TestVideoInferenceResultWithMediaFields(t *testing.T) {
 }
 
 func TestGetResponseRequestJSON(t *testing.T) {
+	pollID := uuid.MustParse("e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 	req := &GetResponseRequest{
 		TaskType: taskTypeGetResponse,
-		TaskUUID: "poll-uuid-123",
+		TaskUUID: pollID,
 	}
 
 	data, err := json.Marshal(req)
@@ -303,8 +309,8 @@ func TestGetResponseRequestJSON(t *testing.T) {
 	if parsed[jsonKeyTaskType] != "getResponse" {
 		t.Errorf("taskType = %q, want %q", parsed[jsonKeyTaskType], "getResponse")
 	}
-	if parsed[jsonKeyTaskUUID] != "poll-uuid-123" {
-		t.Errorf("taskUUID = %q, want %q", parsed[jsonKeyTaskUUID], "poll-uuid-123")
+	if parsed[jsonKeyTaskUUID] != pollID.String() {
+		t.Errorf("taskUUID = %q, want %q", parsed[jsonKeyTaskUUID], pollID.String())
 	}
 }
 
@@ -416,7 +422,7 @@ func TestAudioInferenceRequestJSON(t *testing.T) {
 func TestAudioInferenceRequestWithSettings(t *testing.T) {
 	req := &AudioInferenceRequest{
 		TaskType:       taskTypeAudioInference,
-		TaskUUID:       "test-uuid",
+		TaskUUID:       testUUID,
 		Model:          "elevenlabs:1@1",
 		PositivePrompt: "ocean waves",
 		Duration:       60,
@@ -450,11 +456,12 @@ func TestAudioInferenceRequestWithSettings(t *testing.T) {
 }
 
 func TestAudioInferenceResultJSON(t *testing.T) {
+	audUUID := uuid.MustParse("f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 	jsonData := `{
 		"taskType": "audioInference",
-		"taskUUID": "abc-123",
-		"audioUUID": "aud-456",
-		"audioURL": "https://am.runware.ai/audio/ws/0.5/ai/abc-123.mp3",
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+		"audioUUID": "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+		"audioURL": "https://am.runware.ai/audio/ws/0.5/ai/f0eebc99.mp3",
 		"cost": 0.045
 	}`
 
@@ -466,8 +473,8 @@ func TestAudioInferenceResultJSON(t *testing.T) {
 	if result.TaskType != taskTypeAudioInference {
 		t.Errorf("taskType = %q, want %q", result.TaskType, taskTypeAudioInference)
 	}
-	if result.AudioUUID != "aud-456" {
-		t.Errorf("audioUUID = %q, want %q", result.AudioUUID, "aud-456")
+	if result.AudioUUID != audUUID {
+		t.Errorf("audioUUID = %q, want %q", result.AudioUUID, audUUID)
 	}
 	if result.AudioURL == "" {
 		t.Error("audioURL is empty")
@@ -480,7 +487,7 @@ func TestAudioInferenceResultJSON(t *testing.T) {
 func TestAudioInferenceResultProcessing(t *testing.T) {
 	jsonData := `{
 		"taskType": "audioInference",
-		"taskUUID": "abc-123",
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 		"status": "processing"
 	}`
 
@@ -500,7 +507,7 @@ func TestAudioInferenceResultProcessing(t *testing.T) {
 func TestModelSearchRequestJSON(t *testing.T) {
 	req := &ModelSearchRequest{
 		TaskType:     taskTypeModelSearch,
-		TaskUUID:     "test-uuid-1234",
+		TaskUUID:     testUUID,
 		Search:       "flux",
 		Category:     "checkpoint",
 		Architecture: "flux1d",
@@ -529,7 +536,7 @@ func TestModelSearchRequestJSON(t *testing.T) {
 func TestModelSearchRequestOmitempty(t *testing.T) {
 	req := &ModelSearchRequest{
 		TaskType: taskTypeModelSearch,
-		TaskUUID: "test-uuid",
+		TaskUUID: testUUID,
 	}
 
 	data, err := json.Marshal(req)
@@ -553,7 +560,7 @@ func TestModelSearchRequestOmitempty(t *testing.T) {
 func TestModelSearchResponseJSON(t *testing.T) {
 	jsonData := `{
 		"taskType": "modelSearch",
-		"taskUUID": "abc-123",
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 		"totalResults": 42,
 		"results": [
 			{
@@ -641,7 +648,7 @@ func TestModelSearchResponseJSON(t *testing.T) {
 func TestModelSearchResponseEmpty(t *testing.T) {
 	jsonData := `{
 		"taskType": "modelSearch",
-		"taskUUID": "abc-123",
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 		"totalResults": 0,
 		"results": []
 	}`
@@ -662,7 +669,7 @@ func TestModelSearchResponseEmpty(t *testing.T) {
 func TestTextInferenceRequestJSON(t *testing.T) {
 	req := &TextInferenceRequest{
 		TaskType: taskTypeTextInference,
-		TaskUUID: "test-uuid-1234",
+		TaskUUID: testUUID,
 		Model:    "runware:qwen3-thinking@1",
 		Messages: []Message{
 			{Role: "user", Content: "What is Go?"},
@@ -715,7 +722,7 @@ func TestTextInferenceRequestJSON(t *testing.T) {
 func TestTextInferenceResultJSON(t *testing.T) {
 	jsonData := `{
 		"taskType": "textInference",
-		"taskUUID": "abc-123",
+		"taskUUID": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
 		"text": "Go is a programming language designed at Google.",
 		"finishReason": "stop",
 		"usage": {
@@ -745,20 +752,5 @@ func TestTextInferenceResultJSON(t *testing.T) {
 	}
 	if result.Cost != 0.000123 {
 		t.Errorf("cost = %f, want %f", result.Cost, 0.000123)
-	}
-}
-
-func TestNewUUID(t *testing.T) {
-	id1 := NewUUID()
-	id2 := NewUUID()
-
-	if id1 == "" {
-		t.Error("NewUUID() returned empty string")
-	}
-	if id1 == id2 {
-		t.Error("NewUUID() returned same value twice")
-	}
-	if len(id1) != 36 {
-		t.Errorf("UUID length = %d, want 36", len(id1))
 	}
 }

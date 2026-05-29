@@ -1,6 +1,10 @@
 package api
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/google/uuid"
+)
 
 // APIResponse is the top-level response from the Runware API.
 type APIResponse struct {
@@ -11,7 +15,7 @@ type APIResponse struct {
 // ImageInferenceRequest contains fields for the imageInference task type.
 type ImageInferenceRequest struct {
 	TaskType       TaskType     `json:"taskType"`
-	TaskUUID       string       `json:"taskUUID"`
+	TaskUUID       uuid.UUID    `json:"taskUUID"`
 	PositivePrompt string       `json:"positivePrompt"`
 	NegativePrompt string       `json:"negativePrompt,omitempty"`
 	Model          string       `json:"model"`
@@ -30,11 +34,11 @@ type ImageInferenceRequest struct {
 
 // ImageInferenceResult is a single image result from the API.
 type ImageInferenceResult struct {
-	TaskType  TaskType `json:"taskType"`
-	TaskUUID  string   `json:"taskUUID"`
-	ImageUUID string   `json:"imageUUID"`
-	ImageURL  string   `json:"imageURL"`
-	Seed      int64    `json:"seed"`
+	TaskType  TaskType  `json:"taskType"`
+	TaskUUID  uuid.UUID `json:"taskUUID"`
+	ImageUUID uuid.UUID `json:"imageUUID"`
+	ImageURL  string    `json:"imageURL"`
+	Seed      int64     `json:"seed"`
 }
 
 // PingResult is the response from a ping task.
@@ -46,8 +50,8 @@ type PingResult struct {
 // AccountResult is the response from accountManagement getDetails.
 type AccountResult struct {
 	TaskType         TaskType     `json:"taskType"`
-	TaskUUID         string       `json:"taskUUID"`
-	OrganizationUUID string       `json:"organizationUUID"`
+	TaskUUID         uuid.UUID    `json:"taskUUID"`
+	OrganizationUUID uuid.UUID    `json:"organizationUUID"`
 	OrganizationName string       `json:"organizationName"`
 	Balance          float64      `json:"balance"`
 	Usage            AccountUsage `json:"usage"`
@@ -68,7 +72,7 @@ type UsagePeriod struct {
 // VideoInferenceRequest contains fields for the videoInference task type.
 type VideoInferenceRequest struct {
 	TaskType       TaskType       `json:"taskType"`
-	TaskUUID       string         `json:"taskUUID"`
+	TaskUUID       uuid.UUID      `json:"taskUUID"`
 	Model          string         `json:"model"`
 	PositivePrompt string         `json:"positivePrompt,omitempty"`
 	NegativePrompt string         `json:"negativePrompt,omitempty"`
@@ -93,27 +97,27 @@ type FrameImage struct {
 
 // VideoInferenceResult is a single video result from the API.
 type VideoInferenceResult struct {
-	TaskType  TaskType `json:"taskType"`
-	TaskUUID  string   `json:"taskUUID"`
-	Status    string   `json:"status,omitempty"`
-	VideoUUID string   `json:"videoUUID,omitempty"`
-	VideoURL  string   `json:"videoURL,omitempty"`
-	MediaUUID string   `json:"mediaUUID,omitempty"`
-	MediaURL  string   `json:"mediaURL,omitempty"`
-	Seed      int64    `json:"seed,omitempty"`
-	Cost      float64  `json:"cost,omitempty"`
+	TaskType  TaskType  `json:"taskType"`
+	TaskUUID  uuid.UUID `json:"taskUUID"`
+	Status    string    `json:"status,omitempty"`
+	VideoUUID uuid.UUID `json:"videoUUID"`
+	VideoURL  string    `json:"videoURL,omitempty"`
+	MediaUUID uuid.UUID `json:"mediaUUID"`
+	MediaURL  string    `json:"mediaURL,omitempty"`
+	Seed      int64     `json:"seed,omitempty"`
+	Cost      float64   `json:"cost,omitempty"`
 }
 
 // GetResponseRequest is used to poll for async task results.
 type GetResponseRequest struct {
-	TaskType TaskType `json:"taskType"`
-	TaskUUID string   `json:"taskUUID"`
+	TaskType TaskType  `json:"taskType"`
+	TaskUUID uuid.UUID `json:"taskUUID"`
 }
 
 // AudioInferenceRequest contains fields for the audioInference task type.
 type AudioInferenceRequest struct {
 	TaskType       TaskType       `json:"taskType"`
-	TaskUUID       string         `json:"taskUUID"`
+	TaskUUID       uuid.UUID      `json:"taskUUID"`
 	Model          string         `json:"model"`
 	PositivePrompt string         `json:"positivePrompt,omitempty"`
 	Duration       float64        `json:"duration"`
@@ -132,12 +136,12 @@ type AudioSettings struct {
 
 // AudioInferenceResult is a single audio result from the API.
 type AudioInferenceResult struct {
-	TaskType  TaskType `json:"taskType"`
-	TaskUUID  string   `json:"taskUUID"`
-	Status    string   `json:"status,omitempty"`
-	AudioUUID string   `json:"audioUUID,omitempty"`
-	AudioURL  string   `json:"audioURL,omitempty"`
-	Cost      float64  `json:"cost,omitempty"`
+	TaskType  TaskType  `json:"taskType"`
+	TaskUUID  uuid.UUID `json:"taskUUID"`
+	Status    string    `json:"status,omitempty"`
+	AudioUUID uuid.UUID `json:"audioUUID"`
+	AudioURL  string    `json:"audioURL,omitempty"`
+	Cost      float64   `json:"cost,omitempty"`
 }
 
 // Message represents a single message in a text inference conversation.
@@ -149,7 +153,7 @@ type Message struct {
 // TextInferenceRequest contains fields for the textInference task type.
 type TextInferenceRequest struct {
 	TaskType      TaskType     `json:"taskType"`
-	TaskUUID      string       `json:"taskUUID"`
+	TaskUUID      uuid.UUID    `json:"taskUUID"`
 	Model         string       `json:"model"`
 	Messages      []Message    `json:"messages"`
 	MaxTokens     int          `json:"maxTokens,omitempty"`
@@ -174,7 +178,7 @@ type TextInferenceUsage struct {
 // TextInferenceResult is a single text result from the API.
 type TextInferenceResult struct {
 	TaskType     TaskType           `json:"taskType"`
-	TaskUUID     string             `json:"taskUUID"`
+	TaskUUID     uuid.UUID          `json:"taskUUID"`
 	Text         string             `json:"text"`
 	FinishReason string             `json:"finishReason,omitempty"`
 	Usage        TextInferenceUsage `json:"usage"`
@@ -183,19 +187,19 @@ type TextInferenceResult struct {
 
 // ModelSearchRequest contains fields for the modelSearch task type.
 type ModelSearchRequest struct {
-	TaskType     TaskType `json:"taskType"`
-	TaskUUID     string   `json:"taskUUID"`
-	Search       string   `json:"search,omitempty"`
-	Category     string   `json:"category,omitempty"`
-	Architecture string   `json:"architecture,omitempty"`
-	Limit        int      `json:"limit,omitempty"`
-	Offset       int      `json:"offset,omitempty"`
+	TaskType     TaskType  `json:"taskType"`
+	TaskUUID     uuid.UUID `json:"taskUUID"`
+	Search       string    `json:"search,omitempty"`
+	Category     string    `json:"category,omitempty"`
+	Architecture string    `json:"architecture,omitempty"`
+	Limit        int       `json:"limit,omitempty"`
+	Offset       int       `json:"offset,omitempty"`
 }
 
 // ModelSearchResponse is the response wrapper from modelSearch.
 type ModelSearchResponse struct {
 	TaskType     TaskType      `json:"taskType"`
-	TaskUUID     string        `json:"taskUUID"`
+	TaskUUID     uuid.UUID     `json:"taskUUID"`
 	Results      []ModelResult `json:"results"`
 	TotalResults int           `json:"totalResults"`
 }
