@@ -12,6 +12,7 @@ import (
 
 const (
 	DefaultBaseURL   = "https://api.runware.ai/v1"
+	MaskedKeySuffix  = "•••••"
 	DefaultModel     = "runware:100@1"
 	DefaultWidth     = 1024
 	DefaultHeight    = 1024
@@ -203,11 +204,11 @@ func ListPresets() []string {
 	return names
 }
 
-// MaskKey masks an API key for display, showing the first 16 characters followed by "-•••••".
-// If the key is shorter than 16 characters, only "-•••••" is shown.
+// MaskKey masks an API key for display, showing the first 16 characters followed by "•••••".
+// If the key is shorter than 16 characters, only "•••••" is shown.
 func MaskKey(key string) string {
 	if len(key) < 16 {
-		return "-•••••"
+		return MaskedKeySuffix
 	}
-	return key[:16] + "-•••••"
+	return key[:16] + "-" + MaskedKeySuffix
 }

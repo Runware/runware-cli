@@ -13,11 +13,11 @@ func TestMaskKey(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"abcdEFGHijklMNOPqrstUVWXyz0123456", "abcdEFGHijklMNOP-•••••"},
-		{"abcdEFGHijklMNOP", "abcdEFGHijklMNOP-•••••"},
-		{"short", "-•••••"},
-		{"123456789012345", "-•••••"},
-		{"", "-•••••"},
+		{"abcdEFGHijklMNOPqrstUVWXyz0123456", "abcdEFGHijklMNOP-" + MaskedKeySuffix},
+		{"abcdEFGHijklMNOP", "abcdEFGHijklMNOP-" + MaskedKeySuffix},
+		{"short", MaskedKeySuffix},
+		{"123456789012345", MaskedKeySuffix},
+		{"", MaskedKeySuffix},
 	}
 
 	for _, tt := range tests {
