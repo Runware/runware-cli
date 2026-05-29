@@ -22,7 +22,6 @@ const (
 	DefaultOutputFmt = "png"
 	DefaultFormat    = "table"
 	DefaultEnv       = "production"
-	DefaultMode      = "public"
 
 	maskedKey = "****"
 )
@@ -55,7 +54,6 @@ type Config struct {
 	Environment string            `mapstructure:"environment" yaml:"environment"`
 	APIKey      string            `mapstructure:"api_key" yaml:"api_key,omitempty"`
 	StagingKey  string            `mapstructure:"staging_api_key" yaml:"staging_api_key,omitempty"`
-	Mode        string            `mapstructure:"mode" yaml:"mode"`
 	Defaults    Defaults          `mapstructure:"defaults" yaml:"defaults"`
 	Presets     map[string]Preset `mapstructure:"presets" yaml:"presets,omitempty"`
 }
@@ -72,7 +70,6 @@ func Init() error {
 	configDir = filepath.Join(home, ".runware")
 
 	viper.SetDefault("environment", DefaultEnv)
-	viper.SetDefault("mode", DefaultMode)
 	viper.SetDefault("defaults.model", DefaultModel)
 	viper.SetDefault("defaults.width", DefaultWidth)
 	viper.SetDefault("defaults.height", DefaultHeight)
@@ -129,16 +126,6 @@ func GetEnvironment() string {
 // GetBaseURL returns the API base URL.
 func GetBaseURL() string {
 	return DefaultBaseURL
-}
-
-// GetMode returns the current mode (internal/public).
-func GetMode() string {
-	return viper.GetString("mode")
-}
-
-// IsInternal returns true if running in internal mode.
-func IsInternal() bool {
-	return GetMode() == "internal"
 }
 
 // ConfigDir returns the config directory path.

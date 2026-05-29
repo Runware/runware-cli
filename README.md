@@ -192,7 +192,6 @@ All commands support `--format json` for piping into `jq` or scripts.
 ```yaml
 environment: production
 api_key: your-api-key
-mode: public              # public | internal
 
 defaults:
   model: runware:100@1

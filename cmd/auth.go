@@ -85,7 +85,6 @@ var authStatusCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		env := config.GetEnvironment()
 		key := config.GetAPIKey()
-		mode := config.GetMode()
 
 		status := "not configured"
 		maskedKey := "none"
@@ -107,7 +106,6 @@ var authStatusCmd = &cobra.Command{
 			"environment": env,
 			"api_key":     maskedKey,
 			"status":      status,
-			"mode":        mode,
 		}
 
 		return output.Print(format, data,
@@ -116,7 +114,6 @@ var authStatusCmd = &cobra.Command{
 				{"Environment", env},
 				{"API Key", maskedKey},
 				{"Status", status},
-				{"Mode", mode},
 			},
 		)
 	},
