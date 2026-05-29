@@ -35,18 +35,16 @@ var pingCmd = &cobra.Command{
 		}
 
 		elapsed := time.Since(start)
-		env := config.GetEnvironment()
 		latencyMs := elapsed.Milliseconds()
 
 		format := output.ParseFormat(getFormat())
 		data := map[string]any{
-			"status":      "ok",
-			"latency_ms":  latencyMs,
-			"environment": env,
+			"status":     "ok",
+			"latency_ms": latencyMs,
 		}
 
 		if format == output.FormatTable {
-			output.Success(fmt.Sprintf("Runware API: OK (%dms) — environment: %s", latencyMs, env))
+			output.Success(fmt.Sprintf("Runware API: OK (%dms)", latencyMs))
 			return nil
 		}
 

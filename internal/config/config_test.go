@@ -13,11 +13,11 @@ func TestMaskKey(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"abcdEFGHijklMNOPqrstUVWXyz0123456", "abcd****3456"},
-		{"short", maskedKey},
-		{"12345678", maskedKey},
-		{"123456789", "1234****6789"},
-		{"", maskedKey},
+		{"abcdEFGHijklMNOPqrstUVWXyz0123456", "abcdEFGHijklMNOP-" + MaskedKeySuffix},
+		{"abcdEFGHijklMNOP", "abcdEFGHijklMNOP-" + MaskedKeySuffix},
+		{"short", MaskedKeySuffix},
+		{"123456789012345", MaskedKeySuffix},
+		{"", MaskedKeySuffix},
 	}
 
 	for _, tt := range tests {
@@ -34,8 +34,7 @@ func TestSaveAndLoad(t *testing.T) {
 	configDir = tmpDir
 
 	cfg := &Config{
-		Environment: "production",
-		APIKey:      "test-key-12345678",
+		APIKey: "test-key-12345678",
 		Defaults: Defaults{
 			Model:        "test-model",
 			Width:        512,
@@ -92,7 +91,6 @@ func TestPresetOperations(t *testing.T) {
 
 	// Start with empty config
 	cfg := &Config{
-		Environment: "production",
 		Defaults: Defaults{
 			Model:  DefaultModel,
 			Width:  DefaultWidth,

@@ -17,7 +17,7 @@ import (
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Manage authentication",
-	Long:  "Login, logout, check status, and switch environments.",
+	Long:  "Login, logout, and check authentication status.",
 }
 
 var authLoginKey string
@@ -56,12 +56,11 @@ var authLoginCmd = &cobra.Command{
 			return err
 		}
 
-		env := config.GetEnvironment()
-		if err := config.SetAPIKey(env, authLoginKey); err != nil {
+		if err := config.SetAPIKey(authLoginKey); err != nil {
 			return fmt.Errorf("failed to save API key: %w", err)
 		}
 
-		output.Success(fmt.Sprintf("Authenticated successfully (%s) — key: %s", env, config.MaskKey(authLoginKey)))
+		output.Success("Authenticated successfully")
 		return nil
 	},
 }
@@ -70,20 +69,18 @@ var authLogoutCmd = &cobra.Command{
 	Use:   "logout",
 	Short: "Clear stored credentials",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		env := config.GetEnvironment()
-		if err := config.RemoveAPIKey(env); err != nil {
+		if err := config.RemoveAPIKey(); err != nil {
 			return fmt.Errorf("failed to remove API key: %w", err)
 		}
-		output.Success(fmt.Sprintf("Logged out from %s", env))
+		output.Success("Logged out")
 		return nil
 	},
 }
 
 var authStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show current auth state and environment",
+	Short: "Show current auth state",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		env := config.GetEnvironment()
 		key := config.GetAPIKey()
 
 		status := "not configured"
@@ -103,41 +100,17 @@ var authStatusCmd = &cobra.Command{
 
 		format := output.ParseFormat(getFormat())
 		data := map[string]string{
-			"environment": env,
-			"api_key":     maskedKey,
-			"status":      status,
+			"api_key": maskedKey,
+			"status":  status,
 		}
 
 		return output.Print(format, data,
 			[]any{"Field", "Value"},
 			[][]any{
-				{"Environment", env},
 				{"API Key", maskedKey},
 				{"Status", status},
 			},
 		)
-	},
-}
-
-var authSwitchCmd = &cobra.Command{
-	Use:   "switch [production|staging]",
-	Short: "Switch between environments",
-	Args:  cobra.ExactArgs(1),
-	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"production", "staging"}, cobra.ShellCompDirectiveNoFileComp
-	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		env := strings.ToLower(args[0])
-		if env != "production" && env != "staging" {
-			return fmt.Errorf("environment must be 'production' or 'staging'")
-		}
-
-		if err := config.SetEnvironment(env); err != nil {
-			return fmt.Errorf("failed to switch environment: %w", err)
-		}
-
-		output.Success(fmt.Sprintf("Switched to %s", env))
-		return nil
 	},
 }
 
@@ -146,5 +119,4 @@ func init() {
 	authCmd.AddCommand(authLoginCmd)
 	authCmd.AddCommand(authLogoutCmd)
 	authCmd.AddCommand(authStatusCmd)
-	authCmd.AddCommand(authSwitchCmd)
 }
