@@ -29,3 +29,6 @@ install:
 
 snapshot:
 	goreleaser build --snapshot --clean
+
+docs:
+	go run ./internal/tools/docgen -out ./docs -format markdown

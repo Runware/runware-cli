@@ -12,7 +12,7 @@ import (
 
 var accountCmd = &cobra.Command{
 	Use:   "account",
-	Short: "Account information and credits",
+	Short: "Account information and credits TEST",
 }
 
 var accountCreditsCmd = &cobra.Command{

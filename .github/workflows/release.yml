@@ -23,9 +23,17 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header --output CHANGELOG.md
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean --release-notes=CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
