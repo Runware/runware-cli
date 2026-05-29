@@ -65,6 +65,8 @@ runware account credits
 
 ## Commands
 
+Full command reference is available in the [docs](./docs/runware.md) directory.
+
 ### Image generation
 
 ```bash

@@ -7,7 +7,7 @@ LDFLAGS = -s -w \
 	-X main.commit=$(COMMIT) \
 	-X main.date=$(DATE)
 
-.PHONY: build run test lint clean install snapshot
+.PHONY: build run test lint clean install snapshot docs
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o runware .
@@ -29,3 +29,6 @@ install:
 
 snapshot:
 	goreleaser build --snapshot --clean
+
+docs:
+	go run ./internal/tools/docgen -out ./docs -format markdown

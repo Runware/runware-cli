@@ -71,3 +71,8 @@ func getFormat() string {
 	}
 	return config.Get().Defaults.Format
 }
+
+// Root exposes the root command for tools like doc generators.
+func Root() *cobra.Command {
+	return rootCmd
+}
