@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -119,7 +120,7 @@ func runAudioInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.AudioInferenceRequest{
-		TaskUUID:       api.NewUUID(),
+		TaskUUID:       uuid.New(),
 		Model:          model,
 		PositivePrompt: prompt,
 		Duration:       audioFlags.duration,

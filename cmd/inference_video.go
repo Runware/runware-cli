@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -128,7 +129,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.VideoInferenceRequest{
-		TaskUUID:       api.NewUUID(),
+		TaskUUID:       uuid.New(),
 		Model:          model,
 		PositivePrompt: prompt,
 		DeliveryMethod: api.DeliveryMethodAsync,
@@ -211,9 +212,9 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	s.Suffix(" Generating video (this may take a few minutes)...")
 
 	// Poll for completion
-	taskUUID := req.TaskUUID
-	if len(submitResults) > 0 && submitResults[0].TaskUUID != "" {
-		taskUUID = submitResults[0].TaskUUID
+	taskID := req.TaskUUID
+	if len(submitResults) > 0 && submitResults[0].TaskUUID != uuid.Nil {
+		taskID = submitResults[0].TaskUUID
 	}
 
 	pollCtx, cancel := context.WithTimeout(cmd.Context(), videoFlags.timeout)
@@ -222,7 +223,7 @@ func runVideoInference(cmd *cobra.Command, args []string) error {
 	results, err := api.PollResults(
 		pollCtx,
 		client,
-		taskUUID,
+		taskID,
 		videoFlags.pollInterval,
 		flagVerbose,
 		func(raw json.RawMessage) (api.VideoInferenceResult, bool) {

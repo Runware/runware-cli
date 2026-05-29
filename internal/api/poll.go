@@ -7,16 +7,18 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // PollResults polls for generic results from a task.
-func PollResults[T any](ctx context.Context, client Client, taskUUID string, interval time.Duration, verbose bool, parse func(json.RawMessage) (T, bool)) ([]T, error) {
+func PollResults[T any](ctx context.Context, client Client, taskID uuid.UUID, interval time.Duration, verbose bool, parse func(json.RawMessage) (T, bool)) ([]T, error) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	var results []T
 	for {
-		rawData, err := client.GetResponse(ctx, taskUUID)
+		rawData, err := client.GetResponse(ctx, taskID)
 		if err != nil {
 			var apiErr APIError
 			if IsAuthError(err) || errors.As(err, &apiErr) {

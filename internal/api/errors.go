@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -31,7 +33,7 @@ type APIError struct {
 	RawParameter  json.RawMessage `json:"parameter,omitempty"`
 	Type          string          `json:"type,omitempty"`
 	Documentation string          `json:"documentation,omitempty"`
-	TaskUUID      string          `json:"taskUUID,omitempty"`
+	TaskUUID      uuid.UUID       `json:"taskUUID"`
 	AllowedValues []any           `json:"allowedValues,omitempty"`
 }
 

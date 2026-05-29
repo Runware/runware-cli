@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // mockClient is a test double for Client that only implements GetResponse.
@@ -21,7 +23,7 @@ type mockResponse struct {
 	err  error
 }
 
-func (m *mockClient) GetResponse(_ context.Context, _ string) ([]json.RawMessage, error) {
+func (m *mockClient) GetResponse(_ context.Context, _ uuid.UUID) ([]json.RawMessage, error) {
 	if m.callCount >= len(m.responses) {
 		return nil, nil
 	}
@@ -77,7 +79,7 @@ func TestPollResults_ReturnOnFirstSuccess(t *testing.T) {
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, "uuid", time.Millisecond, false, parseString)
+	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, false, parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,7 +101,7 @@ func TestPollResults_RetriesUntilSuccess(t *testing.T) {
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, "uuid", time.Millisecond, false, parseString)
+	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, false, parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -121,7 +123,7 @@ func TestPollResults_ParseFailureKeepsPolling(t *testing.T) {
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, "uuid", time.Millisecond, false, parseString)
+	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, false, parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -142,7 +144,7 @@ func TestPollResults_TransientErrorKeepsPolling(t *testing.T) {
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, "uuid", time.Millisecond, false, parseString)
+	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, false, parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,7 +161,7 @@ func TestPollResults_AuthErrorFatal(t *testing.T) {
 		},
 	}
 
-	_, err := PollResults(context.Background(), client, "uuid", time.Millisecond, false, parseString)
+	_, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, false, parseString)
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized, got %v", err)
 	}
@@ -177,7 +179,7 @@ func TestPollResults_APIErrorFatal(t *testing.T) {
 		},
 	}
 
-	_, err := PollResults(context.Background(), client, "uuid", time.Millisecond, false, parseString)
+	_, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, false, parseString)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -194,7 +196,7 @@ func TestPollResults_ContextCancelled(t *testing.T) {
 		},
 	}
 
-	_, err := PollResults(ctx, client, "uuid", time.Millisecond, false, parseString)
+	_, err := PollResults(ctx, client, uuid.Nil, time.Millisecond, false, parseString)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected %v, got error: %v", context.Canceled, err)
 	}
@@ -208,7 +210,7 @@ func TestPollResults_ContextTimeout(t *testing.T) {
 	// Never return success — mock returns nil indefinitely.
 	client := &mockClient{}
 
-	_, err := PollResults(ctx, client, "uuid", time.Millisecond, false, parseString)
+	_, err := PollResults(ctx, client, uuid.Nil, time.Millisecond, false, parseString)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected %v, got error: %v", context.DeadlineExceeded, err)
 	}
