@@ -7,10 +7,16 @@ LDFLAGS = -s -w \
 	-X main.commit=$(COMMIT) \
 	-X main.date=$(DATE)
 
-.PHONY: build run test lint clean install snapshot
+.PHONY: build build-internal run test test-internal lint clean install snapshot
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o runware .
+
+# build-internal produces the internal build (build tag: internal), which enables
+# the RUNWARE_BASE_URL / base_url API endpoint override. This binary is for
+# internal use only and must never be published in a public release.
+build-internal:
+	go build -tags internal -ldflags "$(LDFLAGS)" -o runware-internal .
 
 run:
 	go run -ldflags "$(LDFLAGS)" . $(ARGS)
@@ -18,11 +24,14 @@ run:
 test:
 	go test -race ./...
 
+test-internal:
+	go test -tags internal -race ./...
+
 lint:
 	golangci-lint run
 
 clean:
-	rm -f runware
+	rm -f runware runware-internal
 
 install:
 	go install -ldflags "$(LDFLAGS)" .

@@ -56,24 +56,17 @@ var configSetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
-			return []string{
-				"base_url",
-				"defaults.model",
-				"defaults.width",
-				"defaults.height",
-				"defaults.steps",
-				"defaults.cfg_scale",
-				"defaults.scheduler",
-				"defaults.output_dir",
-				"defaults.output_format",
-				"defaults.format",
-			}, cobra.ShellCompDirectiveNoFileComp
+			return settableConfigKeys(), cobra.ShellCompDirectiveNoFileComp
 		}
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := normalizeConfigKey(args[0])
 		value := args[1]
+
+		if !isSettableKey(key) {
+			return fmt.Errorf("unknown config key %q", key)
+		}
 
 		viper.Set(key, value)
 

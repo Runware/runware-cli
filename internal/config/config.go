@@ -82,8 +82,8 @@ func Init() error {
 
 	// Environment variable overrides
 	viper.SetEnvPrefix("")
-	viper.BindEnv("api_key", "RUNWARE_API_KEY")   //nolint:errcheck,gosec
-	viper.BindEnv("base_url", "RUNWARE_BASE_URL") //nolint:errcheck,gosec
+	viper.BindEnv("api_key", "RUNWARE_API_KEY") //nolint:errcheck,gosec
+	bindInternalEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
@@ -106,15 +106,6 @@ func Get() *Config {
 // GetAPIKey returns the API key.
 func GetAPIKey() string {
 	return viper.GetString("api_key")
-}
-
-// GetBaseURL returns the API base URL, honoring the RUNWARE_BASE_URL env var
-// and the base_url config key before falling back to the built-in default.
-func GetBaseURL() string {
-	if url := viper.GetString("base_url"); url != "" {
-		return url
-	}
-	return DefaultBaseURL
 }
 
 // ConfigDir returns the config directory path.

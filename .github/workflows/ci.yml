@@ -21,6 +21,14 @@ jobs:
       - name: Test
         run: go test -race -timeout 2m ./...
 
+      # Compile and test the internal build (build tag: internal) so the tagged
+      # files don't silently break. The steps above already cover the public build.
+      - name: Build (internal)
+        run: go build -tags internal ./...
+
+      - name: Test (internal)
+        run: go test -tags internal -race -timeout 2m ./...
+
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:

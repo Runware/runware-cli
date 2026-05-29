@@ -184,13 +184,11 @@ All commands support `--format json` for piping into `jq` or scripts.
 | Variable | Description |
 |----------|-------------|
 | `RUNWARE_API_KEY` | API key (overrides config file) |
-| `RUNWARE_BASE_URL` | API base URL (overrides config file; default `https://api.runware.ai/v1`) |
 
 ### Config file
 
 ```yaml
 api_key: your-api-key
-base_url: https://api.runware.ai/v1   # optional; overrides the default API endpoint
 
 defaults:
   model: runware:100@1
