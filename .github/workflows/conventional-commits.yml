@@ -8,6 +8,9 @@ jobs:
   commitlint:
     name: Lint commit messages
     runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+      pull-requests: read
     steps:
       - uses: amannn/action-semantic-pull-request@v6
         env:
