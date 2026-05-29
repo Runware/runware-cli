@@ -28,8 +28,6 @@ jobs:
         with:
           config: cliff.toml
           args: --latest --strip header --output CHANGELOG.md
-        env:
-          GITHUB_REPO: ${{ github.repository }}
 
       - uses: goreleaser/goreleaser-action@v6
         with:
