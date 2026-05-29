@@ -6,6 +6,13 @@ Show current auth state
 runware auth status [flags]
 ```
 
+### Examples
+
+```
+  # show current auth state
+  runware auth status
+```
+
 ### Options
 
 ```

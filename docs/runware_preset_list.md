@@ -6,6 +6,13 @@ List all saved presets
 runware preset list [flags]
 ```
 
+### Examples
+
+```
+  # list all saved presets
+  runware preset list
+```
+
 ### Options
 
 ```

@@ -6,6 +6,13 @@ Delete a preset
 runware preset delete [name] [flags]
 ```
 
+### Examples
+
+```
+  # delete a preset
+  runware preset delete portrait
+```
+
 ### Options
 
 ```

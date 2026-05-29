@@ -6,13 +6,21 @@ Generate images from text or image input
 
 Generate images using text-to-image, image-to-image, or inpainting.
 
-Examples:
-  runware inference image "a cat riding a rocket"
-  runware inference image "make it cinematic" --source ./input.png --strength 0.7
-  runware inference image "replace with a dog" --source ./photo.png --mask ./mask.png
-
 ```
 runware inference image [prompt] [flags]
+```
+
+### Examples
+
+```
+  # generate image from text
+  runware inference image "a cat riding a rocket"
+
+  # image-to-image with source
+  runware inference image "make it cinematic" --source ./input.png --strength 0.7
+
+  # inpainting with mask
+  runware inference image "replace with a dog" --source ./photo.png --mask ./mask.png
 ```
 
 ### Options

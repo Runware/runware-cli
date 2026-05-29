@@ -14,6 +14,8 @@ import (
 var pingCmd = &cobra.Command{
 	Use:   "ping",
 	Short: "Check API connectivity",
+	Example: `  # check API connectivity
+  runware ping`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := config.GetAPIKey()
 		if key == "" {

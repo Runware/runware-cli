@@ -2,6 +2,13 @@
 
 Account information and credits
 
+### Examples
+
+```
+  # show current credit balance
+  runware account credits
+```
+
 ### Options
 
 ```

@@ -6,6 +6,13 @@ Print config file path
 runware config path [flags]
 ```
 
+### Examples
+
+```
+  # print config file location
+  runware config path
+```
+
 ### Options
 
 ```

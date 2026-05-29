@@ -6,6 +6,13 @@ Check API connectivity
 runware ping [flags]
 ```
 
+### Examples
+
+```
+  # check API connectivity
+  runware ping
+```
+
 ### Options
 
 ```

@@ -26,6 +26,8 @@ var presetCmd = &cobra.Command{
 var presetListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all saved presets",
+	Example: `  # list all saved presets
+  runware preset list`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Get()
 		format := output.ParseFormat(getFormat())
@@ -59,8 +61,10 @@ var presetListCmd = &cobra.Command{
 }
 
 var presetShowCmd = &cobra.Command{
-	Use:               "show [name]",
-	Short:             "Show preset details",
+	Use:   "show [name]",
+	Short: "Show preset details",
+	Example: `  # show details of a preset
+  runware preset show portrait`,
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completePresetNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -91,7 +95,12 @@ var presetShowCmd = &cobra.Command{
 var presetSaveCmd = &cobra.Command{
 	Use:   "save [name]",
 	Short: "Save a named preset",
-	Args:  cobra.ExactArgs(1),
+	Example: `  # save a preset with model and dimensions
+  runware preset save portrait --model runware:100@1 --width 512 --height 768
+
+  # save a preset with steps and cfg
+  runware preset save fast --model runware:100@1 --steps 20 --cfg 7`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
@@ -125,8 +134,10 @@ var presetSaveCmd = &cobra.Command{
 }
 
 var presetDeleteCmd = &cobra.Command{
-	Use:               "delete [name]",
-	Short:             "Delete a preset",
+	Use:   "delete [name]",
+	Short: "Delete a preset",
+	Example: `  # delete a preset
+  runware preset delete portrait`,
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completePresetNames,
 	RunE: func(cmd *cobra.Command, args []string) error {

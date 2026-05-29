@@ -6,14 +6,24 @@ Generate text using a language model
 
 Send a message to a language model and get a text response.
 
-Examples:
-  runware inference text "What is the capital of France?" --model minimax:m2.7@highspeed
-  runware inference text "Explain quantum computing" --model minimax:m2.7@highspeed --max-tokens 500
-  runware inference text "Write a haiku about coding" --model minimax:m2.7@highspeed --system "You are a poet" --temperature 0.8
-  runware inference text "List 3 facts about Mars" --model minimax:m2.7@highspeed --output-format json
-
 ```
 runware inference text [message] [flags]
+```
+
+### Examples
+
+```
+  # ask a question
+  runware inference text "What is the capital of France?" --model minimax:m2.7@highspeed
+
+  # limit response length
+  runware inference text "Explain quantum computing" --model minimax:m2.7@highspeed --max-tokens 500
+
+  # use system prompt and temperature
+  runware inference text "Write a haiku about coding" --model minimax:m2.7@highspeed --system "You are a poet" --temperature 0.8
+
+  # request JSON output
+  runware inference text "List 3 facts about Mars" --model minimax:m2.7@highspeed --output-format json
 ```
 
 ### Options

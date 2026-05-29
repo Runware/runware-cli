@@ -6,6 +6,13 @@ Clear stored credentials
 runware auth logout [flags]
 ```
 
+### Examples
+
+```
+  # clear stored credentials
+  runware auth logout
+```
+
 ### Options
 
 ```

@@ -6,6 +6,13 @@ Reset configuration to defaults
 runware config reset [flags]
 ```
 
+### Examples
+
+```
+  # reset all config to defaults
+  runware config reset
+```
+
 ### Options
 
 ```

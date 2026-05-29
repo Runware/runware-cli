@@ -6,6 +6,13 @@ Show preset details
 runware preset show [name] [flags]
 ```
 
+### Examples
+
+```
+  # show details of a preset
+  runware preset show portrait
+```
+
 ### Options
 
 ```

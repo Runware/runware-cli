@@ -13,6 +13,8 @@ import (
 var accountCmd = &cobra.Command{
 	Use:   "account",
 	Short: "Account information and credits",
+	Example: `  # show current credit balance
+  runware account credits`,
 }
 
 var accountCreditsCmd = &cobra.Command{

@@ -11,6 +11,8 @@ import (
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
+	Example: `  # print version information
+  runware version`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		format := output.ParseFormat(getFormat())
 

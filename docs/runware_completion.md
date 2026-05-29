@@ -2,16 +2,21 @@
 
 Generate shell completion scripts
 
-### Synopsis
-
-Generate shell completion scripts for runware.
-
-  bash:  runware completion bash > /etc/bash_completion.d/runware
-  zsh:   runware completion zsh > ~/.zfunc/_runware
-  fish:  runware completion fish > ~/.config/fish/completions/runware.fish
-
 ```
 runware completion [bash|zsh|fish] [flags]
+```
+
+### Examples
+
+```
+  # generate bash completions
+  runware completion bash > /etc/bash_completion.d/runware
+
+  # generate zsh completions
+  runware completion zsh > ~/.zfunc/_runware
+
+  # generate fish completions
+  runware completion fish > ~/.config/fish/completions/runware.fish
 ```
 
 ### Options

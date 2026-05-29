@@ -6,6 +6,16 @@ Authenticate with an API key
 runware auth login [flags]
 ```
 
+### Examples
+
+```
+  # authenticate interactively
+  runware auth login
+
+  # pass API key directly
+  runware auth login --key YOUR_API_KEY
+```
+
 ### Options
 
 ```

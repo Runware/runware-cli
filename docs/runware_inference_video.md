@@ -6,13 +6,21 @@ Generate videos from text or image input
 
 Generate videos using text-to-video or image-to-video.
 
-Examples:
-  runware inference video "a timelapse of a sunset over mountains" --model klingai:5@3
-  runware inference video "a cat playing piano" --model google:3@2 --duration 4
-  runware inference video "animate this scene" --model klingai:5@3 --source ./photo.png
-
 ```
 runware inference video [prompt] [flags]
+```
+
+### Examples
+
+```
+  # generate video from text
+  runware inference video "a timelapse of a sunset over mountains" --model klingai:5@3
+
+  # generate video with custom duration
+  runware inference video "a cat playing piano" --model google:3@2 --duration 4
+
+  # image-to-video from source image
+  runware inference video "animate this scene" --model klingai:5@3 --source ./photo.png
 ```
 
 ### Options

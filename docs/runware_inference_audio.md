@@ -6,13 +6,21 @@ Generate audio from text descriptions
 
 Generate audio using text-to-audio, music generation, or sound effects.
 
-Examples:
-  runware inference audio "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
-  runware inference audio "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
-  runware inference audio "upbeat electronic music" --model elevenlabs:1@1 --duration 120 --sample-rate 48000
-
 ```
 runware inference audio [prompt] [flags]
+```
+
+### Examples
+
+```
+  # generate a music clip
+  runware inference audio "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
+
+  # generate ambient sound
+  runware inference audio "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
+
+  # generate with custom sample rate
+  runware inference audio "upbeat electronic music" --model elevenlabs:1@1 --duration 120 --sample-rate 48000
 ```
 
 ### Options
