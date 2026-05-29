@@ -6,6 +6,16 @@ Set a config value
 runware config set [key] [value] [flags]
 ```
 
+### Examples
+
+```
+  # set default model
+  runware config set model "runware:100@1"
+
+  # set default output format
+  runware config set format json
+```
+
 ### Options
 
 ```

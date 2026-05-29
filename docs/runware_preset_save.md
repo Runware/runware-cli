@@ -6,6 +6,16 @@ Save a named preset
 runware preset save [name] [flags]
 ```
 
+### Examples
+
+```
+  # save a preset with model and dimensions
+  runware preset save portrait --model runware:100@1 --width 512 --height 768
+
+  # save a preset with steps and cfg
+  runware preset save fast --model runware:100@1 --steps 20 --cfg 7
+```
+
 ### Options
 
 ```

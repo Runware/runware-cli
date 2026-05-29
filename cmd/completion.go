@@ -9,11 +9,14 @@ import (
 var completionCmd = &cobra.Command{
 	Use:   "completion [bash|zsh|fish]",
 	Short: "Generate shell completion scripts",
-	Long: `Generate shell completion scripts for runware.
+	Example: `  # generate bash completions
+  runware completion bash > /etc/bash_completion.d/runware
 
-  bash:  runware completion bash > /etc/bash_completion.d/runware
-  zsh:   runware completion zsh > ~/.zfunc/_runware
-  fish:  runware completion fish > ~/.config/fish/completions/runware.fish`,
+  # generate zsh completions
+  runware completion zsh > ~/.zfunc/_runware
+
+  # generate fish completions
+  runware completion fish > ~/.config/fish/completions/runware.fish`,
 	Args:      cobra.ExactArgs(1),
 	ValidArgs: []string{"bash", "zsh", "fish"},
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -17,6 +17,8 @@ var configCmd = &cobra.Command{
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Print current configuration",
+	Example: `  # print current configuration
+  runware config show`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Get()
 		format := output.ParseFormat(getFormat())
@@ -52,7 +54,12 @@ var configShowCmd = &cobra.Command{
 var configSetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
 	Short: "Set a config value",
-	Args:  cobra.ExactArgs(2),
+	Example: `  # set default model
+  runware config set model "runware:100@1"
+
+  # set default output format
+  runware config set format json`,
+	Args: cobra.ExactArgs(2),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
 			return []string{
@@ -88,6 +95,8 @@ var configSetCmd = &cobra.Command{
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Reset configuration to defaults",
+	Example: `  # reset all config to defaults
+  runware config reset`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := &config.Config{
 			Defaults: config.Defaults{
@@ -115,6 +124,8 @@ var configResetCmd = &cobra.Command{
 var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Print config file path",
+	Example: `  # print config file location
+  runware config path`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println(config.ConfigPath())
 	},

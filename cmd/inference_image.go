@@ -42,11 +42,14 @@ var imageFlags struct {
 var imageInferenceCmd = &cobra.Command{
 	Use:   "image [prompt]",
 	Short: "Generate images from text or image input",
-	Long: `Generate images using text-to-image, image-to-image, or inpainting.
-
-Examples:
+	Long:  `Generate images using text-to-image, image-to-image, or inpainting.`,
+	Example: `  # generate image from text
   runware inference image "a cat riding a rocket"
+
+  # image-to-image with source
   runware inference image "make it cinematic" --source ./input.png --strength 0.7
+
+  # inpainting with mask
   runware inference image "replace with a dog" --source ./photo.png --mask ./mask.png`,
 	Args:    cobra.ExactArgs(1),
 	PreRunE: preRunImageInference,

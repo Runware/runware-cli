@@ -6,14 +6,24 @@ Search available models
 
 Search for models available on Runware.
 
-Examples:
-  runware model search "flux"
-  runware model search "sdxl" --category checkpoint
-  runware model search --architecture flux1d --limit 10
-  runware model search "portrait" --category lora --format json
-
 ```
 runware model search [query] [flags]
+```
+
+### Examples
+
+```
+  # search by keyword
+  runware model search "flux"
+
+  # filter by category
+  runware model search "sdxl" --category checkpoint
+
+  # filter by architecture
+  runware model search --architecture flux1d --limit 10
+
+  # search with JSON output
+  runware model search "portrait" --category lora --format json
 ```
 
 ### Options

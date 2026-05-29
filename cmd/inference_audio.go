@@ -36,11 +36,14 @@ var audioFlags struct {
 var audioInferenceCmd = &cobra.Command{
 	Use:   "audio [prompt]",
 	Short: "Generate audio from text descriptions",
-	Long: `Generate audio using text-to-audio, music generation, or sound effects.
-
-Examples:
+	Long:  `Generate audio using text-to-audio, music generation, or sound effects.`,
+	Example: `  # generate a music clip
   runware inference audio "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
+
+  # generate ambient sound
   runware inference audio "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
+
+  # generate with custom sample rate
   runware inference audio "upbeat electronic music" --model elevenlabs:1@1 --duration 120 --sample-rate 48000`,
 	Args:    cobra.ExactArgs(1),
 	PreRunE: preRunAudioInference,

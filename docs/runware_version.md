@@ -6,6 +6,13 @@ Print version information
 runware version [flags]
 ```
 
+### Examples
+
+```
+  # print version information
+  runware version
+```
+
 ### Options
 
 ```

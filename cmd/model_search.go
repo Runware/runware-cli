@@ -21,12 +21,17 @@ var modelSearchFlags struct {
 var modelSearchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Search available models",
-	Long: `Search for models available on Runware.
-
-Examples:
+	Long:  `Search for models available on Runware.`,
+	Example: `  # search by keyword
   runware model search "flux"
+
+  # filter by category
   runware model search "sdxl" --category checkpoint
+
+  # filter by architecture
   runware model search --architecture flux1d --limit 10
+
+  # search with JSON output
   runware model search "portrait" --category lora --format json`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runModelSearch,

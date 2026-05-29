@@ -6,6 +6,13 @@ Print current configuration
 runware config show [flags]
 ```
 
+### Examples
+
+```
+  # print current configuration
+  runware config show
+```
+
 ### Options
 
 ```
