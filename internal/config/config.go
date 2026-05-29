@@ -49,6 +49,7 @@ type Preset struct {
 
 // Config is the full configuration structure.
 type Config struct {
+	BaseURL  string            `mapstructure:"base_url" yaml:"base_url,omitempty"`
 	APIKey   string            `mapstructure:"api_key" yaml:"api_key,omitempty"`
 	Defaults Defaults          `mapstructure:"defaults" yaml:"defaults"`
 	Presets  map[string]Preset `mapstructure:"presets" yaml:"presets,omitempty"`
@@ -81,7 +82,8 @@ func Init() error {
 
 	// Environment variable overrides
 	viper.SetEnvPrefix("")
-	viper.BindEnv("api_key", "RUNWARE_API_KEY") //nolint:errcheck,gosec
+	viper.BindEnv("api_key", "RUNWARE_API_KEY")   //nolint:errcheck,gosec
+	viper.BindEnv("base_url", "RUNWARE_BASE_URL") //nolint:errcheck,gosec
 
 	if err := viper.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
@@ -106,8 +108,12 @@ func GetAPIKey() string {
 	return viper.GetString("api_key")
 }
 
-// GetBaseURL returns the API base URL.
+// GetBaseURL returns the API base URL, honoring the RUNWARE_BASE_URL env var
+// and the base_url config key before falling back to the built-in default.
 func GetBaseURL() string {
+	if url := viper.GetString("base_url"); url != "" {
+		return url
+	}
 	return DefaultBaseURL
 }
 

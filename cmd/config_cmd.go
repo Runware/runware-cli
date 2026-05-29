@@ -34,6 +34,7 @@ var configShowCmd = &cobra.Command{
 		return output.Print(format, display,
 			[]any{"Setting", "Value"},
 			[][]any{
+				{"Base URL", config.GetBaseURL()},
 				{"API Key", display.APIKey},
 				{"Default Model", display.Defaults.Model},
 				{"Default Width", display.Defaults.Width},
@@ -56,6 +57,7 @@ var configSetCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) == 0 {
 			return []string{
+				"base_url",
 				"defaults.model",
 				"defaults.width",
 				"defaults.height",
