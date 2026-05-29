@@ -41,6 +41,6 @@ jobs:
       - name: Check docs are up to date
         run: |
           if ! git diff --exit-code docs/; then
-            echo "Docs are out of date. Run 'make docs' and commit the result."
+            echo "Docs are out of date. Run 'make docs', review and commit the result."
             exit 1
           fi
