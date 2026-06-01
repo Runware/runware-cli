@@ -91,3 +91,4 @@ outputs/
 # Generated changelog, we're using GitHub releases for this.
 CHANGELOG.md
 
+bin
