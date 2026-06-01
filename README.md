@@ -6,14 +6,20 @@ A command-line tool for interacting with the [Runware](https://runware.ai) infer
 
 ### Homebrew (MacOS)
 
-```bash
+```shell
 brew tap runware/tap
 brew install runware
 ```
 
+### Scoop (Windows)
+```shell
+scoop bucket add runware https://github.com/Runware/scoop-bucket.git
+scoop install runware
+```
+
 ### From source
 
-```bash
+```shell
 git clone https://github.com/runware/runware-cli.git
 cd runware-cli
 make build
@@ -21,7 +27,7 @@ make build
 
 ## Quick start
 
-```bash
+```shell
 # Authenticate
 runware auth login
 
@@ -41,7 +47,7 @@ Full command reference is available in the [docs](./docs/runware.md) directory.
 
 ### Image generation
 
-```bash
+```shell
 # Simple text-to-image
 runware inference image "a cat riding a rocket"
 
@@ -72,27 +78,27 @@ runware inference image "a sunset" --dry-run
 
 ### Video generation
 
-```bash
+```shell
 runware inference video "a timelapse of a sunset over mountains" --model klingai:5@3
 runware inference video "a cat playing piano" --model google:3@2 --duration 5
 ```
 
 ### Audio generation
 
-```bash
+```shell
 runware inference audio "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
 runware inference audio "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
 ```
 
 ### Text generation
 
-```bash
+```shell
 runware inference text "explain how transformers work"
 ```
 
 ### Authentication
 
-```bash
+```shell
 runware auth login              # Authenticate with API key
 runware auth login --key <key>  # Non-interactive login
 runware auth logout             # Clear stored credentials
@@ -101,13 +107,13 @@ runware auth status             # Show current auth state
 
 ### Account
 
-```bash
+```shell
 runware account credits         # Credit balance and usage stats
 ```
 
 ### Model search
 
-```bash
+```shell
 runware model search "flux"     # Search available models
 ```
 
@@ -115,7 +121,7 @@ runware model search "flux"     # Search available models
 
 Save frequently used configurations:
 
-```bash
+```shell
 runware preset save quick-flux --model runware:100@1 --width 512 --height 512 --steps 4
 runware preset list
 runware preset show quick-flux
@@ -124,7 +130,7 @@ runware preset delete quick-flux
 
 ### Configuration
 
-```bash
+```shell
 runware config show             # Print current config
 runware config set <key> <val>  # Set a config value
 runware config reset            # Reset to defaults
@@ -135,7 +141,7 @@ Config is stored at `~/.runware/config.yaml`.
 
 ### Other
 
-```bash
+```shell
 runware ping                    # API connectivity check
 runware version                 # Print version info
 runware completion bash         # Generate shell completions (bash/zsh/fish)
@@ -185,7 +191,7 @@ presets:
 
 ## Development
 
-```bash
+```shell
 make build      # Build binary
 make test       # Run tests
 make lint       # Run golangci-lint
@@ -195,7 +201,7 @@ make snapshot   # GoReleaser snapshot build
 
 ## Shell completions
 
-```bash
+```shell
 # Bash
 runware completion bash > /etc/bash_completion.d/runware
 
