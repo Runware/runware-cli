@@ -8,10 +8,21 @@ CLI_NAME="runware"
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
+case "$OS" in
+  linux|darwin) ;;
+  *)
+    echo "❌ Error: Unsupported OS: $OS"
+    exit 1
+    ;;
+esac
+
 case "$ARCH" in
   x86_64) ARCH="amd64" ;;
   aarch64|arm64) ARCH="arm64" ;;
-  i386|i686) ARCH="386" ;;
+  *)
+    echo "❌ Error: Unsupported architecture: $ARCH"
+    exit 1
+    ;;
 esac
 
 echo "==> 🔍 Detected OS: $OS, Architecture: $ARCH"
@@ -28,15 +39,40 @@ echo "==> 📦 Latest version is $LATEST_TAG"
 
 TARBALL="${CLI_NAME}_${OS}_${ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$TARBALL"
+CHECKSUMS_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/checksums.txt"
 
 TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
+
+TARBALL_PATH="$TMP_DIR/$TARBALL"
+CHECKSUMS_PATH="$TMP_DIR/checksums.txt"
+
 echo "==> ⬇️  Downloading $TARBALL..."
 
-if ! curl -sL "$DOWNLOAD_URL" | tar -xz -C "$TMP_DIR"; then
-  echo "❌ Error: Failed to download or extract the CLI."
-  rm -rf "$TMP_DIR"
+curl -fsSL "$DOWNLOAD_URL" -o "$TARBALL_PATH"
+curl -fsSL "$CHECKSUMS_URL" -o "$CHECKSUMS_PATH"
+
+EXPECTED_SHA=$(grep " $TARBALL\$" "$CHECKSUMS_PATH" | awk '{print $1}')
+if [ -z "$EXPECTED_SHA" ]; then
+  echo "❌ Error: Could not find checksum entry for $TARBALL"
   exit 1
 fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_SHA=$(sha256sum "$TARBALL_PATH" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL_SHA=$(shasum -a 256 "$TARBALL_PATH" | awk '{print $1}')
+else
+  echo "❌ Error: sha256sum/shasum not found; cannot verify download."
+  exit 1
+fi
+
+if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+  echo "❌ Error: Checksum mismatch for $TARBALL"
+  exit 1
+fi
+
+tar -xzf "$TARBALL_PATH" -C "$TMP_DIR"
 
 INSTALL_DIR="$HOME/.local/bin"
 
@@ -45,8 +81,6 @@ mkdir -p "$INSTALL_DIR"
 echo "==> 🚀 Installing to $INSTALL_DIR"
 mv "$TMP_DIR/$CLI_NAME" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/$CLI_NAME"
-
-rm -rf "$TMP_DIR"
 
 if command -v "$CLI_NAME" >/dev/null 2>&1; then
   echo "==> ✅ Success! Run '$CLI_NAME --help' to get started."
