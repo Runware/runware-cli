@@ -81,6 +81,7 @@ Temporary Items
 # Binaries
 runware
 dist/
+bin
 
 # Test outputs.
 outputs/
@@ -90,4 +91,3 @@ outputs/
 
 # Generated changelog, we're using GitHub releases for this.
 CHANGELOG.md
-

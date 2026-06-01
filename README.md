@@ -4,47 +4,19 @@ A command-line tool for interacting with the [Runware](https://runware.ai) infer
 
 ## Install
 
+### Homebrew (MacOS)
+
+```bash
+brew tap runware/tap
+brew install runware
+```
+
 ### From source
 
 ```bash
 git clone https://github.com/runware/runware-cli.git
 cd runware-cli
 make build
-```
-
-### From release
-
-Requires the [GitHub CLI](https://cli.github.com/) (`gh`) with access to the Runware org.
-
-```bash
-# macOS (Apple Silicon)
-gh release download --repo Runware/runware-cli --pattern "runware_darwin_arm64.tar.gz"
-
-# macOS (Intel)
-gh release download --repo Runware/runware-cli --pattern "runware_darwin_amd64.tar.gz"
-
-# Linux (x86_64)
-gh release download --repo Runware/runware-cli --pattern "runware_linux_amd64.tar.gz"
-
-# Linux (ARM64)
-gh release download --repo Runware/runware-cli --pattern "runware_linux_arm64.tar.gz"
-
-# Windows (x86_64)
-gh release download --repo Runware/runware-cli --pattern "runware_windows_amd64.zip"
-```
-
-Extract and move to your PATH:
-
-```bash
-# macOS/Linux
-tar xzf runware_*.tar.gz
-sudo mv runware /usr/local/bin/
-
-# Windows: unzip and add runware.exe to your PATH
-```
-
-```bash
-runware version
 ```
 
 ## Quick start

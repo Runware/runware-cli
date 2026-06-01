@@ -1,4 +1,6 @@
 version: 2
+project_name: runware-cli
+
 builds:
   - main: .
     binary: runware
@@ -26,3 +28,21 @@ checksum:
 
 changelog:
   disable: true
+
+homebrew_casks:
+  - name: runware
+    homepage: https://runware.ai
+    description: A command-line tool for interacting with the Runware inference API.
+    license: MIT
+    url:
+      verified: github.com/Runware/runware-cli/releases/download
+    repository:
+      owner: Runware
+      name: homebrew-tap
+    # TODO(dr): remove when we have Apple Developer ID approved.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/runware"]
+          end
