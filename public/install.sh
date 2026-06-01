@@ -82,14 +82,20 @@ echo "==> 🚀 Installing to $INSTALL_DIR"
 mv "$TMP_DIR/$CLI_NAME" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/$CLI_NAME"
 
-if command -v "$CLI_NAME" >/dev/null 2>&1; then
-  echo "==> ✅ Success! Run '$CLI_NAME --help' to get started."
-else
-  echo "==> ⚠️  Success, but $INSTALL_DIR is not in your PATH."
-  echo ""
-  echo "To use the CLI from anywhere, add this line to your ~/.bashrc, ~/.zshrc, or ~/.profile:"
-  echo ""
-  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
-  echo ""
-  echo "Then restart your terminal or run: source ~/.bashrc (or your respective config file)."
-fi
+rm -rf "$TMP_DIR"
+
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*)
+    echo "==> ✅ Success! Run '$CLI_NAME --help' to get started."
+    ;;
+  *)
+    echo "==> ✅ Installed to $INSTALL_DIR/$CLI_NAME"
+    echo "==> ⚠️  $INSTALL_DIR is not in your PATH."
+    echo ""
+    echo "To use the CLI from anywhere, add this line to your ~/.bashrc, ~/.zshrc, or ~/.profile:"
+    echo ""
+    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+    echo "Then restart your terminal or run: source ~/.bashrc (or your respective config file)."
+    ;;
+esac
