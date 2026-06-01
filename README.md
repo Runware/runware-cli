@@ -17,6 +17,12 @@ scoop bucket add runware https://github.com/Runware/scoop-bucket.git
 scoop install runware
 ```
 
+### Linux
+
+```shell
+curl -fsSL https://install.runware.ai | sh
+```
+
 ### From source
 
 ```shell
