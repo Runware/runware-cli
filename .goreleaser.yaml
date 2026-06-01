@@ -46,3 +46,12 @@ homebrew_casks:
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/runware"]
           end
+
+scoops:
+  - repository:
+      owner: Runware
+      name: scoop-bucket
+    directory: bucket
+    homepage: https://runware.ai
+    description: A command-line tool for interacting with the Runware inference API.
+    license: MIT
