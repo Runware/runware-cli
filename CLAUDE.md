@@ -7,11 +7,21 @@ Runware CLI — a Go command-line tool for the Runware inference API. Single bin
 ## Build & test
 
 ```bash
-make build      # Build binaries -> ./bin
-make test       # Run all tests (go test ./...)
-make lint       # golangci-lint
-make snapshot   # GoReleaser snapshot build
+make build           # Build binary for current platform -> ./bin/runware
+make build-all       # Build all platforms -> ./bin
+make test            # Run all tests (go test -race ./...)
+make lint            # golangci-lint
+make snapshot        # GoReleaser snapshot build
+make docs            # Generate command reference docs
+make install         # go install for current platform
+make run ARGS="..."  # Run without building
 ```
+
+### Platform targets (via `make build-all`)
+
+- `darwin-arm64`, `darwin-amd64`
+- `linux-amd64`, `linux-arm64`
+- `windows-amd64`, `windows-arm64`
 
 ## Project structure
 
