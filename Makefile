@@ -7,7 +7,7 @@ LDFLAGS = -s -w \
 	-X main.commit=$(COMMIT) \
 	-X main.date=$(DATE)
 
-BINARY=xkpassgo
+BINARY=runware
 
 .PHONY: build windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs
 

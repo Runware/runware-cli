@@ -37,7 +37,7 @@ homebrew_casks:
     url:
       verified: github.com/Runware/runware-cli/releases/download
     repository:
-      owner: runware
+      owner: Runware
       name: homebrew-tap
     # TODO(dr): remove when we have Apple Developer ID approved.
     hooks:

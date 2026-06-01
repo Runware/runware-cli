@@ -4,7 +4,7 @@ A command-line tool for interacting with the [Runware](https://runware.ai) infer
 
 ## Install
 
-### Homebrew
+### Homebrew (MacOS)
 
 ```bash
 brew tap runware/tap
