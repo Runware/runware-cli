@@ -8,35 +8,14 @@ import (
 	"testing"
 )
 
-func TestParseFormat(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected Format
-	}{
-		{"json", FormatJSON},
-		{"JSON", FormatJSON},
-		{"yaml", FormatYAML},
-		{"YAML", FormatYAML},
-		{"table", FormatTable},
-		{"TABLE", FormatTable},
-		{"", FormatTable},
-		{"unknown", FormatTable},
-	}
-
-	for _, tt := range tests {
-		got := ParseFormat(tt.input)
-		if got != tt.expected {
-			t.Errorf("ParseFormat(%q) = %q, want %q", tt.input, got, tt.expected)
-		}
-	}
-}
+const testValue = "value"
 
 func TestPrintJSON(t *testing.T) {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	data := map[string]string{"key": "value"}
+	data := map[string]string{"key": testValue}
 	err := Print(FormatJSON, data)
 
 	_ = w.Close()
@@ -54,8 +33,8 @@ func TestPrintJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("output is not valid JSON: %v\noutput: %s", err, out)
 	}
-	if parsed["key"] != "value" {
-		t.Errorf("parsed[key] = %q, want %q", parsed["key"], "value")
+	if parsed["key"] != testValue {
+		t.Errorf("parsed[key] = %q, want %q", parsed["key"], testValue)
 	}
 }
 
@@ -64,7 +43,7 @@ func TestPrintYAML(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	data := map[string]string{"key": "value"}
+	data := map[string]string{"key": testValue}
 	err := Print(FormatYAML, data)
 
 	_ = w.Close()
@@ -125,7 +104,7 @@ func TestPrintTable_NonTabularFallsBackToJSON(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	data := map[string]string{"key": "value"}
+	data := map[string]string{"key": testValue}
 	err := Print(FormatTable, data)
 
 	_ = w.Close()

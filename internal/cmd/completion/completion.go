@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// New returns the completion command for generating shell completion scripts.
 func New() *cobra.Command {
 	return &cobra.Command{
 		Use:   "completion [bash|zsh|fish]",

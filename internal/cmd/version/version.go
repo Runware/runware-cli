@@ -14,12 +14,34 @@ var (
 	date       = "unknown"
 )
 
+// SetVersionInfo sets the version, commit, and build date injected via ldflags.
 func SetVersionInfo(v, c, d string) {
 	versionStr = v
 	commit = c
 	date = d
 }
 
+type versionResult struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+	Go      string `json:"go"`
+}
+
+func (r versionResult) Headers() []string {
+	return []string{"Field", "Value"}
+}
+
+func (r versionResult) Rows() [][]any {
+	return [][]any{
+		{"version", r.Version},
+		{"commit", r.Commit},
+		{"built", r.Date},
+		{"go", r.Go},
+	}
+}
+
+// New returns the version command for printing build information.
 func New() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
@@ -34,22 +56,5 @@ func New() *cobra.Command {
 				Go:      runtime.Version(),
 			})
 		},
-	}
-}
-
-type versionResult struct {
-	Version string `json:"version"`
-	Commit  string `json:"commit"`
-	Date    string `json:"date"`
-	Go      string `json:"go"`
-}
-
-func (r versionResult) Headers() []string { return []string{"Field", "Value"} }
-func (r versionResult) Rows() [][]any {
-	return [][]any{
-		{"version", r.Version},
-		{"commit", r.Commit},
-		{"built", r.Date},
-		{"go", r.Go},
 	}
 }

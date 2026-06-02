@@ -2,42 +2,11 @@ package output
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
-	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"gopkg.in/yaml.v3"
 )
-
-// Format represents an output format.
-type Format string
-
-const (
-	FormatTable Format = "table"
-	FormatJSON  Format = "json"
-	FormatYAML  Format = "yaml"
-)
-
-// ParseFormat parses a format string, defaulting to table.
-func ParseFormat(s string) Format {
-	switch strings.ToLower(s) {
-	case "json":
-		return FormatJSON
-	case "yaml":
-		return FormatYAML
-	default:
-		return FormatTable
-	}
-}
-
-// Tabular is implemented by result types that know how to render themselves
-// as a table. Print uses this when the format is table; the same value is
-// serialised directly for JSON/YAML.
-type Tabular interface {
-	Headers() []string
-	Rows() [][]any
-}
 
 // Print outputs data in the specified format.
 // For JSON/YAML, data is serialised directly.
@@ -85,19 +54,4 @@ func printTable(t Tabular) error {
 
 	tw.Render()
 	return nil
-}
-
-// Success prints a success message to stderr.
-func Success(msg string) {
-	fmt.Fprintf(os.Stderr, "✓ %s\n", msg)
-}
-
-// Error prints an error message to stderr.
-func Error(msg string) {
-	fmt.Fprintf(os.Stderr, "✗ %s\n", msg)
-}
-
-// Info prints an info message to stderr.
-func Info(msg string) {
-	fmt.Fprintf(os.Stderr, "• %s\n", msg)
 }

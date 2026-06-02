@@ -12,6 +12,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type pingResult struct {
+	Status    string `json:"status"`
+	LatencyMs int64  `json:"latency_ms"`
+}
+
+func (r pingResult) Headers() []string {
+	return []string{"Status", "Latency (ms)"}
+}
+
+func (r pingResult) Rows() [][]any {
+	return [][]any{{r.Status, r.LatencyMs}}
+}
+
+// New returns the ping command for checking API connectivity.
 func New() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ping",
@@ -46,11 +60,3 @@ func New() *cobra.Command {
 		},
 	}
 }
-
-type pingResult struct {
-	Status    string `json:"status"`
-	LatencyMs int64  `json:"latency_ms"`
-}
-
-func (r pingResult) Headers() []string { return []string{"Status", "Latency (ms)"} }
-func (r pingResult) Rows() [][]any     { return [][]any{{r.Status, r.LatencyMs}} }

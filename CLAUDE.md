@@ -43,6 +43,7 @@ make run ARGS="..."  # Run without building
 - Tests live alongside source files (`*_test.go`)
 - Config shorthand keys in CLI map to nested yaml paths (e.g. `model` → `defaults.model`)
 - Run `go fmt` on any files you modify before considering work complete
+- Run `make lint` before considering work complete; fix all lint errors
 
 ## Release process
 
