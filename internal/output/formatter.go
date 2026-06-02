@@ -71,4 +71,3 @@ func Error(msg string) {
 func Info(msg string) {
 	fmt.Fprintf(os.Stderr, "• %s\n", msg)
 }
-
