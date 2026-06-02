@@ -93,7 +93,7 @@ func TestDownload_FailToCreateFile(t *testing.T) {
 	// Place a regular file where MkdirAll would need to create a directory,
 	// making the destination path unwritable on any platform.
 	blocker := filepath.Join(t.TempDir(), "notadir")
-	if err := os.WriteFile(blocker, []byte{}, 0o644); err != nil {
+	if err := os.WriteFile(blocker, []byte{}, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	dest := filepath.Join(blocker, "out.mp4")
