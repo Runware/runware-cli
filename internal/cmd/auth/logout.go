@@ -3,12 +3,12 @@ package auth
 import (
 	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
-	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-func newLogoutCmd() *cobra.Command {
+func newLogoutCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
 		Short: "Clear stored credentials",
@@ -18,7 +18,7 @@ func newLogoutCmd() *cobra.Command {
 			if err := config.RemoveAPIKey(); err != nil {
 				return fmt.Errorf("failed to remove API key: %w", err)
 			}
-			output.Success("Logged out")
+			logger.Info("✓ Logged out")
 			return nil
 		},
 	}

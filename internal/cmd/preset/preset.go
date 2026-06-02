@@ -1,20 +1,21 @@
 package preset
 
 import (
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 // New returns the preset command with list, show, save, and delete subcommands.
-func New() *cobra.Command {
+func New(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preset",
 		Short: "Manage named presets",
 	}
-	cmd.AddCommand(newListCmd())
+	cmd.AddCommand(newListCmd(logger))
 	cmd.AddCommand(newShowCmd())
-	cmd.AddCommand(newSaveCmd())
-	cmd.AddCommand(newDeleteCmd())
+	cmd.AddCommand(newSaveCmd(logger))
+	cmd.AddCommand(newDeleteCmd(logger))
 	return cmd
 }
 

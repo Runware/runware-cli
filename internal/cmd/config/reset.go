@@ -3,12 +3,12 @@ package config
 import (
 	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
-	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-func newResetCmd() *cobra.Command {
+func newResetCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "reset",
 		Short: "Reset configuration to defaults",
@@ -33,7 +33,7 @@ func newResetCmd() *cobra.Command {
 				return fmt.Errorf("failed to save config: %w", err)
 			}
 
-			output.Success("Configuration reset to defaults")
+			logger.Info("✓ Configuration reset to defaults")
 			return nil
 		},
 	}

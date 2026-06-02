@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmd/account"
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
@@ -17,18 +17,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newLogger constructs the charmbracelet/log logger for the CLI.
+// It writes to stderr and suppresses timestamps, which are not useful in a CLI context.
+func newLogger() *log.Logger {
+	return log.NewWithOptions(os.Stderr, log.Options{ReportTimestamp: false})
+}
+
 // SetVersionInfo passes build-time version info down to the version command.
 func SetVersionInfo(v, c, d string) {
 	cmdversion.SetVersionInfo(v, c, d)
 }
 
 // NewRootCmd builds and returns the root cobra command.
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "runware",
 		Short: "CLI tool for the Runware inference API",
 		Long:  "A command-line tool for interacting with the Runware inference API.\nGenerate images, search models, manage your account, and more.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
+				logger.SetLevel(log.DebugLevel)
+			}
 			return config.Init()
 		},
 		SilenceUsage:  true,
@@ -44,13 +53,13 @@ func NewRootCmd() *cobra.Command {
 	})
 
 	root.AddCommand(
-		auth.New(),
-		ping.New(),
+		auth.New(logger),
+		ping.New(logger),
 		inference.New(),
 		model.New(),
-		account.New(),
-		cmdconfig.New(),
-		preset.New(),
+		account.New(logger),
+		cmdconfig.New(logger),
+		preset.New(logger),
 		cmdversion.New(),
 		cmdcompletion.New(),
 	)
@@ -58,15 +67,7 @@ func NewRootCmd() *cobra.Command {
 	return root
 }
 
-// Execute runs the root command.
-func Execute() {
-	if err := NewRootCmd().Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
-	}
-}
-
 // Root returns the root command for tools like doc generators.
 func Root() *cobra.Command {
-	return NewRootCmd()
+	return NewRootCmd(newLogger())
 }

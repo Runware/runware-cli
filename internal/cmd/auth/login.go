@@ -4,17 +4,18 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/config"
-	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
-func newLoginCmd() *cobra.Command {
+func newLoginCmd(logger *log.Logger) *cobra.Command {
 	var key string
 
 	cmd := &cobra.Command{
@@ -48,11 +49,10 @@ func newLoginCmd() *cobra.Command {
 				return fmt.Errorf("API key cannot be empty")
 			}
 
-			verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose")
-			client := api.NewClient(key, config.GetBaseURL(), verbose)
+			client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
 			_, err := client.Ping(context.Background())
 			if err != nil {
-				output.Error("Invalid API key. Authentication failed.")
+				logger.Error("Invalid API key. Authentication failed.")
 				return err
 			}
 
@@ -60,7 +60,7 @@ func newLoginCmd() *cobra.Command {
 				return fmt.Errorf("failed to save API key: %w", err)
 			}
 
-			output.Success("Authenticated successfully")
+			logger.Info("✓ Authenticated successfully")
 			return nil
 		},
 	}

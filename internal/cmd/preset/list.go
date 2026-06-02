@@ -3,6 +3,7 @@ package preset
 import (
 	"sort"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -56,7 +57,7 @@ func buildPresetList(presets map[string]config.Preset) presetListResult {
 	return result
 }
 
-func newListCmd() *cobra.Command {
+func newListCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all saved presets",
@@ -66,7 +67,7 @@ func newListCmd() *cobra.Command {
 			cfg := config.Get()
 
 			if len(cfg.Presets) == 0 {
-				output.Info("No presets configured. Use 'runware preset save <name>' to create one.")
+				logger.Info("No presets configured. Use 'runware preset save <name>' to create one.")
 				return nil
 			}
 

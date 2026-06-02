@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
@@ -26,7 +28,7 @@ func (r authStatusResult) Rows() [][]any {
 	}
 }
 
-func newStatusCmd() *cobra.Command {
+func newStatusCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show current auth state",
@@ -40,8 +42,7 @@ func newStatusCmd() *cobra.Command {
 
 			if key != "" {
 				maskedKey = config.MaskKey(key)
-				verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose")
-				client := api.NewClient(key, config.GetBaseURL(), verbose)
+				client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
 				_, err := client.Ping(context.Background())
 				if err != nil {
 					status = "invalid"

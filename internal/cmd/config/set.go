@@ -3,13 +3,13 @@ package config
 import (
 	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
-	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-func newSetCmd() *cobra.Command {
+func newSetCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "set [key] [value]",
 		Short: "Set a config value",
@@ -46,7 +46,7 @@ func newSetCmd() *cobra.Command {
 				return fmt.Errorf("failed to save config: %w", err)
 			}
 
-			output.Success(fmt.Sprintf("Set %s = %s", key, value))
+			logger.Info("✓ Config updated", "key", key, "value", value)
 			return nil
 		},
 	}

@@ -3,12 +3,12 @@ package preset
 import (
 	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
-	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-func newDeleteCmd() *cobra.Command {
+func newDeleteCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete [name]",
 		Short: "Delete a preset",
@@ -26,7 +26,7 @@ func newDeleteCmd() *cobra.Command {
 				return fmt.Errorf("failed to delete preset: %w", err)
 			}
 
-			output.Success(fmt.Sprintf("Preset '%s' deleted", name))
+			logger.Info("✓ Preset deleted", "name", name)
 			return nil
 		},
 	}

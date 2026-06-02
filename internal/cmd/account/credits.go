@@ -3,7 +3,9 @@ package account
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
@@ -33,23 +35,22 @@ func (r creditsResult) Rows() [][]any {
 	}
 }
 
-func newCreditsCmd() *cobra.Command {
+func newCreditsCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "credits",
 		Short: "Show current credit balance",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := config.GetAPIKey()
 			if key == "" {
-				output.Error("No API key configured. Run 'runware auth login' to authenticate.")
+				logger.Error("No API key configured. Run 'runware auth login' to authenticate.")
 				return api.ErrNoAPIKey
 			}
 
-			verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose")
-			client := api.NewClient(key, config.GetBaseURL(), verbose)
+			client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
 			result, err := client.AccountDetails(context.Background())
 			if err != nil {
 				if api.IsAuthError(err) {
-					output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
+					logger.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 				}
 				return err
 			}

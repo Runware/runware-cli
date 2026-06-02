@@ -1,18 +1,19 @@
 package config
 
 import (
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 )
 
 // New returns the config command with show, set, reset, and path subcommands.
-func New() *cobra.Command {
+func New(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage CLI configuration",
 	}
 	cmd.AddCommand(newShowCmd())
-	cmd.AddCommand(newSetCmd())
-	cmd.AddCommand(newResetCmd())
+	cmd.AddCommand(newSetCmd(logger))
+	cmd.AddCommand(newResetCmd(logger))
 	cmd.AddCommand(newPathCmd())
 	return cmd
 }

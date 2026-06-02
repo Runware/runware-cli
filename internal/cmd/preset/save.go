@@ -3,12 +3,12 @@ package preset
 import (
 	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
-	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-func newSaveCmd() *cobra.Command {
+func newSaveCmd(logger *log.Logger) *cobra.Command {
 	var flags struct {
 		model     string
 		width     int
@@ -54,7 +54,7 @@ func newSaveCmd() *cobra.Command {
 				return fmt.Errorf("failed to save preset: %w", err)
 			}
 
-			output.Success(fmt.Sprintf("Preset '%s' saved", name))
+			logger.Info("✓ Preset saved", "name", name)
 			return nil
 		},
 	}
