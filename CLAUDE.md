@@ -42,6 +42,7 @@ make run ARGS="..."  # Run without building
 - Commit messages follow conventional commits (`feat:`, `fix:`, `docs:`, `test:`)
 - Tests live alongside source files (`*_test.go`)
 - Config shorthand keys in CLI map to nested yaml paths (e.g. `model` → `defaults.model`)
+- Run `go fmt` on any files you modify before considering work complete
 
 ## Release process
 

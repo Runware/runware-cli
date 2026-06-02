@@ -37,7 +37,7 @@ func TestPrintJSON(t *testing.T) {
 	os.Stdout = w
 
 	data := map[string]string{"key": "value"}
-	err := Print(FormatJSON, data, nil)
+	err := Print(FormatJSON, data)
 
 	_ = w.Close()
 	os.Stdout = old
@@ -65,7 +65,7 @@ func TestPrintYAML(t *testing.T) {
 	os.Stdout = w
 
 	data := map[string]string{"key": "value"}
-	err := Print(FormatYAML, data, nil)
+	err := Print(FormatYAML, data)
 
 	_ = w.Close()
 	os.Stdout = old
@@ -83,14 +83,23 @@ func TestPrintYAML(t *testing.T) {
 	}
 }
 
+// testTabular is a minimal Tabular implementation for testing.
+type testTabular struct {
+	headers []string
+	rows    [][]any
+}
+
+func (t testTabular) Headers() []string { return t.headers }
+func (t testTabular) Rows() [][]any     { return t.rows }
+
 func TestPrintTable(t *testing.T) {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := Print(FormatTable, nil, &Table{
-		Headers: []string{"Name", "Value"},
-		Rows:    [][]any{{"foo", "bar"}, {"baz", "qux"}},
+	err := Print(FormatTable, testTabular{
+		headers: []string{"Name", "Value"},
+		rows:    [][]any{{"foo", "bar"}, {"baz", "qux"}},
 	})
 
 	_ = w.Close()
@@ -111,19 +120,19 @@ func TestPrintTable(t *testing.T) {
 	}
 }
 
-func TestPrintTable_NilFallsBackToJSON(t *testing.T) {
+func TestPrintTable_NonTabularFallsBackToJSON(t *testing.T) {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
 	data := map[string]string{"key": "value"}
-	err := Print(FormatTable, data, nil)
+	err := Print(FormatTable, data)
 
 	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
-		t.Fatalf("Print(Table,nil) error: %v", err)
+		t.Fatalf("Print(Table, non-Tabular) error: %v", err)
 	}
 
 	var buf bytes.Buffer

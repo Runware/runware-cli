@@ -121,15 +121,23 @@ func newStatusCmd() *cobra.Command {
 				}
 			}
 
-			data := map[string]string{
-				"api_key": maskedKey,
-				"status":  status,
-			}
-
-			return output.Print(cmdutil.FormatFor(cmd), data, &output.Table{
-				Headers: []string{"Field", "Value"},
-				Rows:    [][]any{{"API Key", maskedKey}, {"Status", status}},
+			return output.Print(cmdutil.FormatFor(cmd), authStatusResult{
+				APIKey: maskedKey,
+				Status: status,
 			})
 		},
+	}
+}
+
+type authStatusResult struct {
+	APIKey string `json:"api_key"`
+	Status string `json:"status"`
+}
+
+func (r authStatusResult) Headers() []string { return []string{"Field", "Value"} }
+func (r authStatusResult) Rows() [][]any {
+	return [][]any{
+		{"API Key", r.APIKey},
+		{"Status", r.Status},
 	}
 }

@@ -31,27 +31,12 @@ func newListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
 
-			names := make([]string, 0, len(cfg.Presets))
-			for name := range cfg.Presets {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-
-			if len(names) == 0 {
+			if len(cfg.Presets) == 0 {
 				output.Info("No presets configured. Use 'runware preset save <name>' to create one.")
 				return nil
 			}
 
-			rows := make([][]any, 0, len(names))
-			for _, name := range names {
-				p := cfg.Presets[name]
-				rows = append(rows, []any{name, p.Model, p.Width, p.Height, p.Steps, p.CFGScale, p.Scheduler})
-			}
-
-			return output.Print(cmdutil.FormatFor(cmd), cfg.Presets, &output.Table{
-				Headers: []string{"Name", "Model", "Width", "Height", "Steps", "CFG", "Scheduler"},
-				Rows:    rows,
-			})
+			return output.Print(cmdutil.FormatFor(cmd), buildPresetList(cfg.Presets))
 		},
 	}
 }
@@ -65,21 +50,19 @@ func newShowCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completePresetNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			preset := config.GetPreset(args[0])
-			if preset == nil {
+			p := config.GetPreset(args[0])
+			if p == nil {
 				return fmt.Errorf("preset '%s' not found", args[0])
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), preset, &output.Table{
-				Headers: []string{"Setting", "Value"},
-				Rows: [][]any{
-					{"Model", preset.Model},
-					{"Width", preset.Width},
-					{"Height", preset.Height},
-					{"Steps", preset.Steps},
-					{"CFG Scale", preset.CFGScale},
-					{"Scheduler", preset.Scheduler},
-				},
+			return output.Print(cmdutil.FormatFor(cmd), presetShowResult{
+				Name:      args[0],
+				Model:     p.Model,
+				Width:     p.Width,
+				Height:    p.Height,
+				Steps:     p.Steps,
+				CFGScale:  p.CFGScale,
+				Scheduler: p.Scheduler,
 			})
 		},
 	}
@@ -173,4 +156,76 @@ func newDeleteCmd() *cobra.Command {
 func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	config.Init() //nolint:errcheck,gosec
 	return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp
+}
+
+// presetListResult is a sorted slice of preset rows for display.
+type presetListResult []presetRow
+
+type presetRow struct {
+	Name      string  `json:"name"`
+	Model     string  `json:"model"`
+	Width     int     `json:"width"`
+	Height    int     `json:"height"`
+	Steps     int     `json:"steps"`
+	CFGScale  float64 `json:"cfg_scale"`
+	Scheduler string  `json:"scheduler"`
+}
+
+func (r presetListResult) Headers() []string {
+	return []string{"Name", "Model", "Width", "Height", "Steps", "CFG", "Scheduler"}
+}
+func (r presetListResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i, p := range r {
+		rows[i] = []any{p.Name, p.Model, p.Width, p.Height, p.Steps, p.CFGScale, p.Scheduler}
+	}
+	return rows
+}
+
+// buildPresetList builds a sorted presetListResult from the config presets map.
+func buildPresetList(presets map[string]config.Preset) presetListResult {
+	names := make([]string, 0, len(presets))
+	for name := range presets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	result := make(presetListResult, len(names))
+	for i, name := range names {
+		p := presets[name]
+		result[i] = presetRow{
+			Name:      name,
+			Model:     p.Model,
+			Width:     p.Width,
+			Height:    p.Height,
+			Steps:     p.Steps,
+			CFGScale:  p.CFGScale,
+			Scheduler: p.Scheduler,
+		}
+	}
+	return result
+}
+
+// presetShowResult holds a single preset's details for display.
+type presetShowResult struct {
+	Name      string  `json:"name"`
+	Model     string  `json:"model"`
+	Width     int     `json:"width"`
+	Height    int     `json:"height"`
+	Steps     int     `json:"steps"`
+	CFGScale  float64 `json:"cfg_scale"`
+	Scheduler string  `json:"scheduler"`
+}
+
+func (r presetShowResult) Headers() []string { return []string{"Setting", "Value"} }
+func (r presetShowResult) Rows() [][]any {
+	return [][]any{
+		{"Name", r.Name},
+		{"Model", r.Model},
+		{"Width", r.Width},
+		{"Height", r.Height},
+		{"Steps", r.Steps},
+		{"CFG Scale", r.CFGScale},
+		{"Scheduler", r.Scheduler},
+	}
 }

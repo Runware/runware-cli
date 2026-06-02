@@ -31,25 +31,22 @@ func newShowCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
 
-			display := *cfg
-			if display.APIKey != "" {
-				display.APIKey = config.MaskKey(display.APIKey)
+			maskedKey := cfg.APIKey
+			if maskedKey != "" {
+				maskedKey = config.MaskKey(maskedKey)
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), display, &output.Table{
-				Headers: []string{"Setting", "Value"},
-				Rows: [][]any{
-					{"API Key", display.APIKey},
-					{"Default Model", display.Defaults.Model},
-					{"Default Width", display.Defaults.Width},
-					{"Default Height", display.Defaults.Height},
-					{"Default Steps", display.Defaults.Steps},
-					{"Default CFG Scale", display.Defaults.CFGScale},
-					{"Default Scheduler", display.Defaults.Scheduler},
-					{"Default Output Dir", display.Defaults.OutputDir},
-					{"Default Output Format", display.Defaults.OutputFormat},
-					{"Default Format", display.Defaults.Format},
-				},
+			return output.Print(cmdutil.FormatFor(cmd), configShowResult{
+				APIKey:       maskedKey,
+				Model:        cfg.Defaults.Model,
+				Width:        cfg.Defaults.Width,
+				Height:       cfg.Defaults.Height,
+				Steps:        cfg.Defaults.Steps,
+				CFGScale:     cfg.Defaults.CFGScale,
+				Scheduler:    cfg.Defaults.Scheduler,
+				OutputDir:    cfg.Defaults.OutputDir,
+				OutputFormat: cfg.Defaults.OutputFormat,
+				Format:       cfg.Defaults.Format,
 			})
 		},
 	}
@@ -136,10 +133,8 @@ func newPathCmd() *cobra.Command {
 		Example: `  # print config file location
   runware config path`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p := config.ConfigPath()
-			return output.Print(cmdutil.FormatFor(cmd), map[string]string{"path": p}, &output.Table{
-				Headers: []string{"Config Path"},
-				Rows:    [][]any{{p}},
+			return output.Print(cmdutil.FormatFor(cmd), configPathResult{
+				Path: config.ConfigPath(),
 			})
 		},
 	}
@@ -159,3 +154,41 @@ func normalizeConfigKey(key string) string {
 	}
 	return key
 }
+
+// configShowResult holds configuration values for display.
+type configShowResult struct {
+	APIKey       string  `json:"api_key"`
+	Model        string  `json:"model"`
+	Width        int     `json:"width"`
+	Height       int     `json:"height"`
+	Steps        int     `json:"steps"`
+	CFGScale     float64 `json:"cfg_scale"`
+	Scheduler    string  `json:"scheduler"`
+	OutputDir    string  `json:"output_dir"`
+	OutputFormat string  `json:"output_format"`
+	Format       string  `json:"format"`
+}
+
+func (r configShowResult) Headers() []string { return []string{"Setting", "Value"} }
+func (r configShowResult) Rows() [][]any {
+	return [][]any{
+		{"API Key", r.APIKey},
+		{"Default Model", r.Model},
+		{"Default Width", r.Width},
+		{"Default Height", r.Height},
+		{"Default Steps", r.Steps},
+		{"Default CFG Scale", r.CFGScale},
+		{"Default Scheduler", r.Scheduler},
+		{"Default Output Dir", r.OutputDir},
+		{"Default Output Format", r.OutputFormat},
+		{"Default Format", r.Format},
+	}
+}
+
+// configPathResult holds the config file path for display.
+type configPathResult struct {
+	Path string `json:"path"`
+}
+
+func (r configPathResult) Headers() []string { return []string{"Config Path"} }
+func (r configPathResult) Rows() [][]any     { return [][]any{{r.Path}} }

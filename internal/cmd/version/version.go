@@ -27,22 +27,29 @@ func New() *cobra.Command {
 		Example: `  # print version information
   runware version`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			data := map[string]string{
-				"version": versionStr,
-				"commit":  commit,
-				"date":    date,
-				"go":      runtime.Version(),
-			}
-
-			return output.Print(cmdutil.FormatFor(cmd), data, &output.Table{
-				Headers: []string{"Field", "Value"},
-				Rows: [][]any{
-					{"version", versionStr},
-					{"commit", commit},
-					{"built", date},
-					{"go", runtime.Version()},
-				},
+			return output.Print(cmdutil.FormatFor(cmd), versionResult{
+				Version: versionStr,
+				Commit:  commit,
+				Date:    date,
+				Go:      runtime.Version(),
 			})
 		},
+	}
+}
+
+type versionResult struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+	Go      string `json:"go"`
+}
+
+func (r versionResult) Headers() []string { return []string{"Field", "Value"} }
+func (r versionResult) Rows() [][]any {
+	return [][]any{
+		{"version", r.Version},
+		{"commit", r.Commit},
+		{"built", r.Date},
+		{"go", r.Go},
 	}
 }

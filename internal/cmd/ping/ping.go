@@ -39,16 +39,18 @@ func New() *cobra.Command {
 				return err
 			}
 
-			latencyMs := time.Since(start).Milliseconds()
-			data := map[string]any{
-				"status":     "ok",
-				"latency_ms": latencyMs,
-			}
-
-			return output.Print(cmdutil.FormatFor(cmd), data, &output.Table{
-				Headers: []string{"Status", "Latency (ms)"},
-				Rows:    [][]any{{"ok", latencyMs}},
+			return output.Print(cmdutil.FormatFor(cmd), pingResult{
+				Status:    "ok",
+				LatencyMs: time.Since(start).Milliseconds(),
 			})
 		},
 	}
 }
+
+type pingResult struct {
+	Status    string `json:"status"`
+	LatencyMs int64  `json:"latency_ms"`
+}
+
+func (r pingResult) Headers() []string { return []string{"Status", "Latency (ms)"} }
+func (r pingResult) Rows() [][]any     { return [][]any{{r.Status, r.LatencyMs}} }

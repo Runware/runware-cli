@@ -31,26 +31,28 @@ func ParseFormat(s string) Format {
 	}
 }
 
-// Table holds headers and rows for table-format rendering.
-type Table struct {
-	Headers []string
-	Rows    [][]any
+// Tabular is implemented by result types that know how to render themselves
+// as a table. Print uses this when the format is table; the same value is
+// serialised directly for JSON/YAML.
+type Tabular interface {
+	Headers() []string
+	Rows() [][]any
 }
 
 // Print outputs data in the specified format.
-// For JSON/YAML, data is serialised directly; t is ignored.
-// For table, t is rendered via go-pretty. If t is nil, falls back to JSON.
-func Print(format Format, data any, t *Table) error {
+// For JSON/YAML, data is serialised directly.
+// For table, data must implement Tabular; if it does not, falls back to JSON.
+func Print(format Format, data any) error {
 	switch format {
 	case FormatJSON:
 		return printJSON(data)
 	case FormatYAML:
 		return printYAML(data)
 	default:
-		if t == nil {
-			return printJSON(data)
+		if t, ok := data.(Tabular); ok {
+			return printTable(t)
 		}
-		return printTable(t)
+		return printJSON(data)
 	}
 }
 
@@ -66,18 +68,18 @@ func printYAML(data any) error {
 	return enc.Encode(data)
 }
 
-func printTable(t *Table) error {
+func printTable(t Tabular) error {
 	tw := table.NewWriter()
 	tw.SetOutputMirror(os.Stdout)
 	tw.SetStyle(table.StyleLight)
 
-	header := make(table.Row, len(t.Headers))
-	for i, h := range t.Headers {
+	header := make(table.Row, len(t.Headers()))
+	for i, h := range t.Headers() {
 		header[i] = h
 	}
 	tw.AppendHeader(header)
 
-	for _, row := range t.Rows {
+	for _, row := range t.Rows() {
 		tw.AppendRow(table.Row(row))
 	}
 
