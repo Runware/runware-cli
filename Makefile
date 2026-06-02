@@ -55,7 +55,7 @@ snapshot:
 	goreleaser build --snapshot --clean
 
 docs:
-	go run ./tools/docgen -out ./docs -format markdown
+	rm -rf ./docs && go run ./tools/docgen -out ./docs -format markdown
 
 go-tidy:
 	go mod tidy && go mod verify
