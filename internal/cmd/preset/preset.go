@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -29,11 +30,6 @@ func newListCmd() *cobra.Command {
   runware preset list`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
-			format := getFormat(cmd)
-
-			if format != output.FormatTable {
-				return output.Print(format, cfg.Presets, nil, nil)
-			}
 
 			names := make([]string, 0, len(cfg.Presets))
 			for name := range cfg.Presets {
@@ -41,21 +37,21 @@ func newListCmd() *cobra.Command {
 			}
 			sort.Strings(names)
 
-			headers := []any{"Name", "Model", "Width", "Height", "Steps", "CFG", "Scheduler"}
-			var rows [][]any
-			for _, name := range names {
-				p := cfg.Presets[name]
-				rows = append(rows, []any{
-					name, p.Model, p.Width, p.Height, p.Steps, p.CFGScale, p.Scheduler,
-				})
-			}
-
-			if len(rows) == 0 {
+			if len(names) == 0 {
 				output.Info("No presets configured. Use 'runware preset save <name>' to create one.")
 				return nil
 			}
 
-			return output.Print(format, cfg.Presets, headers, rows)
+			rows := make([][]any, 0, len(names))
+			for _, name := range names {
+				p := cfg.Presets[name]
+				rows = append(rows, []any{name, p.Model, p.Width, p.Height, p.Steps, p.CFGScale, p.Scheduler})
+			}
+
+			return output.Print(cmdutil.FormatFor(cmd), cfg.Presets, &output.Table{
+				Headers: []string{"Name", "Model", "Width", "Height", "Steps", "CFG", "Scheduler"},
+				Rows:    rows,
+			})
 		},
 	}
 }
@@ -74,14 +70,9 @@ func newShowCmd() *cobra.Command {
 				return fmt.Errorf("preset '%s' not found", args[0])
 			}
 
-			format := getFormat(cmd)
-			if format != output.FormatTable {
-				return output.Print(format, preset, nil, nil)
-			}
-
-			return output.Print(format, preset,
-				[]any{"Setting", "Value"},
-				[][]any{
+			return output.Print(cmdutil.FormatFor(cmd), preset, &output.Table{
+				Headers: []string{"Setting", "Value"},
+				Rows: [][]any{
 					{"Model", preset.Model},
 					{"Width", preset.Width},
 					{"Height", preset.Height},
@@ -89,7 +80,7 @@ func newShowCmd() *cobra.Command {
 					{"CFG Scale", preset.CFGScale},
 					{"Scheduler", preset.Scheduler},
 				},
-			)
+			})
 		},
 	}
 }
@@ -182,11 +173,4 @@ func newDeleteCmd() *cobra.Command {
 func completePresetNames(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	config.Init() //nolint:errcheck,gosec
 	return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat(config.Get().Defaults.Format)
 }

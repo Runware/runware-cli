@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -42,7 +43,6 @@ func newCreditsCmd() *cobra.Command {
 				return err
 			}
 
-			format := getFormat(cmd)
 			data := map[string]any{
 				"balance":  result.Balance,
 				"today":    result.Usage.Today,
@@ -51,23 +51,16 @@ func newCreditsCmd() *cobra.Command {
 				"total":    result.Usage.Total,
 			}
 
-			return output.Print(format, data,
-				[]any{"Period", "Credits", "Requests"},
-				[][]any{
+			return output.Print(cmdutil.FormatFor(cmd), data, &output.Table{
+				Headers: []string{"Period", "Credits", "Requests"},
+				Rows: [][]any{
 					{"Balance", fmt.Sprintf("%.5f", result.Balance), "—"},
 					{"Today", fmt.Sprintf("%.5f", result.Usage.Today.Credits), result.Usage.Today.Requests},
 					{"Last 7 days", fmt.Sprintf("%.5f", result.Usage.Last7Days.Credits), result.Usage.Last7Days.Requests},
 					{"Last 30 days", fmt.Sprintf("%.5f", result.Usage.Last30Days.Credits), result.Usage.Last30Days.Requests},
 					{"Total", fmt.Sprintf("%.5f", result.Usage.Total.Credits), result.Usage.Total.Requests},
 				},
-			)
+			})
 		},
 	}
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat(config.Get().Defaults.Format)
 }

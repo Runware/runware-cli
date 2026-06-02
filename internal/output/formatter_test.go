@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -31,13 +32,12 @@ func TestParseFormat(t *testing.T) {
 }
 
 func TestPrintJSON(t *testing.T) {
-	// Capture stdout
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
 	data := map[string]string{"key": "value"}
-	err := Print(FormatJSON, data, nil, nil)
+	err := Print(FormatJSON, data, nil)
 
 	_ = w.Close()
 	os.Stdout = old
@@ -48,13 +48,12 @@ func TestPrintJSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
-	output := buf.String()
+	out := buf.String()
 
 	var parsed map[string]string
-	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
-		t.Fatalf("output is not valid JSON: %v\noutput: %s", err, output)
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", err, out)
 	}
-
 	if parsed["key"] != "value" {
 		t.Errorf("parsed[key] = %q, want %q", parsed["key"], "value")
 	}
@@ -66,7 +65,7 @@ func TestPrintYAML(t *testing.T) {
 	os.Stdout = w
 
 	data := map[string]string{"key": "value"}
-	err := Print(FormatYAML, data, nil, nil)
+	err := Print(FormatYAML, data, nil)
 
 	_ = w.Close()
 	os.Stdout = old
@@ -77,9 +76,62 @@ func TestPrintYAML(t *testing.T) {
 
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
-	output := buf.String()
+	out := buf.String()
 
-	if output == "" {
+	if out == "" {
 		t.Error("YAML output is empty")
+	}
+}
+
+func TestPrintTable(t *testing.T) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := Print(FormatTable, nil, &Table{
+		Headers: []string{"Name", "Value"},
+		Rows:    [][]any{{"foo", "bar"}, {"baz", "qux"}},
+	})
+
+	_ = w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("Print(Table) error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	out := buf.String()
+
+	for _, want := range []string{"NAME", "VALUE", "foo", "bar", "baz", "qux"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("table output missing %q\noutput: %s", want, out)
+		}
+	}
+}
+
+func TestPrintTable_NilFallsBackToJSON(t *testing.T) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	data := map[string]string{"key": "value"}
+	err := Print(FormatTable, data, nil)
+
+	_ = w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("Print(Table,nil) error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	out := buf.String()
+
+	var parsed map[string]string
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("fallback output is not valid JSON: %v\noutput: %s", err, out)
 	}
 }

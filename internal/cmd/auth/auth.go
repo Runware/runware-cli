@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -120,26 +121,15 @@ func newStatusCmd() *cobra.Command {
 				}
 			}
 
-			format := getFormat(cmd)
 			data := map[string]string{
 				"api_key": maskedKey,
 				"status":  status,
 			}
 
-			return output.Print(format, data,
-				[]any{"Field", "Value"},
-				[][]any{
-					{"API Key", maskedKey},
-					{"Status", status},
-				},
-			)
+			return output.Print(cmdutil.FormatFor(cmd), data, &output.Table{
+				Headers: []string{"Field", "Value"},
+				Rows:    [][]any{{"API Key", maskedKey}, {"Status", status}},
+			})
 		},
 	}
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat(config.Get().Defaults.Format)
 }

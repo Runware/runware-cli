@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -38,28 +39,16 @@ func New() *cobra.Command {
 				return err
 			}
 
-			elapsed := time.Since(start)
-			latencyMs := elapsed.Milliseconds()
-
-			format := getFormat(cmd)
+			latencyMs := time.Since(start).Milliseconds()
 			data := map[string]any{
 				"status":     "ok",
 				"latency_ms": latencyMs,
 			}
 
-			if format == output.FormatTable {
-				output.Success(fmt.Sprintf("Runware API: OK (%dms)", latencyMs))
-				return nil
-			}
-
-			return output.Print(format, data, nil, nil)
+			return output.Print(cmdutil.FormatFor(cmd), data, &output.Table{
+				Headers: []string{"Status", "Latency (ms)"},
+				Rows:    [][]any{{"ok", latencyMs}},
+			})
 		},
 	}
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat(config.Get().Defaults.Format)
 }

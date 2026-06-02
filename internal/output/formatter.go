@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rodaine/table"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,30 +31,58 @@ func ParseFormat(s string) Format {
 	}
 }
 
+// Table holds headers and rows for table-format rendering.
+type Table struct {
+	Headers []string
+	Rows    [][]any
+}
+
 // Print outputs data in the specified format.
-// For table format, provide headers and rows.
-// For json/yaml, data is serialized directly.
-func Print(format Format, data any, headers []any, rows [][]any) error {
+// For JSON/YAML, data is serialised directly; t is ignored.
+// For table, t is rendered via go-pretty. If t is nil, falls back to JSON.
+func Print(format Format, data any, t *Table) error {
 	switch format {
 	case FormatJSON:
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(data)
+		return printJSON(data)
 	case FormatYAML:
-		enc := yaml.NewEncoder(os.Stdout)
-		enc.SetIndent(2)
-		return enc.Encode(data)
+		return printYAML(data)
 	default:
-		if len(headers) == 0 {
-			return nil
+		if t == nil {
+			return printJSON(data)
 		}
-		tbl := table.New(headers...)
-		for _, row := range rows {
-			tbl.AddRow(row...)
-		}
-		tbl.Print()
-		return nil
+		return printTable(t)
 	}
+}
+
+func printJSON(data any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(data)
+}
+
+func printYAML(data any) error {
+	enc := yaml.NewEncoder(os.Stdout)
+	enc.SetIndent(2)
+	return enc.Encode(data)
+}
+
+func printTable(t *Table) error {
+	tw := table.NewWriter()
+	tw.SetOutputMirror(os.Stdout)
+	tw.SetStyle(table.StyleLight)
+
+	header := make(table.Row, len(t.Headers))
+	for i, h := range t.Headers {
+		header[i] = h
+	}
+	tw.AppendHeader(header)
+
+	for _, row := range t.Rows {
+		tw.AppendRow(table.Row(row))
+	}
+
+	tw.Render()
+	return nil
 }
 
 // Success prints a success message to stderr.

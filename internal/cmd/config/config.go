@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -29,20 +30,15 @@ func newShowCmd() *cobra.Command {
   runware config show`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
-			format := getFormat(cmd)
 
 			display := *cfg
 			if display.APIKey != "" {
 				display.APIKey = config.MaskKey(display.APIKey)
 			}
 
-			if format != output.FormatTable {
-				return output.Print(format, display, nil, nil)
-			}
-
-			return output.Print(format, display,
-				[]any{"Setting", "Value"},
-				[][]any{
+			return output.Print(cmdutil.FormatFor(cmd), display, &output.Table{
+				Headers: []string{"Setting", "Value"},
+				Rows: [][]any{
 					{"API Key", display.APIKey},
 					{"Default Model", display.Defaults.Model},
 					{"Default Width", display.Defaults.Width},
@@ -54,7 +50,7 @@ func newShowCmd() *cobra.Command {
 					{"Default Output Format", display.Defaults.OutputFormat},
 					{"Default Format", display.Defaults.Format},
 				},
-			)
+			})
 		},
 	}
 }
@@ -139,8 +135,12 @@ func newPathCmd() *cobra.Command {
 		Short: "Print config file path",
 		Example: `  # print config file location
   runware config path`,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(config.ConfigPath())
+		RunE: func(cmd *cobra.Command, args []string) error {
+			p := config.ConfigPath()
+			return output.Print(cmdutil.FormatFor(cmd), map[string]string{"path": p}, &output.Table{
+				Headers: []string{"Config Path"},
+				Rows:    [][]any{{p}},
+			})
 		},
 	}
 }
@@ -158,11 +158,4 @@ func normalizeConfigKey(key string) string {
 		return "defaults." + key
 	}
 	return key
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat(config.Get().Defaults.Format)
 }

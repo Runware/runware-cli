@@ -1,9 +1,9 @@
 package version
 
 import (
-	"fmt"
 	"runtime"
 
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -27,8 +27,6 @@ func New() *cobra.Command {
 		Example: `  # print version information
   runware version`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format := getFormat(cmd)
-
 			data := map[string]string{
 				"version": versionStr,
 				"commit":  commit,
@@ -36,22 +34,15 @@ func New() *cobra.Command {
 				"go":      runtime.Version(),
 			}
 
-			if format == output.FormatTable {
-				fmt.Printf("runware %s\n", versionStr)
-				fmt.Printf("  commit: %s\n", commit)
-				fmt.Printf("  built:  %s\n", date)
-				fmt.Printf("  go:     %s\n", runtime.Version())
-				return nil
-			}
-
-			return output.Print(format, data, nil, nil)
+			return output.Print(cmdutil.FormatFor(cmd), data, &output.Table{
+				Headers: []string{"Field", "Value"},
+				Rows: [][]any{
+					{"version", versionStr},
+					{"commit", commit},
+					{"built", date},
+					{"go", runtime.Version()},
+				},
+			})
 		},
 	}
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat("")
 }
