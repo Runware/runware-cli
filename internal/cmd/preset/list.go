@@ -65,9 +65,6 @@ func newListCmd(logger *log.Logger) *cobra.Command {
   runware preset list`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
-
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := config.Get()
 			format := cmdutil.FormatFor(cmd)
 
 			if len(cfg.Presets) == 0 {
@@ -79,7 +76,6 @@ func newListCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			return output.Print(format, buildPresetList(cfg.Presets))
-		}
 		},
 	}
 }
