@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/rodaine/table"
-	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -73,7 +72,3 @@ func Info(msg string) {
 	fmt.Fprintf(os.Stderr, "• %s\n", msg)
 }
 
-// IsTTY returns true if stderr is a terminal (for spinner decisions).
-func IsTTY() bool {
-	return term.IsTerminal(int(os.Stderr.Fd()))
-}

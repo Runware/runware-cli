@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/runware/runware-cli/cmd"
+	"github.com/runware/runware-cli/internal/cmd"
 	"github.com/spf13/cobra/doc"
 )
 

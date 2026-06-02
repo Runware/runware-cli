@@ -96,7 +96,7 @@ func TestDownload_FailToCreateFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unwritable path, got nil")
 	}
-	if !strings.Contains(err.Error(), "failed to create file") {
-		t.Errorf("error %q does not mention file creation", err)
+	if !strings.Contains(err.Error(), "failed to move file to destination") {
+		t.Errorf("error %q does not mention destination move failure", err)
 	}
 }
