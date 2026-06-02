@@ -54,7 +54,8 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	if c.logger != nil {
+	// Avoid the overhead of creating the pretty output if the logger won't emity at the debug level.
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
 		var pretty bytes.Buffer
 		json.Indent(&pretty, body, "", "  ")                                 //nolint:errcheck,gosec
 		c.logger.Debug("request", "url", c.baseURL, "body", pretty.String()) //nolint:errcheck,gosec

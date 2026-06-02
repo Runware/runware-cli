@@ -43,6 +43,8 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 			if key != "" {
 				maskedKey = config.MaskKey(key)
 				client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
+
+				// TODO(dr): handle the error here.
 				_, err := client.Ping(context.Background())
 				if err != nil {
 					status = "invalid"

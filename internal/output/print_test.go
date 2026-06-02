@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func TestPrintJSON(t *testing.T) {
 	data := map[string]string{"key": testValue}
 	err := Print(FormatJSON, data)
 
-	_ = w.Close()
+	w.Close() //nolint:errcheck,gosec
 	os.Stdout = old
 
 	if err != nil {
@@ -26,7 +27,7 @@ func TestPrintJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
+	buf.ReadFrom(r) //nolint:errcheck,gosec
 	out := buf.String()
 
 	var parsed map[string]string
@@ -46,7 +47,7 @@ func TestPrintYAML(t *testing.T) {
 	data := map[string]string{"key": testValue}
 	err := Print(FormatYAML, data)
 
-	_ = w.Close()
+	w.Close() //nolint:errcheck,gosec
 	os.Stdout = old
 
 	if err != nil {
@@ -54,7 +55,7 @@ func TestPrintYAML(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
+	buf.ReadFrom(r) //nolint:errcheck,gosec
 	out := buf.String()
 
 	if out == "" {
@@ -81,7 +82,7 @@ func TestPrintTable(t *testing.T) {
 		rows:    [][]any{{"foo", "bar"}, {"baz", "qux"}},
 	})
 
-	_ = w.Close()
+	w.Close() //nolint:errcheck,gosec
 	os.Stdout = old
 
 	if err != nil {
@@ -89,7 +90,7 @@ func TestPrintTable(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
+	buf.ReadFrom(r) //nolint:errcheck,gosec
 	out := buf.String()
 
 	for _, want := range []string{"NAME", "VALUE", "foo", "bar", "baz", "qux"} {
@@ -99,27 +100,14 @@ func TestPrintTable(t *testing.T) {
 	}
 }
 
-func TestPrintTable_NonTabularFallsBackToJSON(t *testing.T) {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
+func TestPrintTable_NonTabularReturnsError(t *testing.T) {
 	data := map[string]string{"key": testValue}
 	err := Print(FormatTable, data)
-
-	_ = w.Close()
-	os.Stdout = old
-
-	if err != nil {
-		t.Fatalf("Print(Table, non-Tabular) error: %v", err)
+	var notTabular NotTabularError
+	if !errors.As(err, &notTabular) {
+		t.Fatalf("expected ErrNotTabular, got %v", err)
 	}
-
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
-	out := buf.String()
-
-	var parsed map[string]string
-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatalf("fallback output is not valid JSON: %v\noutput: %s", err, out)
+	if notTabular.Got == nil {
+		t.Error("ErrNotTabular.Got should not be nil")
 	}
 }

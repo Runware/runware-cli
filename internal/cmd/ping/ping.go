@@ -26,8 +26,8 @@ func (r pingResult) Rows() [][]any {
 	return [][]any{{r.Status, r.LatencyMs}}
 }
 
-// New returns the ping command for checking API connectivity.
-func New(logger *log.Logger) *cobra.Command {
+// NewCmd returns the ping command for checking API connectivity.
+func NewCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "ping",
 		Short: "Check API connectivity",

@@ -5,8 +5,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// New returns the config command with show, set, reset, and path subcommands.
-func New(logger *log.Logger) *cobra.Command {
+// NewCmd returns the config command with show, set, reset, and path subcommands.
+func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage CLI configuration",

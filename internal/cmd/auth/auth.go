@@ -5,8 +5,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// New returns the auth command with login, logout, and status subcommands.
-func New(logger *log.Logger) *cobra.Command {
+// NewCmd returns the auth command with login, logout, and status subcommands.
+func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage authentication",

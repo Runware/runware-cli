@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// New returns the completion command for generating shell completion scripts.
-func New() *cobra.Command {
+// NewCmd returns the completion command for generating shell completion scripts.
+func NewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "completion [bash|zsh|fish]",
 		Short: "Generate shell completion scripts",

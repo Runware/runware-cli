@@ -1,6 +1,9 @@
 package output
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Format represents an output format.
 type Format string
@@ -29,4 +32,14 @@ func ParseFormat(s string) Format {
 type Tabular interface {
 	Headers() []string
 	Rows() [][]any
+}
+
+// NotTabularError is returned by Print when table format is requested but the
+// data does not implement Tabular. Use errors.As to inspect the type.
+type NotTabularError struct {
+	Got any
+}
+
+func (e NotTabularError) Error() string {
+	return fmt.Sprintf("table format requires a Tabular value, got %T", e.Got)
 }

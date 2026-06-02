@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// New returns the preset command with list, show, save, and delete subcommands.
-func New(logger *log.Logger) *cobra.Command {
+// NewCmd returns the preset command with list, show, save, and delete subcommands.
+func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "preset",
 		Short: "Manage named presets",

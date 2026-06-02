@@ -53,15 +53,15 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	})
 
 	root.AddCommand(
-		auth.New(logger),
-		ping.New(logger),
-		inference.New(),
-		model.New(),
-		account.New(logger),
-		cmdconfig.New(logger),
-		preset.New(logger),
-		cmdversion.New(),
-		cmdcompletion.New(),
+		auth.NewCmd(logger),
+		ping.NewCmd(logger),
+		inference.NewCmd(),
+		model.NewCmd(),
+		account.NewCmd(logger),
+		cmdconfig.NewCmd(logger),
+		preset.NewCmd(logger),
+		cmdversion.NewCmd(),
+		cmdcompletion.NewCmd(),
 	)
 
 	return root

@@ -10,7 +10,7 @@ import (
 
 // Print outputs data in the specified format.
 // For JSON/YAML, data is serialised directly.
-// For table, data must implement Tabular; if it does not, falls back to JSON.
+// For table, data must implement Tabular; if it does not, an error is returned.
 func Print(format Format, data any) error {
 	switch format {
 	case FormatJSON:
@@ -18,10 +18,12 @@ func Print(format Format, data any) error {
 	case FormatYAML:
 		return printYAML(data)
 	default:
-		if t, ok := data.(Tabular); ok {
-			return printTable(t)
+		t, ok := data.(Tabular)
+		if !ok {
+			return NotTabularError{Got: data}
 		}
-		return printJSON(data)
+		printTable(t)
+		return nil
 	}
 }
 
@@ -33,11 +35,13 @@ func printJSON(data any) error {
 
 func printYAML(data any) error {
 	enc := yaml.NewEncoder(os.Stdout)
+	defer enc.Close() //nolint:errcheck,gosec
+
 	enc.SetIndent(2)
 	return enc.Encode(data)
 }
 
-func printTable(t Tabular) error {
+func printTable(t Tabular) {
 	tw := table.NewWriter()
 	tw.SetOutputMirror(os.Stdout)
 	tw.SetStyle(table.StyleLight)
@@ -53,5 +57,4 @@ func printTable(t Tabular) error {
 	}
 
 	tw.Render()
-	return nil
 }

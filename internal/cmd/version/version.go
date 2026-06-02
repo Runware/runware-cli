@@ -41,8 +41,8 @@ func (r versionResult) Rows() [][]any {
 	}
 }
 
-// New returns the version command for printing build information.
-func New() *cobra.Command {
+// NewCmd returns the version command for printing build information.
+func NewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
