@@ -1,6 +1,6 @@
 package main
 
-import "github.com/runware/runware-cli/cmd"
+import "github.com/runware/runware-cli/internal/cmd"
 
 var (
 	version = "dev"

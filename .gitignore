@@ -79,8 +79,7 @@ Temporary Items
 .apdisk
 
 # Binaries
-runware
-dist/
+dist
 bin
 
 # Test outputs.
