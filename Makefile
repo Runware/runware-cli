@@ -12,7 +12,7 @@ BINARY=runware
 .PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o bin/runware
+	go build -ldflags "$(LDFLAGS)" -o bin/${BINARY} .
 
 build-all: windows-amd64 windows-arm64 darwin linux-amd64 linux-arm64
 
