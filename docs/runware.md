@@ -23,7 +23,6 @@ Generate images, search models, manage your account, and more.
 * [runware completion](runware_completion.md)	 - Generate shell completion scripts
 * [runware config](runware_config.md)	 - Manage CLI configuration
 * [runware inference](runware_inference.md)	 - Run inference tasks
-* [runware model](runware_model.md)	 - Manage and search models
 * [runware ping](runware_ping.md)	 - Check API connectivity
 * [runware preset](runware_preset.md)	 - Manage named presets
 * [runware version](runware_version.md)	 - Print version information
