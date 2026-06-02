@@ -46,7 +46,7 @@ lint:
 	golangci-lint run
 
 clean:
-	rm -f runwar
+	rm -rf bin dist
 
 install:
 	go install -ldflags "$(LDFLAGS)" .
