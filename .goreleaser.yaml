@@ -2,7 +2,7 @@ version: 2
 project_name: runware-cli
 
 builds:
-  - main: .
+  - main: ./cmd/runware
     binary: runware
     goos:
       - darwin
