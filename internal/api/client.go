@@ -54,7 +54,7 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Avoid the overhead of creating the pretty output if the logger won't emity at the debug level.
+	// Avoid the overhead of creating the pretty output if the logger won't emit at the debug level.
 	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
 		var pretty bytes.Buffer
 		json.Indent(&pretty, body, "", "  ")                                 //nolint:errcheck,gosec
@@ -83,7 +83,7 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if c.logger != nil {
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
 		c.logger.Debug("response", "status", resp.StatusCode, "elapsed", elapsed.Round(time.Millisecond), "body", string(respBody)) //nolint:errcheck,gosec
 	}
 

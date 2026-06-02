@@ -23,7 +23,7 @@ func PollResults[T any](ctx context.Context, client Client, taskID uuid.UUID, in
 			if IsAuthError(err) || errors.As(err, &apiErr) {
 				return nil, err
 			}
-			if logger != nil {
+			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
 				logger.Debug("poll error", "err", err)
 			}
 		} else {

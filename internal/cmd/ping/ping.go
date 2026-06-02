@@ -14,8 +14,8 @@ import (
 )
 
 type pingResult struct {
-	Status    string `json:"status"`
-	LatencyMs int64  `json:"latency_ms"`
+	Status    string `json:"status" yaml:"status"`
+	LatencyMs int64  `json:"latency_ms" yaml:"latency_ms"`
 }
 
 func (r pingResult) Headers() []string {

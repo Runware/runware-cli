@@ -66,12 +66,20 @@ func newListCmd(logger *log.Logger) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
 
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := config.Get()
+			format := cmdutil.FormatFor(cmd)
+
 			if len(cfg.Presets) == 0 {
-				logger.Info("No presets configured. Use 'runware preset save <name>' to create one.")
-				return nil
+				if format == output.FormatTable {
+					logger.Info("No presets configured. Use 'runware preset save <name>' to create one.")
+					return nil
+				}
+				return output.Print(format, presetListResult{})
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), buildPresetList(cfg.Presets))
+			return output.Print(format, buildPresetList(cfg.Presets))
+		}
 		},
 	}
 }

@@ -14,11 +14,11 @@ import (
 )
 
 type creditsResult struct {
-	Balance float64         `json:"balance"`
-	Today   api.UsagePeriod `json:"today"`
-	Last7d  api.UsagePeriod `json:"last_7d"`
-	Last30d api.UsagePeriod `json:"last_30d"`
-	Total   api.UsagePeriod `json:"total"`
+	Balance float64         `json:"balance" yaml:"balance"`
+	Today   api.UsagePeriod `json:"today" yaml:"today"`
+	Last7d  api.UsagePeriod `json:"last_7d" yaml:"last_7d"`
+	Last30d api.UsagePeriod `json:"last_30d" yaml:"last_30d"`
+	Total   api.UsagePeriod `json:"total" yaml:"total"`
 }
 
 func (r creditsResult) Headers() []string {
