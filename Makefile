@@ -9,9 +9,12 @@ LDFLAGS = -s -w \
 
 BINARY=runware
 
-.PHONY: build windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs
+.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs
 
-build: windows-amd64 windows-arm64 darwin linux-amd64 linux-arm64
+build:
+	go build -ldflags "$(LDFLAGS)" -o bin/${BINARY} .
+
+build-all: windows-amd64 windows-arm64 darwin linux-amd64 linux-arm64
 
 windows-amd64:
 	GOARCH=amd64 GOOS=windows go build -ldflags "$(LDFLAGS)" -o bin/${BINARY}-windows-amd64.exe .
@@ -43,7 +46,7 @@ lint:
 	golangci-lint run
 
 clean:
-	rm -f runware
+	rm -rf bin dist
 
 install:
 	go install -ldflags "$(LDFLAGS)" .

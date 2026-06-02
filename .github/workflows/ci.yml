@@ -16,7 +16,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build
-        run: make build
+        run: make build-all
 
       - name: Test
         run: go test -race -timeout 2m ./...
