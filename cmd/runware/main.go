@@ -1,6 +1,10 @@
 package main
 
-import "github.com/runware/runware-cli/internal/cmd"
+import (
+	"os"
+
+	"github.com/runware/runware-cli/internal/cmd"
+)
 
 var (
 	version = "dev"
@@ -10,5 +14,7 @@ var (
 
 func main() {
 	cmd.SetVersionInfo(version, commit, date)
-	cmd.Execute()
+	if err := cmd.Root().Execute(); err != nil {
+		os.Exit(1)
+	}
 }

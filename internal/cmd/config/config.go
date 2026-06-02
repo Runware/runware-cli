@@ -1,148 +1,21 @@
 package config
 
 import (
-	"fmt"
-
-	"github.com/runware/runware-cli/internal/config"
-	"github.com/runware/runware-cli/internal/output"
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-func New() *cobra.Command {
+// NewCmd returns the config command with show, set, reset, and path subcommands.
+func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage CLI configuration",
 	}
 	cmd.AddCommand(newShowCmd())
-	cmd.AddCommand(newSetCmd())
-	cmd.AddCommand(newResetCmd())
+	cmd.AddCommand(newSetCmd(logger))
+	cmd.AddCommand(newResetCmd(logger))
 	cmd.AddCommand(newPathCmd())
 	return cmd
-}
-
-func newShowCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "show",
-		Short: "Print current configuration",
-		Example: `  # print current configuration
-  runware config show`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := config.Get()
-			format := getFormat(cmd)
-
-			display := *cfg
-			if display.APIKey != "" {
-				display.APIKey = config.MaskKey(display.APIKey)
-			}
-
-			if format != output.FormatTable {
-				return output.Print(format, display, nil, nil)
-			}
-
-			return output.Print(format, display,
-				[]any{"Setting", "Value"},
-				[][]any{
-					{"API Key", display.APIKey},
-					{"Default Model", display.Defaults.Model},
-					{"Default Width", display.Defaults.Width},
-					{"Default Height", display.Defaults.Height},
-					{"Default Steps", display.Defaults.Steps},
-					{"Default CFG Scale", display.Defaults.CFGScale},
-					{"Default Scheduler", display.Defaults.Scheduler},
-					{"Default Output Dir", display.Defaults.OutputDir},
-					{"Default Output Format", display.Defaults.OutputFormat},
-					{"Default Format", display.Defaults.Format},
-				},
-			)
-		},
-	}
-}
-
-func newSetCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "set [key] [value]",
-		Short: "Set a config value",
-		Example: `  # set default model
-  runware config set model "runware:100@1"
-
-  # set default output format
-  runware config set format json`,
-		Args: cobra.ExactArgs(2),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			if len(args) == 0 {
-				return []string{
-					"defaults.model",
-					"defaults.width",
-					"defaults.height",
-					"defaults.steps",
-					"defaults.cfg_scale",
-					"defaults.scheduler",
-					"defaults.output_dir",
-					"defaults.output_format",
-					"defaults.format",
-				}, cobra.ShellCompDirectiveNoFileComp
-			}
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			key := normalizeConfigKey(args[0])
-			value := args[1]
-
-			viper.Set(key, value)
-
-			cfg := config.Get()
-			if err := config.Save(cfg); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
-			}
-
-			output.Success(fmt.Sprintf("Set %s = %s", key, value))
-			return nil
-		},
-	}
-}
-
-func newResetCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "reset",
-		Short: "Reset configuration to defaults",
-		Example: `  # reset all config to defaults
-  runware config reset`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := &config.Config{
-				Defaults: config.Defaults{
-					Model:        config.DefaultModel,
-					Width:        config.DefaultWidth,
-					Height:       config.DefaultHeight,
-					Steps:        config.DefaultSteps,
-					CFGScale:     config.DefaultCFGScale,
-					Scheduler:    config.DefaultScheduler,
-					OutputDir:    config.DefaultOutputDir,
-					OutputFormat: config.DefaultOutputFmt,
-					Format:       config.DefaultFormat,
-				},
-			}
-
-			if err := config.Save(cfg); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
-			}
-
-			output.Success("Configuration reset to defaults")
-			return nil
-		},
-	}
-}
-
-func newPathCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "path",
-		Short: "Print config file path",
-		Example: `  # print config file location
-  runware config path`,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(config.ConfigPath())
-		},
-	}
 }
 
 // defaultsKeys are config keys that live under the "defaults" namespace.
@@ -158,11 +31,4 @@ func normalizeConfigKey(key string) string {
 		return "defaults." + key
 	}
 	return key
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat(config.Get().Defaults.Format)
 }

@@ -4,15 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"os"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 // PollResults polls for generic results from a task.
-func PollResults[T any](ctx context.Context, client Client, taskID uuid.UUID, interval time.Duration, verbose bool, parse func(json.RawMessage) (T, bool)) ([]T, error) {
+func PollResults[T any](ctx context.Context, client Client, taskID uuid.UUID, interval time.Duration, logger *slog.Logger, parse func(json.RawMessage) (T, bool)) ([]T, error) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -24,8 +23,8 @@ func PollResults[T any](ctx context.Context, client Client, taskID uuid.UUID, in
 			if IsAuthError(err) || errors.As(err, &apiErr) {
 				return nil, err
 			}
-			if verbose {
-				fmt.Fprintf(os.Stderr, "Poll: %s\n", err) //nolint:errcheck,gosec
+			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
+				logger.Debug("poll error", "err", err)
 			}
 		} else {
 			for _, raw := range rawData {

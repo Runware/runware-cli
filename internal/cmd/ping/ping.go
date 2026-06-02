@@ -2,16 +2,32 @@ package ping
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-func New() *cobra.Command {
+type pingResult struct {
+	Status    string `json:"status" yaml:"status"`
+	LatencyMs int64  `json:"latency_ms" yaml:"latency_ms"`
+}
+
+func (r pingResult) Headers() []string {
+	return []string{"Status", "Latency (ms)"}
+}
+
+func (r pingResult) Rows() [][]any {
+	return [][]any{{r.Status, r.LatencyMs}}
+}
+
+// NewCmd returns the ping command for checking API connectivity.
+func NewCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "ping",
 		Short: "Check API connectivity",
@@ -20,46 +36,26 @@ func New() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := config.GetAPIKey()
 			if key == "" {
-				output.Error("No API key configured. Run 'runware auth login' to authenticate.")
+				logger.Error("No API key configured. Run 'runware auth login' to authenticate.")
 				return api.ErrNoAPIKey
 			}
 
-			verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose")
-			client := api.NewClient(key, config.GetBaseURL(), verbose)
-
+			client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
 			start := time.Now()
 			_, err := client.Ping(context.Background())
 			if err != nil {
 				if api.IsAuthError(err) {
-					output.Error("Authentication failed. Run 'runware auth login' to set your API key.")
+					logger.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 					return err
 				}
-				output.Error(fmt.Sprintf("Ping failed: %s", err))
+				logger.Error("Ping failed", "err", err)
 				return err
 			}
 
-			elapsed := time.Since(start)
-			latencyMs := elapsed.Milliseconds()
-
-			format := getFormat(cmd)
-			data := map[string]any{
-				"status":     "ok",
-				"latency_ms": latencyMs,
-			}
-
-			if format == output.FormatTable {
-				output.Success(fmt.Sprintf("Runware API: OK (%dms)", latencyMs))
-				return nil
-			}
-
-			return output.Print(format, data, nil, nil)
+			return output.Print(cmdutil.FormatFor(cmd), pingResult{
+				Status:    "ok",
+				LatencyMs: time.Since(start).Milliseconds(),
+			})
 		},
 	}
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat(config.Get().Defaults.Format)
 }

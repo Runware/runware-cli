@@ -1,9 +1,9 @@
 package version
 
 import (
-	"fmt"
 	"runtime"
 
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -14,44 +14,47 @@ var (
 	date       = "unknown"
 )
 
+// SetVersionInfo sets the version, commit, and build date injected via ldflags.
 func SetVersionInfo(v, c, d string) {
 	versionStr = v
 	commit = c
 	date = d
 }
 
-func New() *cobra.Command {
+type versionResult struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+	Go      string `json:"go"`
+}
+
+func (r versionResult) Headers() []string {
+	return []string{"Field", "Value"}
+}
+
+func (r versionResult) Rows() [][]any {
+	return [][]any{
+		{"version", r.Version},
+		{"commit", r.Commit},
+		{"built", r.Date},
+		{"go", r.Go},
+	}
+}
+
+// NewCmd returns the version command for printing build information.
+func NewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
 		Example: `  # print version information
   runware version`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format := getFormat(cmd)
-
-			data := map[string]string{
-				"version": versionStr,
-				"commit":  commit,
-				"date":    date,
-				"go":      runtime.Version(),
-			}
-
-			if format == output.FormatTable {
-				fmt.Printf("runware %s\n", versionStr)
-				fmt.Printf("  commit: %s\n", commit)
-				fmt.Printf("  built:  %s\n", date)
-				fmt.Printf("  go:     %s\n", runtime.Version())
-				return nil
-			}
-
-			return output.Print(format, data, nil, nil)
+			return output.Print(cmdutil.FormatFor(cmd), versionResult{
+				Version: versionStr,
+				Commit:  commit,
+				Date:    date,
+				Go:      runtime.Version(),
+			})
 		},
 	}
-}
-
-func getFormat(cmd *cobra.Command) output.Format {
-	if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
-		return output.ParseFormat(f)
-	}
-	return output.ParseFormat("")
 }

@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,16 +31,16 @@ type Client interface {
 type RestClient struct {
 	apiKey     string
 	baseURL    string
-	verbose    bool
+	logger     *slog.Logger
 	httpClient *http.Client
 }
 
 // NewClient creates a new REST API client.
-func NewClient(apiKey, baseURL string, verbose bool) *RestClient {
+func NewClient(apiKey, baseURL string, logger *slog.Logger) *RestClient {
 	return &RestClient{
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		verbose: verbose,
+		logger:  logger,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -54,10 +54,11 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	if c.verbose {
+	// Avoid the overhead of creating the pretty output if the logger won't emit at the debug level.
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
 		var pretty bytes.Buffer
-		json.Indent(&pretty, body, "", "  ")                                  //nolint:errcheck,gosec
-		fmt.Fprintf(os.Stderr, "→ POST %s\n%s\n", c.baseURL, pretty.String()) //nolint:errcheck,gosec
+		json.Indent(&pretty, body, "", "  ")                                 //nolint:errcheck,gosec
+		c.logger.Debug("request", "url", c.baseURL, "body", pretty.String()) //nolint:errcheck,gosec
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
@@ -82,8 +83,8 @@ func (c *RestClient) do(ctx context.Context, tasks []any) (*APIResponse, error) 
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if c.verbose {
-		fmt.Fprintf(os.Stderr, "← %d (%s)\n%s\n", resp.StatusCode, elapsed.Round(time.Millisecond), string(respBody)) //nolint:errcheck,gosec
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
+		c.logger.Debug("response", "status", resp.StatusCode, "elapsed", elapsed.Round(time.Millisecond), "body", string(respBody)) //nolint:errcheck,gosec
 	}
 
 	var apiResp APIResponse

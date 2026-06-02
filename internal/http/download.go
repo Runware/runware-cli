@@ -14,7 +14,7 @@ import (
 // it streams into a temporary file and renames it to destPath on success,
 // so a failed download never leaves a partial file behind.
 func Download(ctx context.Context, url, destPath string, timeout time.Duration) error {
-	// TODO(dr): We'll refactor this so it's a method on the API client, respsecting it's configured HTTP client and options.
+	// TODO(dr): We'll refactor this so it's a method on the API client, respecting it's configured HTTP client and options.
 	cancel := func() {}
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, timeout)

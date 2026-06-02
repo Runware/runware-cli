@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +19,7 @@ func TestDo_Non2xx_InvalidJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, false)
+	c := NewClient("test-key", srv.URL, slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error from 5xx response, got nil")
@@ -41,7 +42,7 @@ func TestDo_Non2xx_ValidJSON_NoErrors(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewClient("test-key", srv.URL, false)
+			c := NewClient("test-key", srv.URL, slog.Default())
 			_, err := c.Ping(context.Background())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -64,7 +65,7 @@ func TestDo_Non2xx_ValidJSON_WithErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, false)
+	c := NewClient("test-key", srv.URL, slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -84,7 +85,7 @@ func TestDo_200_ValidJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, false)
+	c := NewClient("test-key", srv.URL, slog.Default())
 	_, err := c.Ping(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error on 200 response: %v", err)
@@ -101,7 +102,7 @@ func TestDo_200_WithErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, false)
+	c := NewClient("test-key", srv.URL, slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error from errors field, got nil")
@@ -120,7 +121,7 @@ func TestDo_UnauthorizedOn401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, false)
+	c := NewClient("test-key", srv.URL, slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
