@@ -90,13 +90,18 @@ func TestDownload_FailToCreateFile(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Use a path inside a non-existent directory.
-	dest := filepath.Join(t.TempDir(), "nonexistent", "out.mp4")
+	// Place a regular file where MkdirAll would need to create a directory,
+	// making the destination path unwritable on any platform.
+	blocker := filepath.Join(t.TempDir(), "notadir")
+	if err := os.WriteFile(blocker, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(blocker, "out.mp4")
 	err := Download(context.Background(), srv.URL, dest, 5*time.Second)
 	if err == nil {
 		t.Fatal("expected error for unwritable path, got nil")
 	}
-	if !strings.Contains(err.Error(), "failed to move file to destination") {
-		t.Errorf("error %q does not mention destination move failure", err)
+	if !strings.Contains(err.Error(), "failed to create destination directory") {
+		t.Errorf("error %q does not mention destination directory failure", err)
 	}
 }

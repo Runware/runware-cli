@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -37,7 +38,12 @@ func Download(ctx context.Context, url, destPath string, timeout time.Duration) 
 		return fmt.Errorf("download returned status %d", resp.StatusCode)
 	}
 
-	tmp, err := os.CreateTemp(os.TempDir(), "runware-download-*")
+	destDir := filepath.Dir(destPath)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(destDir, "runware-download-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
