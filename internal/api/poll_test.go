@@ -146,12 +146,12 @@ func TestPollResults_TransientErrorKeepsPolling(t *testing.T) {
 func TestPollResults_AuthErrorFatal(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
-			{err: ErrUnauthorized},
+			{err: transport.ErrUnauthorized},
 		},
 	}
 
 	_, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
-	if !errors.Is(err, ErrUnauthorized) {
+	if !errors.Is(err, transport.ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized, got %v", err)
 	}
 	if mock.callCount != 1 {
@@ -163,7 +163,7 @@ func TestPollResults_AuthErrorFatal(t *testing.T) {
 func TestPollResults_APIErrorFatal(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
-			{err: APIError{Message: "bad request"}},
+			{err: transport.APIError{Message: "bad request"}},
 		},
 	}
 

@@ -44,7 +44,7 @@ func newCreditsCmd(logger *log.Logger) *cobra.Command {
 
 			result, err := client.AccountDetails(cmd.Context())
 			if err != nil {
-				if api.IsAuthError(err) {
+				if transport.IsAuthError(err) {
 					logger.Error("Authentication failed. Run 'runware auth login' to set your API key.")
 				}
 				return err

@@ -128,7 +128,7 @@ func TestSend_UnauthorizedOn401(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !IsAuthError(err) {
+	if !transport.IsAuthError(err) {
 		t.Errorf("expected IsAuthError true for invalidApiKey, got: %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestSend_NoAPIKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty API key, got nil")
 	}
-	if !IsAuthError(err) {
+	if !transport.IsAuthError(err) {
 		t.Errorf("expected IsAuthError true for empty key, got: %v", err)
 	}
 }

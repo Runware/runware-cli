@@ -101,31 +101,6 @@ func TestPingResultJSON(t *testing.T) {
 	}
 }
 
-func TestAPIErrorJSON(t *testing.T) {
-	jsonData := `{
-		"data": [],
-		"errors": [{
-			"code": "invalidApiKey",
-			"message": "Invalid API key. Get one at https://my.runware.ai/signup",
-			"parameter": "apiKey",
-			"type": "string"
-		}]
-	}`
-
-	var resp APIResponse
-	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
-		t.Fatalf("Unmarshal error: %v", err)
-	}
-
-	if len(resp.Errors) != 1 {
-		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
-	}
-
-	if resp.Errors[0].Code != invalidAPIKeyCode {
-		t.Errorf("error code = %q, want %q", resp.Errors[0].Code, invalidAPIKeyCode)
-	}
-}
-
 func TestAccountResultJSON(t *testing.T) {
 	jsonData := `{
 		"taskType": "accountManagement",
@@ -311,76 +286,6 @@ func TestGetResponseRequestJSON(t *testing.T) {
 	}
 	if parsed[jsonKeyTaskUUID] != pollID.String() {
 		t.Errorf("taskUUID = %q, want %q", parsed[jsonKeyTaskUUID], pollID.String())
-	}
-}
-
-func TestAPIErrorParameterString(t *testing.T) {
-	jsonData := `{
-		"data": [],
-		"errors": [{
-			"code": "invalidParameter",
-			"message": "bad param",
-			"parameter": "model"
-		}]
-	}`
-
-	var resp APIResponse
-	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
-		t.Fatalf("Unmarshal error: %v", err)
-	}
-
-	if len(resp.Errors) != 1 {
-		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
-	}
-
-	param := resp.Errors[0].Parameter()
-	if param != jsonKeyModel {
-		t.Errorf("Parameter() = %q, want %q", param, jsonKeyModel)
-	}
-}
-
-func TestAPIErrorParameterArray(t *testing.T) {
-	jsonData := `{
-		"data": [],
-		"errors": [{
-			"code": "invalidParameter",
-			"message": "bad params",
-			"parameter": ["positivePrompt", "model"]
-		}]
-	}`
-
-	var resp APIResponse
-	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
-		t.Fatalf("Unmarshal error: %v", err)
-	}
-
-	if len(resp.Errors) != 1 {
-		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
-	}
-
-	param := resp.Errors[0].Parameter()
-	if param != jsonKeyPosPrompt {
-		t.Errorf("Parameter() = %q, want %q", param, jsonKeyPosPrompt)
-	}
-}
-
-func TestAPIErrorParameterMissing(t *testing.T) {
-	jsonData := `{
-		"data": [],
-		"errors": [{
-			"code": "serverError",
-			"message": "internal error"
-		}]
-	}`
-
-	var resp APIResponse
-	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
-		t.Fatalf("Unmarshal error: %v", err)
-	}
-
-	param := resp.Errors[0].Parameter()
-	if param != "" {
-		t.Errorf("Parameter() = %q, want empty string", param)
 	}
 }
 

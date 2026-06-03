@@ -2,12 +2,7 @@ package api
 
 import (
 	"github.com/google/uuid"
-	"github.com/runware/runware-cli/internal/api/transport"
 )
-
-// APIResponse is the top-level response from the Runware API.
-// Defined in the transport package; re-exported here for convenience.
-type APIResponse = transport.APIResponse
 
 // ImageInferenceRequest contains fields for the imageInference task type.
 type ImageInferenceRequest struct {

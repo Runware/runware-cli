@@ -29,8 +29,8 @@ func PollResults[T any](ctx context.Context, t transport.Transport, taskID uuid.
 
 		data, err := t.Send(ctx, tasks)
 		if err != nil {
-			var apiErr APIError
-			if IsAuthError(err) || errors.As(err, &apiErr) {
+			var apiErr transport.APIError
+			if transport.IsAuthError(err) || errors.As(err, &apiErr) {
 				return nil, err
 			}
 			if logger != nil && logger.Enabled(ctx, slog.LevelDebug) {
