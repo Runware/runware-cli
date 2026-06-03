@@ -19,15 +19,47 @@ type HTTPTransport struct {
 	httpClient *http.Client
 }
 
+// httpTransportOptions holds the configurable settings for HTTPTransport.
+type httpTransportOptions struct {
+	timeout    time.Duration
+	httpClient *http.Client
+}
+
+// HTTPTransportOption is a functional option for NewHTTPTransport.
+type HTTPTransportOption func(*httpTransportOptions)
+
+// WithTimeout sets the HTTP client timeout. Ignored if WithHTTPClient is also provided.
+func WithTimeout(d time.Duration) HTTPTransportOption {
+	return func(o *httpTransportOptions) {
+		o.timeout = d
+	}
+}
+
+// WithHTTPClient replaces the default HTTP client entirely. When provided,
+// WithTimeout has no effect — the caller is responsible for the client's timeout.
+func WithHTTPClient(c *http.Client) HTTPTransportOption {
+	return func(o *httpTransportOptions) {
+		o.httpClient = c
+	}
+}
+
 // NewHTTPTransport creates an HTTP transport for the given API key and base URL.
-func NewHTTPTransport(apiKey, baseURL string, logger *slog.Logger) *HTTPTransport {
+func NewHTTPTransport(apiKey, baseURL string, logger *slog.Logger, opts ...HTTPTransportOption) *HTTPTransport {
+	o := httpTransportOptions{
+		timeout: 120 * time.Second,
+	}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	client := o.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: o.timeout}
+	}
 	return &HTTPTransport{
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		logger:  logger,
-		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
-		},
+		apiKey:     apiKey,
+		baseURL:    baseURL,
+		logger:     logger,
+		httpClient: client,
 	}
 }
 
