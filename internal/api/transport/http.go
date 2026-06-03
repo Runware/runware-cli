@@ -140,7 +140,14 @@ func (t *HTTPTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessag
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, ParseAPIError(respBody, resp.StatusCode)
+		if apiErr := ParseAPIError(respBody, resp.StatusCode); apiErr.Message != "" {
+			return nil, apiErr
+		}
+		return nil, CreateRunwareError(
+			"serverError",
+			fmt.Sprintf("HTTP %d: %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+			RunwareErrorDetails{StatusCode: resp.StatusCode},
+		)
 	}
 
 	return apiResp.Data, nil
