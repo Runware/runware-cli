@@ -1,11 +1,11 @@
 package auth
 
 import (
-	"context"
 	"log/slog"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -42,10 +42,11 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 
 			if key != "" {
 				maskedKey = config.MaskKey(key)
-				client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
+				t := transport.TransportFromContext(cmd.Context())
+				client := api.NewClient(t, slog.New(logger))
 
 				// TODO(dr): handle the error here.
-				_, err := client.Ping(context.Background())
+				_, err := client.Ping(cmd.Context())
 				if err != nil {
 					status = "invalid"
 				} else {

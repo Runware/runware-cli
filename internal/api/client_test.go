@@ -8,18 +8,20 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-// TestDo_Non2xx_InvalidJSON: non-200 with a non-JSON body returns a parse error
+// TestSend_Non2xx_InvalidJSON: non-200 with a non-JSON body returns a parse error
 // that includes the HTTP status code.
-func TestDo_Non2xx_InvalidJSON(t *testing.T) {
+func TestSend_Non2xx_InvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`<html>internal error</html>`))
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, slog.Default())
+	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error from 5xx response, got nil")
@@ -29,9 +31,9 @@ func TestDo_Non2xx_InvalidJSON(t *testing.T) {
 	}
 }
 
-// TestDo_Non2xx_ValidJSON_NoErrors: non-200 with valid JSON that has no errors
+// TestSend_Non2xx_ValidJSON_NoErrors: non-200 with valid JSON that has no errors
 // field — the previous blind spot. Must return an HTTP status error.
-func TestDo_Non2xx_ValidJSON_NoErrors(t *testing.T) {
+func TestSend_Non2xx_ValidJSON_NoErrors(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{"data": []any{}})
 	for _, code := range []int{http.StatusBadRequest, http.StatusForbidden, http.StatusInternalServerError} {
 		t.Run(http.StatusText(code), func(t *testing.T) {
@@ -42,7 +44,7 @@ func TestDo_Non2xx_ValidJSON_NoErrors(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewClient("test-key", srv.URL, slog.Default())
+			c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
 			_, err := c.Ping(context.Background())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -55,9 +57,9 @@ func TestDo_Non2xx_ValidJSON_NoErrors(t *testing.T) {
 	}
 }
 
-// TestDo_Non2xx_ValidJSON_WithErrors: non-200 with a structured errors field —
+// TestSend_Non2xx_ValidJSON_WithErrors: non-200 with a structured errors field —
 // errors field checked first, so structured API error surfaces over HTTP status.
-func TestDo_Non2xx_ValidJSON_WithErrors(t *testing.T) {
+func TestSend_Non2xx_ValidJSON_WithErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -65,7 +67,7 @@ func TestDo_Non2xx_ValidJSON_WithErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, slog.Default())
+	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -76,8 +78,8 @@ func TestDo_Non2xx_ValidJSON_WithErrors(t *testing.T) {
 	}
 }
 
-// TestDo_200_ValidJSON: happy path returns no error.
-func TestDo_200_ValidJSON(t *testing.T) {
+// TestSend_200_ValidJSON: happy path returns no error.
+func TestSend_200_ValidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -85,16 +87,16 @@ func TestDo_200_ValidJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, slog.Default())
+	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error on 200 response: %v", err)
 	}
 }
 
-// TestDo_200_WithErrors: 200 response that carries an errors field should still
+// TestSend_200_WithErrors: 200 response that carries an errors field should still
 // surface the API error.
-func TestDo_200_WithErrors(t *testing.T) {
+func TestSend_200_WithErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -102,7 +104,7 @@ func TestDo_200_WithErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, slog.Default())
+	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error from errors field, got nil")
@@ -112,8 +114,8 @@ func TestDo_200_WithErrors(t *testing.T) {
 	}
 }
 
-// TestDo_UnauthorizedOn401: 401 with invalidApiKey in errors field returns ErrUnauthorized.
-func TestDo_UnauthorizedOn401(t *testing.T) {
+// TestSend_UnauthorizedOn401: 401 with invalidApiKey in errors field returns ErrUnauthorized.
+func TestSend_UnauthorizedOn401(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -121,12 +123,24 @@ func TestDo_UnauthorizedOn401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, slog.Default())
+	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !IsAuthError(err) {
+	if !transport.IsAuthError(err) {
 		t.Errorf("expected IsAuthError true for invalidApiKey, got: %v", err)
+	}
+}
+
+// TestSend_NoAPIKey: empty API key returns ErrNoAPIKey without making a request.
+func TestSend_NoAPIKey(t *testing.T) {
+	c := NewClient(transport.NewHTTPTransport("", "http://localhost", slog.Default()), slog.Default())
+	_, err := c.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected error for empty API key, got nil")
+	}
+	if !transport.IsAuthError(err) {
+		t.Errorf("expected IsAuthError true for empty key, got: %v", err)
 	}
 }

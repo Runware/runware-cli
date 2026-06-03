@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"log/slog"
 	"os"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmd/account"
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
@@ -23,11 +25,6 @@ func newLogger() *log.Logger {
 	return log.NewWithOptions(os.Stderr, log.Options{ReportTimestamp: false})
 }
 
-// SetVersionInfo passes build-time version info down to the version command.
-func SetVersionInfo(v, c, d string) {
-	cmdversion.SetVersionInfo(v, c, d)
-}
-
 // NewRootCmd builds and returns the root cobra command.
 func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root := &cobra.Command{
@@ -38,7 +35,12 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)
 			}
-			return config.Init()
+			if err := config.Init(); err != nil {
+				return err
+			}
+			t := transport.NewHTTPTransport(config.GetAPIKey(), config.GetBaseURL(), slog.New(logger))
+			cmd.SetContext(transport.WithTransport(cmd.Context(), t))
+			return nil
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -70,4 +72,11 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 // Root returns the root command for tools like doc generators.
 func Root() *cobra.Command {
 	return NewRootCmd(newLogger())
+}
+
+// NewRoot builds the root command and returns it together with the logger.
+// Use this in main so the same logger can be used for catch-all error printing.
+func NewRoot() (*cobra.Command, *log.Logger) {
+	logger := newLogger()
+	return NewRootCmd(logger), logger
 }

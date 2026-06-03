@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -49,10 +50,10 @@ func newLoginCmd(logger *log.Logger) *cobra.Command {
 				return fmt.Errorf("API key cannot be empty")
 			}
 
-			client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
+			t := transport.NewHTTPTransport(key, config.GetBaseURL(), slog.New(logger))
+			client := api.NewClient(t, slog.New(logger))
 			_, err := client.Ping(context.Background())
 			if err != nil {
-				logger.Error("Invalid API key. Authentication failed.")
 				return err
 			}
 

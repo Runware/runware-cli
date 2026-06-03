@@ -1,16 +1,8 @@
 package api
 
 import (
-	"encoding/json"
-
 	"github.com/google/uuid"
 )
-
-// APIResponse is the top-level response from the Runware API.
-type APIResponse struct {
-	Data   []json.RawMessage `json:"data"`
-	Errors []APIError        `json:"errors,omitempty"`
-}
 
 // ImageInferenceRequest contains fields for the imageInference task type.
 type ImageInferenceRequest struct {
