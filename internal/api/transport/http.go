@@ -32,10 +32,14 @@ func NewHTTPTransport(apiKey, baseURL string, logger *slog.Logger) *HTTPTranspor
 }
 
 // Connect is a no-op for HTTP; the transport is stateless.
-func (t *HTTPTransport) Connect(_ context.Context) error { return nil }
+func (t *HTTPTransport) Connect(_ context.Context) error {
+	return nil
+}
 
 // Disconnect is a no-op for HTTP; the transport is stateless.
-func (t *HTTPTransport) Disconnect() error { return nil }
+func (t *HTTPTransport) Disconnect() error {
+	return nil
+}
 
 // Send marshals tasks, POSTs to the API, and returns the response data items.
 // API-level errors are converted to Go errors before returning.
@@ -87,22 +91,18 @@ func (t *HTTPTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessag
 	}
 
 	if len(apiResp.Errors) > 0 {
-		if IsAuthError(apiResp.Errors[0]) {
-			return nil, ErrUnauthorized
-		}
-		return nil, apiResp.Errors[0]
+		e := apiResp.Errors[0]
+		e.StatusCode = resp.StatusCode
+		return nil, &e
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("API returned HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 500))
+		return nil, CreateRunwareError(
+			"serverError",
+			fmt.Sprintf("HTTP %d: %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+			RunwareErrorDetails{StatusCode: resp.StatusCode},
+		)
 	}
 
 	return apiResp.Data, nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }

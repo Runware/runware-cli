@@ -54,7 +54,6 @@ func newLoginCmd(logger *log.Logger) *cobra.Command {
 			client := api.NewClient(t, slog.New(logger))
 			_, err := client.Ping(context.Background())
 			if err != nil {
-				logger.Error("Invalid API key. Authentication failed.")
 				return err
 			}
 

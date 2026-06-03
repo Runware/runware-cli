@@ -78,3 +78,10 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 func Root() *cobra.Command {
 	return NewRootCmd(newLogger())
 }
+
+// NewRoot builds the root command and returns it together with the logger.
+// Use this in main so the same logger can be used for catch-all error printing.
+func NewRoot() (*cobra.Command, *log.Logger) {
+	logger := newLogger()
+	return NewRootCmd(logger), logger
+}

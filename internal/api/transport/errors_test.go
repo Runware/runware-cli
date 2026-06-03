@@ -12,10 +12,9 @@ func TestIsAuthError(t *testing.T) {
 		err      error
 		expected bool
 	}{
-		{"ErrUnauthorized", ErrUnauthorized, true},
 		{"ErrNoAPIKey", ErrNoAPIKey, true},
-		{"API auth error", APIError{Code: "invalidApiKey", Message: "bad key"}, true},
-		{"other API error", APIError{Code: "invalidParameter", Message: "bad param"}, false},
+		{"API auth error", CreateRunwareError("invalidApiKey", "bad key", RunwareErrorDetails{}), true},
+		{"other API error", CreateRunwareError("invalidParameter", "bad param", RunwareErrorDetails{}), false},
 		{"generic error", fmt.Errorf("network timeout"), false},
 	}
 
@@ -49,8 +48,8 @@ func TestAPIErrorJSON(t *testing.T) {
 		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
 	}
 
-	if resp.Errors[0].Code != invalidAPIKeyCode {
-		t.Errorf("error code = %q, want %q", resp.Errors[0].Code, invalidAPIKeyCode)
+	if resp.Errors[0].Code != CodeAuth {
+		t.Errorf("error code = %q, want %q", resp.Errors[0].Code, CodeAuth)
 	}
 }
 
@@ -73,9 +72,9 @@ func TestAPIErrorParameterString(t *testing.T) {
 		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
 	}
 
-	param := resp.Errors[0].Parameter()
+	param := resp.Errors[0].Parameter
 	if param != "model" {
-		t.Errorf("Parameter() = %q, want %q", param, "model")
+		t.Errorf("Parameter = %q, want %q", param, "model")
 	}
 }
 
@@ -98,9 +97,9 @@ func TestAPIErrorParameterArray(t *testing.T) {
 		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
 	}
 
-	param := resp.Errors[0].Parameter()
+	param := resp.Errors[0].Parameter
 	if param != "positivePrompt" {
-		t.Errorf("Parameter() = %q, want %q", param, "positivePrompt")
+		t.Errorf("Parameter = %q, want %q", param, "positivePrompt")
 	}
 }
 
@@ -118,8 +117,8 @@ func TestAPIErrorParameterMissing(t *testing.T) {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	param := resp.Errors[0].Parameter()
+	param := resp.Errors[0].Parameter
 	if param != "" {
-		t.Errorf("Parameter() = %q, want empty string", param)
+		t.Errorf("Parameter = %q, want empty string", param)
 	}
 }

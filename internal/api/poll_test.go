@@ -146,13 +146,13 @@ func TestPollResults_TransientErrorKeepsPolling(t *testing.T) {
 func TestPollResults_AuthErrorFatal(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
-			{err: transport.ErrUnauthorized},
+			{err: transport.CreateRunwareError("invalidApiKey", "unauthorized", transport.RunwareErrorDetails{})},
 		},
 	}
 
 	_, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
-	if !errors.Is(err, transport.ErrUnauthorized) {
-		t.Errorf("expected ErrUnauthorized, got %v", err)
+	if !transport.IsAuthError(err) {
+		t.Errorf("expected auth error, got %v", err)
 	}
 	if mock.callCount != 1 {
 		t.Errorf("expected exactly 1 call, got %d", mock.callCount)
@@ -163,7 +163,7 @@ func TestPollResults_AuthErrorFatal(t *testing.T) {
 func TestPollResults_APIErrorFatal(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
-			{err: transport.APIError{Message: "bad request"}},
+			{err: transport.CreateRunwareError("unknown", "bad request", transport.RunwareErrorDetails{})},
 		},
 	}
 

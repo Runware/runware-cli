@@ -39,11 +39,6 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 			start := time.Now()
 			_, err := client.Ping(cmd.Context())
 			if err != nil {
-				if transport.IsAuthError(err) {
-					logger.Error("Authentication failed. Run 'runware auth login' to set your API key.")
-					return err
-				}
-				logger.Error("Ping failed", "err", err)
 				return err
 			}
 
