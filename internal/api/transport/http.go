@@ -9,12 +9,16 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/runware/runware-cli/internal/agents"
+	"github.com/runware/runware-cli/internal/buildinfo"
 )
 
 // HTTPTransport implements Transport using the Runware REST API.
 type HTTPTransport struct {
 	apiKey     string
 	baseURL    string
+	userAgent  string
 	logger     *slog.Logger
 	httpClient *http.Client
 }
@@ -44,6 +48,7 @@ func WithHTTPClient(c *http.Client) HTTPTransportOption {
 }
 
 // NewHTTPTransport creates an HTTP transport for the given API key and base URL.
+// Default timeout is 120s. Use WithTimeout or WithHTTPClient to override.
 func NewHTTPTransport(apiKey, baseURL string, logger *slog.Logger, opts ...HTTPTransportOption) *HTTPTransport {
 	o := httpTransportOptions{
 		timeout: 120 * time.Second,
@@ -55,9 +60,14 @@ func NewHTTPTransport(apiKey, baseURL string, logger *slog.Logger, opts ...HTTPT
 	if client == nil {
 		client = &http.Client{Timeout: o.timeout}
 	}
+	ua := buildinfo.UserAgent()
+	if agent := agents.Detect(); agent != "" {
+		ua += " agent/" + string(agent)
+	}
 	return &HTTPTransport{
 		apiKey:     apiKey,
 		baseURL:    baseURL,
+		userAgent:  ua,
 		logger:     logger,
 		httpClient: client,
 	}
@@ -98,6 +108,7 @@ func (t *HTTPTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessag
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+t.apiKey)
+	req.Header.Set("User-Agent", t.userAgent)
 
 	start := time.Now()
 	resp, err := t.httpClient.Do(req)

@@ -25,11 +25,6 @@ func newLogger() *log.Logger {
 	return log.NewWithOptions(os.Stderr, log.Options{ReportTimestamp: false})
 }
 
-// SetVersionInfo passes build-time version info down to the version command.
-func SetVersionInfo(v, c, d string) {
-	cmdversion.SetVersionInfo(v, c, d)
-}
-
 // NewRootCmd builds and returns the root cobra command.
 func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root := &cobra.Command{
