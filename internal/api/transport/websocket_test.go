@@ -21,6 +21,7 @@ const (
 	testTaskTypePing = "ping"
 	testKeyTaskType  = "taskType"
 	testKeyTaskUUID  = "taskUUID"
+	testKeyData      = "data"
 )
 
 // wsTestServer is a minimal WebSocket test server that handles the auth
@@ -74,7 +75,7 @@ func wsURL(s *httptest.Server) string {
 
 func authSuccessReply(sessionUUID string) []byte {
 	b, _ := json.Marshal(map[string]any{
-		"data": []any{
+		testKeyData: []any{
 			map[string]any{
 				testKeyTaskType:         wsAuthTaskType,
 				"connectionSessionUUID": sessionUUID,
@@ -153,7 +154,7 @@ func TestWSTransport_ConnectIdempotent(t *testing.T) {
 func TestWSTransport_SendReceive(t *testing.T) {
 	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000001"
 	resultFrame, _ := json.Marshal(map[string]any{
-		"data": []any{
+		testKeyData: []any{
 			map[string]any{
 				testKeyTaskType: testTaskTypePing,
 				testKeyTaskUUID: taskUUID,
@@ -320,7 +321,7 @@ func TestWSTransport_LazyConnect(t *testing.T) {
 	// Override to also echo back a result for the send.
 	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000005"
 	resultFrame, _ := json.Marshal(map[string]any{
-		"data": []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, "pong": true}},
+		testKeyData: []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, "pong": true}},
 	})
 	srv.handler = func(conn *websocket.Conn) {
 		conn.ReadMessage()                                                //nolint:errcheck,gosec
@@ -346,5 +347,57 @@ func TestWSTransport_LazyConnect(t *testing.T) {
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 result, got %d", len(results))
+	}
+}
+
+// TestWSTransport_NoUUIDResponseDispatch verifies that a server response
+// carrying only a taskType (no taskUUID) is still dispatched correctly to the
+// waiting Send call. This matches real Runware WS ping behaviour where the
+// client sends a taskUUID but the server does not echo it back.
+func TestWSTransport_NoUUIDResponseDispatch(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000006"
+
+	// Server responds with taskType but no taskUUID — the exact ping shape.
+	pingResponseNoUUID, _ := json.Marshal(map[string]any{
+		testKeyData: []any{
+			map[string]any{
+				testKeyTaskType: testTaskTypePing,
+				"pong":          true,
+				// intentionally no testKeyTaskUUID
+			},
+		},
+	})
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, pingResponseNoUUID)      //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, "ping": true}}
+	results, err := tr.Send(context.Background(), tasks)
+	if err != nil {
+		t.Fatalf("Send error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	var got map[string]any
+	if err := json.Unmarshal(results[0], &got); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got["pong"] != true {
+		t.Errorf("expected pong=true in result, got %v", got["pong"])
 	}
 }

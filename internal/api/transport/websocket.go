@@ -23,6 +23,19 @@ type wsResult struct {
 	err  error
 }
 
+// taskMeta holds the taskUUID and taskType extracted from a single outbound task.
+type taskMeta struct {
+	uuid     string
+	taskType string
+}
+
+// inflightEntry associates an in-flight Send channel with its task type so we
+// can clean up both lookup maps (by-UUID and by-type) atomically.
+type inflightEntry struct {
+	taskType string
+	ch       chan wsResult
+}
+
 // WSTransport implements Transport over a persistent WebSocket connection.
 //
 // The first call to Send (or an explicit call to Connect) establishes the
@@ -48,9 +61,14 @@ type WSTransport struct {
 	// writeMu serialises writes; gorilla requires one concurrent writer.
 	writeMu sync.Mutex
 
-	// inflight maps taskUUID to the channel that Send is blocking on.
-	inflightMu sync.RWMutex
-	inflight   map[string]chan wsResult
+	// inflightMu guards both inflight maps.
+	//
+	// inflight maps taskUUID → inflightEntry.
+	// inflightByType maps taskType → []taskUUID (FIFO queue); used to dispatch
+	// server frames that carry a taskType but no taskUUID (e.g. ping responses).
+	inflightMu     sync.RWMutex
+	inflight       map[string]inflightEntry // taskUUID → entry
+	inflightByType map[string][]string      // taskType → []taskUUID (FIFO)
 }
 
 // NewWSTransport creates a WebSocket transport for the given API key and base URL.
@@ -61,12 +79,13 @@ func NewWSTransport(apiKey, baseURL string, logger *slog.Logger) *WSTransport {
 		ua += " agent/" + string(agent)
 	}
 	return &WSTransport{
-		apiKey:    apiKey,
-		baseURL:   baseURL,
-		userAgent: ua,
-		logger:    logger,
-		inflight:  make(map[string]chan wsResult),
-		done:      make(chan struct{}),
+		apiKey:         apiKey,
+		baseURL:        baseURL,
+		userAgent:      ua,
+		logger:         logger,
+		inflight:       make(map[string]inflightEntry),
+		inflightByType: make(map[string][]string),
+		done:           make(chan struct{}),
 	}
 }
 
@@ -220,8 +239,8 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 		}
 	}
 
-	// Marshal once; also extract task UUIDs from the same pass.
-	body, uuids, err := marshalAndExtractUUIDs(tasks)
+	// Marshal once; also extract task UUIDs and task types from the same pass.
+	body, metas, err := marshalAndExtractTaskMeta(tasks)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -238,13 +257,19 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	t.mu.Unlock()
 
 	// Register in-flight channels before writing so the reader can dispatch
-	// results immediately after the write completes.
-	channels := make(map[string]chan wsResult, len(uuids))
+	// results immediately after the write completes. Tasks are registered in
+	// both inflight (by UUID) and inflightByType (FIFO queue per task type)
+	// so that responses without a taskUUID can still be dispatched by type.
+	localChans := make(map[string]chan wsResult, len(metas)) // uuid → ch (for result collection)
 	t.inflightMu.Lock()
-	for _, uuid := range uuids {
+	for _, m := range metas {
+		if m.uuid == "" {
+			continue
+		}
 		ch := make(chan wsResult, 1)
-		channels[uuid] = ch
-		t.inflight[uuid] = ch
+		localChans[m.uuid] = ch
+		t.inflight[m.uuid] = inflightEntry{taskType: m.taskType, ch: ch}
+		t.inflightByType[m.taskType] = append(t.inflightByType[m.taskType], m.uuid)
 	}
 	t.inflightMu.Unlock()
 
@@ -255,8 +280,11 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 
 	if writeErr != nil {
 		t.inflightMu.Lock()
-		for _, uuid := range uuids {
-			delete(t.inflight, uuid)
+		for uuid, entry := range t.inflight {
+			if ch, ok := localChans[uuid]; ok && entry.ch == ch {
+				removeFromTypeQueue(t.inflightByType, entry.taskType, uuid)
+				delete(t.inflight, uuid)
+			}
 		}
 		t.inflightMu.Unlock()
 		return nil, CreateRunwareError(
@@ -267,9 +295,12 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	}
 
 	// Collect results for all task UUIDs.
-	results := make([]json.RawMessage, 0, len(uuids))
-	for _, uuid := range uuids {
-		ch := channels[uuid]
+	results := make([]json.RawMessage, 0, len(metas))
+	for _, m := range metas {
+		if m.uuid == "" {
+			continue
+		}
+		ch := localChans[m.uuid]
 		select {
 		case r, ok := <-ch:
 			if !ok {
@@ -285,8 +316,11 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 			results = append(results, r.data)
 		case <-ctx.Done():
 			t.inflightMu.Lock()
-			for _, uid := range uuids {
-				delete(t.inflight, uid)
+			for uuid, entry := range t.inflight {
+				if ch2, ok := localChans[uuid]; ok && entry.ch == ch2 {
+					removeFromTypeQueue(t.inflightByType, entry.taskType, uuid)
+					delete(t.inflight, uuid)
+				}
 			}
 			t.inflightMu.Unlock()
 			return nil, ctx.Err()
@@ -317,11 +351,16 @@ func (t *WSTransport) reader(conn *websocket.Conn) {
 				RunwareErrorDetails{},
 			)
 			t.inflightMu.Lock()
-			for uuid, ch := range t.inflight {
-				ch <- wsResult{err: connErr}
-				delete(t.inflight, uuid)
+			chs := make([]chan wsResult, 0, len(t.inflight))
+			for _, entry := range t.inflight {
+				chs = append(chs, entry.ch)
 			}
+			t.inflight = make(map[string]inflightEntry)
+			t.inflightByType = make(map[string][]string)
 			t.inflightMu.Unlock()
+			for _, ch := range chs {
+				ch <- wsResult{err: connErr}
+			}
 
 			// Mark as disconnected so the next Send triggers a reconnect,
 			// but only if Disconnect hasn't already done so.
@@ -350,49 +389,98 @@ func (t *WSTransport) reader(conn *websocket.Conn) {
 		for i := range envelope.Errors {
 			e := &envelope.Errors[i]
 			if e.TaskUUID != "" {
-				t.dispatch(e.TaskUUID, wsResult{err: e})
+				t.dispatchByUUID(e.TaskUUID, wsResult{err: e})
 			} else {
 				t.broadcastErr(e)
 			}
 		}
 
-		// Dispatch data items.
+		// Dispatch data items. Try UUID first; fall back to task type for
+		// server frames that omit taskUUID (e.g. ping responses).
 		for _, raw := range envelope.Data {
 			var peek struct {
 				TaskUUID string `json:"taskUUID"`
+				TaskType string `json:"taskType"`
 			}
-			if err := json.Unmarshal(raw, &peek); err != nil || peek.TaskUUID == "" {
+			if err := json.Unmarshal(raw, &peek); err != nil {
 				continue
 			}
-			t.dispatch(peek.TaskUUID, wsResult{data: raw})
+			switch {
+			case peek.TaskUUID != "":
+				t.dispatchByUUID(peek.TaskUUID, wsResult{data: raw})
+			case peek.TaskType != "":
+				t.dispatchByType(peek.TaskType, wsResult{data: raw})
+				// else: malformed frame, silently drop
+			}
 		}
 	}
 }
 
-// dispatch sends r to the in-flight channel for uuid, if one is registered.
-func (t *WSTransport) dispatch(uuid string, r wsResult) {
+// dispatchByUUID sends r to the in-flight channel registered for uuid, then
+// removes it from both the uuid and type-keyed maps.
+func (t *WSTransport) dispatchByUUID(uuid string, r wsResult) {
 	t.inflightMu.Lock()
-	ch, ok := t.inflight[uuid]
+	entry, ok := t.inflight[uuid]
 	if ok {
 		delete(t.inflight, uuid)
+		removeFromTypeQueue(t.inflightByType, entry.taskType, uuid)
 	}
 	t.inflightMu.Unlock()
 	if ok {
-		ch <- r
+		entry.ch <- r
 	}
 }
 
-// broadcastErr sends err to every registered in-flight channel.
+// dispatchByType dequeues the oldest in-flight request of the given task type
+// (FIFO) and sends r to its channel.
+func (t *WSTransport) dispatchByType(taskType string, r wsResult) {
+	t.inflightMu.Lock()
+	queue := t.inflightByType[taskType]
+	if len(queue) == 0 {
+		t.inflightMu.Unlock()
+		return
+	}
+	uuid := queue[0]
+	if len(queue) == 1 {
+		delete(t.inflightByType, taskType)
+	} else {
+		t.inflightByType[taskType] = queue[1:]
+	}
+	entry := t.inflight[uuid]
+	delete(t.inflight, uuid)
+	t.inflightMu.Unlock()
+	entry.ch <- r
+}
+
+// broadcastErr sends err to every registered in-flight channel, then clears
+// both lookup maps.
 func (t *WSTransport) broadcastErr(err error) {
 	t.inflightMu.Lock()
 	chs := make([]chan wsResult, 0, len(t.inflight))
-	for uuid, ch := range t.inflight {
-		chs = append(chs, ch)
-		delete(t.inflight, uuid)
+	for _, entry := range t.inflight {
+		chs = append(chs, entry.ch)
 	}
+	t.inflight = make(map[string]inflightEntry)
+	t.inflightByType = make(map[string][]string)
 	t.inflightMu.Unlock()
 	for _, ch := range chs {
 		ch <- wsResult{err: err}
+	}
+}
+
+// removeFromTypeQueue removes the first occurrence of uuid from
+// inflightByType[taskType], deleting the key when the slice becomes empty.
+func removeFromTypeQueue(m map[string][]string, taskType, uuid string) {
+	queue := m[taskType]
+	for i, u := range queue {
+		if u == uuid {
+			if len(queue) == 1 {
+				delete(m, taskType)
+			} else {
+				m[taskType] = append(queue[:i], queue[i+1:]...)
+			}
+			return
+		}
 	}
 }
 
@@ -402,9 +490,9 @@ type wsEnvelope struct {
 	Errors []RunwareError    `json:"errors,omitempty"`
 }
 
-// marshalAndExtractUUIDs marshals tasks to JSON and returns the raw bytes
-// alongside the taskUUID of each task (in the same order).
-func marshalAndExtractUUIDs(tasks []any) ([]byte, []string, error) {
+// marshalAndExtractTaskMeta marshals tasks to JSON and returns the raw bytes
+// alongside the taskUUID and taskType of each task (in the same order).
+func marshalAndExtractTaskMeta(tasks []any) ([]byte, []taskMeta, error) {
 	body, err := json.Marshal(tasks)
 	if err != nil {
 		return nil, nil, err
@@ -415,14 +503,15 @@ func marshalAndExtractUUIDs(tasks []any) ([]byte, []string, error) {
 		return nil, nil, err
 	}
 
-	uuids := make([]string, 0, len(rawTasks))
+	metas := make([]taskMeta, 0, len(rawTasks))
 	for _, raw := range rawTasks {
 		var item struct {
 			TaskUUID string `json:"taskUUID"`
+			TaskType string `json:"taskType"`
 		}
 		if err := json.Unmarshal(raw, &item); err == nil && item.TaskUUID != "" {
-			uuids = append(uuids, item.TaskUUID)
+			metas = append(metas, taskMeta{uuid: item.TaskUUID, taskType: item.TaskType})
 		}
 	}
-	return body, uuids, nil
+	return body, metas, nil
 }
