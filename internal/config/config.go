@@ -12,6 +12,7 @@ import (
 
 const (
 	DefaultBaseURL   = "https://api.runware.ai/v1"
+	DefaultWSBaseURL = "wss://ws-api.runware.ai/v1"
 	MaskedKeySuffix  = "•••••"
 	DefaultModel     = "runware:100@1"
 	DefaultWidth     = 1024
@@ -106,9 +107,24 @@ func GetAPIKey() string {
 	return viper.GetString("api_key")
 }
 
-// GetBaseURL returns the API base URL.
+// GetBaseURL returns the HTTP API base URL.
+// RUNWARE_BASE_URL overrides the default; this is not exposed in the user-facing
+// config file and is intended for internal testing only.
 func GetBaseURL() string {
+	if v := os.Getenv("RUNWARE_BASE_URL"); v != "" {
+		return v
+	}
 	return DefaultBaseURL
+}
+
+// GetWSBaseURL returns the WebSocket API base URL.
+// RUNWARE_WS_BASE_URL overrides the default; this is not exposed in the
+// user-facing config file and is intended for internal testing only.
+func GetWSBaseURL() string {
+	if v := os.Getenv("RUNWARE_WS_BASE_URL"); v != "" {
+		return v
+	}
+	return DefaultWSBaseURL
 }
 
 // ConfigDir returns the config directory path.

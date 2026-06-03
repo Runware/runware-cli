@@ -114,7 +114,8 @@ func TestSend_200_WithErrors(t *testing.T) {
 	}
 }
 
-// TestSend_UnauthorizedOn401: 401 with invalidApiKey in errors field returns ErrUnauthorized.
+// TestSend_UnauthorizedOn401: 401 with invalidApiKey in errors field is reported
+// as an auth error by transport.IsAuthError.
 func TestSend_UnauthorizedOn401(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

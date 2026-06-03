@@ -38,8 +38,22 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 			if err := config.Init(); err != nil {
 				return err
 			}
-			t := transport.NewHTTPTransport(config.GetAPIKey(), config.GetBaseURL(), slog.New(logger))
+
+			tp, _ := cmd.Root().PersistentFlags().GetString("transport")
+			var t transport.Transport
+			switch tp {
+			case "http":
+				t = transport.NewHTTPTransport(config.GetAPIKey(), config.GetBaseURL(), slog.New(logger))
+			default: // "ws"
+				t = transport.NewWSTransport(config.GetAPIKey(), config.GetWSBaseURL(), slog.New(logger))
+			}
 			cmd.SetContext(transport.WithTransport(cmd.Context(), t))
+			return nil
+		},
+		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+			if t := transport.TransportFromContext(cmd.Context()); t != nil {
+				return t.Disconnect()
+			}
 			return nil
 		},
 		SilenceUsage:  true,
@@ -49,6 +63,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root.PersistentFlags().StringP("format", "F", "", "CLI output format: table, json, yaml")
 	root.PersistentFlags().BoolP("verbose", "v", false, "Show request/response details")
 	root.PersistentFlags().Bool("debug", false, "Show full debug output")
+	root.PersistentFlags().String("transport", "ws", "Transport protocol: ws (WebSocket) or http (REST)")
 
 	root.RegisterFlagCompletionFunc("format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"table", "json", "yaml"}, cobra.ShellCompDirectiveNoFileComp
