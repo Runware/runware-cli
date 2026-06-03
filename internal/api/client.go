@@ -27,6 +27,7 @@ func NewClient(t transport.Transport, logger *slog.Logger) *Client {
 
 // Ping checks API connectivity.
 func (c *Client) Ping(ctx context.Context) (*PingResult, error) {
+	// TODO(dr): request struct.
 	tasks := []any{
 		map[string]string{
 			jsonKeyTaskType: string(taskTypePing),
@@ -53,6 +54,7 @@ func (c *Client) Ping(ctx context.Context) (*PingResult, error) {
 
 // AccountDetails fetches account information.
 func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
+	// TODO(dr): request struct.
 	tasks := []any{
 		map[string]string{
 			jsonKeyTaskType:  string(taskTypeAccountManagement),
@@ -76,16 +78,4 @@ func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
 	}
 
 	return &result, nil
-}
-
-// GetResponse retrieves results for an async task by ID.
-func (c *Client) GetResponse(ctx context.Context, taskID uuid.UUID) ([]json.RawMessage, error) {
-	tasks := []any{
-		&GetResponseRequest{
-			TaskType: taskTypeGetResponse,
-			TaskUUID: taskID,
-		},
-	}
-
-	return c.transport.Send(ctx, tasks)
 }

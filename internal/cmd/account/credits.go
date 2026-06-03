@@ -34,6 +34,8 @@ func (r creditsResult) Rows() [][]any {
 	}
 }
 
+// TODO(dr): rename this command, it's not just credits
+
 func newCreditsCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "credits",
