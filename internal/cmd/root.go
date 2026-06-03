@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"log/slog"
 	"os"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmd/account"
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
@@ -38,7 +40,12 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)
 			}
-			return config.Init()
+			if err := config.Init(); err != nil {
+				return err
+			}
+			t := transport.NewHTTPTransport(config.GetAPIKey(), config.GetBaseURL(), slog.New(logger))
+			cmd.SetContext(transport.WithTransport(cmd.Context(), t))
+			return nil
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,

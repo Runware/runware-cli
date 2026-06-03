@@ -1,14 +1,13 @@
 package ping
 
 import (
-	"context"
 	"log/slog"
 	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -34,15 +33,11 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		Example: `  # check API connectivity
   runware ping`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			key := config.GetAPIKey()
-			if key == "" {
-				logger.Error("No API key configured. Run 'runware auth login' to authenticate.")
-				return api.ErrNoAPIKey
-			}
+			t := transport.TransportFromContext(cmd.Context())
+			client := api.NewClient(t, slog.New(logger))
 
-			client := api.NewClient(key, config.GetBaseURL(), slog.New(logger))
 			start := time.Now()
-			_, err := client.Ping(context.Background())
+			_, err := client.Ping(cmd.Context())
 			if err != nil {
 				if api.IsAuthError(err) {
 					logger.Error("Authentication failed. Run 'runware auth login' to set your API key.")

@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-// mockClient is a test double for Client that only implements GetResponse.
-// All other methods panic if called.
-type mockClient struct {
+// mockTransport is a test double for transport.Transport.
+// Send returns pre-configured responses in order; Connect and Disconnect are no-ops.
+type mockTransport struct {
 	responses []mockResponse
 	callCount int
 }
@@ -24,35 +25,22 @@ type mockResponse struct {
 	err  error
 }
 
-func (m *mockClient) GetResponse(_ context.Context, _ uuid.UUID) ([]json.RawMessage, error) {
+func (m *mockTransport) Connect(_ context.Context) error { return nil }
+func (m *mockTransport) Disconnect() error               { return nil }
+func (m *mockTransport) Send(_ context.Context, _ []any) ([]json.RawMessage, error) {
 	if m.callCount >= len(m.responses) {
 		return nil, nil
 	}
 	r := m.responses[m.callCount]
 	m.callCount++
-	return r.data, r.err
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.data, nil
 }
 
-func (m *mockClient) Ping(_ context.Context) (*PingResult, error) { panic("not implemented") }
-func (m *mockClient) ImageInference(_ context.Context, _ *ImageInferenceRequest) ([]ImageInferenceResult, error) {
-	panic("not implemented")
-}
-func (m *mockClient) VideoInference(_ context.Context, _ *VideoInferenceRequest) ([]VideoInferenceResult, error) {
-	panic("not implemented")
-}
-func (m *mockClient) AudioInference(_ context.Context, _ *AudioInferenceRequest) ([]AudioInferenceResult, error) {
-	panic("not implemented")
-}
-func (m *mockClient) TextInference(_ context.Context, _ *TextInferenceRequest) ([]TextInferenceResult, error) {
-	panic("not implemented")
-}
-func (m *mockClient) AccountDetails(_ context.Context) (*AccountResult, error) {
-	panic("not implemented")
-}
-func (m *mockClient) ModelSearch(_ context.Context, _ *ModelSearchRequest) (*ModelSearchResponse, error) {
-	panic("not implemented")
-}
-func (m *mockClient) Raw(_ context.Context, _ []any) (*APIResponse, error) { panic("not implemented") }
+// Compile-time check that mockTransport implements transport.Transport.
+var _ transport.Transport = (*mockTransport)(nil)
 
 func rawJSON(t *testing.T, v any) json.RawMessage {
 	t.Helper()
@@ -74,13 +62,13 @@ func parseString(raw json.RawMessage) (string, bool) {
 
 // TestPollResults_ReturnOnFirstSuccess: results available on first call.
 func TestPollResults_ReturnOnFirstSuccess(t *testing.T) {
-	client := &mockClient{
+	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{rawJSON(t, "result1"), rawJSON(t, "result2")}},
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +82,7 @@ func TestPollResults_ReturnOnFirstSuccess(t *testing.T) {
 
 // TestPollResults_RetriesUntilSuccess: empty responses before a successful one.
 func TestPollResults_RetriesUntilSuccess(t *testing.T) {
-	client := &mockClient{
+	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: nil},
 			{data: nil},
@@ -102,21 +90,21 @@ func TestPollResults_RetriesUntilSuccess(t *testing.T) {
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(results) != 1 || results[0] != "final" {
 		t.Errorf("unexpected results: %v", results)
 	}
-	if client.callCount != 3 {
-		t.Errorf("expected 3 GetResponse calls, got %d", client.callCount)
+	if mock.callCount != 3 {
+		t.Errorf("expected 3 Send calls, got %d", mock.callCount)
 	}
 }
 
 // TestPollResults_ParseFailureKeepsPolling: raw data present but parse returns false — must keep polling.
 func TestPollResults_ParseFailureKeepsPolling(t *testing.T) {
-	client := &mockClient{
+	mock := &mockTransport{
 		responses: []mockResponse{
 			// parse will return false for empty string
 			{data: []json.RawMessage{rawJSON(t, "")}},
@@ -124,28 +112,28 @@ func TestPollResults_ParseFailureKeepsPolling(t *testing.T) {
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(results) != 1 || results[0] != "valid" {
 		t.Errorf("unexpected results: %v", results)
 	}
-	if client.callCount != 2 {
-		t.Errorf("expected 2 GetResponse calls, got %d", client.callCount)
+	if mock.callCount != 2 {
+		t.Errorf("expected 2 Send calls, got %d", mock.callCount)
 	}
 }
 
 // TestPollResults_TransientErrorKeepsPolling: non-fatal errors are retried.
 func TestPollResults_TransientErrorKeepsPolling(t *testing.T) {
-	client := &mockClient{
+	mock := &mockTransport{
 		responses: []mockResponse{
 			{err: fmt.Errorf("temporary error")},
 			{data: []json.RawMessage{rawJSON(t, "ok")}},
 		},
 	}
 
-	results, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -156,62 +144,61 @@ func TestPollResults_TransientErrorKeepsPolling(t *testing.T) {
 
 // TestPollResults_AuthErrorFatal: auth errors are returned immediately.
 func TestPollResults_AuthErrorFatal(t *testing.T) {
-	client := &mockClient{
+	mock := &mockTransport{
 		responses: []mockResponse{
 			{err: ErrUnauthorized},
 		},
 	}
 
-	_, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized, got %v", err)
 	}
-	if client.callCount != 1 {
-		t.Errorf("expected exactly 1 call, got %d", client.callCount)
+	if mock.callCount != 1 {
+		t.Errorf("expected exactly 1 call, got %d", mock.callCount)
 	}
 }
 
 // TestPollResults_APIErrorFatal: APIError is returned immediately.
 func TestPollResults_APIErrorFatal(t *testing.T) {
-	apiErr := APIError{Message: "bad request"}
-	client := &mockClient{
+	mock := &mockTransport{
 		responses: []mockResponse{
-			{err: apiErr},
+			{err: APIError{Message: "bad request"}},
 		},
 	}
 
-	_, err := PollResults(context.Background(), client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
-// TestPollResults_ContextCancelled: cancelled context returns nil, nil.
+// TestPollResults_ContextCancelled: cancelled context returns context.Canceled.
 func TestPollResults_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // already cancelled
 
-	client := &mockClient{
+	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: nil},
 		},
 	}
 
-	_, err := PollResults(ctx, client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := PollResults(ctx, mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected %v, got error: %v", context.Canceled, err)
 	}
 }
 
-// TestPollResults_ContextTimeout: timed-out context returns nil, nil.
+// TestPollResults_ContextTimeout: timed-out context returns context.DeadlineExceeded.
 func TestPollResults_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
 
 	// Never return success — mock returns nil indefinitely.
-	client := &mockClient{}
+	mock := &mockTransport{}
 
-	_, err := PollResults(ctx, client, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := PollResults(ctx, mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected %v, got error: %v", context.DeadlineExceeded, err)
 	}
