@@ -12,6 +12,7 @@ import (
 	"github.com/runware/runware-cli/internal/cmd/model"
 	"github.com/runware/runware-cli/internal/cmd/ping"
 	"github.com/runware/runware-cli/internal/cmd/preset"
+	cmdrun "github.com/runware/runware-cli/internal/cmd/run"
 	cmdversion "github.com/runware/runware-cli/internal/cmd/version"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
@@ -56,6 +57,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 		account.NewCmd(logger),
 		cmdconfig.NewCmd(logger),
 		preset.NewCmd(logger),
+		cmdrun.NewCmd(logger),
 		cmdversion.NewCmd(),
 		cmdcompletion.NewCmd(),
 	)

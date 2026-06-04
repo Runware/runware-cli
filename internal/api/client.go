@@ -78,6 +78,18 @@ func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
 	return &result, nil
 }
 
+// RunDynamic sends a single arbitrary task payload and returns all raw JSON responses.
+// The caller is responsible for setting taskType, taskUUID, model, and any required fields.
+// This is used by the dynamic run command where the exact request shape is not known at
+// compile time — it is derived from the model's JSON Schema at runtime.
+func (c *Client) RunDynamic(ctx context.Context, payload map[string]any) ([]json.RawMessage, error) {
+	data, err := c.transport.Send(ctx, []any{payload})
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // ModelSearch searches for models on the Runware platform.
 func (c *Client) ModelSearch(ctx context.Context, req ModelSearchRequest) (*ModelSearchResponse, error) {
 	req.TaskType = taskTypeModelSearch
