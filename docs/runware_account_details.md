@@ -1,15 +1,22 @@
-## runware account credits
+## runware account details
 
-Show current credit balance
+Show account details, team, API keys, and usage
 
 ```
-runware account credits [flags]
+runware account details [flags]
+```
+
+### Examples
+
+```
+  # show full account details
+  runware account details
 ```
 
 ### Options
 
 ```
-  -h, --help   help for credits
+  -h, --help   help for details
 ```
 
 ### Options inherited from parent commands
@@ -23,5 +30,5 @@ runware account credits [flags]
 
 ### SEE ALSO
 
-* [runware account](runware_account.md)	 - Account information and credits
+* [runware account](runware_account.md)	 - Account information, team, and API keys
 
