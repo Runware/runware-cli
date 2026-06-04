@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,10 +19,12 @@ import (
 var _ Transport = (*WSTransport)(nil)
 
 const (
-	testTaskTypePing = "ping"
-	testKeyTaskType  = "taskType"
-	testKeyTaskUUID  = "taskUUID"
-	testKeyData      = "data"
+	testTaskTypePing      = "ping"
+	testTaskTypeInference = "inference"
+	testKeyTaskType       = "taskType"
+	testKeyTaskUUID       = "taskUUID"
+	testKeyData           = "data"
+	testKeySeq            = "seq"
 )
 
 // wsTestServer is a minimal WebSocket test server that handles the auth
@@ -98,7 +101,7 @@ func authErrorReply(code, message string) []byte {
 	return b
 }
 
-// --- Tests ---
+// --- Existing tests (unchanged behaviour) ---
 
 func TestWSTransport_ErrNoAPIKey(t *testing.T) {
 	tr := NewWSTransport("", "ws://localhost", slog.Default())
@@ -185,7 +188,7 @@ func TestWSTransport_SendReceive(t *testing.T) {
 	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
 	defer tr.Disconnect() //nolint:errcheck,gosec
 
-	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, "ping": true}}
+	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, testTaskTypePing: true}}
 	results, err := tr.Send(context.Background(), tasks)
 	if err != nil {
 		t.Fatalf("Send error: %v", err)
@@ -231,7 +234,7 @@ func TestWSTransport_SendServerError(t *testing.T) {
 	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
 	defer tr.Disconnect() //nolint:errcheck,gosec
 
-	tasks := []any{map[string]any{testKeyTaskType: "inference", testKeyTaskUUID: taskUUID}}
+	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
 	_, err := tr.Send(context.Background(), tasks)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -352,8 +355,7 @@ func TestWSTransport_LazyConnect(t *testing.T) {
 
 // TestWSTransport_NoUUIDResponseDispatch verifies that a server response
 // carrying only a taskType (no taskUUID) is still dispatched correctly to the
-// waiting Send call. This matches real Runware WS ping behaviour where the
-// client sends a taskUUID but the server does not echo it back.
+// waiting Send call via the FIFO type queue.
 func TestWSTransport_NoUUIDResponseDispatch(t *testing.T) {
 	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000006"
 
@@ -385,7 +387,7 @@ func TestWSTransport_NoUUIDResponseDispatch(t *testing.T) {
 	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
 	defer tr.Disconnect() //nolint:errcheck,gosec
 
-	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, "ping": true}}
+	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, testTaskTypePing: true}}
 	results, err := tr.Send(context.Background(), tasks)
 	if err != nil {
 		t.Fatalf("Send error: %v", err)
@@ -399,5 +401,473 @@ func TestWSTransport_NoUUIDResponseDispatch(t *testing.T) {
 	}
 	if got["pong"] != true {
 		t.Errorf("expected pong=true in result, got %v", got["pong"])
+	}
+}
+
+// --- New tests ---
+
+// TestWSTransport_ConnectAuthNoSession verifies that Connect fails when the
+// server's auth response is missing connectionSessionUUID.
+func TestWSTransport_ConnectAuthNoSession(t *testing.T) {
+	noSessionReply, _ := json.Marshal(map[string]any{
+		testKeyData: []any{
+			map[string]any{testKeyTaskType: wsAuthTaskType},
+		},
+	})
+	srv := newWSTestServer(noSessionReply)
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	err := tr.Connect(context.Background())
+	if err == nil {
+		t.Fatal("expected error for missing connectionSessionUUID, got nil")
+	}
+	var re *RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != CodeAuth {
+		t.Errorf("expected CodeAuth, got %v", re.Code)
+	}
+}
+
+// TestWSTransport_AuthTimeout verifies that Connect returns promptly when the
+// server never replies to the auth frame, using the context deadline.
+func TestWSTransport_AuthTimeout(t *testing.T) {
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage() //nolint:errcheck,gosec // read auth, never reply
+		time.Sleep(5 * time.Second)
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := tr.Connect(ctx)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("Connect took too long (%v); expected < 2s", elapsed)
+	}
+}
+
+// TestWSTransport_DisconnectIsTerminal verifies that Connect returns an error
+// after Disconnect has been called.
+func TestWSTransport_DisconnectIsTerminal(t *testing.T) {
+	srv := newWSTestServer(authSuccessReply("sid"))
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	if err := tr.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	tr.Disconnect() //nolint:errcheck,gosec
+
+	err := tr.Connect(context.Background())
+	if err == nil {
+		t.Fatal("expected error connecting after Disconnect, got nil")
+	}
+}
+
+// TestWSTransport_SingularErrorField verifies that a server frame using the
+// singular {"error":{...}} shape (rather than {"errors":[...]}) is correctly
+// routed to the waiting Send call.
+func TestWSTransport_SingularErrorField(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000007"
+	singularErrFrame, _ := json.Marshal(map[string]any{
+		"error": map[string]any{
+			"code":          "quotaExceeded",
+			"message":       "quota exceeded",
+			testKeyTaskUUID: taskUUID,
+		},
+	})
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, singularErrFrame)        //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
+	_, err := tr.Send(context.Background(), tasks)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var re *RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != CodeQuota {
+		t.Errorf("expected CodeQuota, got %v", re.Code)
+	}
+}
+
+// TestWSTransport_MultiResult verifies that a task with numberResults:3 collects
+// all three items delivered in a single server frame before Send returns.
+func TestWSTransport_MultiResult(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000008"
+	multiFrame, _ := json.Marshal(map[string]any{
+		testKeyData: []any{
+			map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID, testKeySeq: 1},
+			map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID, testKeySeq: 2},
+			map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID, testKeySeq: 3},
+		},
+	})
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, multiFrame)              //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	tasks := []any{map[string]any{
+		testKeyTaskType: testTaskTypeInference,
+		testKeyTaskUUID: taskUUID,
+		"numberResults": 3,
+	}}
+	results, err := tr.Send(context.Background(), tasks)
+	if err != nil {
+		t.Fatalf("Send error: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	for i, raw := range results {
+		var got map[string]any
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("unmarshal result %d: %v", i, err)
+		}
+		if got[testKeySeq] != float64(i+1) {
+			t.Errorf("result %d: expected seq=%d, got %v", i, i+1, got[testKeySeq])
+		}
+	}
+}
+
+// TestWSTransport_MultiResultMultiFrame verifies that a task with numberResults:3
+// collects all three items even when the server delivers them across two frames.
+func TestWSTransport_MultiResultMultiFrame(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000009"
+	frame1, _ := json.Marshal(map[string]any{
+		testKeyData: []any{
+			map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID, testKeySeq: 1},
+			map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID, testKeySeq: 2},
+		},
+	})
+	frame2, _ := json.Marshal(map[string]any{
+		testKeyData: []any{
+			map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID, testKeySeq: 3},
+		},
+	})
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, frame1)                  //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, frame2)                  //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	tasks := []any{map[string]any{
+		testKeyTaskType: testTaskTypeInference,
+		testKeyTaskUUID: taskUUID,
+		"numberResults": 3,
+	}}
+	results, err := tr.Send(context.Background(), tasks)
+	if err != nil {
+		t.Fatalf("Send error: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+}
+
+// TestWSTransport_PingSent verifies that keepAlive sends a ping frame to the
+// server within the configured ping interval.
+func TestWSTransport_PingSent(t *testing.T) {
+	pingSeen := make(chan struct{}, 1)
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var frames []map[string]any
+			if json.Unmarshal(msg, &frames) == nil {
+				for _, f := range frames {
+					if f[testKeyTaskType] == "ping" {
+						select {
+						case pingSeen <- struct{}{}:
+						default:
+						}
+					}
+				}
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+		WithPingInterval(50*time.Millisecond))
+	if err := tr.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	select {
+	case <-pingSeen:
+		// pass
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("keepAlive ping not sent within timeout")
+	}
+}
+
+// TestWSTransport_AutoReconnect verifies that after a connection drop the
+// transport reconnects automatically and subsequent Send calls succeed.
+func TestWSTransport_AutoReconnect(t *testing.T) {
+	const (
+		taskUUID1 = "aaaaaaaa-0000-0000-0000-00000000000a"
+		taskUUID2 = "aaaaaaaa-0000-0000-0000-00000000000b"
+	)
+	result1, _ := json.Marshal(map[string]any{
+		testKeyData: []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID1, "v": 1}},
+	})
+	result2, _ := json.Marshal(map[string]any{
+		testKeyData: []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID2, "v": 2}},
+	})
+
+	var (
+		connMu    sync.Mutex
+		connCount int
+	)
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		connMu.Lock()
+		connCount++
+		n := connCount
+		connMu.Unlock()
+
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+
+		if n == 1 {
+			// Reply and immediately drop the connection.
+			conn.WriteMessage(websocket.TextMessage, result1) //nolint:errcheck,gosec
+			conn.Close()                                      //nolint:errcheck,gosec
+			return
+		}
+		// Second+ connection: serve task2.
+		conn.WriteMessage(websocket.TextMessage, result2) //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+		WithReconnectBaseDelay(10*time.Millisecond))
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	// First send — succeeds on the first connection.
+	tasks1 := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID1}}
+	if _, err := tr.Send(context.Background(), tasks1); err != nil {
+		t.Fatalf("first Send: %v", err)
+	}
+
+	// Give the transport time to detect the drop and reconnect.
+	time.Sleep(200 * time.Millisecond)
+
+	// Second send — must succeed on the new connection.
+	tasks2 := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID2}}
+	results, err := tr.Send(context.Background(), tasks2)
+	if err != nil {
+		t.Fatalf("second Send after reconnect: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+}
+
+// TestWSTransport_SessionResumption verifies that an in-flight Send survives a
+// connection drop and receives the result after reconnection, simulating the
+// server replaying results via connectionSessionUUID.
+func TestWSTransport_SessionResumption(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-00000000000c"
+	resultFrame, _ := json.Marshal(map[string]any{
+		testKeyData: []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID, "done": true}},
+	})
+
+	serverGotTask := make(chan struct{}) // fired when first conn reads the task frame
+	dropConn := make(chan struct{})      // test signals to drop the connection
+
+	var (
+		connMu    sync.Mutex
+		connCount int
+	)
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		connMu.Lock()
+		connCount++
+		n := connCount
+		connMu.Unlock()
+
+		conn.ReadMessage()                                                //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+
+		if n == 1 {
+			conn.ReadMessage() //nolint:errcheck,gosec // task frame
+			close(serverGotTask)
+			<-dropConn   // wait for test to initiate drop
+			conn.Close() //nolint:errcheck,gosec // simulate connection drop
+			return
+		}
+		// Second connection: immediately replay the result (simulating server
+		// session resumption via connectionSessionUUID).
+		conn.WriteMessage(websocket.TextMessage, resultFrame) //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+		WithReconnectBaseDelay(10*time.Millisecond))
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
+
+	type sendResult struct {
+		results []json.RawMessage
+		err     error
+	}
+	done := make(chan sendResult, 1)
+	go func() {
+		results, err := tr.Send(context.Background(), tasks)
+		done <- sendResult{results, err}
+	}()
+
+	// Wait for the server to receive the task, then drop the connection.
+	<-serverGotTask
+	close(dropConn)
+
+	// Send should survive the reconnect and receive the replayed result.
+	select {
+	case sr := <-done:
+		if sr.err != nil {
+			t.Fatalf("Send failed after reconnect: %v", sr.err)
+		}
+		if len(sr.results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(sr.results))
+		}
+		var got map[string]any
+		if err := json.Unmarshal(sr.results[0], &got); err != nil {
+			t.Fatalf("unmarshal result: %v", err)
+		}
+		if got["done"] != true {
+			t.Errorf("expected done=true in result, got %v", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Send did not complete after reconnect within 5s")
+	}
+}
+
+// TestWSTransport_ReconnectGivesUpAfterMaxAttempts verifies that when all
+// reconnect attempts fail the in-flight Send call receives a connection error.
+func TestWSTransport_ReconnectGivesUpAfterMaxAttempts(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-00000000000d"
+
+	var (
+		connMu    sync.Mutex
+		connCount int
+	)
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		connMu.Lock()
+		connCount++
+		n := connCount
+		connMu.Unlock()
+
+		if n == 1 {
+			// First connection: complete auth, receive the task, then drop.
+			conn.ReadMessage()                                                //nolint:errcheck,gosec
+			conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
+			conn.ReadMessage()                                                //nolint:errcheck,gosec // task frame
+			conn.Close()                                                      //nolint:errcheck,gosec
+			return
+		}
+		// Subsequent connections: read the auth frame but close without
+		// replying so that Connect fails on the auth response read.
+		conn.ReadMessage() //nolint:errcheck,gosec
+		conn.Close()       //nolint:errcheck,gosec
+	}
+	defer srv.server.Close()
+
+	const maxAttempts = 2
+	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+		WithMaxReconnectAttempts(maxAttempts),
+		WithReconnectBaseDelay(10*time.Millisecond))
+	defer tr.Disconnect() //nolint:errcheck,gosec
+
+	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := tr.Send(ctx, tasks)
+	if err == nil {
+		t.Fatal("expected error after reconnect exhaustion, got nil")
+	}
+	var re *RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != CodeConnection {
+		t.Errorf("expected CodeConnection, got %v", re.Code)
 	}
 }
