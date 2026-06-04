@@ -57,11 +57,28 @@ type wsResult struct {
 	err  error
 }
 
-// taskMeta holds metadata extracted from a single outbound task.
+// taskMeta holds the wire-level fields of an outbound task that the transport
+// needs to track. It is used both for JSON decoding and as the in-flight
+// registry key.
 type taskMeta struct {
-	uuid     string
-	taskType string
-	expected int // numberResults (default 1)
+	UUID          string `json:"taskUUID"`
+	TaskType      string `json:"taskType"`
+	NumberResults int    `json:"numberResults"`
+}
+
+// expected returns the number of results to collect for this task.
+// Defaults to 1 when NumberResults is absent or zero.
+func (m taskMeta) expected() int {
+	if m.NumberResults < 1 {
+		return 1
+	}
+	return m.NumberResults
+}
+
+// wsAuthData is the shape of the authentication item in the server's auth response.
+type wsAuthData struct {
+	TaskType              string `json:"taskType"`
+	ConnectionSessionUUID string `json:"connectionSessionUUID"`
 }
 
 // inflightEntry associates an in-flight Send channel with its task type and
@@ -74,7 +91,7 @@ type inflightEntry struct {
 	received int // results dispatched so far
 }
 
-// WSTransport implements Transport over a persistent WebSocket connection.
+// WSTransport implements [Transport] over a persistent WebSocket connection.
 //
 // The first call to Send (or an explicit call to Connect) establishes the
 // connection and authenticates with the API. Subsequent calls reuse the same
@@ -268,10 +285,7 @@ func (t *WSTransport) Connect(ctx context.Context) error {
 
 	// Extract connectionSessionUUID from the auth data item.
 	for _, raw := range envelope.Data {
-		var item struct {
-			TaskType              string `json:"taskType"`
-			ConnectionSessionUUID string `json:"connectionSessionUUID"`
-		}
+		var item wsAuthData
 		if err := json.Unmarshal(raw, &item); err == nil && item.TaskType == wsAuthTaskType {
 			t.sessionUUID = item.ConnectionSessionUUID
 			break
@@ -364,35 +378,33 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	reconnectCh := t.reconnectCh
 	t.mu.Unlock()
 
-	if !connected {
-		if reconnectCh != nil {
-			// A reconnect cycle is running; wait for it to finish, then check
-			// whether it succeeded before proceeding.
-			select {
-			case <-reconnectCh:
-				t.mu.Lock()
-				connected = t.connected
-				t.mu.Unlock()
-				if !connected {
-					return nil, CreateRunwareError(
-						"connectionFailed",
-						"reconnection failed",
-						RunwareErrorDetails{},
-					)
-				}
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-t.disconnected:
+	if !connected && reconnectCh != nil {
+		// A reconnect cycle is running; wait for it to finish, then check
+		// whether it succeeded before proceeding.
+		select {
+		case <-reconnectCh:
+			t.mu.Lock()
+			connected = t.connected
+			t.mu.Unlock()
+			if !connected {
 				return nil, CreateRunwareError(
 					"connectionFailed",
-					"WebSocket connection disconnected by client",
+					"reconnection failed",
 					RunwareErrorDetails{},
 				)
 			}
-		} else {
-			if err := t.Connect(ctx); err != nil {
-				return nil, err
-			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-t.disconnected:
+			return nil, CreateRunwareError(
+				"connectionFailed",
+				"WebSocket connection disconnected by client",
+				RunwareErrorDetails{},
+			)
+		}
+	} else if !connected {
+		if err := t.Connect(ctx); err != nil {
+			return nil, err
 		}
 	}
 
@@ -420,17 +432,17 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	localChans := make(map[string]chan wsResult, len(metas))
 	t.inflightMu.Lock()
 	for _, m := range metas {
-		if m.uuid == "" {
+		if m.UUID == "" {
 			continue
 		}
-		ch := make(chan wsResult, m.expected+1)
-		localChans[m.uuid] = ch
-		t.inflight[m.uuid] = inflightEntry{
-			taskType: m.taskType,
+		ch := make(chan wsResult, m.expected()+1)
+		localChans[m.UUID] = ch
+		t.inflight[m.UUID] = inflightEntry{
+			taskType: m.TaskType,
 			ch:       ch,
-			expected: m.expected,
+			expected: m.expected(),
 		}
-		t.inflightByType[m.taskType] = append(t.inflightByType[m.taskType], m.uuid)
+		t.inflightByType[m.TaskType] = append(t.inflightByType[m.TaskType], m.UUID)
 	}
 	t.inflightMu.Unlock()
 
@@ -451,37 +463,50 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	// Collect all expected results for every task UUID, in task order.
 	results := make([]json.RawMessage, 0, len(metas))
 	for _, m := range metas {
-		if m.uuid == "" {
+		if m.UUID == "" {
 			continue
 		}
-		ch := localChans[m.uuid]
-		for range m.expected {
-			select {
-			case r, ok := <-ch:
-				if !ok {
-					return nil, CreateRunwareError(
-						"connectionFailed",
-						"WebSocket connection closed while waiting for response",
-						RunwareErrorDetails{},
-					)
-				}
-				if r.err != nil {
-					return nil, r.err
-				}
-				results = append(results, r.data)
-			case <-ctx.Done():
-				t.cleanupLocalChans(localChans)
-				return nil, ctx.Err()
-			case <-t.disconnected:
+		ch := localChans[m.UUID]
+		got, err := t.drainTaskChan(ctx, ch, m.expected(), localChans)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, got...)
+	}
+
+	return results, nil
+}
+
+// drainTaskChan reads n results from ch, returning them in order.
+// It returns early with an error on context cancellation, client disconnect,
+// channel close, or a server-side error result.
+func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int, localChans map[string]chan wsResult) ([]json.RawMessage, error) {
+	results := make([]json.RawMessage, 0, n)
+	for range n {
+		select {
+		case r, ok := <-ch:
+			if !ok {
 				return nil, CreateRunwareError(
 					"connectionFailed",
-					"WebSocket connection disconnected by client",
+					"WebSocket connection closed while waiting for response",
 					RunwareErrorDetails{},
 				)
 			}
+			if r.err != nil {
+				return nil, r.err
+			}
+			results = append(results, r.data)
+		case <-ctx.Done():
+			t.cleanupLocalChans(localChans)
+			return nil, ctx.Err()
+		case <-t.disconnected:
+			return nil, CreateRunwareError(
+				"connectionFailed",
+				"WebSocket connection disconnected by client",
+				RunwareErrorDetails{},
+			)
 		}
 	}
-
 	return results, nil
 }
 
@@ -489,13 +514,14 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 // channel from the inflight maps. Called on write failure or context cancel.
 func (t *WSTransport) cleanupLocalChans(localChans map[string]chan wsResult) {
 	t.inflightMu.Lock()
+	defer t.inflightMu.Unlock()
+
 	for uuid, entry := range t.inflight {
 		if ch, ok := localChans[uuid]; ok && entry.ch == ch {
 			removeFromTypeQueue(t.inflightByType, entry.taskType, uuid)
 			delete(t.inflight, uuid)
 		}
 	}
-	t.inflightMu.Unlock()
 }
 
 // reader is the background goroutine that reads all inbound WebSocket frames
@@ -578,18 +604,15 @@ func (t *WSTransport) reader(conn *websocket.Conn, connCancel context.CancelFunc
 		// Dispatch data items. Try UUID first; fall back to task type for
 		// server frames that omit taskUUID (e.g. ping responses).
 		for _, raw := range envelope.Data {
-			var peek struct {
-				TaskUUID string `json:"taskUUID"`
-				TaskType string `json:"taskType"`
-			}
-			if err := json.Unmarshal(raw, &peek); err != nil {
+			var frame taskMeta
+			if err := json.Unmarshal(raw, &frame); err != nil {
 				continue
 			}
 			switch {
-			case peek.TaskUUID != "":
-				t.dispatchByUUID(peek.TaskUUID, wsResult{data: raw})
-			case peek.TaskType != "":
-				t.dispatchByType(peek.TaskType, wsResult{data: raw})
+			case frame.UUID != "":
+				t.dispatchByUUID(frame.UUID, wsResult{data: raw})
+			case frame.TaskType != "":
+				t.dispatchByType(frame.TaskType, wsResult{data: raw})
 				// else: malformed frame, silently drop
 			}
 		}
@@ -733,6 +756,7 @@ func (t *WSTransport) dispatchByUUID(uuid string, r wsResult) {
 		}
 	}
 	t.inflightMu.Unlock()
+
 	if ok {
 		entry.ch <- r
 	} else if t.logger != nil {
@@ -790,14 +814,16 @@ func (t *WSTransport) broadcastErr(err error) {
 func removeFromTypeQueue(m map[string][]string, taskType, uuid string) {
 	queue := m[taskType]
 	for i, u := range queue {
-		if u == uuid {
-			if len(queue) == 1 {
-				delete(m, taskType)
-			} else {
-				m[taskType] = append(queue[:i], queue[i+1:]...)
-			}
-			return
+		if u != uuid {
+			continue
 		}
+
+		if len(queue) == 1 {
+			delete(m, taskType)
+		} else {
+			m[taskType] = append(queue[:i], queue[i+1:]...)
+		}
+		return
 	}
 }
 
@@ -823,21 +849,9 @@ func marshalAndExtractTaskMeta(tasks []any) ([]byte, []taskMeta, error) {
 
 	metas := make([]taskMeta, 0, len(rawTasks))
 	for _, raw := range rawTasks {
-		var item struct {
-			TaskUUID      string `json:"taskUUID"`
-			TaskType      string `json:"taskType"`
-			NumberResults int    `json:"numberResults"`
-		}
-		if err := json.Unmarshal(raw, &item); err == nil && item.TaskUUID != "" {
-			expected := item.NumberResults
-			if expected < 1 {
-				expected = 1
-			}
-			metas = append(metas, taskMeta{
-				uuid:     item.TaskUUID,
-				taskType: item.TaskType,
-				expected: expected,
-			})
+		var m taskMeta
+		if err := json.Unmarshal(raw, &m); err == nil && m.UUID != "" {
+			metas = append(metas, m)
 		}
 	}
 	return body, metas, nil

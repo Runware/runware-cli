@@ -14,7 +14,7 @@ import (
 	"github.com/runware/runware-cli/internal/buildinfo"
 )
 
-// HTTPTransport implements Transport using the Runware REST API.
+// HTTPTransport implements [Transport] using the Runware REST API.
 type HTTPTransport struct {
 	apiKey     string
 	baseURL    string
