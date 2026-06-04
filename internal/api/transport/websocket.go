@@ -93,16 +93,15 @@ type inflightEntry struct {
 
 // WSTransport implements [Transport] over a persistent WebSocket connection.
 //
-// The first call to Send (or an explicit call to Connect) establishes the
-// connection and authenticates with the API. Subsequent calls reuse the same
-// connection.
+// The first call to Send establishes the connection and authenticates with the API.
+// Subsequent calls reuse the same connection.
 //
 // On connection loss the transport reconnects automatically with exponential
 // backoff. In-flight Send calls are preserved across reconnections; the server
 // replays buffered results via the connectionSessionUUID mechanism. Only when
 // the maximum reconnect attempts are exhausted are in-flight calls failed.
 //
-// Disconnect is terminal — Connect cannot be called again after Disconnect.
+// Close is terminal — the transport cannot be reused after Close.
 type WSTransport struct {
 	apiKey               string
 	baseURL              string
@@ -121,14 +120,14 @@ type WSTransport struct {
 	connected    bool
 	lastActivity time.Time
 
-	// shouldReconnect is set true by Connect and false by Disconnect.
+	// shouldReconnect is set true when a connection is established and false by Close().
 	shouldReconnect  bool
 	reconnectAttempt int
 	// reconnectCh is non-nil while a reconnect is in progress; it is closed
 	// (and reset to nil) when the reconnect cycle finishes (success or exhausted).
 	reconnectCh chan struct{}
 
-	// disconnected is closed exactly once by Disconnect. It permanently signals
+	// disconnected is closed exactly once by Close(). It permanently signals
 	// all current and future Send callers that the transport is shut down.
 	disconnected   chan struct{}
 	disconnectOnce sync.Once
@@ -556,7 +555,7 @@ func (t *WSTransport) reader(conn *websocket.Conn, connCancel context.CancelFunc
 				t.mu.Unlock()
 				go t.reconnectLoop(ch) //nolint:contextcheck
 			} else if isOurConn && !should {
-				// Disconnect() was called; fail all waiters so they don't hang.
+			// Close() was called; fail all waiters so they don't hang.
 				connErr := CreateRunwareError(
 					"connectionFailed",
 					fmt.Sprintf("WebSocket read error: %v", err),
