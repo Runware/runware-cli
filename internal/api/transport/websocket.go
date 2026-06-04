@@ -406,6 +406,10 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 				RunwareErrorDetails{},
 			)
 		}
+	} else if !connected {
+		if err := t.connect(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	// Marshal once; also extract task UUIDs, task types, and expected result
@@ -561,7 +565,7 @@ func (t *WSTransport) reader(conn *websocket.Conn, connCancel context.CancelFunc
 				t.mu.Unlock()
 				go t.reconnectLoop(ch) //nolint:contextcheck
 			} else if isOurConn && !should {
-			// Close() was called; fail all waiters so they don't hang.
+				// Close() was called; fail all waiters so they don't hang.
 				connErr := CreateRunwareError(
 					"connectionFailed",
 					fmt.Sprintf("WebSocket read error: %v", err),
