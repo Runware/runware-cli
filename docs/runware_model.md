@@ -20,6 +20,7 @@ Manage and search models
 ### SEE ALSO
 
 * [runware](runware.md)	 - CLI tool for the Runware inference API
+* [runware model schema](runware_model_schema.md)	 - Show the request/response schema for a model
 * [runware model search](runware_model_search.md)	 - Search models available on the Runware platform
 * [runware model show](runware_model_show.md)	 - Show full details for a model by AIR identifier
 
