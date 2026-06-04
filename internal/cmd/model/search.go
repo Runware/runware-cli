@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -48,6 +49,16 @@ func (r modelSearchResults) Rows() [][]any {
 		}
 	}
 	return rows
+}
+
+// MarshalJSON delegates to the underlying slice so JSON output contains the raw model data.
+func (r modelSearchResults) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.models)
+}
+
+// MarshalYAML delegates to the underlying slice so YAML output contains the raw model data.
+func (r modelSearchResults) MarshalYAML() (any, error) {
+	return r.models, nil
 }
 
 // formatDefaultSize renders a WxH string, or "—" when both are zero.

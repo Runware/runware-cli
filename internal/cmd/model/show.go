@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -76,6 +77,16 @@ func orDash(s string) string {
 	return s
 }
 
+// MarshalJSON delegates to the underlying ModelResult so JSON output contains the raw model data.
+func (d modelDetail) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.m)
+}
+
+// MarshalYAML delegates to the underlying ModelResult so YAML output contains the raw model data.
+func (d modelDetail) MarshalYAML() (any, error) {
+	return d.m, nil
+}
+
 func newShowCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <air>",
@@ -99,17 +110,24 @@ func newShowCmd(logger *log.Logger) *cobra.Command {
 
 			result, err := client.ModelSearch(cmd.Context(), api.ModelSearchRequest{
 				Search: air,
-				Limit:  1,
+				Limit:  100,
 			})
 			if err != nil {
 				return err
 			}
 
-			if len(result.Results) == 0 || result.Results[0].AIR != air {
+			var found *api.ModelResult
+			for i := range result.Results {
+				if result.Results[i].AIR == air {
+					found = &result.Results[i]
+					break
+				}
+			}
+			if found == nil {
 				return fmt.Errorf("model not found: %s", air)
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), modelDetail{m: &result.Results[0]})
+			return output.Print(cmdutil.FormatFor(cmd), modelDetail{m: found})
 		},
 	}
 }
