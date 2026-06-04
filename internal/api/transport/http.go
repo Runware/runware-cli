@@ -14,7 +14,7 @@ import (
 	"github.com/runware/runware-cli/internal/buildinfo"
 )
 
-// HTTPTransport implements Transport using the Runware REST API.
+// HTTPTransport implements [Transport] using the Runware REST API.
 type HTTPTransport struct {
 	apiKey     string
 	baseURL    string
@@ -29,7 +29,7 @@ type httpTransportOptions struct {
 	httpClient *http.Client
 }
 
-// HTTPTransportOption is a functional option for NewHTTPTransport.
+// HTTPTransportOption is a functional option for DialHTTP.
 type HTTPTransportOption func(*httpTransportOptions)
 
 // WithTimeout sets the HTTP client timeout. Ignored if WithHTTPClient is also provided.
@@ -47,9 +47,11 @@ func WithHTTPClient(c *http.Client) HTTPTransportOption {
 	}
 }
 
-// NewHTTPTransport creates an HTTP transport for the given API key and base URL.
+// DialHTTP creates an HTTP transport for the given API key and base URL.
+// The ctx argument is accepted for interface symmetry but is not used — HTTP
+// is stateless and requires no connection handshake.
 // Default timeout is 120s. Use WithTimeout or WithHTTPClient to override.
-func NewHTTPTransport(apiKey, baseURL string, logger *slog.Logger, opts ...HTTPTransportOption) *HTTPTransport {
+func DialHTTP(_ context.Context, apiKey, baseURL string, logger *slog.Logger, opts ...HTTPTransportOption) (*HTTPTransport, error) {
 	o := httpTransportOptions{
 		timeout: 120 * time.Second,
 	}
@@ -70,16 +72,11 @@ func NewHTTPTransport(apiKey, baseURL string, logger *slog.Logger, opts ...HTTPT
 		userAgent:  ua,
 		logger:     logger,
 		httpClient: client,
-	}
+	}, nil
 }
 
-// Connect is a no-op for HTTP; the transport is stateless.
-func (t *HTTPTransport) Connect(_ context.Context) error {
-	return nil
-}
-
-// Disconnect is a no-op for HTTP; the transport is stateless.
-func (t *HTTPTransport) Disconnect() error {
+// Close is a no-op for HTTP; the transport is stateless.
+func (t *HTTPTransport) Close() error {
 	return nil
 }
 

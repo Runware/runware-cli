@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
-	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -41,7 +40,11 @@ func newCreditsCmd(logger *log.Logger) *cobra.Command {
 		Use:   "credits",
 		Short: "Show current credit balance",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t := transport.TransportFromContext(cmd.Context())
+			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
+			if err != nil {
+				return err
+			}
+			defer t.Close() //nolint:errcheck
 			client := api.NewClient(t, slog.New(logger))
 
 			result, err := client.AccountDetails(cmd.Context())

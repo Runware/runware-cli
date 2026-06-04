@@ -50,9 +50,13 @@ func newLoginCmd(logger *log.Logger) *cobra.Command {
 				return fmt.Errorf("API key cannot be empty")
 			}
 
-			t := transport.NewHTTPTransport(key, config.GetBaseURL(), slog.New(logger))
+			t, err := transport.DialHTTP(context.Background(), key, config.GetBaseURL(), slog.New(logger))
+			if err != nil {
+				return err
+			}
+			defer t.Close() //nolint:errcheck
 			client := api.NewClient(t, slog.New(logger))
-			_, err := client.Ping(context.Background())
+			_, err = client.Ping(context.Background())
 			if err != nil {
 				return err
 			}

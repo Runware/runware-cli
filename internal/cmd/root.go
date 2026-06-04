@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"log/slog"
 	"os"
 
 	"github.com/charmbracelet/log"
-	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmd/account"
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
@@ -35,12 +33,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)
 			}
-			if err := config.Init(); err != nil {
-				return err
-			}
-			t := transport.NewHTTPTransport(config.GetAPIKey(), config.GetBaseURL(), slog.New(logger))
-			cmd.SetContext(transport.WithTransport(cmd.Context(), t))
-			return nil
+			return config.Init()
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -49,6 +42,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root.PersistentFlags().StringP("format", "F", "", "CLI output format: table, json, yaml")
 	root.PersistentFlags().BoolP("verbose", "v", false, "Show request/response details")
 	root.PersistentFlags().Bool("debug", false, "Show full debug output")
+	root.PersistentFlags().String("transport", "ws", "Transport protocol: ws (WebSocket) or http (REST)")
 
 	root.RegisterFlagCompletionFunc("format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"table", "json", "yaml"}, cobra.ShellCompDirectiveNoFileComp
