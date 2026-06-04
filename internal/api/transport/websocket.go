@@ -423,7 +423,13 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	t.mu.Lock()
 	conn := t.conn
 	t.mu.Unlock()
-
+	if conn == nil {
+		return nil, CreateRunwareError(
+			"connectionFailed",
+			"WebSocket connection is not established",
+			RunwareErrorDetails{},
+		)
+	}
 	// Register in-flight channels before writing so the reader can dispatch
 	// results immediately after the write completes.
 	//
