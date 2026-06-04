@@ -10,10 +10,11 @@ Generate images, search models, manage your account, and more.
 ### Options
 
 ```
-      --debug           Show full debug output
-  -F, --format string   CLI output format: table, json, yaml
-  -h, --help            help for runware
-  -v, --verbose         Show request/response details
+      --debug              Show full debug output
+  -F, --format string      CLI output format: table, json, yaml
+  -h, --help               help for runware
+      --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
+  -v, --verbose            Show request/response details
 ```
 
 ### SEE ALSO

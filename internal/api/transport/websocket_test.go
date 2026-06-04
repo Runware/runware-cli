@@ -104,19 +104,17 @@ func authErrorReply(code, message string) []byte {
 // --- Existing tests (unchanged behaviour) ---
 
 func TestWSTransport_ErrNoAPIKey(t *testing.T) {
-	tr := NewWSTransport("", "ws://localhost", slog.Default())
-	_, err := tr.Send(context.Background(), []any{})
+	_, err := DialWS(context.Background(), "", "ws://localhost", slog.Default())
 	if !errors.Is(err, ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
-func TestWSTransport_ConnectAuthFailure(t *testing.T) {
+func TestWSTransport_DialAuthFailure(t *testing.T) {
 	srv := newWSTestServer(authErrorReply("invalidApiKey", "invalid key"))
 	defer srv.server.Close()
 
-	tr := NewWSTransport("bad-key", wsURL(srv.server), slog.Default())
-	err := tr.Connect(context.Background())
+	_, err := DialWS(context.Background(), "bad-key", wsURL(srv.server), slog.Default())
 	if err == nil {
 		t.Fatal("expected auth error, got nil")
 	}
@@ -125,33 +123,18 @@ func TestWSTransport_ConnectAuthFailure(t *testing.T) {
 	}
 }
 
-func TestWSTransport_ConnectSuccess(t *testing.T) {
+func TestWSTransport_DialSuccess(t *testing.T) {
 	srv := newWSTestServer(authSuccessReply("test-session-uuid"))
 	defer srv.server.Close()
 
-	tr := NewWSTransport("valid-key", wsURL(srv.server), slog.Default())
-	if err := tr.Connect(context.Background()); err != nil {
-		t.Fatalf("unexpected Connect error: %v", err)
+	tr, err := DialWS(context.Background(), "valid-key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("unexpected DialWS error: %v", err)
 	}
 	if tr.sessionUUID != "test-session-uuid" {
 		t.Errorf("expected sessionUUID=%q, got %q", "test-session-uuid", tr.sessionUUID)
 	}
-	tr.Disconnect() //nolint:errcheck,gosec
-}
-
-func TestWSTransport_ConnectIdempotent(t *testing.T) {
-	srv := newWSTestServer(authSuccessReply("sid"))
-	defer srv.server.Close()
-
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	if err := tr.Connect(context.Background()); err != nil {
-		t.Fatalf("first Connect: %v", err)
-	}
-	// Second Connect should be a no-op, not fail.
-	if err := tr.Connect(context.Background()); err != nil {
-		t.Fatalf("second Connect: %v", err)
-	}
-	tr.Disconnect() //nolint:errcheck,gosec
+	tr.Close() //nolint:errcheck,gosec
 }
 
 func TestWSTransport_SendReceive(t *testing.T) {
@@ -185,8 +168,11 @@ func TestWSTransport_SendReceive(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, testTaskTypePing: true}}
 	results, err := tr.Send(context.Background(), tasks)
@@ -231,11 +217,14 @@ func TestWSTransport_SendServerError(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
-	_, err := tr.Send(context.Background(), tasks)
+	_, err = tr.Send(context.Background(), tasks)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -262,14 +251,17 @@ func TestWSTransport_ContextCancellation(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID}}
-	_, err := tr.Send(ctx, tasks)
+	_, err = tr.Send(ctx, tasks)
 	if err == nil {
 		t.Fatal("expected context error, got nil")
 	}
@@ -295,7 +287,10 @@ func TestWSTransport_DisconnectDrainsInflight(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID}}
 
@@ -305,51 +300,17 @@ func TestWSTransport_DisconnectDrainsInflight(t *testing.T) {
 		errCh <- err
 	}()
 
-	// Wait until the server has received the task, then disconnect.
+	// Wait until the server has received the task, then close.
 	<-serverReceivedTask
-	tr.Disconnect() //nolint:errcheck,gosec
+	tr.Close() //nolint:errcheck,gosec
 
 	select {
 	case err := <-errCh:
 		if err == nil {
-			t.Fatal("expected connection error after Disconnect, got nil")
+			t.Fatal("expected connection error after Close, got nil")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Send did not unblock after Disconnect")
-	}
-}
-
-func TestWSTransport_LazyConnect(t *testing.T) {
-	srv := newWSTestServer(authSuccessReply("sid"))
-	// Override to also echo back a result for the send.
-	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000005"
-	resultFrame, _ := json.Marshal(map[string]any{
-		testKeyData: []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, "pong": true}},
-	})
-	srv.handler = func(conn *websocket.Conn) {
-		conn.ReadMessage()                                                //nolint:errcheck,gosec
-		conn.WriteMessage(websocket.TextMessage, authSuccessReply("sid")) //nolint:errcheck,gosec
-		conn.ReadMessage()                                                //nolint:errcheck,gosec
-		conn.WriteMessage(websocket.TextMessage, resultFrame)             //nolint:errcheck,gosec
-		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
-				return
-			}
-		}
-	}
-	defer srv.server.Close()
-
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
-
-	// Call Send without a prior Connect — should connect lazily.
-	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID}}
-	results, err := tr.Send(context.Background(), tasks)
-	if err != nil {
-		t.Fatalf("lazy Send: %v", err)
-	}
-	if len(results) != 1 {
-		t.Errorf("expected 1 result, got %d", len(results))
+		t.Fatal("Send did not unblock after Close")
 	}
 }
 
@@ -384,8 +345,11 @@ func TestWSTransport_NoUUIDResponseDispatch(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypePing, testKeyTaskUUID: taskUUID, testTaskTypePing: true}}
 	results, err := tr.Send(context.Background(), tasks)
@@ -406,9 +370,9 @@ func TestWSTransport_NoUUIDResponseDispatch(t *testing.T) {
 
 // --- New tests ---
 
-// TestWSTransport_ConnectAuthNoSession verifies that Connect fails when the
+// TestWSTransport_DialAuthNoSession verifies that DialWS fails when the
 // server's auth response is missing connectionSessionUUID.
-func TestWSTransport_ConnectAuthNoSession(t *testing.T) {
+func TestWSTransport_DialAuthNoSession(t *testing.T) {
 	noSessionReply, _ := json.Marshal(map[string]any{
 		testKeyData: []any{
 			map[string]any{testKeyTaskType: wsAuthTaskType},
@@ -417,8 +381,7 @@ func TestWSTransport_ConnectAuthNoSession(t *testing.T) {
 	srv := newWSTestServer(noSessionReply)
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	err := tr.Connect(context.Background())
+	_, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
 	if err == nil {
 		t.Fatal("expected error for missing connectionSessionUUID, got nil")
 	}
@@ -431,9 +394,9 @@ func TestWSTransport_ConnectAuthNoSession(t *testing.T) {
 	}
 }
 
-// TestWSTransport_AuthTimeout verifies that Connect returns promptly when the
+// TestWSTransport_DialTimeout verifies that DialWS returns promptly when the
 // server never replies to the auth frame, using the context deadline.
-func TestWSTransport_AuthTimeout(t *testing.T) {
+func TestWSTransport_DialTimeout(t *testing.T) {
 	srv := newWSTestServer(nil)
 	srv.handler = func(conn *websocket.Conn) {
 		conn.ReadMessage() //nolint:errcheck,gosec // read auth, never reply
@@ -441,37 +404,36 @@ func TestWSTransport_AuthTimeout(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	err := tr.Connect(ctx)
+	_, err := DialWS(ctx, "key", wsURL(srv.server), slog.Default())
 	elapsed := time.Since(start)
 
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
 	if elapsed > 2*time.Second {
-		t.Errorf("Connect took too long (%v); expected < 2s", elapsed)
+		t.Errorf("DialWS took too long (%v); expected < 2s", elapsed)
 	}
 }
 
-// TestWSTransport_DisconnectIsTerminal verifies that Connect returns an error
-// after Disconnect has been called.
-func TestWSTransport_DisconnectIsTerminal(t *testing.T) {
+// TestWSTransport_CloseIsTerminal verifies that Send returns an error
+// after Close has been called.
+func TestWSTransport_CloseIsTerminal(t *testing.T) {
 	srv := newWSTestServer(authSuccessReply("sid"))
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	if err := tr.Connect(context.Background()); err != nil {
-		t.Fatalf("Connect: %v", err)
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
 	}
-	tr.Disconnect() //nolint:errcheck,gosec
+	tr.Close() //nolint:errcheck,gosec
 
-	err := tr.Connect(context.Background())
+	_, err = tr.Send(context.Background(), []any{})
 	if err == nil {
-		t.Fatal("expected error connecting after Disconnect, got nil")
+		t.Fatal("expected error after Close, got nil")
 	}
 }
 
@@ -502,11 +464,14 @@ func TestWSTransport_SingularErrorField(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
-	_, err := tr.Send(context.Background(), tasks)
+	_, err = tr.Send(context.Background(), tasks)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -545,8 +510,11 @@ func TestWSTransport_MultiResult(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{
 		testKeyTaskType: testTaskTypeInference,
@@ -602,8 +570,11 @@ func TestWSTransport_MultiResultMultiFrame(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default())
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{
 		testKeyTaskType: testTaskTypeInference,
@@ -648,12 +619,12 @@ func TestWSTransport_PingSent(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default(),
 		WithPingInterval(50*time.Millisecond))
-	if err := tr.Connect(context.Background()); err != nil {
-		t.Fatalf("Connect: %v", err)
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
 	}
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	defer tr.Close() //nolint:errcheck,gosec
 
 	select {
 	case <-pingSeen:
@@ -708,9 +679,12 @@ func TestWSTransport_AutoReconnect(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default(),
 		WithReconnectBaseDelay(10*time.Millisecond))
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	// First send — succeeds on the first connection.
 	tasks1 := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID1}}
@@ -776,9 +750,12 @@ func TestWSTransport_SessionResumption(t *testing.T) {
 	}
 	defer srv.server.Close()
 
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default(),
 		WithReconnectBaseDelay(10*time.Millisecond))
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
 
@@ -849,17 +826,20 @@ func TestWSTransport_ReconnectGivesUpAfterMaxAttempts(t *testing.T) {
 	defer srv.server.Close()
 
 	const maxAttempts = 2
-	tr := NewWSTransport("key", wsURL(srv.server), slog.Default(),
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default(),
 		WithMaxReconnectAttempts(maxAttempts),
 		WithReconnectBaseDelay(10*time.Millisecond))
-	defer tr.Disconnect() //nolint:errcheck,gosec
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
 
 	tasks := []any{map[string]any{testKeyTaskType: testTaskTypeInference, testKeyTaskUUID: taskUUID}}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := tr.Send(ctx, tasks)
+	_, err = tr.Send(ctx, tasks)
 	if err == nil {
 		t.Fatal("expected error after reconnect exhaustion, got nil")
 	}

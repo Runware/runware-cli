@@ -148,7 +148,10 @@ type WSTransport struct {
 
 // NewWSTransport creates a WebSocket transport for the given API key and base URL.
 // Connect is deferred until the first Send (or an explicit Connect call).
-func NewWSTransport(apiKey, baseURL string, logger *slog.Logger, opts ...WSOption) *WSTransport {
+// DialWS dials a WebSocket connection to the Runware API, performs the
+// authentication handshake, and returns a ready-to-use transport.
+// opts may be used to override reconnect behaviour, ping interval, etc.
+func DialWS(ctx context.Context, apiKey, baseURL string, logger *slog.Logger, opts ...WSOption) (*WSTransport, error) {
 	ua := buildinfo.UserAgent()
 	if agent := agents.Detect(); agent != "" {
 		ua += " agent/" + string(agent)
@@ -168,17 +171,20 @@ func NewWSTransport(apiKey, baseURL string, logger *slog.Logger, opts ...WSOptio
 	for _, opt := range opts {
 		opt(t)
 	}
-	return t
+	if err := t.connect(ctx); err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
-// Connect establishes the WebSocket connection and authenticates with the API.
+// connect establishes the WebSocket connection and authenticates with the API.
 // It is safe to call multiple times; subsequent calls are no-ops if already
 // connected. If a previous connectionSessionUUID is held, it is sent in the
 // auth request so the server can replay any buffered results.
 //
-// Connect returns an error if called after Disconnect.
-func (t *WSTransport) Connect(ctx context.Context) error {
-	// Reject Connect on a permanently disconnected transport.
+// connect returns an error if called after Close.
+func (t *WSTransport) connect(ctx context.Context) error {
+	// Reject connect on a permanently closed transport.
 	select {
 	case <-t.disconnected:
 		return CreateRunwareError(
@@ -318,10 +324,10 @@ func (t *WSTransport) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Disconnect permanently closes the WebSocket connection and unblocks all
-// in-flight Send calls. Disconnect is terminal — Connect cannot be called again
-// after Disconnect. Safe to call if Connect was never called.
-func (t *WSTransport) Disconnect() error {
+// Close permanently shuts down the WebSocket connection and unblocks all
+// in-flight Send calls. Close is terminal — the transport cannot be reused
+// afterwards. Safe to call if DialWS succeeded but no Send has been issued yet.
+func (t *WSTransport) Close() error {
 	t.mu.Lock()
 	t.shouldReconnect = false
 	conn := t.conn
@@ -350,8 +356,7 @@ func (t *WSTransport) Disconnect() error {
 }
 
 // Send marshals tasks, writes them to the WebSocket connection, and waits for
-// all expected results for each task UUID. The connection is established lazily
-// on the first call.
+// all expected results for each task UUID.
 //
 // If a task carries a "numberResults" field (int > 1), Send collects that many
 // result items before returning. All results for all tasks are returned as a
@@ -401,10 +406,6 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 				"WebSocket connection disconnected by client",
 				RunwareErrorDetails{},
 			)
-		}
-	} else if !connected {
-		if err := t.Connect(ctx); err != nil {
-			return nil, err
 		}
 	}
 
@@ -719,7 +720,7 @@ func (t *WSTransport) reconnectLoop(ch chan struct{}) {
 			return
 		}
 
-		if err := t.Connect(context.Background()); err != nil { //nolint:contextcheck
+		if err := t.connect(context.Background()); err != nil { //nolint:contextcheck
 			if t.logger != nil {
 				t.logger.Debug("ws reconnect: attempt failed", "attempt", attempt, "err", err)
 			}

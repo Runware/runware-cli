@@ -14,7 +14,7 @@ import (
 )
 
 // mockTransport is a test double for transport.Transport.
-// Send returns pre-configured responses in order; Connect and Disconnect are no-ops.
+// Send returns pre-configured responses in order; Close is a no-op.
 type mockTransport struct {
 	responses []mockResponse
 	callCount int
@@ -25,8 +25,7 @@ type mockResponse struct {
 	err  error
 }
 
-func (m *mockTransport) Connect(_ context.Context) error { return nil }
-func (m *mockTransport) Disconnect() error               { return nil }
+func (m *mockTransport) Close() error { return nil }
 func (m *mockTransport) Send(_ context.Context, _ []any) ([]json.RawMessage, error) {
 	if m.callCount >= len(m.responses) {
 		return nil, nil

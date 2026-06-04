@@ -26,9 +26,10 @@ runware auth login [flags]
 ### Options inherited from parent commands
 
 ```
-      --debug           Show full debug output
-  -F, --format string   CLI output format: table, json, yaml
-  -v, --verbose         Show request/response details
+      --debug              Show full debug output
+  -F, --format string      CLI output format: table, json, yaml
+      --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
+  -v, --verbose            Show request/response details
 ```
 
 ### SEE ALSO

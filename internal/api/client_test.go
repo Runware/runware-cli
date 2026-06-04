@@ -12,6 +12,16 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
+// dialHTTP is a test helper that dials an HTTP transport and fails the test on error.
+func dialHTTP(t *testing.T, apiKey, url string) *transport.HTTPTransport {
+	t.Helper()
+	tr, err := transport.DialHTTP(context.Background(), apiKey, url, slog.Default())
+	if err != nil {
+		t.Fatalf("DialHTTP: %v", err)
+	}
+	return tr
+}
+
 // TestSend_Non2xx_InvalidJSON: non-200 with a non-JSON body returns a parse error
 // that includes the HTTP status code.
 func TestSend_Non2xx_InvalidJSON(t *testing.T) {
@@ -21,7 +31,7 @@ func TestSend_Non2xx_InvalidJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
+	c := NewClient(dialHTTP(t, "test-key", srv.URL), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error from 5xx response, got nil")
@@ -44,7 +54,7 @@ func TestSend_Non2xx_ValidJSON_NoErrors(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
+			c := NewClient(dialHTTP(t, "test-key", srv.URL), slog.Default())
 			_, err := c.Ping(context.Background())
 			if err == nil {
 				t.Fatalf("expected error for HTTP %d, got nil", code)
@@ -67,7 +77,7 @@ func TestSend_Non2xx_ValidJSON_WithErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
+	c := NewClient(dialHTTP(t, "test-key", srv.URL), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -87,7 +97,7 @@ func TestSend_200_ValidJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
+	c := NewClient(dialHTTP(t, "test-key", srv.URL), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error on 200 response: %v", err)
@@ -104,7 +114,7 @@ func TestSend_200_WithErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
+	c := NewClient(dialHTTP(t, "test-key", srv.URL), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error from errors field, got nil")
@@ -124,7 +134,7 @@ func TestSend_UnauthorizedOn401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(transport.NewHTTPTransport("test-key", srv.URL, slog.Default()), slog.Default())
+	c := NewClient(dialHTTP(t, "test-key", srv.URL), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -136,7 +146,7 @@ func TestSend_UnauthorizedOn401(t *testing.T) {
 
 // TestSend_NoAPIKey: empty API key returns ErrNoAPIKey without making a request.
 func TestSend_NoAPIKey(t *testing.T) {
-	c := NewClient(transport.NewHTTPTransport("", "http://localhost", slog.Default()), slog.Default())
+	c := NewClient(dialHTTP(t, "", "http://localhost"), slog.Default())
 	_, err := c.Ping(context.Background())
 	if err == nil {
 		t.Fatal("expected error for empty API key, got nil")

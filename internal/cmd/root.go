@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -40,19 +41,25 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			tp, _ := cmd.Root().PersistentFlags().GetString("transport")
-			var t transport.Transport
+			var url string
 			switch tp {
 			case "http":
-				t = transport.NewHTTPTransport(config.GetAPIKey(), config.GetBaseURL(), slog.New(logger))
-			default: // "ws"
-				t = transport.NewWSTransport(config.GetAPIKey(), config.GetWSBaseURL(), slog.New(logger))
+				url = config.GetBaseURL()
+			case "ws":
+				url = config.GetWSBaseURL()
+			default:
+				return fmt.Errorf("unknown transport %q: must be \"ws\" or \"http\"", tp)
+			}
+			t, err := transport.DialContext(cmd.Context(), tp, config.GetAPIKey(), url, slog.New(logger))
+			if err != nil {
+				return err
 			}
 			cmd.SetContext(transport.WithTransport(cmd.Context(), t))
 			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
 			if t := transport.TransportFromContext(cmd.Context()); t != nil {
-				return t.Disconnect()
+				return t.Close()
 			}
 			return nil
 		},
