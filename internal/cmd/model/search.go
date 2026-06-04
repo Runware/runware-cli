@@ -61,6 +61,13 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
 			client := api.NewClient(t, slog.New(logger))
 
+			if flags.limit < 1 || flags.limit > 100 {
+				return fmt.Errorf("--limit must be between 1 and 100")
+			}
+			if flags.offset < 0 {
+				return fmt.Errorf("--offset must be >= 0")
+			}
+
 			req := api.ModelSearchRequest{
 				Search:       flags.search,
 				Category:     flags.category,
@@ -106,8 +113,7 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 	cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"base", "inpainting", "refiner"}, cobra.ShellCompDirectiveNoFileComp
 	})
-	cmd.RegisterFlagCompletionFunc("visibility", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []cobra.Completion{"public", "private", "all"}, cobra.ShellCompDirectiveNoFileComp
+		return []cobra.Completion{"public", "private", "community", "favorite"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd
