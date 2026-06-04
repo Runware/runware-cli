@@ -54,6 +54,7 @@ func newLoginCmd(logger *log.Logger) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer t.Close() //nolint:errcheck
 			client := api.NewClient(t, slog.New(logger))
 			_, err = client.Ping(context.Background())
 			if err != nil {
