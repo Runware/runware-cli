@@ -52,7 +52,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 		auth.NewCmd(logger),
 		ping.NewCmd(logger),
 		inference.NewCmd(),
-		model.NewCmd(),
+		model.NewCmd(logger),
 		account.NewCmd(logger),
 		cmdconfig.NewCmd(logger),
 		preset.NewCmd(logger),

@@ -1,11 +1,16 @@
 package model
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/charmbracelet/log"
+	"github.com/spf13/cobra"
+)
 
 // NewCmd returns the model command with search and other model management subcommands.
-func NewCmd() *cobra.Command {
-	return &cobra.Command{
+func NewCmd(logger *log.Logger) *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "model",
 		Short: "Manage and search models",
 	}
+	cmd.AddCommand(newSearchCmd(logger))
+	return cmd
 }

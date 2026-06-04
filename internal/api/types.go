@@ -182,8 +182,12 @@ type ModelSearchRequest struct {
 	TaskType     TaskType  `json:"taskType"`
 	TaskUUID     uuid.UUID `json:"taskUUID"`
 	Search       string    `json:"search,omitempty"`
+	Tags         []string  `json:"tags,omitempty"`
 	Category     string    `json:"category,omitempty"`
+	Type         string    `json:"type,omitempty"`
 	Architecture string    `json:"architecture,omitempty"`
+	Conditioning string    `json:"conditioning,omitempty"`
+	Visibility   string    `json:"visibility,omitempty"`
 	Limit        int       `json:"limit,omitempty"`
 	Offset       int       `json:"offset,omitempty"`
 }
@@ -201,9 +205,12 @@ type ModelResult struct {
 	Name                 string   `json:"name"`
 	AIR                  string   `json:"air"`
 	Tags                 []string `json:"tags"`
-	HeroImage            string   `json:"heroImage"`
+	ImageURL             string   `json:"imageURL"`
+	ThumbnailURL         string   `json:"thumbnailURL"`
 	Category             string   `json:"category"`
 	Private              bool     `json:"private"`
+	Primary              bool     `json:"primary"`
+	BaseModel            string   `json:"baseModel,omitempty"`
 	Version              string   `json:"version"`
 	Architecture         string   `json:"architecture"`
 	NSFWLevel            int      `json:"nsfwLevel"`
