@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -261,4 +262,11 @@ type ModelResult struct {
 	DefaultStrength      float64  `json:"defaultStrength,omitempty"`
 	PositiveTriggerWords string   `json:"positiveTriggerWords,omitempty"`
 	NegativeTriggerWords string   `json:"negativeTriggerWords,omitempty"`
+}
+
+// ModelSchema is the response from the schema resolve endpoint.
+type ModelSchema struct {
+	RequestSchema  json.RawMessage `json:"requestSchema"`
+	ResponseSchema json.RawMessage `json:"responseSchema"`
+	Documentation  string          `json:"documentation"`
 }

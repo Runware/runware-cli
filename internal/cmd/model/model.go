@@ -13,5 +13,6 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 	}
 	cmd.AddCommand(newSearchCmd(logger))
 	cmd.AddCommand(newShowCmd(logger))
+	cmd.AddCommand(newSchemaCmd(logger))
 	return cmd
 }

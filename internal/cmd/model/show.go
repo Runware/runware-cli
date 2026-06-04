@@ -30,7 +30,7 @@ func (d modelDetail) Rows() [][]any {
 		{"Version", m.Version},
 		{"Category", m.Category},
 		{"Architecture", m.Architecture},
-		{"Type", orDash(m.Type)},
+		{colType, orDash(m.Type)},
 		{"Base Model", orDash(m.BaseModel)},
 		{"Private", m.Private},
 		{"Primary", m.Primary},
