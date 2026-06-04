@@ -40,9 +40,6 @@ type PingRequest struct {
 	TaskType TaskType  `json:"taskType"`
 	TaskUUID uuid.UUID `json:"taskUUID"`
 }
-	TaskType TaskType  `json:"taskType"`
-	TaskUUID uuid.UUID `json:"taskUUID"`
-}
 
 // PingResult is the response from a ping task.
 type PingResult struct {
