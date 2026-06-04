@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/charmbracelet/log v1.0.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/jedib0t/go-pretty/v6 v6.7.10
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -24,7 +25,6 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
