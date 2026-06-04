@@ -15,6 +15,9 @@ runware model search [flags]
   # Filter to SDXL checkpoints only
   runware model search --search "portrait" --category checkpoint --architecture sdxl
 
+  # Show extra columns including tags and default size
+  runware model search --search "anime" --wide
+
   # List your private models
   runware model search --search "my-model" --visibility private
 
@@ -33,6 +36,7 @@ runware model search [flags]
   -q, --search string         Search query (name, description, or AIR ID)
   -t, --type string           Filter checkpoint type: base, inpainting, refiner
       --visibility string     Filter by visibility: public, private, community, favorite (default "public")
+  -W, --wide                  Show additional columns: private, default size, tags
 ```
 
 ### Options inherited from parent commands

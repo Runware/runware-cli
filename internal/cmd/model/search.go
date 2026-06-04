@@ -13,18 +13,67 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type modelSearchResults []api.ModelResult
+// modelSearchResults wraps results for table rendering, carrying the wide flag
+// so Headers/Rows can vary the column set without extra types.
+type modelSearchResults struct {
+	models []api.ModelResult
+	wide   bool
+}
 
 func (r modelSearchResults) Headers() []string {
+	if r.wide {
+		return []string{"Name", "AIR", "Category", "Architecture", "Type", "Version", "Private", "Default Size", "Tags"}
+	}
 	return []string{"Name", "AIR", "Category", "Architecture", "Type", "Version"}
 }
 
 func (r modelSearchResults) Rows() [][]any {
-	rows := make([][]any, len(r))
-	for i := range r {
-		rows[i] = []any{r[i].Name, r[i].AIR, r[i].Category, r[i].Architecture, r[i].Type, r[i].Version}
+	rows := make([][]any, len(r.models))
+	for i := range r.models {
+		m := &r.models[i]
+		if r.wide {
+			rows[i] = []any{
+				m.Name,
+				m.AIR,
+				m.Category,
+				m.Architecture,
+				m.Type,
+				m.Version,
+				m.Private,
+				formatDefaultSize(m.DefaultWidth, m.DefaultHeight),
+				formatTags(m.Tags, 4),
+			}
+		} else {
+			rows[i] = []any{m.Name, m.AIR, m.Category, m.Architecture, m.Type, m.Version}
+		}
 	}
 	return rows
+}
+
+// formatDefaultSize renders a WxH string, or "—" when both are zero.
+func formatDefaultSize(w, h int) string {
+	if w == 0 && h == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%d×%d", w, h)
+}
+
+// formatTags joins up to maxTags tags with ", " and appends "…" when there are more.
+func formatTags(tags []string, maxTags int) string {
+	if len(tags) == 0 {
+		return "—"
+	}
+	shown := tags
+	truncated := false
+	if len(tags) > maxTags {
+		shown = tags[:maxTags]
+		truncated = true
+	}
+	s := strings.Join(shown, ", ")
+	if truncated {
+		s += "…"
+	}
+	return s
 }
 
 func newSearchCmd(logger *log.Logger) *cobra.Command {
@@ -36,6 +85,7 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 		visibility   string
 		limit        int
 		offset       int
+		wide         bool
 	}
 
 	cmd := &cobra.Command{
@@ -46,6 +96,9 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
   # Filter to SDXL checkpoints only
   runware model search --search "portrait" --category checkpoint --architecture sdxl
+
+  # Show extra columns including tags and default size
+  runware model search --search "anime" --wide
 
   # List your private models
   runware model search --search "my-model" --visibility private
@@ -83,12 +136,14 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 
-			if err := output.Print(cmdutil.FormatFor(cmd), modelSearchResults(result.Results)); err != nil {
+			if err := output.Print(cmdutil.FormatFor(cmd), modelSearchResults{
+				models: result.Results,
+				wide:   flags.wide,
+			}); err != nil {
 				return err
 			}
 
-			showing := len(result.Results)
-			fmt.Fprintf(os.Stderr, "Showing %d of %d results\n", showing, result.TotalResults)
+			fmt.Fprintf(os.Stderr, "Showing %d of %d results\n", len(result.Results), result.TotalResults)
 
 			return nil
 		},
@@ -96,12 +151,13 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&flags.search, "search", "q", "", "Search query (name, description, or AIR ID)")
-	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: "+strings.Join([]string{"checkpoint", "lora", "lycoris", "vae", "embeddings"}, ", "))
+	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: checkpoint, lora, lycoris, vae, embeddings")
 	f.StringVarP(&flags.architecture, "architecture", "a", "", "Filter by model architecture (e.g. sdxl, flux)")
 	f.StringVarP(&flags.modelType, "type", "t", "", "Filter checkpoint type: base, inpainting, refiner")
 	f.StringVar(&flags.visibility, "visibility", "public", "Filter by visibility: public, private, community, favorite")
 	f.IntVarP(&flags.limit, "limit", "l", 20, "Maximum number of results to return (1-100)")
 	f.IntVar(&flags.offset, "offset", 0, "Number of results to skip for pagination")
+	f.BoolVarP(&flags.wide, "wide", "W", false, "Show additional columns: private, default size, tags")
 
 	if err := cmd.MarkFlagRequired("search"); err != nil {
 		panic(err)

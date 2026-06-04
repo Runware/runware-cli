@@ -12,5 +12,6 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		Short: "Manage and search models",
 	}
 	cmd.AddCommand(newSearchCmd(logger))
+	cmd.AddCommand(newShowCmd(logger))
 	return cmd
 }
