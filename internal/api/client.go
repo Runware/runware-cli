@@ -77,3 +77,25 @@ func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
 
 	return &result, nil
 }
+
+// ModelSearch searches for models on the Runware platform.
+func (c *Client) ModelSearch(ctx context.Context, req ModelSearchRequest) (*ModelSearchResponse, error) {
+	req.TaskType = taskTypeModelSearch
+	req.TaskUUID = uuid.New()
+
+	data, err := c.transport.Send(ctx, []any{req})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty response from modelSearch")
+	}
+
+	var result ModelSearchResponse
+	if err := json.Unmarshal(data[0], &result); err != nil {
+		return nil, fmt.Errorf("failed to parse modelSearch response: %w", err)
+	}
+
+	return &result, nil
+}
