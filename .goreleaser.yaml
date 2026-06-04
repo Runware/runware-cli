@@ -26,9 +26,6 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-changelog:
-  disable: true
-
 homebrew_casks:
   - name: runware
     homepage: https://runware.ai
