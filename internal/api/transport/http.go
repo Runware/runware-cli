@@ -14,6 +14,9 @@ import (
 	"github.com/runware/runware-cli/internal/buildinfo"
 )
 
+// Compile-time interface check.
+var _ Transport = (*HTTPTransport)(nil)
+
 // HTTPTransport implements [Transport] using the Runware REST API.
 type HTTPTransport struct {
 	apiKey     string

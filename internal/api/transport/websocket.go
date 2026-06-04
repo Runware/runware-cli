@@ -17,9 +17,26 @@ import (
 	"github.com/runware/runware-cli/internal/buildinfo"
 )
 
+// Compile-time interface check.
+var _ Transport = (*WSTransport)(nil)
+
 const wsAuthTaskType = "authentication"
-const wsKeyTaskType = "taskType"
 const wsPingTaskType = "ping"
+
+// wsAuthRequest is the authentication handshake payload sent on connect.
+// ConnectionSessionUUID is omitted when empty, so a fresh session is started.
+type wsAuthRequest struct {
+	TaskType              string `json:"taskType"`
+	APIKey                string `json:"apiKey"`
+	ConnectionSessionUUID string `json:"connectionSessionUUID,omitempty"`
+}
+
+// wsHeartbeatRequest is the keepalive payload sent periodically to prevent
+// the server from closing an idle connection.
+type wsHeartbeatRequest struct {
+	TaskType string `json:"taskType"`
+	Ping     bool   `json:"ping"`
+}
 
 const (
 	wsAuthTimeout        = 30 * time.Second
@@ -221,14 +238,11 @@ func (t *WSTransport) connect(ctx context.Context) error {
 	}
 
 	// Build auth request, optionally resuming a previous session.
-	authTask := map[string]any{
-		wsKeyTaskType: wsAuthTaskType,
-		"apiKey":      t.apiKey,
+	authTask := wsAuthRequest{
+		TaskType:              wsAuthTaskType,
+		APIKey:                t.apiKey,
+		ConnectionSessionUUID: t.sessionUUID,
 	}
-	if t.sessionUUID != "" {
-		authTask["connectionSessionUUID"] = t.sessionUUID
-	}
-
 	authBody, err := json.Marshal([]any{authTask})
 	if err != nil {
 		conn.Close() //nolint:errcheck,gosec
@@ -643,7 +657,7 @@ func (t *WSTransport) keepAlive(ctx context.Context, conn *websocket.Conn) {
 		case <-t.disconnected:
 			return
 		case <-ticker.C:
-			ping, _ := json.Marshal([]any{map[string]any{wsKeyTaskType: wsPingTaskType, wsPingTaskType: true}}) //nolint:errcheck
+			ping, _ := json.Marshal([]any{wsHeartbeatRequest{TaskType: wsPingTaskType, Ping: true}}) //nolint:errcheck
 			t.writeMu.Lock()
 			writeErr := conn.WriteMessage(websocket.TextMessage, ping)
 			t.writeMu.Unlock()

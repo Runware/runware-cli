@@ -27,11 +27,10 @@ func NewClient(t transport.Transport, logger *slog.Logger) *Client {
 
 // Ping checks API connectivity.
 func (c *Client) Ping(ctx context.Context) (*PingResult, error) {
-	// TODO(dr): request struct.
 	tasks := []any{
-		map[string]string{
-			jsonKeyTaskType: string(taskTypePing),
-			jsonKeyTaskUUID: uuid.New().String(),
+		&PingRequest{
+			TaskType: taskTypePing,
+			TaskUUID: uuid.New(),
 		},
 	}
 
@@ -54,12 +53,11 @@ func (c *Client) Ping(ctx context.Context) (*PingResult, error) {
 
 // AccountDetails fetches account information.
 func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
-	// TODO(dr): request struct.
 	tasks := []any{
-		map[string]string{
-			jsonKeyTaskType:  string(taskTypeAccountManagement),
-			jsonKeyTaskUUID:  uuid.New().String(),
-			jsonKeyOperation: "getDetails",
+		&AccountManagementRequest{
+			TaskType:  taskTypeAccountManagement,
+			TaskUUID:  uuid.New(),
+			Operation: "getDetails",
 		},
 	}
 

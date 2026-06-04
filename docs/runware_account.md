@@ -1,12 +1,12 @@
 ## runware account
 
-Account information and credits
+Account information, team, and API keys
 
 ### Examples
 
 ```
-  # show current credit balance
-  runware account credits
+  # show full account details
+  runware account details
 ```
 
 ### Options
@@ -27,5 +27,5 @@ Account information and credits
 ### SEE ALSO
 
 * [runware](runware.md)	 - CLI tool for the Runware inference API
-* [runware account credits](runware_account_credits.md)	 - Show current credit balance
+* [runware account details](runware_account_details.md)	 - Show account details, team, API keys, and usage
 

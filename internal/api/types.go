@@ -1,6 +1,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -33,10 +35,24 @@ type ImageInferenceResult struct {
 	Seed      int64     `json:"seed"`
 }
 
+// PingRequest is the request payload for the ping task.
+// PingRequest is the request payload for the ping task.
+type PingRequest struct {
+	TaskType TaskType  `json:"taskType"`
+	TaskUUID uuid.UUID `json:"taskUUID"`
+}
+
 // PingResult is the response from a ping task.
 type PingResult struct {
 	TaskType TaskType `json:"taskType"`
 	Pong     bool     `json:"pong"`
+}
+
+// AccountManagementRequest is the request payload for the accountManagement task.
+type AccountManagementRequest struct {
+	TaskType  TaskType  `json:"taskType"`
+	TaskUUID  uuid.UUID `json:"taskUUID"`
+	Operation string    `json:"operation"`
 }
 
 // AccountResult is the response from accountManagement getDetails.
@@ -45,8 +61,30 @@ type AccountResult struct {
 	TaskUUID         uuid.UUID    `json:"taskUUID"`
 	OrganizationUUID uuid.UUID    `json:"organizationUUID"`
 	OrganizationName string       `json:"organizationName"`
+	AIRSource        string       `json:"AIRSource,omitempty"`
 	Balance          float64      `json:"balance"`
+	Team             []TeamMember `json:"team,omitempty"`
+	APIKeys          []APIKeyInfo `json:"apiKeys,omitempty"`
 	Usage            AccountUsage `json:"usage"`
+}
+
+// TeamMember is a member of the organization.
+type TeamMember struct {
+	Name     string    `json:"name"`
+	Email    string    `json:"email"`
+	Roles    []string  `json:"roles"`
+	JoinedAt time.Time `json:"joinedAt,omitempty"`
+}
+
+// APIKeyInfo describes a single API key on the account.
+type APIKeyInfo struct {
+	Name        string    `json:"name"`
+	APIKey      string    `json:"apiKey"`
+	Description string    `json:"description,omitempty"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"createdAt"`
+	LastUsedAt  time.Time `json:"lastUsedAt,omitempty"`
+	Requests    int       `json:"requests,omitempty"`
 }
 
 type AccountUsage struct {

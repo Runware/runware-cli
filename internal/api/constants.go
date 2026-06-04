@@ -32,10 +32,3 @@ const (
 	OutputFormatText OutputFormat = "text"
 	OutputFormatJSON OutputFormat = "json"
 )
-
-const (
-	invalidAPIKeyCode = "invalidApiKey"
-	jsonKeyTaskType   = "taskType"
-	jsonKeyTaskUUID   = "taskUUID"
-	jsonKeyOperation  = "operation"
-)

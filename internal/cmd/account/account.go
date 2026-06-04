@@ -5,14 +5,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewCmd returns the account command with credits and other account subcommands.
+// NewCmd returns the account command with subcommands for account management.
 func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "account",
-		Short: "Account information and credits",
-		Example: `  # show current credit balance
-  runware account credits`,
+		Short: "Account information, team, and API keys",
+		Example: `  # show full account details
+  runware account details`,
 	}
-	cmd.AddCommand(newCreditsCmd(logger))
+	cmd.AddCommand(newDetailsCmd(logger))
 	return cmd
 }

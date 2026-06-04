@@ -19,7 +19,7 @@ Generate images, search models, manage your account, and more.
 
 ### SEE ALSO
 
-* [runware account](runware_account.md)	 - Account information and credits
+* [runware account](runware_account.md)	 - Account information, team, and API keys
 * [runware auth](runware_auth.md)	 - Manage authentication
 * [runware completion](runware_completion.md)	 - Generate shell completion scripts
 * [runware config](runware_config.md)	 - Manage CLI configuration
