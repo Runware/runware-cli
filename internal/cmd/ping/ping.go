@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
-	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -33,11 +32,15 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		Example: `  # check API connectivity
   runware ping`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t := transport.TransportFromContext(cmd.Context())
+			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
+			if err != nil {
+				return err
+			}
+			defer t.Close() //nolint:errcheck
 			client := api.NewClient(t, slog.New(logger))
 
 			start := time.Now()
-			_, err := client.Ping(cmd.Context())
+			_, err = client.Ping(cmd.Context())
 			if err != nil {
 				return err
 			}

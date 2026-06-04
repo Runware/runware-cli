@@ -368,8 +368,6 @@ func TestWSTransport_NoUUIDResponseDispatch(t *testing.T) {
 	}
 }
 
-// --- New tests ---
-
 // TestWSTransport_DialAuthNoSession verifies that DialWS fails when the
 // server's auth response is missing connectionSessionUUID.
 func TestWSTransport_DialAuthNoSession(t *testing.T) {

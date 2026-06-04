@@ -42,15 +42,23 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 
 			if key != "" {
 				maskedKey = config.MaskKey(key)
-				t := transport.TransportFromContext(cmd.Context())
-				client := api.NewClient(t, slog.New(logger))
 
-				// TODO(dr): handle the error here.
-				_, err := client.Ping(cmd.Context())
+				t, err := cmdutil.NewTransport(cmd, slog.New(logger))
 				if err != nil {
-					status = "invalid"
+					// Dial failure: network or config problem, not an auth issue.
+					status = "unreachable"
 				} else {
-					status = "valid"
+					defer t.Close() //nolint:errcheck
+					client := api.NewClient(t, slog.New(logger))
+					_, err = client.Ping(cmd.Context())
+					switch {
+					case err == nil:
+						status = "valid"
+					case transport.IsAuthError(err):
+						status = "invalid"
+					default:
+						status = "unreachable"
+					}
 				}
 			}
 

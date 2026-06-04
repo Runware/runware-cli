@@ -36,19 +36,3 @@ func DialContext(ctx context.Context, scheme, apiKey, url string, logger *slog.L
 		return nil, fmt.Errorf("unknown transport scheme %q: must be \"ws\" or \"http\"", scheme)
 	}
 }
-
-type contextKey int
-
-const transportContextKey contextKey = iota
-
-// WithTransport returns a new context carrying t.
-func WithTransport(ctx context.Context, t Transport) context.Context {
-	return context.WithValue(ctx, transportContextKey, t)
-}
-
-// TransportFromContext retrieves the Transport stored by WithTransport.
-// Returns nil if no transport is present.
-func TransportFromContext(ctx context.Context) Transport {
-	t, _ := ctx.Value(transportContextKey).(Transport)
-	return t
-}

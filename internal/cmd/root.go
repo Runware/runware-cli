@@ -1,12 +1,9 @@
 package cmd
 
 import (
-	"fmt"
-	"log/slog"
 	"os"
 
 	"github.com/charmbracelet/log"
-	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmd/account"
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
@@ -36,32 +33,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)
 			}
-			if err := config.Init(); err != nil {
-				return err
-			}
-
-			tp, _ := cmd.Root().PersistentFlags().GetString("transport")
-			var url string
-			switch tp {
-			case "http":
-				url = config.GetBaseURL()
-			case "ws":
-				url = config.GetWSBaseURL()
-			default:
-				return fmt.Errorf("unknown transport %q: must be \"ws\" or \"http\"", tp)
-			}
-			t, err := transport.DialContext(cmd.Context(), tp, config.GetAPIKey(), url, slog.New(logger))
-			if err != nil {
-				return err
-			}
-			cmd.SetContext(transport.WithTransport(cmd.Context(), t))
-			return nil
-		},
-		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-			if t := transport.TransportFromContext(cmd.Context()); t != nil {
-				return t.Close()
-			}
-			return nil
+			return config.Init()
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
