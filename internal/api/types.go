@@ -36,8 +36,10 @@ type ImageInferenceResult struct {
 }
 
 // PingRequest is the request payload for the ping task.
-// PingRequest is the request payload for the ping task.
 type PingRequest struct {
+	TaskType TaskType  `json:"taskType"`
+	TaskUUID uuid.UUID `json:"taskUUID"`
+}
 	TaskType TaskType  `json:"taskType"`
 	TaskUUID uuid.UUID `json:"taskUUID"`
 }
