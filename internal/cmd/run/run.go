@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -78,24 +77,6 @@ fine-tuned models), specify it explicitly with --task-type.`,
 			spin.Suffix = " Running inference..."
 			spin.Start()
 
-			// Schema is fetched inside api.Client.Run; ParseKV uses an empty Node
-			// here for best-effort type coercion (float64 vs int64 is inconsequential
-			// after the JSON round-trip to the API).
-			params := map[string]any{}
-			for _, kv := range kvArgs {
-				path, v, err := schema.ParseKV(kv, schema.Node{})
-				if err != nil {
-					spin.Stop()
-					return fmt.Errorf("invalid argument %q: %w", kv, err)
-				}
-				if hint, blocked := schema.IsProtected(path[0]); blocked {
-					spin.Stop()
-					return fmt.Errorf("argument %q: key %q is reserved — %s", kv, path[0], hint)
-				}
-				schema.DeepSet(params, path, v)
-			}
-
-			// --- Connect, validate, submit and (if async) poll ---
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
 			if err != nil {
 				spin.Stop()
@@ -105,7 +86,7 @@ fine-tuned models), specify it explicitly with --task-type.`,
 
 			client := api.NewClient(t, slog.New(logger))
 
-			results, err := client.Run(cmd.Context(), model, params, api.RunOptions{
+			results, err := client.Run(cmd.Context(), model, kvArgs, api.RunOptions{
 				TaskType:       flags.taskType,
 				DeliveryMethod: flags.deliveryMethod,
 				PollInterval:   flags.pollInterval,

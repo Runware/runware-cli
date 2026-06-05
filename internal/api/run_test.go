@@ -71,7 +71,7 @@ func TestClientRun_SyncSuccess(t *testing.T) {
 	c := NewClient(mock, slog.Default())
 	c.schemaBaseURLOverride = srv.URL + "/"
 
-	results, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{})
+	results, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestClientRun_AsyncSuccess(t *testing.T) {
 	c := NewClient(mock, slog.Default())
 	c.schemaBaseURLOverride = srv.URL + "/"
 
-	results, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{
+	results, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
 		PollInterval: time.Millisecond,
 	})
 	if err != nil {
@@ -135,7 +135,7 @@ func TestClientRun_SchemaUnavailable_TaskTypeProvided(t *testing.T) {
 	c := NewClient(mock, slog.Default())
 	c.schemaBaseURLOverride = srv.URL + "/"
 
-	results, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{
+	results, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
 		TaskType: "audioInference",
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func TestClientRun_SchemaUnavailable_NoTaskType(t *testing.T) {
 	c := NewClient(&mockTransport{}, slog.Default())
 	c.schemaBaseURLOverride = srv.URL + "/"
 
-	_, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{})
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{})
 	if err == nil {
 		t.Fatal("expected error when schema unavailable and no TaskType, got nil")
 	}
@@ -183,7 +183,7 @@ func TestClientRun_ValidationFailure(t *testing.T) {
 	c := NewClient(mock, slog.Default())
 	c.schemaBaseURLOverride = srv.URL + "/"
 
-	_, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{})
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{})
 	if err == nil {
 		t.Fatal("expected validation error for missing required field, got nil")
 	}
@@ -214,7 +214,7 @@ func TestClientRun_OnProgressCalled(t *testing.T) {
 	c.schemaBaseURLOverride = srv.URL + "/"
 
 	var got []int
-	_, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
 		PollInterval: time.Millisecond,
 		OnProgress: func(p int) {
 			got = append(got, p)
@@ -225,5 +225,112 @@ func TestClientRun_OnProgressCalled(t *testing.T) {
 	}
 	if fmt.Sprint(got) != "[30 70]" {
 		t.Errorf("expected progress [30 70], got %v", got)
+	}
+}
+
+// TestClientRun_RawArgs_SchemaCoercesStringField: when the schema declares a
+// field as type string, passing it as "field=true" must produce the string
+// "true" in the submitted payload, not the boolean true.
+func TestClientRun_RawArgs_SchemaCoercesStringField(t *testing.T) {
+	requestSchema := map[string]any{
+		"properties": map[string]any{
+			"taskType": map[string]any{
+				"const": "imageInference",
+			},
+			"deliveryMethod": map[string]any{
+				"default": "sync",
+			},
+			"someStringField": map[string]any{
+				"type": "string",
+			},
+		},
+	}
+	srv := inferenceSchemaServer(t, requestSchema)
+
+	expected := successItem(t, nil)
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{expected}},
+		},
+	}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, []string{"someStringField=true"}, RunOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Inspect what was actually submitted.
+	if len(mock.captured) == 0 {
+		t.Fatal("no transport calls captured")
+	}
+	tasks := mock.captured[0]
+	if len(tasks) == 0 {
+		t.Fatal("submitted tasks slice is empty")
+	}
+	taskBytes, err := json.Marshal(tasks[0])
+	if err != nil {
+		t.Fatalf("marshal captured task: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(taskBytes, &payload); err != nil {
+		t.Fatalf("unmarshal captured task: %v", err)
+	}
+
+	v, ok := payload["someStringField"]
+	if !ok {
+		t.Fatal("someStringField not present in submitted payload")
+	}
+	// Schema says string; value must be the string "true", not bool true.
+	if s, isString := v.(string); !isString || s != "true" {
+		t.Errorf("expected someStringField to be string %q, got %T(%v)", "true", v, v)
+	}
+}
+
+// TestClientRun_RawArgs_ProtectedFieldRejected: passing a reserved field name
+// (e.g. taskType) must return an error before any transport call is made.
+func TestClientRun_RawArgs_ProtectedFieldRejected(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	mock := &mockTransport{}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, []string{"taskType=overridden"}, RunOptions{})
+	if err == nil {
+		t.Fatal("expected error for protected field taskType, got nil")
+	}
+	if !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("expected error to mention %q, got: %v", "reserved", err)
+	}
+	// No transport calls: error must surface before submit.
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
+	}
+}
+
+// TestClientRun_RawArgs_InvalidKV: an argument without an equals sign must return
+// a parse error before any transport call is made.
+func TestClientRun_RawArgs_InvalidKV(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	mock := &mockTransport{}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, []string{"noequalssign"}, RunOptions{})
+	if err == nil {
+		t.Fatal("expected parse error for invalid key=value arg, got nil")
+	}
+	if !strings.Contains(err.Error(), "noequalssign") {
+		t.Errorf("expected error to mention the bad argument, got: %v", err)
+	}
+	// No transport calls: error must surface before submit.
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
 	}
 }

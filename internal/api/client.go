@@ -95,17 +95,15 @@ func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.Raw
 // Run executes the full inference lifecycle for the given model.
 //
 // model is the AIR identifier of the model to run (e.g. "runware:101@1").
-// It fetches the model's JSON Schema to auto-detect the task type and validate
-// user-supplied parameters. If schema fetching fails and opts.TaskType is
-// non-empty, validation is skipped and the request is submitted with best-effort
-// type coercion. System fields (taskType, taskUUID, deliveryMethod) are injected
-// automatically; callers must not set them.
-//
-// params is not modified; Run works on an internal copy.
+// args is a slice of key=value strings (e.g. ["positivePrompt=hello", "width=1024"]).
+// They are parsed against the model's fetched JSON Schema so that type coercion
+// (string vs number vs bool) is schema-driven rather than best-effort.
+// System fields (taskType, taskUUID, deliveryMethod) are injected automatically;
+// callers must not include them in rawArgs.
 //
 // For async delivery Run polls until a success result is received or the context
 // is cancelled. For sync delivery the submit response is returned directly.
-func (c *Client) Run(ctx context.Context, model string, params map[string]any, opts RunOptions) ([]json.RawMessage, error) {
+func (c *Client) Run(ctx context.Context, model string, args []string, opts RunOptions) ([]json.RawMessage, error) {
 	if model == "" {
 		return nil, ErrModelRequired
 	}
@@ -114,14 +112,6 @@ func (c *Client) Run(ctx context.Context, model string, params map[string]any, o
 	if baseURL == "" {
 		baseURL = schemaBaseURL
 	}
-
-	// Work on a copy so the caller's map is never mutated.
-	// +4 capacity for the system fields injected below.
-	payload := make(map[string]any, len(params)+4)
-	for k, v := range params {
-		payload[k] = v
-	}
-	payload[fieldModel] = model
 
 	// Fetch the model schema; fail-open when the caller has supplied a task type.
 	var modelSchema *ModelSchema
@@ -151,6 +141,21 @@ func (c *Client) Run(ctx context.Context, model string, params map[string]any, o
 			return nil, fmt.Errorf("could not detect task type for model %q; set RunOptions.TaskType", model)
 		}
 		taskType = detected
+	}
+
+	// Parse args against the real schema so type coercion is schema-driven.
+	// Protected fields (taskType, taskUUID, model, deliveryMethod) are rejected here.
+	payload := make(map[string]any, len(args)+4)
+	payload[fieldModel] = model
+	for _, a := range args {
+		path, v, err := schema.ParseKV(a, reqSchema)
+		if err != nil {
+			return nil, fmt.Errorf("invalid argument %q: %w", a, err)
+		}
+		if hint, blocked := schema.IsProtected(path[0]); blocked {
+			return nil, fmt.Errorf("argument %q: key %q is reserved — %s", a, path[0], hint)
+		}
+		schema.DeepSet(payload, path, v)
 	}
 
 	// Validate required fields and conditional constraints against the schema.

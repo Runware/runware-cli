@@ -377,6 +377,9 @@ func toMap(v any) map[string]any {
 // Schema node prop.
 func coerceValue(v string, prop Node) (any, error) {
 	switch prop.Type {
+	case TypeString:
+		return v, nil
+
 	case TypeInteger:
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {

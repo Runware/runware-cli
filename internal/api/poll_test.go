@@ -15,9 +15,11 @@ import (
 
 // mockTransport is a test double for transport.Transport.
 // Send returns pre-configured responses in order; Close is a no-op.
+// All tasks arguments passed to Send are recorded in captured for inspection.
 type mockTransport struct {
 	responses []mockResponse
 	callCount int
+	captured  [][]any
 }
 
 type mockResponse struct {
@@ -26,7 +28,8 @@ type mockResponse struct {
 }
 
 func (m *mockTransport) Close() error { return nil }
-func (m *mockTransport) Send(_ context.Context, _ []any) ([]json.RawMessage, error) {
+func (m *mockTransport) Send(_ context.Context, tasks []any) ([]json.RawMessage, error) {
+	m.captured = append(m.captured, tasks)
 	if m.callCount >= len(m.responses) {
 		return nil, nil
 	}
