@@ -418,6 +418,63 @@ func TestParseKV_EmptySegment(t *testing.T) {
 	}
 }
 
+// ---- protectedFields rejection tests ----
+
+// TestProtectedFields_ModelRejected ensures that "model=..." as a kv arg is
+// detected as a reserved key before deepSet can overwrite the positional model.
+func TestProtectedFields_ModelRejected(t *testing.T) {
+	path, _, err := parseKV("model=other:model@1", schemaNode{})
+	if err != nil {
+		t.Fatalf("parseKV should succeed; rejection happens in the caller: %v", err)
+	}
+	if hint, blocked := protectedFields[path[0]]; !blocked {
+		t.Fatalf("expected model to be in protectedFields")
+	} else if hint == "" {
+		t.Error("expected a non-empty hint for model")
+	}
+}
+
+func TestProtectedFields_TaskUUIDRejected(t *testing.T) {
+	path, _, err := parseKV("taskUUID=00000000-0000-0000-0000-000000000000", schemaNode{})
+	if err != nil {
+		t.Fatalf("parseKV should succeed: %v", err)
+	}
+	if _, blocked := protectedFields[path[0]]; !blocked {
+		t.Error("expected taskUUID to be in protectedFields")
+	}
+}
+
+func TestProtectedFields_TaskTypeRejected(t *testing.T) {
+	path, _, err := parseKV("taskType=imageInference", schemaNode{})
+	if err != nil {
+		t.Fatalf("parseKV should succeed: %v", err)
+	}
+	if _, blocked := protectedFields[path[0]]; !blocked {
+		t.Error("expected taskType to be in protectedFields")
+	}
+}
+
+// TestProtectedFields_DeliveryMethodAllowed confirms deliveryMethod is NOT
+// blocked and can be overridden via a key=value argument.
+func TestProtectedFields_DeliveryMethodAllowed(t *testing.T) {
+	path, _, err := parseKV("deliveryMethod=sync", schemaNode{})
+	if err != nil {
+		t.Fatalf("parseKV should succeed: %v", err)
+	}
+	if _, blocked := protectedFields[path[0]]; blocked {
+		t.Error("deliveryMethod must not be in protectedFields — it is user-overridable")
+	}
+}
+
+// TestProtectedFields_HintsNonEmpty ensures every protected field has a hint.
+func TestProtectedFields_HintsNonEmpty(t *testing.T) {
+	for field, hint := range protectedFields {
+		if hint == "" {
+			t.Errorf("protectedFields[%q] has an empty hint", field)
+		}
+	}
+}
+
 // ---- normalizeProvidedKey tests ----
 
 func TestNormalizeProvidedKey_AutoIndexSugar(t *testing.T) {

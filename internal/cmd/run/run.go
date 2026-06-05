@@ -127,6 +127,10 @@ fine-tuned models), specify it explicitly with --task-type.`,
 					spin.Stop()
 					return fmt.Errorf("invalid argument %q: %w", kv, err)
 				}
+				if hint, blocked := protectedFields[path[0]]; blocked {
+					spin.Stop()
+					return fmt.Errorf("argument %q: key %q is reserved — %s", kv, path[0], hint)
+				}
 				deepSet(payload, path, v)
 			}
 

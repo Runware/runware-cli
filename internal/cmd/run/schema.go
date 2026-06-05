@@ -79,6 +79,17 @@ var autoFields = map[string]struct{}{
 	fieldModel:          {},
 }
 
+// protectedFields are system-managed keys that the user must not supply as
+// key=value CLI arguments. Each entry carries a short hint shown in the error
+// message directing the user to the correct mechanism.
+// deliveryMethod is intentionally absent: it may be overridden via either the
+// --delivery-method flag or a key=value argument.
+var protectedFields = map[string]string{
+	fieldModel:    "pass the model as the first positional argument",
+	fieldTaskType: "use the --task-type flag instead",
+	fieldTaskUUID: "this field is system-generated and cannot be set manually",
+}
+
 // extractTaskType inspects requestSchema.properties.taskType for a constant
 // value using const → enum[0] → default precedence.
 // Returns the task type string and true on success, or ("", false) when the
