@@ -21,7 +21,7 @@ scoop install runware
 ### Linux
 
 ```shell
-curl -fsSL https://install.runware.ai | sh
+curl -fsSL https://cli.runware.ai/install.sh | sh
 ```
 
 ### From source

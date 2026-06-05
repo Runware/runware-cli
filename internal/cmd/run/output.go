@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -84,7 +86,10 @@ func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMes
 			if i > 0 {
 				fmt.Println("---")
 			}
-			fmt.Println(parsed[fieldText])
+
+			if s, ok := parsed[fieldText].(string); ok {
+				fmt.Println(s)
+			}
 		} else {
 			// Table: flatten to key-value rows, surfacing important fields first.
 			res := buildRunResult(parsed)
@@ -183,7 +188,7 @@ func buildRunResult(parsed map[string]any) runResult {
 
 	// Append remaining fields in sorted order, skipping internal/redundant ones.
 	skipKeys := map[string]bool{fieldTaskType: true, fieldTaskUUID: true}
-	remaining := sortedKeys(parsed)
+	remaining := slices.Sorted(maps.Keys(parsed))
 	for _, k := range remaining {
 		if seen[k] || skipKeys[k] {
 			continue
@@ -208,21 +213,6 @@ func formatValue(v any) string {
 		}
 		return string(b)
 	}
-}
-
-// sortedKeys returns the keys of a map sorted alphabetically.
-func sortedKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	// simple insertion sort for small maps; avoids importing sort in this file
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0 && keys[j] < keys[j-1]; j-- {
-			keys[j], keys[j-1] = keys[j-1], keys[j]
-		}
-	}
-	return keys
 }
 
 // downloadMedia scans the parsed result for known media URL fields and
@@ -251,7 +241,7 @@ func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]an
 			logger.Warn("failed to download "+mf.key, "url", urlStr, "err", dlErr)
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "Saved %s → %s\n", mf.key, destPath)
+		logger.Info(os.Stderr, "Saved %s → %s\n", mf.key, destPath)
 	}
 
 	// Nested outputs.files[].url (used by 3D inference and similar task types).
@@ -269,7 +259,7 @@ func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]an
 			logger.Warn("failed to download "+label, "url", urlStr, "err", dlErr)
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "Saved %s → %s\n", label, destPath)
+		logger.Info("Saved %s → %s\n", label, destPath)
 	}
 }
 

@@ -145,9 +145,7 @@ fine-tuned models), specify it explicitly with --task-type.`,
 			// --- 5a. Resolve and inject delivery method ---
 			deliveryMethod := resolveDeliveryMethod(flags.deliveryMethod, payload, reqSchema)
 			if deliveryMethod != "" {
-				if _, alreadySet := payload[fieldDeliveryMethod]; !alreadySet {
-					payload[fieldDeliveryMethod] = deliveryMethod
-				}
+				payload[fieldDeliveryMethod] = deliveryMethod
 			}
 
 			// --- 6. Inject system fields ---
