@@ -17,7 +17,10 @@ const (
 // DeliveryMethod specifies how task results are delivered.
 type DeliveryMethod string
 
-const DeliveryMethodAsync DeliveryMethod = "async"
+const (
+	DeliveryMethodAsync DeliveryMethod = "async"
+	DeliveryMethodSync  DeliveryMethod = "sync"
+)
 
 // OutputFormat specifies the media output format.
 type OutputFormat string
@@ -31,4 +34,12 @@ const (
 	OutputFormatMP4  OutputFormat = "mp4"
 	OutputFormatText OutputFormat = "text"
 	OutputFormatJSON OutputFormat = "json"
+)
+
+// Payload field name constants used internally by Client methods.
+const (
+	fieldModel          = "model"
+	fieldTaskType       = "taskType"
+	fieldTaskUUID       = "taskUUID"
+	fieldDeliveryMethod = "deliveryMethod"
 )

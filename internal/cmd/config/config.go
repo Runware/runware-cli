@@ -19,15 +19,21 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 }
 
 // defaultsKeys are config keys that live under the "defaults" namespace.
-var defaultsKeys = map[string]bool{
-	"model": true, "width": true, "height": true, "steps": true,
-	"cfg_scale": true, "scheduler": true, "output_dir": true,
-	"output_format": true, "format": true,
+var defaultsKeys = map[string]struct{}{
+	"model":         {},
+	"width":         {},
+	"height":        {},
+	"steps":         {},
+	"cfg_scale":     {},
+	"scheduler":     {},
+	"output_dir":    {},
+	"output_format": {},
+	"format":        {},
 }
 
 // normalizeConfigKey maps shorthand keys like "steps" to "defaults.steps".
 func normalizeConfigKey(key string) string {
-	if defaultsKeys[key] {
+	if _, ok := defaultsKeys[key]; ok {
 		return "defaults." + key
 	}
 	return key

@@ -8,10 +8,10 @@ import (
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
 	cmdconfig "github.com/runware/runware-cli/internal/cmd/config"
-	"github.com/runware/runware-cli/internal/cmd/inference"
 	"github.com/runware/runware-cli/internal/cmd/model"
 	"github.com/runware/runware-cli/internal/cmd/ping"
 	"github.com/runware/runware-cli/internal/cmd/preset"
+	cmdrun "github.com/runware/runware-cli/internal/cmd/run"
 	cmdversion "github.com/runware/runware-cli/internal/cmd/version"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
@@ -51,11 +51,11 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root.AddCommand(
 		auth.NewCmd(logger),
 		ping.NewCmd(logger),
-		inference.NewCmd(),
 		model.NewCmd(logger),
 		account.NewCmd(logger),
 		cmdconfig.NewCmd(logger),
 		preset.NewCmd(logger),
+		cmdrun.NewCmd(logger),
 		cmdversion.NewCmd(),
 		cmdcompletion.NewCmd(),
 	)

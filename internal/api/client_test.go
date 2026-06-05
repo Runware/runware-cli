@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
@@ -153,5 +155,101 @@ func TestSend_NoAPIKey(t *testing.T) {
 	}
 	if !transport.IsAuthError(err) {
 		t.Errorf("expected IsAuthError true for empty key, got: %v", err)
+	}
+}
+
+// ---- PollDynamic tests ----
+// These tests reuse mockTransport defined in poll_test.go (same package).
+
+// successItem builds a raw JSON object with status "success" and an arbitrary field.
+func successItem(t *testing.T, extra map[string]any) json.RawMessage {
+	t.Helper()
+	m := map[string]any{"status": "success"}
+	for k, v := range extra {
+		m[k] = v
+	}
+	return rawJSON(t, m)
+}
+
+// processingItem builds a raw JSON object with status "processing" and a progress value.
+func processingItem(t *testing.T, progress int) json.RawMessage {
+	t.Helper()
+	return rawJSON(t, map[string]any{"status": "processing", "progress": progress})
+}
+
+// TestPoll_SuccessOnFirstPoll: success item returned immediately.
+func TestPoll_SuccessOnFirstPoll(t *testing.T) {
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{successItem(t, map[string]any{"videoURL": "https://example.com/v.mp4"})}},
+		},
+	}
+	c := NewClient(mock, slog.Default())
+	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+}
+
+// TestPoll_ProcessingSkippedUntilSuccess: processing items are not returned.
+func TestPoll_ProcessingSkippedUntilSuccess(t *testing.T) {
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{processingItem(t, 20)}},
+			{data: []json.RawMessage{processingItem(t, 60)}},
+			{data: []json.RawMessage{successItem(t, nil)}},
+		},
+	}
+	c := NewClient(mock, slog.Default())
+	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 success result, got %d", len(results))
+	}
+	if mock.callCount != 3 {
+		t.Errorf("expected 3 poll calls, got %d", mock.callCount)
+	}
+}
+
+// TestPoll_OnProgressCalled: onProgress fires with the right values.
+func TestPoll_OnProgressCalled(t *testing.T) {
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{processingItem(t, 25)}},
+			{data: []json.RawMessage{processingItem(t, 75)}},
+			{data: []json.RawMessage{successItem(t, nil)}},
+		},
+	}
+	c := NewClient(mock, slog.Default())
+
+	var got []int
+	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, func(p int) {
+		got = append(got, p)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 || got[0] != 25 || got[1] != 75 {
+		t.Errorf("expected progress [25 75], got %v", got)
+	}
+}
+
+// TestPoll_NilProgressCallback: nil onProgress must not panic on processing items.
+func TestPoll_NilProgressCallback(t *testing.T) {
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{processingItem(t, 50)}},
+			{data: []json.RawMessage{successItem(t, nil)}},
+		},
+	}
+	c := NewClient(mock, slog.Default())
+	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
