@@ -208,9 +208,9 @@ fine-tuned models), specify it explicitly with --task-type.`,
 	}
 
 	f := cmd.Flags()
-	f.StringVar(&flags.taskType, "task-type", "", "Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference)")
+	f.StringVar(&flags.taskType, "task-type", "", "Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference)")
 	f.StringVar(&flags.outputDir, "output-dir", "./outputs", "Directory to save downloaded output files")
-	f.BoolVar(&flags.noDownload, "no-download", false, "Skip auto-downloading media files (imageURL, videoURL, audioURL)")
+	f.BoolVar(&flags.noDownload, "no-download", false, "Skip auto-downloading media files (imageURL, videoURL, audioURL, mediaURL, outputs.files[].url)")
 	f.StringVar(&flags.deliveryMethod, "delivery-method", "", "Override delivery method (sync or async); default taken from model schema")
 	f.DurationVar(&flags.pollInterval, "poll-interval", 2*time.Second, "Polling interval when delivery method is async")
 
@@ -221,6 +221,7 @@ fine-tuned models), specify it explicitly with --task-type.`,
 			"videoInference",
 			"audioInference",
 			"textInference",
+			"3dInference",
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 
