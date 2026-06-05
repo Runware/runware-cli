@@ -42,7 +42,7 @@ runware auth login
 runware ping
 
 # Generate an image
-runware run runware:101@1 positivePrompt="a chess match in the park"
+runware run runware:101@1 positivePrompt="a chess match in the park" width=1024 height=1024
 
 # Check your account details
 runware account details
