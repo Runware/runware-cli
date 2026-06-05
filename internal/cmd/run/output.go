@@ -26,6 +26,7 @@ var taskTypeMediaField = map[string]string{
 	taskTypeImage: fieldImageURL,
 	taskTypeVideo: fieldVideoURL,
 	taskTypeAudio: fieldAudioURL,
+	taskType3D:    fieldModelURL,
 }
 
 // runResult wraps a single parsed inference result for structured rendering.

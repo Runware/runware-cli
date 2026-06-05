@@ -188,9 +188,6 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	// For async delivery, discard the submit acknowledgment and poll until done.
 	if deliveryMethod == string(DeliveryMethodAsync) {
 		interval := opts.PollInterval
-		if interval == 0 {
-			interval = 2 * time.Second
-		}
 		return c.Poll(ctx, taskUUID, interval, opts.OnProgress)
 	}
 
@@ -226,6 +223,10 @@ func (c *Client) ModelSearch(ctx context.Context, req ModelSearchRequest) (*Mode
 // onProgress is called with the reported progress percentage (0–100) each time
 // a "processing" status item is received. It may be nil.
 func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Duration, onProgress func(int)) ([]json.RawMessage, error) {
+	if interval == 0 {
+		interval = 2 * time.Second
+	}
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

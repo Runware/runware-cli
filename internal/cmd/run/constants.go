@@ -7,6 +7,7 @@ const (
 	fieldImageURL = "imageURL"
 	fieldVideoURL = "videoURL"
 	fieldAudioURL = "audioURL"
+	fieldModelURL = "modelURL"
 	fieldText     = "text"
 
 	// taskType* constants for the known inference task type values.
