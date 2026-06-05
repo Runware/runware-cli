@@ -47,6 +47,7 @@ make run ARGS="..."  # Run without building
 - Error naming follows https://go.dev/wiki/Errors: error types end in `"Error"` (e.g. `type NotTabularError struct`), error variables start with `"Err"` (e.g. `var ErrNotFound = errors.New(...)`)
 - Use `map[string]struct{}` for set/presence maps, not `map[string]bool`
 - Write map literals with one key per line for readability
+- Write struct literals with one field per line for readability
 - Do not use inline anonymous structs; define named types instead
 
 ## Release process

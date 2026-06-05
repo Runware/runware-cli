@@ -57,7 +57,7 @@ runware run <model> [key=value ...] [flags]
 ```
       --delivery-method string   Override delivery method (sync or async); default taken from model schema
   -h, --help                     help for run
-      --no-download              Skip auto-downloading media files (imageURL, videoURL, audioURL, mediaURL, outputs.files[].url)
+      --no-download              Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)
       --output-dir string        Directory to save downloaded output files (default "./outputs")
       --poll-interval duration   Polling interval when delivery method is async (default 2s)
       --task-type string         Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference)

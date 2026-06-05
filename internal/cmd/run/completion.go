@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -21,24 +22,24 @@ func schemaArgCompleter(cmd *cobra.Command, args []string, toComplete string) ([
 	}
 
 	model := args[0]
-	schema, err := api.FetchModelSchema(cmd.Context(), model)
+	modelSchema, err := api.FetchModelSchema(cmd.Context(), model)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	var node schemaNode
-	if err := json.Unmarshal(schema.RequestSchema, &node); err != nil {
+	var node schema.Node
+	if err := json.Unmarshal(modelSchema.RequestSchema, &node); err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
 	// Collect the full dot-notation key of every arg the user has already typed,
-	// normalised through parseKV so that auto-index sugar (e.g. "messages.role=user")
+	// normalised through ParseKV so that auto-index sugar (e.g. "messages.role=user")
 	// is expanded to its canonical form ("messages.0.role") before being recorded.
 	// This ensures nextArrayIdx advances correctly and collectCompletions doesn't
 	// re-suggest keys that are already set.
 	provided := make(map[string]struct{}, len(args))
 	for _, a := range args[1:] {
-		if k := normalizeProvidedKey(a, node); k != "" {
+		if k := schema.NormalizeProvidedKey(a, node); k != "" {
 			provided[k] = struct{}{}
 		}
 	}
@@ -55,8 +56,8 @@ func schemaArgCompleter(cmd *cobra.Command, args []string, toComplete string) ([
 			}
 			rest := k[len(needle):]
 			seg, _, _ := strings.Cut(rest, ".")
-			if isNumeric(seg) {
-				if n := mustAtoi(seg); n > highest {
+			if schema.IsNumeric(seg) {
+				if n := schema.MustAtoi(seg); n > highest {
 					highest = n
 				}
 			}
@@ -84,7 +85,7 @@ func schemaArgCompleter(cmd *cobra.Command, args []string, toComplete string) ([
 // use nextArrayIdx to determine the next index to suggest.
 func collectCompletions(
 	prefix string,
-	node schemaNode,
+	node schema.Node,
 	provided map[string]struct{},
 	toCompletePrefix string,
 	nextArrayIdx func(string) int,
@@ -93,7 +94,7 @@ func collectCompletions(
 
 	for name := range node.Properties {
 		prop := node.Properties[name]
-		if _, skip := autoFields[name]; skip {
+		if schema.IsAuto(name) {
 			continue
 		}
 
@@ -103,7 +104,7 @@ func collectCompletions(
 		}
 
 		switch prop.Type {
-		case schemaTypeObject:
+		case schema.TypeObject:
 			if len(prop.Properties) > 0 {
 				// Recurse — emit completions for the object's own leaves.
 				out = append(out, collectCompletions(full, prop, provided, toCompletePrefix, nextArrayIdx)...)
@@ -111,15 +112,15 @@ func collectCompletions(
 			}
 			// Object with no known sub-properties — fall through to leaf.
 
-		case schemaTypeArray:
-			if prop.Items != nil && prop.Items.Type == schemaTypeObject && len(prop.Items.Properties) > 0 {
+		case schema.TypeArray:
+			if prop.Items != nil && prop.Items.Type == schema.TypeObject && len(prop.Items.Properties) > 0 {
 				// For object arrays, find the first index slot that still has at least
 				// one unfilled leaf field. Only advance past an index once every leaf
 				// in the item schema for that index is present in provided.
 				maxIdx := nextArrayIdx(full) // highest index touched + 1, or 0
 				idx := maxIdx                // default: open a new slot
 				for i := range maxIdx {
-					if !allLeafsProvided(full+"."+strconv.Itoa(i), *prop.Items, provided) {
+					if !schema.AllLeafsProvided(full+"."+strconv.Itoa(i), *prop.Items, provided) {
 						idx = i
 						break
 					}

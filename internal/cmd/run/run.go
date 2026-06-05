@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -82,7 +83,7 @@ fine-tuned models), specify it explicitly with --task-type.`,
 			spin.Suffix = " Fetching schema..."
 			spin.Start()
 
-			schema, schemaErr := api.FetchModelSchema(cmd.Context(), model)
+			modelSchema, schemaErr := api.FetchModelSchema(cmd.Context(), model)
 			if schemaErr != nil {
 				spin.Stop()
 				// Without a schema we cannot auto-detect the task type.
@@ -97,9 +98,9 @@ fine-tuned models), specify it explicitly with --task-type.`,
 			// --- 2. Validate the request ---
 			spin.Suffix = " Validating request..."
 
-			var reqSchema schemaNode
-			if schema != nil {
-				if err := json.Unmarshal(schema.RequestSchema, &reqSchema); err != nil {
+			var reqSchema schema.Node
+			if modelSchema != nil {
+				if err := json.Unmarshal(modelSchema.RequestSchema, &reqSchema); err != nil {
 					spin.Stop()
 					return fmt.Errorf("failed to parse request schema: %w", err)
 				}
@@ -108,7 +109,7 @@ fine-tuned models), specify it explicitly with --task-type.`,
 			// --- 3. Determine task type ---
 			taskType := flags.taskType
 			if taskType == "" {
-				detected, ok := extractTaskType(reqSchema)
+				detected, ok := schema.ExtractTaskType(reqSchema)
 				if !ok {
 					spin.Stop()
 					return fmt.Errorf("could not detect task type for model %q; use --task-type to specify it (run 'runware model schema %s' to inspect the schema)", model, model)
@@ -121,32 +122,32 @@ fine-tuned models), specify it explicitly with --task-type.`,
 				fieldModel: model,
 			}
 			for _, kv := range kvArgs {
-				path, v, err := parseKV(kv, reqSchema)
+				path, v, err := schema.ParseKV(kv, reqSchema)
 				if err != nil {
 					spin.Stop()
 					return fmt.Errorf("invalid argument %q: %w", kv, err)
 				}
-				if hint, blocked := protectedFields[path[0]]; blocked {
+				if hint, blocked := schema.IsProtected(path[0]); blocked {
 					spin.Stop()
 					return fmt.Errorf("argument %q: key %q is reserved — %s", kv, path[0], hint)
 				}
-				deepSet(payload, path, v)
+				schema.DeepSet(payload, path, v)
 			}
 
 			// --- 5. Validate required fields against schema ---
-			if schema != nil {
-				if err := validateRequired(reqSchema, payload); err != nil {
+			if modelSchema != nil {
+				if err := schema.ValidateRequired(reqSchema, payload); err != nil {
 					spin.Stop()
 					return err
 				}
-				if err := validateAllOf(reqSchema, payload); err != nil {
+				if err := schema.ValidateAllOf(reqSchema, payload); err != nil {
 					spin.Stop()
 					return err
 				}
 			}
 
 			// --- 5a. Resolve and inject delivery method ---
-			deliveryMethod := resolveDeliveryMethod(flags.deliveryMethod, payload, reqSchema)
+			deliveryMethod := schema.ResolveDeliveryMethod(flags.deliveryMethod, payload, reqSchema)
 			if deliveryMethod != "" {
 				payload[fieldDeliveryMethod] = deliveryMethod
 			}
@@ -179,7 +180,7 @@ fine-tuned models), specify it explicitly with --task-type.`,
 			// --- 7a. Collect results: poll for async, use initial response for sync ---
 			var results []json.RawMessage
 
-			if strings.EqualFold(deliveryMethod, deliveryMethodAsync) {
+			if strings.EqualFold(deliveryMethod, schema.DeliveryMethodAsync) {
 				spin.Suffix = " Waiting for result..."
 
 				results, err = client.Poll(cmd.Context(), taskUUID, flags.pollInterval, func(p int) {
@@ -229,8 +230,8 @@ fine-tuned models), specify it explicitly with --task-type.`,
 	//nolint:errcheck,gosec
 	cmd.RegisterFlagCompletionFunc("delivery-method", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		return []cobra.Completion{
-			deliveryMethodSync,
-			deliveryMethodAsync,
+			schema.DeliveryMethodSync,
+			schema.DeliveryMethodAsync,
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 
