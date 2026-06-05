@@ -35,3 +35,11 @@ const (
 	OutputFormatText OutputFormat = "text"
 	OutputFormatJSON OutputFormat = "json"
 )
+
+// Payload field name constants used internally by Client methods.
+const (
+	fieldModel          = "model"
+	fieldTaskType       = "taskType"
+	fieldTaskUUID       = "taskUUID"
+	fieldDeliveryMethod = "deliveryMethod"
+)

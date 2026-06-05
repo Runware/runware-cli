@@ -10,13 +10,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/transport"
+	"github.com/runware/runware-cli/internal/schema"
 )
 
 // Client provides business-logic methods for the Runware API.
 // It delegates wire-level communication to the injected Transport.
 type Client struct {
-	transport transport.Transport
-	logger    *slog.Logger
+	transport     transport.Transport
+	logger        *slog.Logger
+	schemaBaseURL string // overrides schemaBaseURL constant; empty means use package default
 }
 
 // NewClient creates a Client backed by the given transport.
@@ -80,16 +82,105 @@ func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
 	return &result, nil
 }
 
-// Run sends a single arbitrary task payload and returns all raw JSON responses.
-// The caller is responsible for setting taskType, taskUUID, model, and any required fields.
-// This is used by the dynamic run command where the exact request shape is not known at
-// compile time — it is derived from the model's JSON Schema at runtime.
-func (c *Client) Run(ctx context.Context, payload map[string]any) ([]json.RawMessage, error) {
+// submit sends a single arbitrary task payload and returns all raw JSON responses.
+// It is the low-level wire call used by Run after system fields have been injected.
+func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.RawMessage, error) {
 	data, err := c.transport.Send(ctx, []any{payload})
 	if err != nil {
 		return nil, err
 	}
 	return data, nil
+}
+
+// Run executes the full inference lifecycle for the given model.
+//
+// model is the AIR identifier of the model to run (e.g. "runware:101@1").
+// It fetches the model's JSON Schema to auto-detect the task type and validate
+// user-supplied parameters. If schema fetching fails and opts.TaskType is
+// non-empty, validation is skipped and the request is submitted with best-effort
+// type coercion. System fields (taskType, taskUUID, deliveryMethod) are injected
+// automatically; callers must not set them.
+//
+// For async delivery Run polls until a success result is received or the context
+// is cancelled. For sync delivery the submit response is returned directly.
+func (c *Client) Run(ctx context.Context, model string, params map[string]any, opts RunOptions) ([]json.RawMessage, error) {
+	baseURL := c.schemaBaseURL
+	if baseURL == "" {
+		baseURL = schemaBaseURL
+	}
+
+	// Inject the model into params before submission.
+	params[fieldModel] = model
+
+	// Fetch the model schema; fail-open when the caller has supplied a task type.
+	var modelSchema *ModelSchema
+	if model != "" {
+		ms, err := fetchModelSchema(ctx, model, schemaClient, baseURL)
+		if err != nil {
+			if opts.TaskType == "" {
+				return nil, fmt.Errorf("could not fetch schema for %q: %w; set RunOptions.TaskType to skip validation", model, err)
+			}
+			c.logger.Warn("schema unavailable; skipping validation", "model", model, "err", err)
+		} else {
+			modelSchema = ms
+		}
+	}
+
+	// Unmarshal the request schema node for validation and field extraction.
+	var reqSchema schema.Node
+	if modelSchema != nil {
+		if err := json.Unmarshal(modelSchema.RequestSchema, &reqSchema); err != nil {
+			return nil, fmt.Errorf("failed to parse request schema: %w", err)
+		}
+	}
+
+	// Determine the task type: caller override > schema detection.
+	taskType := opts.TaskType
+	if taskType == "" {
+		detected, ok := schema.ExtractTaskType(reqSchema)
+		if !ok {
+			return nil, fmt.Errorf("could not detect task type for model %q; set RunOptions.TaskType", model)
+		}
+		taskType = detected
+	}
+
+	// Validate required fields and conditional constraints against the schema.
+	if modelSchema != nil {
+		if err := schema.ValidateRequired(reqSchema, params); err != nil {
+			return nil, err
+		}
+		if err := schema.ValidateAllOf(reqSchema, params); err != nil {
+			return nil, err
+		}
+	}
+
+	// Resolve delivery method: payload value > opts override > schema default.
+	deliveryMethod := schema.ResolveDeliveryMethod(opts.DeliveryMethod, params, reqSchema)
+	if deliveryMethod != "" {
+		params[fieldDeliveryMethod] = deliveryMethod
+	}
+
+	// Inject system fields.
+	taskUUID := uuid.New()
+	params[fieldTaskType] = taskType
+	params[fieldTaskUUID] = taskUUID
+
+	// Submit the request to the API.
+	initialResults, err := c.submit(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	// For async delivery, discard the submit acknowledgment and poll until done.
+	if deliveryMethod == string(DeliveryMethodAsync) {
+		interval := opts.PollInterval
+		if interval == 0 {
+			interval = 2 * time.Second
+		}
+		return c.Poll(ctx, taskUUID, interval, opts.OnProgress)
+	}
+
+	return initialResults, nil
 }
 
 // ModelSearch searches for models on the Runware platform.

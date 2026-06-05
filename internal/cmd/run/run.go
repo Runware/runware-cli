@@ -1,16 +1,13 @@
 package run
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/briandowns/spinner"
 	"github.com/charmbracelet/log"
-	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/schema"
@@ -78,51 +75,15 @@ fine-tuned models), specify it explicitly with --task-type.`,
 
 			spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond,
 				spinner.WithWriter(os.Stderr))
-
-			// --- 1. Fetch the model schema ---
-			spin.Suffix = " Fetching schema..."
+			spin.Suffix = " Running inference..."
 			spin.Start()
 
-			modelSchema, schemaErr := api.FetchModelSchema(cmd.Context(), model)
-			if schemaErr != nil {
-				spin.Stop()
-				// Without a schema we cannot auto-detect the task type.
-				// If the caller provided --task-type we can still proceed without validation.
-				if flags.taskType == "" {
-					return fmt.Errorf("could not fetch schema for %q: %w; use --task-type to specify the task type and skip validation", model, schemaErr)
-				}
-				logger.Warn("schema unavailable; skipping validation", "model", model, "err", schemaErr)
-				spin.Start()
-			}
-
-			// --- 2. Validate the request ---
-			spin.Suffix = " Validating request..."
-
-			var reqSchema schema.Node
-			if modelSchema != nil {
-				if err := json.Unmarshal(modelSchema.RequestSchema, &reqSchema); err != nil {
-					spin.Stop()
-					return fmt.Errorf("failed to parse request schema: %w", err)
-				}
-			}
-
-			// --- 3. Determine task type ---
-			taskType := flags.taskType
-			if taskType == "" {
-				detected, ok := schema.ExtractTaskType(reqSchema)
-				if !ok {
-					spin.Stop()
-					return fmt.Errorf("could not detect task type for model %q; use --task-type to specify it (run 'runware model schema %s' to inspect the schema)", model, model)
-				}
-				taskType = detected
-			}
-
-			// --- 4. Parse key=value arguments into payload ---
-			payload := map[string]any{
-				fieldModel: model,
-			}
+			// Schema is fetched inside api.Client.Run; ParseKV uses an empty Node
+			// here for best-effort type coercion (float64 vs int64 is inconsequential
+			// after the JSON round-trip to the API).
+			params := map[string]any{}
 			for _, kv := range kvArgs {
-				path, v, err := schema.ParseKV(kv, reqSchema)
+				path, v, err := schema.ParseKV(kv, schema.Node{})
 				if err != nil {
 					spin.Stop()
 					return fmt.Errorf("invalid argument %q: %w", kv, err)
@@ -131,35 +92,10 @@ fine-tuned models), specify it explicitly with --task-type.`,
 					spin.Stop()
 					return fmt.Errorf("argument %q: key %q is reserved — %s", kv, path[0], hint)
 				}
-				schema.DeepSet(payload, path, v)
+				schema.DeepSet(params, path, v)
 			}
 
-			// --- 5. Validate required fields against schema ---
-			if modelSchema != nil {
-				if err := schema.ValidateRequired(reqSchema, payload); err != nil {
-					spin.Stop()
-					return err
-				}
-				if err := schema.ValidateAllOf(reqSchema, payload); err != nil {
-					spin.Stop()
-					return err
-				}
-			}
-
-			// --- 5a. Resolve and inject delivery method ---
-			deliveryMethod := schema.ResolveDeliveryMethod(flags.deliveryMethod, payload, reqSchema)
-			if deliveryMethod != "" {
-				payload[fieldDeliveryMethod] = deliveryMethod
-			}
-
-			// --- 6. Inject system fields ---
-			taskUUID := uuid.New()
-			payload[fieldTaskType] = taskType
-			payload[fieldTaskUUID] = taskUUID
-
-			// --- 7. Connect and submit ---
-			spin.Suffix = " Submitting request..."
-
+			// --- Connect, validate, submit and (if async) poll ---
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
 			if err != nil {
 				spin.Stop()
@@ -169,30 +105,17 @@ fine-tuned models), specify it explicitly with --task-type.`,
 
 			client := api.NewClient(t, slog.New(logger))
 
-			// Submit the task. For sync delivery the response already contains
-			// the completed results. For async it is an acknowledgment only.
-			initialResults, err := client.Run(cmd.Context(), payload)
+			results, err := client.Run(cmd.Context(), model, params, api.RunOptions{
+				TaskType:       flags.taskType,
+				DeliveryMethod: flags.deliveryMethod,
+				PollInterval:   flags.pollInterval,
+				OnProgress: func(p int) {
+					spin.Suffix = fmt.Sprintf(" Waiting for result... %d%%", p)
+				},
+			})
 			if err != nil {
 				spin.Stop()
 				return err
-			}
-
-			// --- 7a. Collect results: poll for async, use initial response for sync ---
-			var results []json.RawMessage
-
-			if strings.EqualFold(deliveryMethod, schema.DeliveryMethodAsync) {
-				spin.Suffix = " Waiting for result..."
-
-				results, err = client.Poll(cmd.Context(), taskUUID, flags.pollInterval, func(p int) {
-					spin.Suffix = fmt.Sprintf(" Waiting for result... %d%%", p)
-				})
-
-				if err != nil {
-					spin.Stop()
-					return err
-				}
-			} else {
-				results = initialResults
 			}
 
 			spin.Stop()
@@ -201,7 +124,6 @@ fine-tuned models), specify it explicitly with --task-type.`,
 				return fmt.Errorf("no results returned from API")
 			}
 
-			// --- 8. Output and optionally download media ---
 			return handleResults(cmd, logger, results, flags.outputDir, flags.noDownload, spin)
 		},
 		// Dynamic completion: when the model arg is already typed, suggest

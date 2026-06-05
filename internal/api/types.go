@@ -7,6 +7,25 @@ import (
 	"github.com/google/uuid"
 )
 
+// RunOptions configures the behaviour of Client.Run.
+type RunOptions struct {
+	// TaskType overrides the task type detected from the model schema.
+	// Required when the schema is unavailable or does not encode a task type.
+	TaskType string
+
+	// DeliveryMethod overrides the delivery method resolved from the model schema.
+	// Accepted values: "sync", "async". Empty means resolve from schema or payload.
+	DeliveryMethod string
+
+	// PollInterval is the interval between getResponse polls when delivery is async.
+	// Defaults to 2 seconds when zero.
+	PollInterval time.Duration
+
+	// OnProgress is called with the reported progress percentage (0–100) during async
+	// polling. It may be nil.
+	OnProgress func(int)
+}
+
 // ImageInferenceRequest contains fields for the imageInference task type.
 type ImageInferenceRequest struct {
 	TaskType       TaskType     `json:"taskType"`
