@@ -17,8 +17,11 @@ runware completion [bash|zsh|fish|powershell] [flags]
 ### Examples
 
 ```
-  # Auto-detect shell and source completions immediately (fish/zsh)
-  runware completion | source
+  # Auto-detect shell and load completions for the current session
+  # Bash/Zsh:
+  source <(runware completion)
+  # Fish:
+  source (runware completion | psub)
 
   # Bash — Linux system-wide
   runware completion bash | sudo tee /etc/bash_completion.d/runware
