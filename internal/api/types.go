@@ -144,6 +144,14 @@ type GetResponseRequest struct {
 	TaskUUID uuid.UUID `json:"taskUUID"`
 }
 
+// pollResponseItem is the minimal shape of each item returned by a getResponse
+// poll call. Status is "success", "processing", or similar; Progress is the
+// completion percentage reported for "processing" items.
+type pollResponseItem struct {
+	Status   string `json:"status"`
+	Progress int    `json:"progress"`
+}
+
 // AudioInferenceRequest contains fields for the audioInference task type.
 type AudioInferenceRequest struct {
 	TaskType       TaskType       `json:"taskType"`

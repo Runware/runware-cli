@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -21,16 +20,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// mediaURLFields lists the known result fields that contain downloadable media URLs.
-// The order determines the download filename suffix.
-var mediaURLFields = []struct {
-	key string
-	ext string
-}{
-	{fieldImageURL, ""}, // extension inferred from URL
-	{fieldVideoURL, ""},
-	{fieldMediaURL, ""},
-	{fieldAudioURL, ""},
+// taskTypeMediaField maps each inference task type to the top-level result
+// field that carries the downloadable media URL.
+var taskTypeMediaField = map[string]string{
+	taskTypeImage: fieldImageURL,
+	taskTypeVideo: fieldVideoURL,
+	taskTypeAudio: fieldAudioURL,
 }
 
 // runResult wraps a single parsed inference result for structured rendering.
@@ -160,8 +155,8 @@ func extractOutputFileURLs(parsed map[string]any) []string {
 // For 3D inference results the nested outputs.files[].url entries are expanded
 // into individual "file" rows so the table stays readable.
 func buildRunResult(parsed map[string]any) runResult {
-	priorityKeys := []string{fieldTaskUUID, fieldImageURL, fieldVideoURL, fieldAudioURL, fieldMediaURL, fieldText, "finishReason", "seed", "cost"}
-	seen := make(map[string]bool)
+	priorityKeys := []string{fieldTaskUUID, fieldImageURL, fieldVideoURL, fieldAudioURL, fieldText, "finishReason", "seed", "cost"}
+	seen := make(map[string]struct{})
 
 	var fields []runResultField
 
@@ -171,7 +166,7 @@ func buildRunResult(parsed map[string]any) runResult {
 			continue
 		}
 		fields = append(fields, runResultField{key: k, value: formatValue(v)})
-		seen[k] = true
+		seen[k] = struct{}{}
 	}
 
 	// Expand outputs.files[].url into individual rows (e.g. 3D inference .glb files).
@@ -183,14 +178,20 @@ func buildRunResult(parsed map[string]any) runResult {
 			}
 			fields = append(fields, runResultField{key: key, value: u})
 		}
-		seen[fieldOutputs] = true // suppress the raw JSON blob in the remaining loop
+		seen[fieldOutputs] = struct{}{} // suppress the raw JSON blob in the remaining loop
 	}
 
 	// Append remaining fields in sorted order, skipping internal/redundant ones.
-	skipKeys := map[string]bool{fieldTaskType: true, fieldTaskUUID: true}
+	skipKeys := map[string]struct{}{
+		fieldTaskType: {},
+		fieldTaskUUID: {},
+	}
 	remaining := slices.Sorted(maps.Keys(parsed))
 	for _, k := range remaining {
-		if seen[k] || skipKeys[k] {
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		if _, ok := skipKeys[k]; ok {
 			continue
 		}
 		fields = append(fields, runResultField{key: k, value: formatValue(parsed[k])})
@@ -219,29 +220,24 @@ func formatValue(v any) string {
 // downloads each to outputDir. Index and multi are used to generate filenames
 // when multiple results are returned. The spinner is updated to show progress.
 func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]any, outputDir string, idx int, multi bool, spin *spinner.Spinner) {
-	// Flat top-level URL fields (imageURL, videoURL, audioURL, mediaURL).
-	for _, mf := range mediaURLFields {
-		urlVal, ok := parsed[mf.key]
-		if !ok {
-			continue
-		}
-		urlStr, ok := urlVal.(string)
-		if !ok || urlStr == "" {
-			continue
-		}
+	// Flat top-level URL field derived from the task type.
+	tt, _ := parsed[fieldTaskType].(string)
+	if field, ok := taskTypeMediaField[tt]; ok {
+		urlStr, _ := parsed[field].(string)
+		if urlStr != "" {
+			destPath := buildDestPath(outputDir, field, urlStr, idx, multi)
 
-		destPath := buildDestPath(outputDir, mf.key, urlStr, idx, multi)
+			spin.Suffix = fmt.Sprintf(" Downloading %s...", field)
+			spin.Start()
+			dlErr := runwarehttp.Download(ctx, urlStr, destPath, 5*time.Minute)
+			spin.Stop()
 
-		spin.Suffix = fmt.Sprintf(" Downloading %s...", mf.key)
-		spin.Start()
-		dlErr := runwarehttp.Download(ctx, urlStr, destPath, 5*time.Minute)
-		spin.Stop()
-
-		if dlErr != nil {
-			logger.Warn("failed to download "+mf.key, "url", urlStr, "err", dlErr)
-			continue
+			if dlErr != nil {
+				logger.Warn("failed to download "+field, "url", urlStr, "err", dlErr)
+			} else {
+				logger.Info("saved", "path", destPath)
+			}
 		}
-		logger.Info(os.Stderr, "Saved %s → %s\n", mf.key, destPath)
 	}
 
 	// Nested outputs.files[].url (used by 3D inference and similar task types).
@@ -259,7 +255,7 @@ func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]an
 			logger.Warn("failed to download "+label, "url", urlStr, "err", dlErr)
 			continue
 		}
-		logger.Info("Saved %s → %s\n", label, destPath)
+		logger.Info("saved", "path", destPath)
 	}
 }
 
@@ -301,7 +297,7 @@ func fieldBaseName(field string) string {
 	switch field {
 	case fieldImageURL:
 		return "image"
-	case fieldVideoURL, fieldMediaURL:
+	case fieldVideoURL:
 		return "video"
 	case fieldAudioURL:
 		return "audio"

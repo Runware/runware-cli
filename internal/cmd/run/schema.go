@@ -19,7 +19,6 @@ const (
 	fieldImageURL       = "imageURL"
 	fieldVideoURL       = "videoURL"
 	fieldAudioURL       = "audioURL"
-	fieldMediaURL       = "mediaURL"
 	fieldPositivePrompt = "positivePrompt"
 	fieldWidth          = "width"
 	fieldHeight         = "height"
@@ -32,8 +31,11 @@ const (
 	schemaTypeObject  = "object"
 
 	// taskType* constants for the known inference task type values.
-	taskTypeText = "textInference"
-	taskType3D   = "3dInference"
+	taskTypeImage = "imageInference"
+	taskTypeVideo = "videoInference"
+	taskTypeAudio = "audioInference"
+	taskTypeText  = "textInference"
+	taskType3D    = "3dInference"
 
 	// fieldOutputs is the top-level result field used by 3D inference responses.
 	// Its value is an object with a "files" array: {"files":[{"url":"...","uuid":"..."}]}.

@@ -177,15 +177,15 @@ func processingItem(t *testing.T, progress int) json.RawMessage {
 	return rawJSON(t, map[string]any{"status": "processing", "progress": progress})
 }
 
-// TestPollDynamic_SuccessOnFirstPoll: success item returned immediately.
-func TestPollDynamic_SuccessOnFirstPoll(t *testing.T) {
+// TestPoll_SuccessOnFirstPoll: success item returned immediately.
+func TestPoll_SuccessOnFirstPoll(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{successItem(t, map[string]any{"videoURL": "https://example.com/v.mp4"})}},
 		},
 	}
 	c := NewClient(mock, slog.Default())
-	results, err := c.PollDynamic(context.Background(), uuid.Nil, time.Millisecond, nil)
+	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,8 +194,8 @@ func TestPollDynamic_SuccessOnFirstPoll(t *testing.T) {
 	}
 }
 
-// TestPollDynamic_ProcessingSkippedUntilSuccess: processing items are not returned.
-func TestPollDynamic_ProcessingSkippedUntilSuccess(t *testing.T) {
+// TestPoll_ProcessingSkippedUntilSuccess: processing items are not returned.
+func TestPoll_ProcessingSkippedUntilSuccess(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{processingItem(t, 20)}},
@@ -204,7 +204,7 @@ func TestPollDynamic_ProcessingSkippedUntilSuccess(t *testing.T) {
 		},
 	}
 	c := NewClient(mock, slog.Default())
-	results, err := c.PollDynamic(context.Background(), uuid.Nil, time.Millisecond, nil)
+	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -216,8 +216,8 @@ func TestPollDynamic_ProcessingSkippedUntilSuccess(t *testing.T) {
 	}
 }
 
-// TestPollDynamic_OnProgressCalled: onProgress fires with the right values.
-func TestPollDynamic_OnProgressCalled(t *testing.T) {
+// TestPoll_OnProgressCalled: onProgress fires with the right values.
+func TestPoll_OnProgressCalled(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{processingItem(t, 25)}},
@@ -228,7 +228,7 @@ func TestPollDynamic_OnProgressCalled(t *testing.T) {
 	c := NewClient(mock, slog.Default())
 
 	var got []int
-	_, err := c.PollDynamic(context.Background(), uuid.Nil, time.Millisecond, func(p int) {
+	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, func(p int) {
 		got = append(got, p)
 	})
 	if err != nil {
@@ -239,8 +239,8 @@ func TestPollDynamic_OnProgressCalled(t *testing.T) {
 	}
 }
 
-// TestPollDynamic_NilProgressCallback: nil onProgress must not panic on processing items.
-func TestPollDynamic_NilProgressCallback(t *testing.T) {
+// TestPoll_NilProgressCallback: nil onProgress must not panic on processing items.
+func TestPoll_NilProgressCallback(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{processingItem(t, 50)}},
@@ -248,7 +248,7 @@ func TestPollDynamic_NilProgressCallback(t *testing.T) {
 		},
 	}
 	c := NewClient(mock, slog.Default())
-	_, err := c.PollDynamic(context.Background(), uuid.Nil, time.Millisecond, nil)
+	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

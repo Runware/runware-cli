@@ -50,106 +50,36 @@ func rawJSON(t *testing.T, v any) json.RawMessage {
 	return b
 }
 
-// parseString parses a JSON string value and returns it if non-empty.
-func parseString(raw json.RawMessage) (string, bool) {
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return "", false
-	}
-	return s, s != ""
-}
+// ---- Client.Poll polling-mechanics tests ----
+// Tests for success, progress, and nil-callback behaviour live in client_test.go.
 
-// TestPollResults_ReturnOnFirstSuccess: results available on first call.
-func TestPollResults_ReturnOnFirstSuccess(t *testing.T) {
-	mock := &mockTransport{
-		responses: []mockResponse{
-			{data: []json.RawMessage{rawJSON(t, "result1"), rawJSON(t, "result2")}},
-		},
-	}
-
-	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(results) != 2 {
-		t.Fatalf("expected 2 results, got %d", len(results))
-	}
-	if results[0] != "result1" || results[1] != "result2" {
-		t.Errorf("unexpected results: %v", results)
-	}
-}
-
-// TestPollResults_RetriesUntilSuccess: empty responses before a successful one.
-func TestPollResults_RetriesUntilSuccess(t *testing.T) {
-	mock := &mockTransport{
-		responses: []mockResponse{
-			{data: nil},
-			{data: nil},
-			{data: []json.RawMessage{rawJSON(t, "final")}},
-		},
-	}
-
-	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(results) != 1 || results[0] != "final" {
-		t.Errorf("unexpected results: %v", results)
-	}
-	if mock.callCount != 3 {
-		t.Errorf("expected 3 Send calls, got %d", mock.callCount)
-	}
-}
-
-// TestPollResults_ParseFailureKeepsPolling: raw data present but parse returns false — must keep polling.
-func TestPollResults_ParseFailureKeepsPolling(t *testing.T) {
-	mock := &mockTransport{
-		responses: []mockResponse{
-			// parse will return false for empty string
-			{data: []json.RawMessage{rawJSON(t, "")}},
-			{data: []json.RawMessage{rawJSON(t, "valid")}},
-		},
-	}
-
-	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(results) != 1 || results[0] != "valid" {
-		t.Errorf("unexpected results: %v", results)
-	}
-	if mock.callCount != 2 {
-		t.Errorf("expected 2 Send calls, got %d", mock.callCount)
-	}
-}
-
-// TestPollResults_TransientErrorKeepsPolling: non-fatal errors are retried.
-func TestPollResults_TransientErrorKeepsPolling(t *testing.T) {
+// TestClientPoll_TransientErrorKeepsPolling: non-fatal errors are retried.
+func TestClientPoll_TransientErrorKeepsPolling(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{err: fmt.Errorf("temporary error")},
-			{data: []json.RawMessage{rawJSON(t, "ok")}},
+			{data: []json.RawMessage{successItem(t, nil)}},
 		},
 	}
 
-	results, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	results, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(results) != 1 || results[0] != "ok" {
-		t.Errorf("unexpected results: %v", results)
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
 	}
 }
 
-// TestPollResults_AuthErrorFatal: auth errors are returned immediately.
-func TestPollResults_AuthErrorFatal(t *testing.T) {
+// TestClientPoll_AuthErrorFatal: auth errors are returned immediately.
+func TestClientPoll_AuthErrorFatal(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{err: transport.CreateRunwareError("invalidApiKey", "unauthorized", transport.RunwareErrorDetails{})},
 		},
 	}
 
-	_, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
 	if !transport.IsAuthError(err) {
 		t.Errorf("expected auth error, got %v", err)
 	}
@@ -158,22 +88,22 @@ func TestPollResults_AuthErrorFatal(t *testing.T) {
 	}
 }
 
-// TestPollResults_APIErrorFatal: APIError is returned immediately.
-func TestPollResults_APIErrorFatal(t *testing.T) {
+// TestClientPoll_APIErrorFatal: RunwareError is returned immediately.
+func TestClientPoll_APIErrorFatal(t *testing.T) {
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{err: transport.CreateRunwareError("unknown", "bad request", transport.RunwareErrorDetails{})},
 		},
 	}
 
-	_, err := PollResults(context.Background(), mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
-// TestPollResults_ContextCancelled: cancelled context returns context.Canceled.
-func TestPollResults_ContextCancelled(t *testing.T) {
+// TestClientPoll_ContextCancelled: cancelled context returns context.Canceled.
+func TestClientPoll_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // already cancelled
 
@@ -183,21 +113,21 @@ func TestPollResults_ContextCancelled(t *testing.T) {
 		},
 	}
 
-	_, err := PollResults(ctx, mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := NewClient(mock, slog.Default()).Poll(ctx, uuid.Nil, time.Millisecond, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected %v, got error: %v", context.Canceled, err)
 	}
 }
 
-// TestPollResults_ContextTimeout: timed-out context returns context.DeadlineExceeded.
-func TestPollResults_ContextTimeout(t *testing.T) {
+// TestClientPoll_ContextTimeout: timed-out context returns context.DeadlineExceeded.
+func TestClientPoll_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
 
 	// Never return success — mock returns nil indefinitely.
 	mock := &mockTransport{}
 
-	_, err := PollResults(ctx, mock, uuid.Nil, time.Millisecond, slog.Default(), parseString)
+	_, err := NewClient(mock, slog.Default()).Poll(ctx, uuid.Nil, time.Millisecond, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected %v, got error: %v", context.DeadlineExceeded, err)
 	}

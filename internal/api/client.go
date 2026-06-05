@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -79,11 +80,11 @@ func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
 	return &result, nil
 }
 
-// RunDynamic sends a single arbitrary task payload and returns all raw JSON responses.
+// Run sends a single arbitrary task payload and returns all raw JSON responses.
 // The caller is responsible for setting taskType, taskUUID, model, and any required fields.
 // This is used by the dynamic run command where the exact request shape is not known at
 // compile time — it is derived from the model's JSON Schema at runtime.
-func (c *Client) RunDynamic(ctx context.Context, payload map[string]any) ([]json.RawMessage, error) {
+func (c *Client) Run(ctx context.Context, payload map[string]any) ([]json.RawMessage, error) {
 	data, err := c.transport.Send(ctx, []any{payload})
 	if err != nil {
 		return nil, err
@@ -113,31 +114,58 @@ func (c *Client) ModelSearch(ctx context.Context, req ModelSearchRequest) (*Mode
 	return &result, nil
 }
 
-// PollDynamic polls for async task results using the getResponse task type.
+// Poll polls for async task results using the getResponse task type.
 // It blocks until at least one result with status "success" is returned, the
 // context is cancelled, or a fatal API/auth error occurs.
 //
 // onProgress is called with the reported progress percentage (0–100) each time
 // a "processing" status item is received. It may be nil.
-func (c *Client) PollDynamic(ctx context.Context, taskID uuid.UUID, interval time.Duration, onProgress func(int)) ([]json.RawMessage, error) {
-	return PollResults(ctx, c.transport, taskID, interval, c.logger, func(raw json.RawMessage) (json.RawMessage, bool) {
-		var item struct {
-			Status   string `json:"status"`
-			Progress int    `json:"progress"`
+func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Duration, onProgress func(int)) ([]json.RawMessage, error) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	var results []json.RawMessage
+	for {
+		tasks := []any{
+			&GetResponseRequest{
+				TaskType: taskTypeGetResponse,
+				TaskUUID: taskID,
+			},
 		}
-		if err := json.Unmarshal(raw, &item); err != nil {
-			return raw, false
-		}
-		switch item.Status {
-		case "success":
-			return raw, true
-		case "processing":
-			if onProgress != nil {
-				onProgress(item.Progress)
+
+		data, err := c.transport.Send(ctx, tasks)
+		if err != nil {
+			var re *transport.RunwareError
+			if errors.As(err, &re) || transport.IsAuthError(err) {
+				return nil, err
 			}
-			return raw, false
-		default:
-			return raw, false
+			if c.logger.Enabled(ctx, slog.LevelDebug) {
+				c.logger.Debug("poll error", "err", err)
+			}
+		} else {
+			for _, raw := range data {
+				var item pollResponseItem
+				if err := json.Unmarshal(raw, &item); err != nil {
+					continue
+				}
+				switch item.Status {
+				case "success":
+					results = append(results, raw)
+				case "processing":
+					if onProgress != nil {
+						onProgress(item.Progress)
+					}
+				}
+			}
+			if len(results) > 0 {
+				return results, nil
+			}
 		}
-	})
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
