@@ -129,13 +129,13 @@ func TestBuildRunResult_PriorityFields(t *testing.T) {
 	}
 	res := buildRunResult(parsed)
 
-	// taskUUID should appear before imageURL; taskType should be suppressed.
+	// imageURL should appear before taskUUID; taskType should be suppressed.
 	if len(res.fields) == 0 {
 		t.Fatal("expected fields")
 	}
 	firstKey := res.fields[0].key
-	if firstKey != fieldTaskUUID {
-		t.Errorf("first field should be taskUUID, got %q", firstKey)
+	if firstKey != fieldImageURL {
+		t.Errorf("first field should be imageURL, got %q", firstKey)
 	}
 	for _, f := range res.fields {
 		if f.key == fieldTaskType {

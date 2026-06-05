@@ -16,9 +16,9 @@ import (
 // Client provides business-logic methods for the Runware API.
 // It delegates wire-level communication to the injected Transport.
 type Client struct {
-	transport     transport.Transport
-	logger        *slog.Logger
-	schemaBaseURL string // overrides schemaBaseURL constant; empty means use package default
+	transport             transport.Transport
+	logger                *slog.Logger
+	schemaBaseURLOverride string // non-empty overrides the package-level schemaBaseURL constant
 }
 
 // NewClient creates a Client backed by the given transport.
@@ -101,29 +101,38 @@ func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.Raw
 // type coercion. System fields (taskType, taskUUID, deliveryMethod) are injected
 // automatically; callers must not set them.
 //
+// params is not modified; Run works on an internal copy.
+//
 // For async delivery Run polls until a success result is received or the context
 // is cancelled. For sync delivery the submit response is returned directly.
 func (c *Client) Run(ctx context.Context, model string, params map[string]any, opts RunOptions) ([]json.RawMessage, error) {
-	baseURL := c.schemaBaseURL
+	if model == "" {
+		return nil, ErrModelRequired
+	}
+
+	baseURL := c.schemaBaseURLOverride
 	if baseURL == "" {
 		baseURL = schemaBaseURL
 	}
 
-	// Inject the model into params before submission.
-	params[fieldModel] = model
+	// Work on a copy so the caller's map is never mutated.
+	// +4 capacity for the system fields injected below.
+	payload := make(map[string]any, len(params)+4)
+	for k, v := range params {
+		payload[k] = v
+	}
+	payload[fieldModel] = model
 
 	// Fetch the model schema; fail-open when the caller has supplied a task type.
 	var modelSchema *ModelSchema
-	if model != "" {
-		ms, err := fetchModelSchema(ctx, model, schemaClient, baseURL)
-		if err != nil {
-			if opts.TaskType == "" {
-				return nil, fmt.Errorf("could not fetch schema for %q: %w; set RunOptions.TaskType to skip validation", model, err)
-			}
-			c.logger.Warn("schema unavailable; skipping validation", "model", model, "err", err)
-		} else {
-			modelSchema = ms
+	ms, err := fetchModelSchema(ctx, model, schemaClient, baseURL)
+	if err != nil {
+		if opts.TaskType == "" {
+			return nil, fmt.Errorf("could not fetch schema for %q: %w; set RunOptions.TaskType to skip validation", model, err)
 		}
+		c.logger.Warn("schema unavailable; skipping validation", "model", model, "err", err)
+	} else {
+		modelSchema = ms
 	}
 
 	// Unmarshal the request schema node for validation and field extraction.
@@ -146,27 +155,27 @@ func (c *Client) Run(ctx context.Context, model string, params map[string]any, o
 
 	// Validate required fields and conditional constraints against the schema.
 	if modelSchema != nil {
-		if err := schema.ValidateRequired(reqSchema, params); err != nil {
+		if err := schema.ValidateRequired(reqSchema, payload); err != nil {
 			return nil, err
 		}
-		if err := schema.ValidateAllOf(reqSchema, params); err != nil {
+		if err := schema.ValidateAllOf(reqSchema, payload); err != nil {
 			return nil, err
 		}
 	}
 
 	// Resolve delivery method: payload value > opts override > schema default.
-	deliveryMethod := schema.ResolveDeliveryMethod(opts.DeliveryMethod, params, reqSchema)
+	deliveryMethod := schema.ResolveDeliveryMethod(opts.DeliveryMethod, payload, reqSchema)
 	if deliveryMethod != "" {
-		params[fieldDeliveryMethod] = deliveryMethod
+		payload[fieldDeliveryMethod] = deliveryMethod
 	}
 
 	// Inject system fields.
 	taskUUID := uuid.New()
-	params[fieldTaskType] = taskType
-	params[fieldTaskUUID] = taskUUID
+	payload[fieldTaskType] = taskType
+	payload[fieldTaskUUID] = taskUUID
 
 	// Submit the request to the API.
-	initialResults, err := c.submit(ctx, params)
+	initialResults, err := c.submit(ctx, payload)
 	if err != nil {
 		return nil, err
 	}

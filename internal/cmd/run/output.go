@@ -75,7 +75,7 @@ func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMes
 			if err := emitRaw(format, parsed); err != nil {
 				return err
 			}
-		} else if tt, _ := parsed[fieldTaskType].(string); strings.EqualFold(tt, taskTypeText) {
+		} else if tt, _ := parsed[fieldTaskType].(string); tt == taskTypeText {
 			// Text inference: print the text field raw to stdout.
 			// A divider separates multiple results (e.g. numberResults > 1).
 			if i > 0 {
@@ -150,12 +150,12 @@ func extractOutputFileURLs(parsed map[string]any) []string {
 }
 
 // buildRunResult converts a parsed API result map into an ordered key-value table.
-// Priority fields (imageURL, videoURL, audioURL, mediaURL, text, taskUUID) are surfaced
+// Priority fields (imageURL, videoURL, audioURL, text, taskUUID) are surfaced
 // first; remaining fields are appended sorted alphabetically.
 // For 3D inference results the nested outputs.files[].url entries are expanded
 // into individual "file" rows so the table stays readable.
 func buildRunResult(parsed map[string]any) runResult {
-	priorityKeys := []string{fieldTaskUUID, fieldImageURL, fieldVideoURL, fieldAudioURL, fieldText, "finishReason", "seed", "cost"}
+	priorityKeys := []string{fieldImageURL, fieldVideoURL, fieldAudioURL, fieldText, fieldTaskUUID, "finishReason", "seed", "cost"}
 	seen := make(map[string]struct{})
 
 	var fields []runResultField

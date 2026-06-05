@@ -17,7 +17,7 @@ const testModelAIR = "test:model@1"
 
 // inferenceSchemaServer starts an httptest.Server that returns the given
 // requestSchema JSON for any request. The returned URL (with trailing slash) is
-// suitable for use as Client.schemaBaseURL in tests.
+// suitable for use as Client.schemaBaseURLOverride in tests.
 func inferenceSchemaServer(t *testing.T, requestSchema any) *httptest.Server {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
@@ -69,7 +69,7 @@ func TestClientRun_SyncSuccess(t *testing.T) {
 	}
 
 	c := NewClient(mock, slog.Default())
-	c.schemaBaseURL = srv.URL + "/"
+	c.schemaBaseURLOverride = srv.URL + "/"
 
 	results, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{})
 	if err != nil {
@@ -100,7 +100,7 @@ func TestClientRun_AsyncSuccess(t *testing.T) {
 	}
 
 	c := NewClient(mock, slog.Default())
-	c.schemaBaseURL = srv.URL + "/"
+	c.schemaBaseURLOverride = srv.URL + "/"
 
 	results, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{
 		PollInterval: time.Millisecond,
@@ -133,7 +133,7 @@ func TestClientRun_SchemaUnavailable_TaskTypeProvided(t *testing.T) {
 	}
 
 	c := NewClient(mock, slog.Default())
-	c.schemaBaseURL = srv.URL + "/"
+	c.schemaBaseURLOverride = srv.URL + "/"
 
 	results, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{
 		TaskType: "audioInference",
@@ -155,7 +155,7 @@ func TestClientRun_SchemaUnavailable_NoTaskType(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClient(&mockTransport{}, slog.Default())
-	c.schemaBaseURL = srv.URL + "/"
+	c.schemaBaseURLOverride = srv.URL + "/"
 
 	_, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{})
 	if err == nil {
@@ -181,7 +181,7 @@ func TestClientRun_ValidationFailure(t *testing.T) {
 	mock := &mockTransport{}
 
 	c := NewClient(mock, slog.Default())
-	c.schemaBaseURL = srv.URL + "/"
+	c.schemaBaseURLOverride = srv.URL + "/"
 
 	_, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{})
 	if err == nil {
@@ -211,7 +211,7 @@ func TestClientRun_OnProgressCalled(t *testing.T) {
 	}
 
 	c := NewClient(mock, slog.Default())
-	c.schemaBaseURL = srv.URL + "/"
+	c.schemaBaseURLOverride = srv.URL + "/"
 
 	var got []int
 	_, err := c.Run(context.Background(), testModelAIR, map[string]any{}, RunOptions{

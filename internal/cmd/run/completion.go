@@ -1,9 +1,11 @@
 package run
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/schema"
@@ -22,7 +24,9 @@ func schemaArgCompleter(cmd *cobra.Command, args []string, toComplete string) ([
 	}
 
 	model := args[0]
-	modelSchema, err := api.FetchModelSchema(cmd.Context(), model)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 3*time.Second)
+	defer cancel()
+	modelSchema, err := api.FetchModelSchema(ctx, model)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
