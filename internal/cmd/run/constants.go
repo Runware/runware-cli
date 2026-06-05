@@ -2,17 +2,12 @@ package run
 
 // Field name constants for API payload keys used throughout the run package.
 const (
-	fieldTaskType       = "taskType"
-	fieldTaskUUID       = "taskUUID"
-	fieldDeliveryMethod = "deliveryMethod"
-	fieldModel          = "model"
-	fieldImageURL       = "imageURL"
-	fieldVideoURL       = "videoURL"
-	fieldAudioURL       = "audioURL"
-	fieldPositivePrompt = "positivePrompt"
-	fieldWidth          = "width"
-	fieldHeight         = "height"
-	fieldText           = "text"
+	fieldTaskType = "taskType"
+	fieldTaskUUID = "taskUUID"
+	fieldImageURL = "imageURL"
+	fieldVideoURL = "videoURL"
+	fieldAudioURL = "audioURL"
+	fieldText     = "text"
 
 	// taskType* constants for the known inference task type values.
 	taskTypeImage = "imageInference"

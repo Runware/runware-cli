@@ -152,8 +152,8 @@ fine-tuned models), specify it explicitly with --task-type.`,
 	//nolint:errcheck,gosec
 	cmd.RegisterFlagCompletionFunc("delivery-method", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		return []cobra.Completion{
-			schema.DeliveryMethodSync,
-			schema.DeliveryMethodAsync,
+			string(api.DeliveryMethodSync),
+			string(api.DeliveryMethodAsync),
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 

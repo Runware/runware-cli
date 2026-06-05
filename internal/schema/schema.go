@@ -20,14 +20,7 @@ const (
 	TypeObject  = "object"
 )
 
-// Recognised deliveryMethod values.
-const (
-	DeliveryMethodAsync = "async"
-	DeliveryMethodSync  = "sync"
-)
-
 // fieldDeliveryMethod is the payload key for the delivery method field.
-// Kept unexported because callers reference the run-package field constants.
 const fieldDeliveryMethod = "deliveryMethod"
 
 // Node is a minimal representation of a JSON Schema node used for task-type

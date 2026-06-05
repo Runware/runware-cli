@@ -23,6 +23,8 @@ const (
 	testValHello            = "Hello"
 	testValUser             = "user"
 	testMsg0Role            = "messages.0.role"
+	testDeliveryMethodAsync = "async"
+	testDeliveryMethodSync  = "sync"
 )
 
 // ---- ExtractTaskType tests ----
@@ -873,10 +875,10 @@ func TestExtractDeliveryMethod_OneOfSingleAsync(t *testing.T) {
 		},
 	}
 	opts, def := schema.ExtractDeliveryMethod(node)
-	if len(opts) != 1 || opts[0] != schema.DeliveryMethodAsync {
+	if len(opts) != 1 || opts[0] != testDeliveryMethodAsync {
 		t.Errorf("expected options [async], got %v", opts)
 	}
-	if def != schema.DeliveryMethodAsync {
+	if def != testDeliveryMethodAsync {
 		t.Errorf("expected default async, got %q", def)
 	}
 }
@@ -892,10 +894,10 @@ func TestExtractDeliveryMethod_EnumMultiple(t *testing.T) {
 		},
 	}
 	opts, def := schema.ExtractDeliveryMethod(node)
-	if len(opts) != 2 || opts[0] != schema.DeliveryMethodSync || opts[1] != schema.DeliveryMethodAsync {
+	if len(opts) != 2 || opts[0] != testDeliveryMethodSync || opts[1] != testDeliveryMethodAsync {
 		t.Errorf("expected options [sync async], got %v", opts)
 	}
-	if def != schema.DeliveryMethodSync {
+	if def != testDeliveryMethodSync {
 		t.Errorf("expected default sync, got %q", def)
 	}
 }
@@ -925,7 +927,7 @@ func TestExtractDeliveryMethod_BareConst(t *testing.T) {
 		},
 	}
 	opts, def := schema.ExtractDeliveryMethod(node)
-	if len(opts) != 1 || opts[0] != schema.DeliveryMethodAsync {
+	if len(opts) != 1 || opts[0] != testDeliveryMethodAsync {
 		t.Errorf("expected options [async], got %v", opts)
 	}
 	if def != "" {
@@ -948,23 +950,23 @@ func asyncOnlyNode() schema.Node {
 }
 
 func TestResolveDeliveryMethod_PayloadWins(t *testing.T) {
-	payload := map[string]any{testFieldDeliveryMethod: schema.DeliveryMethodSync}
-	got := schema.ResolveDeliveryMethod(schema.DeliveryMethodAsync, payload, asyncOnlyNode())
-	if got != schema.DeliveryMethodSync {
+	payload := map[string]any{testFieldDeliveryMethod: testDeliveryMethodSync}
+	got := schema.ResolveDeliveryMethod(testDeliveryMethodAsync, payload, asyncOnlyNode())
+	if got != testDeliveryMethodSync {
 		t.Errorf("payload value should win; got %q", got)
 	}
 }
 
 func TestResolveDeliveryMethod_FlagBeatsSchema(t *testing.T) {
-	got := schema.ResolveDeliveryMethod(schema.DeliveryMethodSync, map[string]any{}, asyncOnlyNode())
-	if got != schema.DeliveryMethodSync {
+	got := schema.ResolveDeliveryMethod(testDeliveryMethodSync, map[string]any{}, asyncOnlyNode())
+	if got != testDeliveryMethodSync {
 		t.Errorf("flag value should win over schema; got %q", got)
 	}
 }
 
 func TestResolveDeliveryMethod_SchemaDefault(t *testing.T) {
 	got := schema.ResolveDeliveryMethod("", map[string]any{}, asyncOnlyNode())
-	if got != schema.DeliveryMethodAsync {
+	if got != testDeliveryMethodAsync {
 		t.Errorf("expected schema default async; got %q", got)
 	}
 }
@@ -979,7 +981,7 @@ func TestResolveDeliveryMethod_FallsBackToFirstOption(t *testing.T) {
 		},
 	}
 	got := schema.ResolveDeliveryMethod("", map[string]any{}, node)
-	if got != schema.DeliveryMethodSync {
+	if got != testDeliveryMethodSync {
 		t.Errorf("expected first option sync; got %q", got)
 	}
 }
