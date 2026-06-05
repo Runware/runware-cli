@@ -2,7 +2,10 @@ package run
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // test-local string constants to satisfy the goconst linter.
@@ -13,10 +16,13 @@ const (
 	testFieldMessages = "messages"
 	testValUser       = "user"
 	testValHello      = "Hello"
-
-	test3DURL1  = "https://cdn.runware.ai/3d/a.glb"
-	test3DURL2  = "https://cdn.runware.ai/3d/b.glb"
-	testUUIDKey = "uuid"
+	testMsg0Role      = "messages.0.role"
+	testMsg0Content   = "messages.0.content"
+	testMsg1Role      = "messages.1.role"
+	testMsg1Content   = "messages.1.content"
+	test3DURL1        = "https://cdn.runware.ai/3d/a.glb"
+	test3DURL2        = "https://cdn.runware.ai/3d/b.glb"
+	testUUIDKey       = "uuid"
 )
 
 // ---- extractTaskType tests ----
@@ -412,6 +418,213 @@ func TestParseKV_EmptySegment(t *testing.T) {
 	}
 }
 
+// ---- normalizeProvidedKey tests ----
+
+func TestNormalizeProvidedKey_AutoIndexSugar(t *testing.T) {
+	// "messages.role=user" should expand to "messages.0.role" via parseKV sugar.
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			testFieldMessages: {
+				Type: schemaTypeArray,
+				Items: &schemaNode{
+					Type: schemaTypeObject,
+					Properties: map[string]schemaNode{
+						testFieldRole:    {Type: schemaTypeString},
+						testFieldContent: {Type: schemaTypeString},
+					},
+				},
+			},
+		},
+	}
+	got := normalizeProvidedKey("messages.role=user", node)
+	if got != testMsg0Role {
+		t.Errorf("want messages.0.role, got %q", got)
+	}
+}
+
+func TestNormalizeProvidedKey_ExplicitIndexUnchanged(t *testing.T) {
+	// An explicit index passes through unchanged.
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			testFieldMessages: {
+				Type: schemaTypeArray,
+				Items: &schemaNode{
+					Type: schemaTypeObject,
+					Properties: map[string]schemaNode{
+						testFieldRole: {Type: schemaTypeString},
+					},
+				},
+			},
+		},
+	}
+	got := normalizeProvidedKey("messages.0.role=user", node)
+	if got != testMsg0Role {
+		t.Errorf("want messages.0.role, got %q", got)
+	}
+}
+
+func TestNormalizeProvidedKey_FlatField(t *testing.T) {
+	// A flat field passes through as-is.
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			fieldWidth: {Type: schemaTypeInteger},
+		},
+	}
+	got := normalizeProvidedKey(fieldWidth+"=1024", node)
+	if got != fieldWidth {
+		t.Errorf("want %q, got %q", fieldWidth, got)
+	}
+}
+
+func TestNormalizeProvidedKey_FallbackOnMalformed(t *testing.T) {
+	// parseKV fails when there is no "=" — verbatim key portion is returned.
+	got := normalizeProvidedKey("width", schemaNode{})
+	if got != "width" {
+		t.Errorf("want width, got %q", got)
+	}
+}
+
+// ---- allLeafsProvided tests ----
+
+func TestAllLeafsProvided_Complete(t *testing.T) {
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			testFieldRole:    {Type: schemaTypeString},
+			testFieldContent: {Type: schemaTypeString},
+		},
+	}
+	provided := map[string]struct{}{
+		testMsg0Role:    {},
+		testMsg0Content: {},
+	}
+	if !allLeafsProvided("messages.0", node, provided) {
+		t.Error("want true when all leaf fields are provided")
+	}
+}
+
+func TestAllLeafsProvided_Missing(t *testing.T) {
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			testFieldRole:    {Type: schemaTypeString},
+			testFieldContent: {Type: schemaTypeString},
+		},
+	}
+	// Only role provided — content is missing.
+	provided := map[string]struct{}{
+		testMsg0Role: {},
+	}
+	if allLeafsProvided("messages.0", node, provided) {
+		t.Error("want false when a leaf field is absent")
+	}
+}
+
+func TestAllLeafsProvided_Empty(t *testing.T) {
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			testFieldRole: {Type: schemaTypeString},
+		},
+	}
+	if allLeafsProvided("messages.0", node, map[string]struct{}{}) {
+		t.Error("want false when provided is empty")
+	}
+}
+
+// ---- collectCompletions array-index tests ----
+
+func TestCollectCompletions_StaysAtIndex0WhenPartiallyFilled(t *testing.T) {
+	// Bug scenario: messages.0.role is set but messages.0.content is not.
+	// The completer must still suggest messages.0.content=, not messages.1.*.
+	itemNode := schemaNode{
+		Type: schemaTypeObject,
+		Properties: map[string]schemaNode{
+			testFieldRole:    {Type: schemaTypeString},
+			testFieldContent: {Type: schemaTypeString},
+		},
+	}
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			testFieldMessages: {
+				Type:  schemaTypeArray,
+				Items: &itemNode,
+			},
+		},
+	}
+	provided := map[string]struct{}{
+		testMsg0Role: {},
+	}
+	nextIdx := func(prefix string) int {
+		if prefix == testFieldMessages {
+			return 1
+		}
+		return 0
+	}
+
+	completions := collectCompletions("", node, provided, "", nextIdx)
+	keys := completionKeys(completions)
+
+	for _, k := range keys {
+		if strings.HasPrefix(k, "messages.1.") {
+			t.Errorf("should not suggest index 1 while index 0 is incomplete; got %q", k)
+		}
+	}
+	found := false
+	for _, k := range keys {
+		if k == testMsg0Content {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected messages.0.content= in completions; got %v", keys)
+	}
+}
+
+func TestCollectCompletions_AdvancesToIndex1WhenIndex0Complete(t *testing.T) {
+	// Once messages.0.role AND messages.0.content are both set, suggest index 1.
+	itemNode := schemaNode{
+		Type: schemaTypeObject,
+		Properties: map[string]schemaNode{
+			testFieldRole:    {Type: schemaTypeString},
+			testFieldContent: {Type: schemaTypeString},
+		},
+	}
+	node := schemaNode{
+		Properties: map[string]schemaNode{
+			testFieldMessages: {
+				Type:  schemaTypeArray,
+				Items: &itemNode,
+			},
+		},
+	}
+	provided := map[string]struct{}{
+		testMsg0Role:    {},
+		testMsg0Content: {},
+	}
+	nextIdx := func(prefix string) int {
+		if prefix == testFieldMessages {
+			return 1
+		}
+		return 0
+	}
+
+	completions := collectCompletions("", node, provided, "", nextIdx)
+	keys := completionKeys(completions)
+
+	for _, k := range keys {
+		if strings.HasPrefix(k, "messages.0.") {
+			t.Errorf("index 0 is complete; should not suggest %q", k)
+		}
+	}
+	found := false
+	for _, k := range keys {
+		if k == testMsg1Role || k == testMsg1Content {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected messages.1.* completions; got %v", keys)
+	}
+}
+
 // ---- deepSet tests ----
 
 func TestDeepSet_FlatKey(t *testing.T) {
@@ -483,6 +696,53 @@ func TestDeepSet_ArrayMultipleIndices(t *testing.T) {
 	m1 := msgs[1].(map[string]any)
 	if m0[testFieldRole] != testValUser || m1[testFieldRole] != "assistant" {
 		t.Errorf("unexpected roles: %v, %v", m0[testFieldRole], m1[testFieldRole])
+	}
+}
+
+func TestDeepSet_ScalarArray_GapSlots(t *testing.T) {
+	// Setting index 2 directly must pad with nil, not map[string]any{},
+	// so scalar arrays (e.g. inputs.images) don't get spurious object placeholders.
+	payload := map[string]any{}
+	deepSet(payload, []string{"inputs", "images", "2"}, "https://example.com/img.jpg")
+
+	imgs, ok := payload["inputs"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected inputs to be map[string]any, got %T", payload["inputs"])
+	}
+	sl, ok := imgs["images"].([]any)
+	if !ok || len(sl) != 3 {
+		t.Fatalf("expected images to be []any of length 3, got %T len=%d", imgs["images"], len(sl))
+	}
+	if sl[0] != nil {
+		t.Errorf("slot 0: want nil, got %T %v", sl[0], sl[0])
+	}
+	if sl[1] != nil {
+		t.Errorf("slot 1: want nil, got %T %v", sl[1], sl[1])
+	}
+	if sl[2] != "https://example.com/img.jpg" {
+		t.Errorf("slot 2: want URL string, got %v", sl[2])
+	}
+}
+
+func TestDeepSet_ObjectArray_NilSlotMerge(t *testing.T) {
+	// nil gap slots must still be promotable to maps when later written to,
+	// so object arrays (e.g. messages) continue to merge correctly.
+	payload := map[string]any{}
+	deepSet(payload, []string{testFieldMessages, "1", testFieldRole}, "assistant")
+	// messages[0] was never set — should be nil, not {}.
+	msgs, ok := payload[testFieldMessages].([]any)
+	if !ok || len(msgs) != 2 {
+		t.Fatalf("expected []any of length 2, got %T len=%d", payload[testFieldMessages], len(msgs))
+	}
+	if msgs[0] != nil {
+		t.Errorf("gap slot 0: want nil, got %T %v", msgs[0], msgs[0])
+	}
+	m1, ok := msgs[1].(map[string]any)
+	if !ok {
+		t.Fatalf("slot 1: expected map[string]any, got %T", msgs[1])
+	}
+	if m1[testFieldRole] != "assistant" {
+		t.Errorf("slot 1 role: want assistant, got %v", m1[testFieldRole])
 	}
 }
 
@@ -695,6 +955,22 @@ func TestBuildDestPath_FallbackMulti(t *testing.T) {
 }
 
 // ---- helpers ----
+
+// completionKeys extracts the bare key (no "=" suffix, no description) from a
+// slice of cobra completions. cobra.CompletionWithDesc formats entries as
+// "key=\tdescription", so we strip the tab+description and trailing "=".
+func completionKeys(completions []cobra.Completion) []string {
+	keys := make([]string, 0, len(completions))
+	for _, c := range completions {
+		s := c
+		if idx := strings.IndexByte(s, '\t'); idx != -1 {
+			s = s[:idx]
+		}
+		s = strings.TrimSuffix(s, "=")
+		keys = append(keys, s)
+	}
+	return keys
+}
 
 func containsString(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || findSub(s, sub))

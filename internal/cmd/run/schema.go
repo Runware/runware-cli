@@ -267,7 +267,7 @@ func deepSet(payload map[string]any, path []string, value any) {
 		existing := payload[head]
 		sl := toSlice(existing)
 		for len(sl) <= idx {
-			sl = append(sl, map[string]any{})
+			sl = append(sl, nil)
 		}
 		if len(rest) == 1 {
 			sl[idx] = value
@@ -284,6 +284,63 @@ func deepSet(payload map[string]any, path []string, value any) {
 		deepSet(child, rest, value)
 		payload[head] = child
 	}
+}
+
+// normalizeProvidedKey returns the canonical dot-notation key for a "key=value"
+// completion argument by running it through parseKV to apply auto-index sugar
+// (e.g. "messages.role=user" → "messages.0.role"). Falls back to the verbatim
+// key portion when parseKV fails (e.g. malformed arg or unknown schema).
+func normalizeProvidedKey(arg string, node schemaNode) string {
+	path, _, err := parseKV(arg, node)
+	if err == nil {
+		return strings.Join(path, ".")
+	}
+	k, _, _ := strings.Cut(arg, "=")
+	return k
+}
+
+// allLeafsProvided reports whether every non-autoField leaf path of node,
+// rooted at prefix, is present in provided. It mirrors the traversal logic
+// of collectCompletions so the two stay in sync:
+//   - object properties are recursed into
+//   - array properties check index 0 of the item schema (best-effort for nested arrays)
+//   - autoFields are skipped (they are never user-provided)
+func allLeafsProvided(prefix string, node schemaNode, provided map[string]struct{}) bool {
+	for name := range node.Properties {
+		prop := node.Properties[name]
+		if _, skip := autoFields[name]; skip {
+			continue
+		}
+		full := prefix + "." + name
+
+		switch prop.Type {
+		case schemaTypeObject:
+			if len(prop.Properties) > 0 {
+				if !allLeafsProvided(full, prop, provided) {
+					return false
+				}
+				continue
+			}
+		case schemaTypeArray:
+			// For nested arrays, check index 0 only (best-effort).
+			if prop.Items != nil && prop.Items.Type == schemaTypeObject && len(prop.Items.Properties) > 0 {
+				if !allLeafsProvided(full+".0", *prop.Items, provided) {
+					return false
+				}
+				continue
+			}
+			// Scalar array leaf — check index 0.
+			if _, ok := provided[full+".0"]; !ok {
+				return false
+			}
+			continue
+		}
+		// Leaf field.
+		if _, ok := provided[full]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // isNumeric reports whether s is a non-negative integer string.

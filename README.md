@@ -4,7 +4,7 @@ A command-line tool for interacting with the [Runware](https://runware.ai) infer
 
 ## Install
 
-### Homebrew (MacOS)
+### Homebrew (macOS)
 
 ```shell
 brew tap runware/tap
@@ -12,6 +12,7 @@ brew install runware
 ```
 
 ### Scoop (Windows)
+
 ```shell
 scoop bucket add runware https://github.com/Runware/scoop-bucket.git
 scoop install runware
@@ -41,71 +42,93 @@ runware auth login
 runware ping
 
 # Generate an image
-runware inference image "a chess match in the park"
+runware run runware:101@1 positivePrompt="a chess match in the park"
 
-# Check your credits
-runware account credits
+# Check your account details
+runware account details
 ```
 
 ## Commands
 
 Full command reference is available in the [docs](./docs/runware.md) directory.
 
-### Image generation
+### `runware run` — inference
+
+The primary command for all inference tasks. The model is identified by its AIR (AI Resource) identifier; parameters are passed as `key=value` pairs. The model's JSON Schema is fetched automatically to validate inputs and choose the right task type.
 
 ```shell
-# Simple text-to-image
-runware inference image "a cat riding a rocket"
-
-# With options
-runware inference image "a cyberpunk cityscape" \
-  --model runware:100@1 \
-  --width 1024 --height 576 \
-  --steps 28 --cfg 3.5 \
-  --count 4
-
-# Image-to-image
-runware inference image "make it more cinematic" \
-  --source ./input.png --strength 0.7
-
-# Inpainting
-runware inference image "replace with a golden retriever" \
-  --source ./photo.png --mask ./mask.png
-
-# Using a preset
-runware inference image "a portrait" --preset quick-flux
-
-# Just get the URL, don't download
-runware inference image "a sunset" --no-download
-
-# Preview the API request without sending it
-runware inference image "a sunset" --dry-run
+runware run <model> [key=value ...] [flags]
 ```
 
-### Video generation
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--task-type` | Override detected task type (e.g. `imageInference`, `videoInference`, `audioInference`, `textInference`) |
+| `--output-dir` | Directory to save downloaded output files (default `./outputs`) |
+| `--no-download` | Skip auto-downloading media files |
+| `--delivery-method` | Override delivery method (`sync` or `async`); default taken from model schema |
+| `--poll-interval` | Polling interval for async requests (default `2s`) |
+
+#### Image generation
 
 ```shell
-runware inference video "a timelapse of a sunset over mountains" --model klingai:5@3
-runware inference video "a cat playing piano" --model google:3@2 --duration 5
+# Text-to-image
+runware run runware:101@1 positivePrompt="A serene mountain landscape" width=1024 height=1024
+
+# Save to a specific directory
+runware run runware:101@1 positivePrompt="Abstract art" --output-dir ./my-images width=1024 height=1024
+
+# Get the URL without downloading
+runware run runware:101@1 positivePrompt="Abstract art" --format json --no-download
+
+# Community model — specify task type explicitly
+runware run civitai:305149@392545 --task-type imageInference positivePrompt="A portrait" width=1024 height=1024
 ```
 
-### Audio generation
+#### Video generation
 
 ```shell
-runware inference audio "a jazz piano solo with soft drums" --model elevenlabs:1@1 --duration 30
-runware inference audio "ocean waves crashing on rocks" --model elevenlabs:1@1 --duration 60
+runware run klingai:5@3 positivePrompt="Ocean waves at sunset" width=1920 height=1080 duration=10
 ```
 
-### Text generation
+#### Audio generation
 
 ```shell
-runware inference text "explain how transformers work"
+# Music generation
+runware run elevenlabs:1@1 positivePrompt="Upbeat electronic dance music with driving bass and synth leads" duration=30
+
+# Text-to-speech
+runware run minimax:speech@2.8 speech.text="Hello, this is a text-to-speech example." speech.voice=English_expressive_narrator
+```
+
+#### Text inference (LLM)
+
+```shell
+# Single message
+runware run minimax:m3@0 messages.0.role=user messages.0.content="Explain quantum computing"
+
+# Multi-turn conversation
+runware run minimax:m3@0 \
+  messages.0.role=user    messages.0.content="What is Go?" \
+  messages.1.role=assistant messages.1.content="A compiled language." \
+  messages.2.role=user    messages.2.content="How do I install it?"
+```
+
+#### 3D inference
+
+```shell
+# Text to 3D
+runware run tencent:hunyuan-3d@3.1-pro positivePrompt="A red vintage sports car"
+
+# Image to 3D
+runware run tencent:hunyuan-3d@3.1-pro inputs.images.0="https://example.com/product.jpg"
 ```
 
 ### Authentication
 
 ```shell
-runware auth login              # Authenticate with API key
+runware auth login              # Authenticate with API key (interactive)
 runware auth login --key <key>  # Non-interactive login
 runware auth logout             # Clear stored credentials
 runware auth status             # Show current auth state
@@ -114,13 +137,18 @@ runware auth status             # Show current auth state
 ### Account
 
 ```shell
-runware account credits         # Credit balance and usage stats
+runware account details         # Show account details, team, API keys, and usage stats
 ```
 
-### Model search
+### Models
 
 ```shell
-runware model search "flux"     # Search available models
+runware model search -q "flux"                          # Search available models
+runware model search -q "portrait" --category checkpoint --architecture sdxl
+runware model search -q "anime" --wide                  # Include tags and default size columns
+runware model show civitai:305149@392545                # Full details for a model
+runware model schema google:3@2                         # Show request parameters for a model
+runware model schema google:3@2 --response              # Show response schema instead
 ```
 
 ### Presets
@@ -160,6 +188,7 @@ runware completion              # Generate shell completions (bash/zsh/fish/powe
 | `--format json\|yaml\|table` | Output format (default: table) |
 | `-v, --verbose` | Show request/response details |
 | `--debug` | Full debug output |
+| `--transport ws\|http` | Transport protocol: WebSocket or REST (default: `ws`) |
 
 All commands support `--format json` for piping into `jq` or scripts.
 
@@ -198,11 +227,16 @@ presets:
 ## Development
 
 ```shell
-make build      # Build binary
-make test       # Run tests
-make lint       # Run golangci-lint
-make clean      # Remove binary
-make snapshot   # GoReleaser snapshot build
+make build          # Build binary for current platform → ./bin/runware
+make build-all      # Build all platforms → ./bin/
+make install        # go install for current platform
+make run ARGS="..." # Run without building (e.g. make run ARGS="ping")
+make test           # Run all tests
+make lint           # Run golangci-lint
+make docs           # Regenerate ./docs/ command reference
+make snapshot       # GoReleaser snapshot build
+make clean          # Remove ./bin and ./dist
+make go-tidy        # go mod tidy && go mod verify
 ```
 
 ## Shell completions

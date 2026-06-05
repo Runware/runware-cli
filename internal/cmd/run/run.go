@@ -258,11 +258,13 @@ func schemaArgCompleter(cmd *cobra.Command, args []string, toComplete string) ([
 	}
 
 	// Collect the full dot-notation key of every arg the user has already typed,
-	// e.g. "messages.0.role", "width".
+	// normalised through parseKV so that auto-index sugar (e.g. "messages.role=user")
+	// is expanded to its canonical form ("messages.0.role") before being recorded.
+	// This ensures nextArrayIdx advances correctly and collectCompletions doesn't
+	// re-suggest keys that are already set.
 	provided := make(map[string]struct{}, len(args))
 	for _, a := range args[1:] {
-		k, _, _ := strings.Cut(a, "=")
-		if k != "" {
+		if k := normalizeProvidedKey(a, node); k != "" {
 			provided[k] = struct{}{}
 		}
 	}
@@ -336,16 +338,26 @@ func collectCompletions(
 			// Object with no known sub-properties — fall through to leaf.
 
 		case schemaTypeArray:
-			idx := nextArrayIdx(full)
-			idxStr := strconv.Itoa(idx)
-			indexedPrefix := full + "." + idxStr
-
 			if prop.Items != nil && prop.Items.Type == schemaTypeObject && len(prop.Items.Properties) > 0 {
-				// Recurse into the item schema.
+				// For object arrays, find the first index slot that still has at least
+				// one unfilled leaf field. Only advance past an index once every leaf
+				// in the item schema for that index is present in provided.
+				maxIdx := nextArrayIdx(full) // highest index touched + 1, or 0
+				idx := maxIdx                // default: open a new slot
+				for i := range maxIdx {
+					if !allLeafsProvided(full+"."+strconv.Itoa(i), *prop.Items, provided) {
+						idx = i
+						break
+					}
+				}
+				indexedPrefix := full + "." + strconv.Itoa(idx)
 				out = append(out, collectCompletions(indexedPrefix, *prop.Items, provided, toCompletePrefix, nextArrayIdx)...)
 				continue
 			}
-			// Scalar array or unknown items — suggest "field.N=".
+			// Scalar array or unknown items — next unused index via nextArrayIdx.
+			idx := nextArrayIdx(full)
+			idxStr := strconv.Itoa(idx)
+			indexedPrefix := full + "." + idxStr
 			candidate := indexedPrefix + "="
 			if _, done := provided[indexedPrefix]; !done && strings.HasPrefix(indexedPrefix, toCompletePrefix) {
 				desc := prop.Description

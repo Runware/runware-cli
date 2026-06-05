@@ -57,7 +57,7 @@ func (t modelSchemaTable) Rows() [][]any {
 // buildRows recursively flattens a schemaNode's properties into schemaRows.
 // Required fields are emitted first (sorted), then optional fields (sorted).
 // Depth is capped at maxDepth to guard against pathological schemas.
-func buildRows(node schemaNode, requiredSet map[string]bool, depth, maxDepth int) []schemaRow {
+func buildRows(node schemaNode, requiredSet map[string]struct{}, depth, maxDepth int) []schemaRow {
 	if depth > maxDepth || len(node.Properties) == 0 {
 		return nil
 	}
@@ -67,7 +67,7 @@ func buildRows(node schemaNode, requiredSet map[string]bool, depth, maxDepth int
 	// Partition into required and optional, both sorted alphabetically.
 	var req, opt []string
 	for name := range node.Properties {
-		if requiredSet[name] {
+		if _, ok := requiredSet[name]; ok {
 			req = append(req, name)
 		} else {
 			opt = append(opt, name)
@@ -82,7 +82,7 @@ func buildRows(node schemaNode, requiredSet map[string]bool, depth, maxDepth int
 		child := node.Properties[name]
 
 		required := "no"
-		if requiredSet[name] {
+		if _, ok := requiredSet[name]; ok {
 			required = "yes"
 		}
 
@@ -134,10 +134,10 @@ func formatSchemaDefault(raw json.RawMessage) string {
 }
 
 // stringSet converts a slice of strings into a presence map.
-func stringSet(ss []string) map[string]bool {
-	m := make(map[string]bool, len(ss))
+func stringSet(ss []string) map[string]struct{} {
+	m := make(map[string]struct{}, len(ss))
 	for _, s := range ss {
-		m[s] = true
+		m[s] = struct{}{}
 	}
 	return m
 }
