@@ -53,9 +53,11 @@ func NewCmd() *cobra.Command {
 When called without an argument, runware attempts to detect your current shell
 by inspecting environment variables (FISH_VERSION, ZSH_VERSION, BASH_VERSION,
 PSModulePath). Pass an explicit shell name to override.`,
-		Example: `  # Auto-detect shell and source completions immediately (fish/zsh)
-  runware completion | source
-
+  # Auto-detect shell and load completions for the current session
+  # Bash/Zsh:
+  source <(runware completion)
+  # Fish:
+  source (runware completion | psub)
   # Bash — Linux system-wide
   runware completion bash | sudo tee /etc/bash_completion.d/runware
 
