@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/briandowns/spinner"
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	runwarehttp "github.com/runware/runware-cli/internal/http"
@@ -22,10 +25,10 @@ var mediaURLFields = []struct {
 	key string
 	ext string
 }{
-	{"imageURL", ""}, // extension inferred from URL
-	{"videoURL", ""},
-	{"mediaURL", ""},
-	{"audioURL", ""},
+	{fieldImageURL, ""}, // extension inferred from URL
+	{fieldVideoURL, ""},
+	{fieldMediaURL, ""},
+	{fieldAudioURL, ""},
 }
 
 // runResult wraps a single parsed inference result for structured rendering.
@@ -60,7 +63,7 @@ func (r runResult) MarshalJSON() ([]byte, error) {
 }
 
 // handleResults outputs each raw API result and optionally downloads media files.
-func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMessage, outputDir string, noDownload bool) error {
+func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMessage, outputDir string, noDownload bool, spin *spinner.Spinner) error {
 	format := cmdutil.FormatFor(cmd)
 
 	for i, raw := range results {
@@ -75,6 +78,13 @@ func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMes
 			if err := emitRaw(format, parsed); err != nil {
 				return err
 			}
+		} else if tt, _ := parsed[fieldTaskType].(string); strings.EqualFold(tt, taskTypeText) {
+			// Text inference: print the text field raw to stdout.
+			// A divider separates multiple results (e.g. numberResults > 1).
+			if i > 0 {
+				fmt.Println("---")
+			}
+			fmt.Println(parsed[fieldText])
 		} else {
 			// Table: flatten to key-value rows, surfacing important fields first.
 			res := buildRunResult(parsed)
@@ -84,7 +94,7 @@ func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMes
 		}
 
 		if !noDownload {
-			downloadMedia(cmd.Context(), logger, parsed, outputDir, i, len(results) > 1)
+			downloadMedia(cmd.Context(), logger, parsed, outputDir, i, len(results) > 1, spin)
 		}
 	}
 	return nil
@@ -102,11 +112,50 @@ type jsonMapValue map[string]any
 func (v jsonMapValue) MarshalJSON() ([]byte, error) { return json.Marshal(map[string]any(v)) }
 func (v jsonMapValue) MarshalYAML() (any, error)    { return map[string]any(v), nil }
 
+// extractOutputFileURLs extracts URL strings from the nested outputs.files[]
+// structure used by 3D inference responses:
+//
+//	{"outputs": {"files": [{"url": "https://...", "uuid": "..."}]}}
+//
+// Returns nil if the structure is absent or malformed.
+func extractOutputFileURLs(parsed map[string]any) []string {
+	outputsVal, ok := parsed[fieldOutputs]
+	if !ok {
+		return nil
+	}
+	outputsMap, ok := outputsVal.(map[string]any)
+	if !ok {
+		return nil
+	}
+	filesVal, ok := outputsMap[fieldOutputFiles]
+	if !ok {
+		return nil
+	}
+	filesSlice, ok := filesVal.([]any)
+	if !ok {
+		return nil
+	}
+	var urls []string
+	for _, item := range filesSlice {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		urlStr, ok := itemMap[fieldOutputURL].(string)
+		if ok && urlStr != "" {
+			urls = append(urls, urlStr)
+		}
+	}
+	return urls
+}
+
 // buildRunResult converts a parsed API result map into an ordered key-value table.
 // Priority fields (imageURL, videoURL, audioURL, mediaURL, text, taskUUID) are surfaced
 // first; remaining fields are appended sorted alphabetically.
+// For 3D inference results the nested outputs.files[].url entries are expanded
+// into individual "file" rows so the table stays readable.
 func buildRunResult(parsed map[string]any) runResult {
-	priorityKeys := []string{"taskUUID", "imageURL", "videoURL", "audioURL", "mediaURL", "text", "finishReason", "seed", "cost"}
+	priorityKeys := []string{fieldTaskUUID, fieldImageURL, fieldVideoURL, fieldAudioURL, fieldMediaURL, fieldText, "finishReason", "seed", "cost"}
 	seen := make(map[string]bool)
 
 	var fields []runResultField
@@ -120,8 +169,20 @@ func buildRunResult(parsed map[string]any) runResult {
 		seen[k] = true
 	}
 
+	// Expand outputs.files[].url into individual rows (e.g. 3D inference .glb files).
+	if fileURLs := extractOutputFileURLs(parsed); len(fileURLs) > 0 {
+		for i, u := range fileURLs {
+			key := "file"
+			if len(fileURLs) > 1 {
+				key = fmt.Sprintf("file.%d", i+1)
+			}
+			fields = append(fields, runResultField{key: key, value: u})
+		}
+		seen[fieldOutputs] = true // suppress the raw JSON blob in the remaining loop
+	}
+
 	// Append remaining fields in sorted order, skipping internal/redundant ones.
-	skipKeys := map[string]bool{"taskType": true, "taskUUID": true}
+	skipKeys := map[string]bool{fieldTaskType: true, fieldTaskUUID: true}
 	remaining := sortedKeys(parsed)
 	for _, k := range remaining {
 		if seen[k] || skipKeys[k] {
@@ -166,8 +227,9 @@ func sortedKeys(m map[string]any) []string {
 
 // downloadMedia scans the parsed result for known media URL fields and
 // downloads each to outputDir. Index and multi are used to generate filenames
-// when multiple results are returned.
-func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]any, outputDir string, idx int, multi bool) {
+// when multiple results are returned. The spinner is updated to show progress.
+func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]any, outputDir string, idx int, multi bool, spin *spinner.Spinner) {
+	// Flat top-level URL fields (imageURL, videoURL, audioURL, mediaURL).
 	for _, mf := range mediaURLFields {
 		urlVal, ok := parsed[mf.key]
 		if !ok {
@@ -179,46 +241,82 @@ func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]an
 		}
 
 		destPath := buildDestPath(outputDir, mf.key, urlStr, idx, multi)
-		if err := runwarehttp.Download(ctx, urlStr, destPath, 5*time.Minute); err != nil {
-			logger.Warn("failed to download "+mf.key, "url", urlStr, "err", err)
+
+		spin.Suffix = fmt.Sprintf(" Downloading %s...", mf.key)
+		spin.Start()
+		dlErr := runwarehttp.Download(ctx, urlStr, destPath, 5*time.Minute)
+		spin.Stop()
+
+		if dlErr != nil {
+			logger.Warn("failed to download "+mf.key, "url", urlStr, "err", dlErr)
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "Saved %s → %s\n", mf.key, destPath)
 	}
+
+	// Nested outputs.files[].url (used by 3D inference and similar task types).
+	outputURLs := extractOutputFileURLs(parsed)
+	for i, urlStr := range outputURLs {
+		label := fmt.Sprintf("%s.%s[%d]", fieldOutputs, fieldOutputFiles, i)
+		destPath := buildDestPath(outputDir, fieldOutputs, urlStr, i, len(outputURLs) > 1)
+
+		spin.Suffix = fmt.Sprintf(" Downloading %s...", label)
+		spin.Start()
+		dlErr := runwarehttp.Download(ctx, urlStr, destPath, 5*time.Minute)
+		spin.Stop()
+
+		if dlErr != nil {
+			logger.Warn("failed to download "+label, "url", urlStr, "err", dlErr)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "Saved %s → %s\n", label, destPath)
+	}
 }
 
 // buildDestPath constructs the local file path for a downloaded media file.
-// It derives the file extension from the URL when possible.
+// It preserves the original filename from the URL when possible, falling back
+// to a generic stem derived from the field name.
 func buildDestPath(outputDir, field, urlStr string, idx int, multi bool) string {
-	// Extract extension from URL path (before any query string).
-	ext := ""
-	rawPath := urlStr
-	if i := strings.Index(rawPath, "?"); i != -1 {
-		rawPath = rawPath[:i]
-	}
-	if dot := strings.LastIndex(rawPath, "."); dot != -1 {
-		candidate := rawPath[dot:] // e.g. ".png"
-		if len(candidate) <= 6 {   // sanity: extensions are short
-			ext = candidate
+	if u, err := url.Parse(urlStr); err == nil {
+		// Attempt to use the original filename from the URL path.
+		if seg := path.Base(u.Path); seg != "" && seg != "." && seg != "/" {
+			return filepath.Join(outputDir, seg)
 		}
+
+		// Fallback: derive extension from URL path + generic stem.
+		ext := ""
+		if dot := strings.LastIndex(u.Path, "."); dot != -1 {
+			candidate := u.Path[dot:] // e.g. ".png"
+			if len(candidate) <= 6 {  // sanity: extensions are short
+				ext = candidate
+			}
+		}
+		base := fieldBaseName(field)
+		if multi {
+			base = fmt.Sprintf("%s-%d", base, idx+1)
+		}
+		return filepath.Join(outputDir, base+ext)
 	}
 
+	// Last resort when URL cannot be parsed at all.
 	base := fieldBaseName(field)
 	if multi {
 		base = fmt.Sprintf("%s-%d", base, idx+1)
 	}
-	return filepath.Join(outputDir, base+ext)
+	return filepath.Join(outputDir, base)
 }
 
 // fieldBaseName returns a short lowercase filename stem for a media URL field.
 func fieldBaseName(field string) string {
 	switch field {
-	case "imageURL":
+	case fieldImageURL:
 		return "image"
-	case "videoURL", "mediaURL":
+	case fieldVideoURL, fieldMediaURL:
 		return "video"
-	case "audioURL":
+	case fieldAudioURL:
 		return "audio"
+	case fieldOutputs:
+		return "file"
 	default:
 		return "output"
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -110,4 +111,33 @@ func (c *Client) ModelSearch(ctx context.Context, req ModelSearchRequest) (*Mode
 	}
 
 	return &result, nil
+}
+
+// PollDynamic polls for async task results using the getResponse task type.
+// It blocks until at least one result with status "success" is returned, the
+// context is cancelled, or a fatal API/auth error occurs.
+//
+// onProgress is called with the reported progress percentage (0–100) each time
+// a "processing" status item is received. It may be nil.
+func (c *Client) PollDynamic(ctx context.Context, taskID uuid.UUID, interval time.Duration, onProgress func(int)) ([]json.RawMessage, error) {
+	return PollResults(ctx, c.transport, taskID, interval, c.logger, func(raw json.RawMessage) (json.RawMessage, bool) {
+		var item struct {
+			Status   string `json:"status"`
+			Progress int    `json:"progress"`
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return raw, false
+		}
+		switch item.Status {
+		case "success":
+			return raw, true
+		case "processing":
+			if onProgress != nil {
+				onProgress(item.Progress)
+			}
+			return raw, false
+		default:
+			return raw, false
+		}
+	})
 }

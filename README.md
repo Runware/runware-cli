@@ -150,7 +150,7 @@ Config is stored at `~/.runware/config.yaml`.
 ```shell
 runware ping                    # API connectivity check
 runware version                 # Print version info
-runware completion bash         # Generate shell completions (bash/zsh/fish)
+runware completion              # Generate shell completions (bash/zsh/fish/powershell, auto-detected)
 ```
 
 ## Global flags
@@ -207,13 +207,111 @@ make snapshot   # GoReleaser snapshot build
 
 ## Shell completions
 
+`runware completion` generates a completion script for your shell. Once installed, press `Tab` to complete commands, flags, model AIR identifiers, and — for `runware run` — schema-driven parameter names like `positivePrompt=`, `width=`, or `messages.0.role=`.
+
+When your shell sets a standard version variable (`FISH_VERSION`, `ZSH_VERSION`, `BASH_VERSION`, `PSModulePath`), running `runware completion` without arguments auto-detects your shell. Pass an explicit name to override.
+
+### Bash
+
+**Linux — system-wide:**
+
 ```shell
-# Bash
-runware completion bash > /etc/bash_completion.d/runware
+runware completion bash | sudo tee /etc/bash_completion.d/runware > /dev/null
+```
 
-# Zsh
+**macOS — Homebrew `bash-completion@2`:**
+
+```shell
+runware completion bash > $(brew --prefix)/etc/bash_completion.d/runware
+```
+
+**Per-user (any platform):**
+
+```shell
+runware completion bash >> ~/.bash_completion
+source ~/.bash_completion
+```
+
+### Zsh
+
+Add `~/.zfunc` to your `fpath` **before** the `compinit` call in `~/.zshrc`:
+
+```zsh
+fpath=(~/.zfunc $fpath)
+autoload -Uz compinit && compinit
+```
+
+Then generate the completion file and reload:
+
+```shell
+mkdir -p ~/.zfunc
 runware completion zsh > ~/.zfunc/_runware
+exec zsh
+```
 
-# Fish
+**Oh My Zsh:**
+
+```shell
+runware completion zsh > "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/completions/_runware"
+exec zsh
+```
+
+### Fish
+
+```shell
 runware completion fish > ~/.config/fish/completions/runware.fish
+```
+
+Fish picks up completions automatically — no shell restart needed.
+
+### PowerShell
+
+**Inline (recommended) — add to `$PROFILE`:**
+
+```powershell
+Invoke-Expression (& runware completion powershell | Out-String)
+```
+
+**Or generate a file and dot-source it:**
+
+```powershell
+runware completion powershell | Out-File -Encoding utf8 "$HOME\runware.ps1"
+# Add this line to $PROFILE:
+. "$HOME\runware.ps1"
+```
+
+### Demo
+
+Once installed, `Tab` works at every level:
+
+```
+# Complete subcommands
+$ runware <Tab>
+auth        account     completion  config      model
+ping        preset      run         version
+
+# Complete model AIR identifiers for `run`
+$ runware run <Tab>
+runware:101@1  -- FLUX Dev — fast, high-quality image generation
+minimax:m3@0   -- MiniMax M3 text model
+klingai:5@3    -- Kling AI video generation
+...
+
+# Complete parameter names (schema-driven, per model)
+$ runware run runware:101@1 <Tab>
+positivePrompt=  -- Text prompt describing the image
+width=           -- Output width in pixels
+height=          -- Output height in pixels
+steps=           -- Number of diffusion steps
+...
+
+# Array fields use dot-notation with auto-advancing indices
+$ runware run minimax:m3@0 <Tab>
+messages.0.role=     -- Role of the message sender
+messages.0.content=  -- Content of the message
+
+# After messages.0.* are filled, next Tab suggests index 1
+$ runware run minimax:m3@0 messages.0.role=user messages.0.content="What is Go?" <Tab>
+messages.1.role=     -- Role of the message sender
+messages.1.content=  -- Content of the message
 ```

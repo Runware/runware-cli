@@ -17,7 +17,10 @@ const (
 // DeliveryMethod specifies how task results are delivered.
 type DeliveryMethod string
 
-const DeliveryMethodAsync DeliveryMethod = "async"
+const (
+	DeliveryMethodAsync DeliveryMethod = "async"
+	DeliveryMethodSync  DeliveryMethod = "sync"
+)
 
 // OutputFormat specifies the media output format.
 type OutputFormat string
