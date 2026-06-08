@@ -3,6 +3,8 @@ package cmdutil
 import (
 	"context"
 	"encoding/json"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -105,7 +107,10 @@ func CollectCompletions(
 ) []cobra.Completion {
 	var out []cobra.Completion
 
-	for name := range node.Properties {
+	// Sort by name to avoid non-deterministic completion ordering.
+	names := slices.Sorted(maps.Keys(node.Properties))
+
+	for _, name := range names {
 		prop := node.Properties[name]
 		if schema.IsAuto(name) {
 			continue
