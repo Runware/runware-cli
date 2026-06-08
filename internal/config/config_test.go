@@ -48,10 +48,12 @@ func TestSaveAndLoad(t *testing.T) {
 		},
 		Presets: map[string]Preset{
 			"fast": {
-				Model:  "fast-model",
-				Width:  256,
-				Height: 256,
-				Steps:  1,
+				Model: "fast-model",
+				Params: map[string]string{
+					"width":  "256",
+					"height": "256",
+					"steps":  "1",
+				},
 			},
 		},
 	}
@@ -103,10 +105,12 @@ func TestPresetOperations(t *testing.T) {
 
 	// Save a preset
 	preset := Preset{
-		Model:  "test-model",
-		Width:  768,
-		Height: 768,
-		Steps:  20,
+		Model: "test-model",
+		Params: map[string]string{
+			"width":  "768",
+			"height": "768",
+			"steps":  "20",
+		},
 	}
 	if err := SavePreset("test-preset", preset); err != nil {
 		t.Fatalf("SavePreset() error: %v", err)
@@ -120,8 +124,8 @@ func TestPresetOperations(t *testing.T) {
 	if got.Model != "test-model" {
 		t.Errorf("preset model = %q, want %q", got.Model, "test-model")
 	}
-	if got.Width != 768 {
-		t.Errorf("preset width = %d, want %d", got.Width, 768)
+	if got.Params["width"] != "768" {
+		t.Errorf("preset width = %q, want %q", got.Params["width"], "768")
 	}
 
 	// Non-existent preset

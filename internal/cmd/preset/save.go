@@ -2,69 +2,64 @@ package preset
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 func newSaveCmd(logger *log.Logger) *cobra.Command {
-	var flags struct {
-		model     string
-		width     int
-		height    int
-		steps     int
-		cfgScale  float64
-		scheduler string
-	}
-
 	cmd := &cobra.Command{
-		Use:   "save [name]",
+		Use:   "save <name> <model> [key=value ...]",
 		Short: "Save a named preset",
-		Example: `  # save a preset with model and dimensions
-  runware preset save portrait --model runware:100@1 --width 512 --height 768
+		Long: `Save a named preset for use with the run command.
 
-  # save a preset with steps and cfg
-  runware preset save fast --model runware:100@1 --steps 20 --cfg 7`,
-		Args: cobra.ExactArgs(1),
+The model AIR is required and is stored as the preset's default model.
+Additional parameters are passed as key=value pairs using the same syntax
+as the run command, and the same schema-driven shell completion is available.`,
+		Example: `  # save a preset with model and dimensions
+  runware preset save portrait runware:100@1 width=512 height=768
+
+  # save a preset with steps and cfg scale
+  runware preset save fast runware:100@1 steps=20 cfg_scale=7
+
+  # save a preset for a text model with a system prompt
+  runware preset save mychat minimax:m3@0 messages.0.role=system messages.0.content="You are a helpful assistant"`,
+		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			model := args[1]
+			kvArgs := args[2:]
 
-			preset := config.Preset{}
-			if flags.model != "" {
-				preset.Model = flags.model
-			}
-			if flags.width > 0 {
-				preset.Width = flags.width
-			}
-			if flags.height > 0 {
-				preset.Height = flags.height
-			}
-			if flags.steps > 0 {
-				preset.Steps = flags.steps
-			}
-			if flags.cfgScale > 0 {
-				preset.CFGScale = flags.cfgScale
-			}
-			if flags.scheduler != "" {
-				preset.Scheduler = flags.scheduler
+			params := make(map[string]string, len(kvArgs))
+			for _, kv := range kvArgs {
+				k, v, ok := strings.Cut(kv, "=")
+				if !ok {
+					return fmt.Errorf("invalid parameter %q: expected key=value format", kv)
+				}
+				params[k] = v
 			}
 
-			if err := config.SavePreset(name, preset); err != nil {
+			p := config.Preset{
+				Model:  model,
+				Params: params,
+			}
+			if len(params) == 0 {
+				p.Params = nil
+			}
+
+			if err := config.SavePreset(name, p); err != nil {
 				return fmt.Errorf("failed to save preset: %w", err)
 			}
 
-			logger.Info("✓ Preset saved", "name", name)
+			logger.Info("Preset saved", "name", name)
 			return nil
 		},
+		// Schema-driven key=value completion: args[1] is the model AIR.
+		ValidArgsFunction: cmdutil.MakeSchemaArgCompleter(1),
 	}
 
-	f := cmd.Flags()
-	f.StringVarP(&flags.model, "model", "m", "", "Model identifier")
-	f.IntVarP(&flags.width, "width", "W", 0, "Image width")
-	f.IntVarP(&flags.height, "height", "H", 0, "Image height")
-	f.IntVarP(&flags.steps, "steps", "s", 0, "Inference steps")
-	f.Float64VarP(&flags.cfgScale, "cfg", "c", 0, "CFG scale")
-	f.StringVarP(&flags.scheduler, "scheduler", "S", "", "Scheduler")
 	return cmd
 }

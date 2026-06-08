@@ -314,6 +314,85 @@ func TestBuildDestPath_FallbackMulti(t *testing.T) {
 	}
 }
 
+// ---- preset merge helpers ----
+
+// mergePresetParams replicates the merge logic from run.go for unit testing:
+// preset params are defaults; CLI key=value args override them. Returns the
+// merged set as a map[string]string.
+func mergePresetParams(presetParams map[string]string, kvArgs []string) map[string]string {
+	merged := make(map[string]string, len(presetParams)+len(kvArgs))
+	for k, v := range presetParams {
+		merged[k] = v
+	}
+	for _, kv := range kvArgs {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			merged[k] = v
+		}
+	}
+	return merged
+}
+
+func TestPresetMerge_PresetOnly(t *testing.T) {
+	params := map[string]string{
+		"width":          "512",
+		"height":         "768",
+		"positivePrompt": "A portrait",
+	}
+	got := mergePresetParams(params, nil)
+	if got["width"] != "512" {
+		t.Errorf("width: want 512, got %q", got["width"])
+	}
+	if got["positivePrompt"] != "A portrait" {
+		t.Errorf("positivePrompt: want %q, got %q", "A portrait", got["positivePrompt"])
+	}
+}
+
+func TestPresetMerge_CLIOverridesPreset(t *testing.T) {
+	params := map[string]string{
+		"width":  "512",
+		"height": "768",
+	}
+	kvArgs := []string{"width=1024"}
+	got := mergePresetParams(params, kvArgs)
+	// CLI arg should win
+	if got["width"] != "1024" {
+		t.Errorf("width: want 1024 (CLI overrides preset), got %q", got["width"])
+	}
+	// Preset param not in CLI remains
+	if got["height"] != "768" {
+		t.Errorf("height: want 768 (from preset), got %q", got["height"])
+	}
+}
+
+func TestPresetMerge_CLIOnly(t *testing.T) {
+	got := mergePresetParams(nil, []string{"positivePrompt=Sunset", "width=1024"})
+	if got["positivePrompt"] != "Sunset" {
+		t.Errorf("positivePrompt: want Sunset, got %q", got["positivePrompt"])
+	}
+	if got["width"] != "1024" {
+		t.Errorf("width: want 1024, got %q", got["width"])
+	}
+}
+
+func TestPresetMerge_AdditionalCLIParams(t *testing.T) {
+	params := map[string]string{"width": "512"}
+	kvArgs := []string{"positivePrompt=Sunset over mountains"}
+	got := mergePresetParams(params, kvArgs)
+	if got["width"] != "512" {
+		t.Errorf("width: want 512, got %q", got["width"])
+	}
+	if got["positivePrompt"] != "Sunset over mountains" {
+		t.Errorf("positivePrompt: want %q, got %q", "Sunset over mountains", got["positivePrompt"])
+	}
+}
+
+func TestPresetMerge_EmptyPresetAndCLI(t *testing.T) {
+	got := mergePresetParams(nil, nil)
+	if len(got) != 0 {
+		t.Errorf("expected empty map, got %v", got)
+	}
+}
+
 // ---- helpers ----
 
 // completionKeys extracts the bare key (no "=" suffix, no description) from a

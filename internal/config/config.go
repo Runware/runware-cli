@@ -38,14 +38,15 @@ type Defaults struct {
 	Format       string  `mapstructure:"format" yaml:"format"`
 }
 
-// Preset is a named set of inference parameters.
+// Preset is a named set of inference parameters for use with the run command.
+// Model is stored separately because it is structurally special: it is needed
+// to fetch the JSON Schema during shell completion and is passed as the first
+// positional argument to client.Run. All other parameters are stored as
+// arbitrary key=value string pairs, consistent with how the run command
+// accepts them on the command line.
 type Preset struct {
-	Model     string  `yaml:"model,omitempty"`
-	Width     int     `yaml:"width,omitempty"`
-	Height    int     `yaml:"height,omitempty"`
-	Steps     int     `yaml:"steps,omitempty"`
-	CFGScale  float64 `yaml:"cfg_scale,omitempty"`
-	Scheduler string  `yaml:"scheduler,omitempty"`
+	Model  string            `yaml:"model,omitempty"`
+	Params map[string]string `yaml:"params,omitempty"`
 }
 
 // Config is the full configuration structure.

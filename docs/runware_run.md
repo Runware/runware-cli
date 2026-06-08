@@ -13,6 +13,10 @@ validate inputs and determine the task type.
 If the schema cannot determine the task type (e.g. for community or custom
 fine-tuned models), specify it explicitly with --task-type.
 
+When --preset is provided, the preset's model and parameters are used as
+defaults. Any key=value arguments on the command line override the preset.
+The model positional argument may be omitted when --preset supplies one.
+
 ```
 runware run <model> [key=value ...] [flags]
 ```
@@ -45,6 +49,9 @@ runware run <model> [key=value ...] [flags]
   # Community model — task type must be specified explicitly
   runware run civitai:305149@392545 --task-type imageInference positivePrompt="A portrait" width=1024 height=1024
 
+  # Load a saved preset, overriding individual params
+  runware run --preset portrait positivePrompt="Sunset over the ocean"
+
   # Save output to a specific directory
   runware run runware:101@1 positivePrompt="Abstract art" --output-dir ./my-images width=1024 height=1024
 
@@ -60,6 +67,7 @@ runware run <model> [key=value ...] [flags]
       --no-download              Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)
       --output-dir string        Directory to save downloaded output files (default "./outputs")
       --poll-interval duration   Polling interval when delivery method is async (default 2s)
+      --preset string            Load parameters from a saved preset (model and params used as defaults)
       --task-type string         Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference)
 ```
 
