@@ -37,7 +37,10 @@ as the run command, and the same schema-driven shell completion is available.`,
 			for _, kv := range kvArgs {
 				k, v, ok := strings.Cut(kv, "=")
 				if !ok {
-					return fmt.Errorf("invalid parameter %q: expected key=value format", kv)
+					return fmt.Errorf("invalid parameter %q: must be in key=value form", kv)
+				}
+				if k == "" {
+					return fmt.Errorf("invalid parameter %q: key must not be empty", kv)
 				}
 				params[k] = v
 			}

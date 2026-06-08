@@ -1,10 +1,7 @@
 package preset
 
 import (
-	"maps"
-	"slices"
 	"sort"
-	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmdutil"
@@ -16,33 +13,18 @@ import (
 type presetListResult []presetRow
 
 type presetRow struct {
-	Name   string            `json:"name"`
-	Model  string            `json:"model"`
-	Params map[string]string `json:"params,omitempty"`
-}
-
-// paramsummary returns a compact human-readable summary of the params map,
-// e.g. "height=768, width=512". Keys are sorted alphabetically.
-func paramsummary(params map[string]string) string {
-	if len(params) == 0 {
-		return ""
-	}
-	keys := slices.Sorted(maps.Keys(params))
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, k+"="+params[k])
-	}
-	return strings.Join(parts, ", ")
+	Name  string `json:"name"`
+	Model string `json:"model"`
 }
 
 func (r presetListResult) Headers() []string {
-	return []string{"Name", "Model", "Params"}
+	return []string{"Name", "Model"}
 }
 
 func (r presetListResult) Rows() [][]any {
 	rows := make([][]any, len(r))
 	for i, p := range r {
-		rows[i] = []any{p.Name, p.Model, paramsummary(p.Params)}
+		rows[i] = []any{p.Name, p.Model}
 	}
 	return rows
 }
@@ -58,9 +40,8 @@ func buildPresetList(presets map[string]config.Preset) presetListResult {
 	for i, name := range names {
 		p := presets[name]
 		result[i] = presetRow{
-			Name:   name,
-			Model:  p.Model,
-			Params: p.Params,
+			Name:  name,
+			Model: p.Model,
 		}
 	}
 	return result

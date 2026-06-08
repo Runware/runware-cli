@@ -106,14 +106,9 @@ The model positional argument may be omitted when --preset supplies one.`,
 					model = p.Model
 				}
 				// Merge params: preset provides defaults, CLI key=value args override.
-				merged := maps.Clone(p.Params)
-				if merged == nil {
-					merged = make(map[string]string, len(kvArgs))
-				}
-				for _, kv := range kvArgs {
-					if k, v, ok := strings.Cut(kv, "="); ok {
-						merged[k] = v
-					}
+				merged, err := mergePresetParams(p.Params, kvArgs)
+				if err != nil {
+					return err
 				}
 				// Rebuild kvArgs as a sorted slice for deterministic behaviour.
 				kvArgs = make([]string, 0, len(merged))
@@ -200,4 +195,26 @@ The model positional argument may be omitted when --preset supplies one.`,
 	})
 
 	return cmd
+}
+
+// mergePresetParams merges preset params (as defaults) with CLI key=value args
+// (which take priority). Returns an error for any CLI arg that is not in
+// key=value form or has an empty key, matching the validation in schema.ParseKV
+// so that --preset runs fail consistently with non-preset runs.
+func mergePresetParams(presetParams map[string]string, kvArgs []string) (map[string]string, error) {
+	merged := make(map[string]string, len(presetParams)+len(kvArgs))
+	for k, v := range presetParams {
+		merged[k] = v
+	}
+	for _, kv := range kvArgs {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid argument %q: must be in key=value form", kv)
+		}
+		if k == "" {
+			return nil, fmt.Errorf("invalid argument %q: key must not be empty", kv)
+		}
+		merged[k] = v
+	}
+	return merged, nil
 }
