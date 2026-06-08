@@ -206,22 +206,15 @@ All commands support `--format json` for piping into `jq` or scripts.
 api_key: your-api-key
 
 defaults:
-  model: runware:100@1
-  width: 1024
-  height: 1024
-  steps: 28
-  cfg_scale: 3.5
-  scheduler: euler
-  output_dir: ./outputs
-  output_format: png
-  format: table
-
+    output_dir: ./outputs
+    format: table
 presets:
-  quick:
-    model: runware:100@1
-    width: 512
-    height: 512
-    steps: 4
+    quick:
+        model: runware:100@1
+        params:
+            height: "512"
+            steps: "10"
+            width: "512"
 ```
 
 ## Development

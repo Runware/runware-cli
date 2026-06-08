@@ -13,23 +13,18 @@ import (
 type presetListResult []presetRow
 
 type presetRow struct {
-	Name      string  `json:"name"`
-	Model     string  `json:"model"`
-	Width     int     `json:"width"`
-	Height    int     `json:"height"`
-	Steps     int     `json:"steps"`
-	CFGScale  float64 `json:"cfg_scale"`
-	Scheduler string  `json:"scheduler"`
+	Name  string `json:"name"`
+	Model string `json:"model"`
 }
 
 func (r presetListResult) Headers() []string {
-	return []string{"Name", "Model", "Width", "Height", "Steps", "CFG", "Scheduler"}
+	return []string{"Name", "Model"}
 }
 
 func (r presetListResult) Rows() [][]any {
 	rows := make([][]any, len(r))
 	for i, p := range r {
-		rows[i] = []any{p.Name, p.Model, p.Width, p.Height, p.Steps, p.CFGScale, p.Scheduler}
+		rows[i] = []any{p.Name, p.Model}
 	}
 	return rows
 }
@@ -45,13 +40,8 @@ func buildPresetList(presets map[string]config.Preset) presetListResult {
 	for i, name := range names {
 		p := presets[name]
 		result[i] = presetRow{
-			Name:      name,
-			Model:     p.Model,
-			Width:     p.Width,
-			Height:    p.Height,
-			Steps:     p.Steps,
-			CFGScale:  p.CFGScale,
-			Scheduler: p.Scheduler,
+			Name:  name,
+			Model: p.Model,
 		}
 	}
 	return result

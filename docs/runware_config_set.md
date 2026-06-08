@@ -3,16 +3,16 @@
 Set a config value
 
 ```
-runware config set [key] [value] [flags]
+runware config set <key> <value> [flags]
 ```
 
 ### Examples
 
 ```
-  # set default model
-  runware config set model "runware:100@1"
+  # set the default output directory
+  runware config set output_dir ~/my-images
 
-  # set default output format
+  # set the default output format (table, json, yaml)
   runware config set format json
 ```
 
@@ -26,7 +26,7 @@ runware config set [key] [value] [flags]
 
 ```
       --debug              Show full debug output
-  -F, --format string      CLI output format: table, json, yaml
+  -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
 ```

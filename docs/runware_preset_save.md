@@ -2,37 +2,42 @@
 
 Save a named preset
 
+### Synopsis
+
+Save a named preset for use with the run command.
+
+The model AIR is required and is stored as the preset's default model.
+Additional parameters are passed as key=value pairs using the same syntax
+as the run command, and the same schema-driven shell completion is available.
+
 ```
-runware preset save [name] [flags]
+runware preset save <name> <model> [key=value ...] [flags]
 ```
 
 ### Examples
 
 ```
   # save a preset with model and dimensions
-  runware preset save portrait --model runware:100@1 --width 512 --height 768
+  runware preset save portrait runware:100@1 width=512 height=768
 
-  # save a preset with steps and cfg
-  runware preset save fast --model runware:100@1 --steps 20 --cfg 7
+  # save a preset with steps and cfg scale
+  runware preset save fast runware:100@1 steps=20 cfg_scale=7
+
+  # save a preset for a text model with a system prompt
+  runware preset save mychat minimax:m3@0 messages.0.role=system messages.0.content="You are a helpful assistant"
 ```
 
 ### Options
 
 ```
-  -c, --cfg float          CFG scale
-  -H, --height int         Image height
-  -h, --help               help for save
-  -m, --model string       Model identifier
-  -S, --scheduler string   Scheduler
-  -s, --steps int          Inference steps
-  -W, --width int          Image width
+  -h, --help   help for save
 ```
 
 ### Options inherited from parent commands
 
 ```
       --debug              Show full debug output
-  -F, --format string      CLI output format: table, json, yaml
+  -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
 ```

@@ -2,6 +2,8 @@ package preset
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
@@ -10,13 +12,9 @@ import (
 )
 
 type presetShowResult struct {
-	Name      string  `json:"name"`
-	Model     string  `json:"model"`
-	Width     int     `json:"width"`
-	Height    int     `json:"height"`
-	Steps     int     `json:"steps"`
-	CFGScale  float64 `json:"cfg_scale"`
-	Scheduler string  `json:"scheduler"`
+	Name   string            `json:"name"`
+	Model  string            `json:"model"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 func (r presetShowResult) Headers() []string {
@@ -24,15 +22,14 @@ func (r presetShowResult) Headers() []string {
 }
 
 func (r presetShowResult) Rows() [][]any {
-	return [][]any{
-		{"Name", r.Name},
-		{"Model", r.Model},
-		{"Width", r.Width},
-		{"Height", r.Height},
-		{"Steps", r.Steps},
-		{"CFG Scale", r.CFGScale},
-		{"Scheduler", r.Scheduler},
+	rows := [][]any{
+		{"name", r.Name},
+		{"model", r.Model},
 	}
+	for _, k := range slices.Sorted(maps.Keys(r.Params)) {
+		rows = append(rows, []any{k, r.Params[k]})
+	}
+	return rows
 }
 
 func newShowCmd() *cobra.Command {
@@ -50,13 +47,9 @@ func newShowCmd() *cobra.Command {
 			}
 
 			return output.Print(cmdutil.FormatFor(cmd), presetShowResult{
-				Name:      args[0],
-				Model:     p.Model,
-				Width:     p.Width,
-				Height:    p.Height,
-				Steps:     p.Steps,
-				CFGScale:  p.CFGScale,
-				Scheduler: p.Scheduler,
+				Name:   args[0],
+				Model:  p.Model,
+				Params: p.Params,
 			})
 		},
 	}

@@ -314,6 +314,103 @@ func TestBuildDestPath_FallbackMulti(t *testing.T) {
 	}
 }
 
+// ---- preset merge helpers ----
+
+// mergePresetParams replicates the merge logic from run.go for unit testing:
+// preset params are defaults; CLI key=value args override them. Returns the
+// merged set as a map[string]string, or an error for malformed args.
+func mustMerge(t *testing.T, presetParams map[string]string, kvArgs []string) map[string]string {
+	t.Helper()
+	m, err := mergePresetParams(presetParams, kvArgs)
+	if err != nil {
+		t.Fatalf("mergePresetParams: unexpected error: %v", err)
+	}
+	return m
+}
+
+func TestPresetMerge_PresetOnly(t *testing.T) {
+	params := map[string]string{
+		"width":          "512",
+		"height":         "768",
+		"positivePrompt": "A portrait",
+	}
+	got := mustMerge(t, params, nil)
+	if got["width"] != "512" {
+		t.Errorf("width: want 512, got %q", got["width"])
+	}
+	if got["positivePrompt"] != "A portrait" {
+		t.Errorf("positivePrompt: want %q, got %q", "A portrait", got["positivePrompt"])
+	}
+}
+
+func TestPresetMerge_CLIOverridesPreset(t *testing.T) {
+	params := map[string]string{
+		"width":  "512",
+		"height": "768",
+	}
+	kvArgs := []string{"width=1024"}
+	got := mustMerge(t, params, kvArgs)
+	// CLI arg should win
+	if got["width"] != "1024" {
+		t.Errorf("width: want 1024 (CLI overrides preset), got %q", got["width"])
+	}
+	// Preset param not in CLI remains
+	if got["height"] != "768" {
+		t.Errorf("height: want 768 (from preset), got %q", got["height"])
+	}
+}
+
+func TestPresetMerge_CLIOnly(t *testing.T) {
+	got := mustMerge(t, nil, []string{"positivePrompt=Sunset", "width=1024"})
+	if got["positivePrompt"] != "Sunset" {
+		t.Errorf("positivePrompt: want Sunset, got %q", got["positivePrompt"])
+	}
+	if got["width"] != "1024" {
+		t.Errorf("width: want 1024, got %q", got["width"])
+	}
+}
+
+func TestPresetMerge_AdditionalCLIParams(t *testing.T) {
+	params := map[string]string{"width": "512"}
+	kvArgs := []string{"positivePrompt=Sunset over mountains"}
+	got := mustMerge(t, params, kvArgs)
+	if got["width"] != "512" {
+		t.Errorf("width: want 512, got %q", got["width"])
+	}
+	if got["positivePrompt"] != "Sunset over mountains" {
+		t.Errorf("positivePrompt: want %q, got %q", "Sunset over mountains", got["positivePrompt"])
+	}
+}
+
+func TestPresetMerge_EmptyPresetAndCLI(t *testing.T) {
+	got := mustMerge(t, nil, nil)
+	if len(got) != 0 {
+		t.Errorf("expected empty map, got %v", got)
+	}
+}
+
+func TestPresetMerge_InvalidArgNoEquals(t *testing.T) {
+	// An arg without '=' must error, matching the non-preset path via schema.ParseKV.
+	_, err := mergePresetParams(nil, []string{"badarg"})
+	if err == nil {
+		t.Fatal("expected error for arg without '=', got nil")
+	}
+	if !strings.Contains(err.Error(), "must be in key=value form") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestPresetMerge_InvalidArgEmptyKey(t *testing.T) {
+	// An arg like "=value" has an empty key — must error, matching schema.ParseKV.
+	_, err := mergePresetParams(nil, []string{"=value"})
+	if err == nil {
+		t.Fatal("expected error for arg with empty key, got nil")
+	}
+	if !strings.Contains(err.Error(), "key must not be empty") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 // ---- helpers ----
 
 // completionKeys extracts the bare key (no "=" suffix, no description) from a

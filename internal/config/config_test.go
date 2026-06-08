@@ -36,22 +36,17 @@ func TestSaveAndLoad(t *testing.T) {
 	cfg := &Config{
 		APIKey: "test-key-12345678",
 		Defaults: Defaults{
-			Model:        "test-model",
-			Width:        512,
-			Height:       512,
-			Steps:        10,
-			CFGScale:     7.0,
-			Scheduler:    "euler",
-			OutputDir:    "./test-output",
-			OutputFormat: "jpg",
-			Format:       "json",
+			OutputDir: "./test-output",
+			Format:    "json",
 		},
 		Presets: map[string]Preset{
 			"fast": {
-				Model:  "fast-model",
-				Width:  256,
-				Height: 256,
-				Steps:  1,
+				Model: "fast-model",
+				Params: map[string]string{
+					"width":  "256",
+					"height": "256",
+					"steps":  "1",
+				},
 			},
 		},
 	}
@@ -92,9 +87,8 @@ func TestPresetOperations(t *testing.T) {
 	// Start with empty config
 	cfg := &Config{
 		Defaults: Defaults{
-			Model:  DefaultModel,
-			Width:  DefaultWidth,
-			Height: DefaultHeight,
+			OutputDir: DefaultOutputDir,
+			Format:    DefaultFormat,
 		},
 	}
 	if err := Save(cfg); err != nil {
@@ -103,10 +97,12 @@ func TestPresetOperations(t *testing.T) {
 
 	// Save a preset
 	preset := Preset{
-		Model:  "test-model",
-		Width:  768,
-		Height: 768,
-		Steps:  20,
+		Model: "test-model",
+		Params: map[string]string{
+			"width":  "768",
+			"height": "768",
+			"steps":  "20",
+		},
 	}
 	if err := SavePreset("test-preset", preset); err != nil {
 		t.Fatalf("SavePreset() error: %v", err)
@@ -120,8 +116,8 @@ func TestPresetOperations(t *testing.T) {
 	if got.Model != "test-model" {
 		t.Errorf("preset model = %q, want %q", got.Model, "test-model")
 	}
-	if got.Width != 768 {
-		t.Errorf("preset width = %d, want %d", got.Width, 768)
+	if got.Params["width"] != "768" {
+		t.Errorf("preset width = %q, want %q", got.Params["width"], "768")
 	}
 
 	// Non-existent preset

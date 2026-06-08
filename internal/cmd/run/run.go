@@ -3,13 +3,17 @@ package run
 import (
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/briandowns/spinner"
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +23,7 @@ import (
 // Runware inference API.
 func NewCmd(logger *log.Logger) *cobra.Command {
 	var flags struct {
+		preset         string
 		taskType       string
 		outputDir      string
 		noDownload     bool
@@ -36,7 +41,11 @@ passed as key=value pairs. The model's JSON Schema is fetched automatically to
 validate inputs and determine the task type.
 
 If the schema cannot determine the task type (e.g. for community or custom
-fine-tuned models), specify it explicitly with --task-type.`,
+fine-tuned models), specify it explicitly with --task-type.
+
+When --preset is provided, the preset's model and parameters are used as
+defaults. Any key=value arguments on the command line override the preset.
+The model positional argument may be omitted when --preset supplies one.`,
 		Example: `  # Image generation
   runware run runware:101@1 positivePrompt="A serene mountain landscape" width=1024 height=1024
 
@@ -62,15 +71,55 @@ fine-tuned models), specify it explicitly with --task-type.`,
   # Community model — task type must be specified explicitly
   runware run civitai:305149@392545 --task-type imageInference positivePrompt="A portrait" width=1024 height=1024
 
+  # Load a saved preset, overriding individual params
+  runware run --preset portrait positivePrompt="Sunset over the ocean"
+
   # Save output to a specific directory
   runware run runware:101@1 positivePrompt="Abstract art" --output-dir ./my-images width=1024 height=1024
 
   # Output as JSON without downloading
   runware run runware:101@1 positivePrompt="Abstract art" --format json --no-download width=1024 height=1024`,
-		Args: cobra.MinimumNArgs(1),
+		// Model positional arg is required unless --preset supplies one.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				if p, _ := cmd.Flags().GetString("preset"); p == "" {
+					return fmt.Errorf("requires at least 1 arg(s), only received 0")
+				}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			model := args[0]
-			kvArgs := args[1:]
+			model := ""
+			kvArgs := []string{}
+			if len(args) >= 1 {
+				model = args[0]
+				kvArgs = args[1:]
+			}
+
+			if flags.preset != "" {
+				p := config.GetPreset(flags.preset)
+				if p == nil {
+					return fmt.Errorf("preset %q not found", flags.preset)
+				}
+				// Preset supplies the model if it was not given as a positional arg.
+				if model == "" {
+					model = p.Model
+				}
+				// Merge params: preset provides defaults, CLI key=value args override.
+				merged, err := mergePresetParams(p.Params, kvArgs)
+				if err != nil {
+					return err
+				}
+				// Rebuild kvArgs as a sorted slice for deterministic behaviour.
+				kvArgs = make([]string, 0, len(merged))
+				for _, k := range slices.Sorted(maps.Keys(merged)) {
+					kvArgs = append(kvArgs, k+"="+merged[k])
+				}
+			}
+
+			if model == "" {
+				return fmt.Errorf("model is required: provide as first argument or via --preset")
+			}
 
 			spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond,
 				spinner.WithWriter(os.Stderr))
@@ -113,11 +162,18 @@ fine-tuned models), specify it explicitly with --task-type.`,
 	}
 
 	f := cmd.Flags()
+	f.StringVar(&flags.preset, "preset", "", "Load parameters from a saved preset (model and params used as defaults)")
 	f.StringVar(&flags.taskType, "task-type", "", "Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference)")
-	f.StringVar(&flags.outputDir, "output-dir", "./outputs", "Directory to save downloaded output files")
+	f.StringVar(&flags.outputDir, "output-dir", config.Get().Defaults.OutputDir, "Directory to save downloaded output files")
 	f.BoolVar(&flags.noDownload, "no-download", false, "Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)")
 	f.StringVar(&flags.deliveryMethod, "delivery-method", "", "Override delivery method (sync or async); default taken from model schema")
 	f.DurationVar(&flags.pollInterval, "poll-interval", 2*time.Second, "Polling interval when delivery method is async")
+
+	//nolint:errcheck,gosec
+	cmd.RegisterFlagCompletionFunc("preset", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		config.Init() //nolint:errcheck,gosec
+		return config.ListPresets(), cobra.ShellCompDirectiveNoFileComp
+	})
 
 	//nolint:errcheck,gosec
 	cmd.RegisterFlagCompletionFunc("task-type", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -139,4 +195,26 @@ fine-tuned models), specify it explicitly with --task-type.`,
 	})
 
 	return cmd
+}
+
+// mergePresetParams merges preset params (as defaults) with CLI key=value args
+// (which take priority). Returns an error for any CLI arg that is not in
+// key=value form or has an empty key, matching the validation in schema.ParseKV
+// so that --preset runs fail consistently with non-preset runs.
+func mergePresetParams(presetParams map[string]string, kvArgs []string) (map[string]string, error) {
+	merged := make(map[string]string, len(presetParams)+len(kvArgs))
+	for k, v := range presetParams {
+		merged[k] = v
+	}
+	for _, kv := range kvArgs {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid argument %q: must be in key=value form", kv)
+		}
+		if k == "" {
+			return nil, fmt.Errorf("invalid argument %q: key must not be empty", kv)
+		}
+		merged[k] = v
+	}
+	return merged, nil
 }

@@ -1,6 +1,6 @@
 ## runware config reset
 
-Reset configuration to defaults
+Reset configuration defaults
 
 ```
 runware config reset [flags]
@@ -9,7 +9,7 @@ runware config reset [flags]
 ### Examples
 
 ```
-  # reset all config to defaults
+  # reset all config defaults (API key is preserved)
   runware config reset
 ```
 
@@ -23,7 +23,7 @@ runware config reset [flags]
 
 ```
       --debug              Show full debug output
-  -F, --format string      CLI output format: table, json, yaml
+  -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
 ```

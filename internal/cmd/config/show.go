@@ -8,16 +8,9 @@ import (
 )
 
 type configShowResult struct {
-	APIKey       string  `json:"api_key"`
-	Model        string  `json:"model"`
-	Width        int     `json:"width"`
-	Height       int     `json:"height"`
-	Steps        int     `json:"steps"`
-	CFGScale     float64 `json:"cfg_scale"`
-	Scheduler    string  `json:"scheduler"`
-	OutputDir    string  `json:"output_dir"`
-	OutputFormat string  `json:"output_format"`
-	Format       string  `json:"format"`
+	APIKey    string `json:"api_key"`
+	OutputDir string `json:"output_dir"`
+	Format    string `json:"format"`
 }
 
 func (r configShowResult) Headers() []string {
@@ -26,16 +19,9 @@ func (r configShowResult) Headers() []string {
 
 func (r configShowResult) Rows() [][]any {
 	return [][]any{
-		{"API Key", r.APIKey},
-		{"Default Model", r.Model},
-		{"Default Width", r.Width},
-		{"Default Height", r.Height},
-		{"Default Steps", r.Steps},
-		{"Default CFG Scale", r.CFGScale},
-		{"Default Scheduler", r.Scheduler},
-		{"Default Output Dir", r.OutputDir},
-		{"Default Output Format", r.OutputFormat},
-		{"Default Format", r.Format},
+		{"api_key", r.APIKey},
+		{"output_dir", r.OutputDir},
+		{"format", r.Format},
 	}
 }
 
@@ -48,22 +34,17 @@ func newShowCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Get()
 
-			maskedKey := cfg.APIKey
-			if maskedKey != "" {
-				maskedKey = config.MaskKey(maskedKey)
+			apiKey := cfg.APIKey
+			if apiKey == "" {
+				apiKey = "not configured"
+			} else {
+				apiKey = config.MaskKey(apiKey)
 			}
 
 			return output.Print(cmdutil.FormatFor(cmd), configShowResult{
-				APIKey:       maskedKey,
-				Model:        cfg.Defaults.Model,
-				Width:        cfg.Defaults.Width,
-				Height:       cfg.Defaults.Height,
-				Steps:        cfg.Defaults.Steps,
-				CFGScale:     cfg.Defaults.CFGScale,
-				Scheduler:    cfg.Defaults.Scheduler,
-				OutputDir:    cfg.Defaults.OutputDir,
-				OutputFormat: cfg.Defaults.OutputFormat,
-				Format:       cfg.Defaults.Format,
+				APIKey:    apiKey,
+				OutputDir: cfg.Defaults.OutputDir,
+				Format:    cfg.Defaults.Format,
 			})
 		},
 	}
