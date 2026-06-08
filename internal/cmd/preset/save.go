@@ -54,7 +54,7 @@ as the run command, and the same schema-driven shell completion is available.`,
 				return fmt.Errorf("failed to save preset: %w", err)
 			}
 
-			logger.Info("Preset saved", "name", name)
+			logger.Info("✓ Preset saved", "name", name)
 			return nil
 		},
 		// Schema-driven key=value completion: args[1] is the model AIR.

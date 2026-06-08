@@ -14,28 +14,14 @@ const (
 	DefaultBaseURL   = "https://api.runware.ai/v1"
 	DefaultWSBaseURL = "wss://ws-api.runware.ai/v1"
 	MaskedKeySuffix  = "•••••"
-	DefaultModel     = "runware:100@1"
-	DefaultWidth     = 1024
-	DefaultHeight    = 1024
-	DefaultSteps     = 28
-	DefaultCFGScale  = 3.5
-	DefaultScheduler = "euler"
 	DefaultOutputDir = "./outputs"
-	DefaultOutputFmt = "png"
 	DefaultFormat    = "table"
 )
 
-// Defaults holds default values for inference commands.
+// Defaults holds default values for commands.
 type Defaults struct {
-	Model        string  `mapstructure:"model" yaml:"model"`
-	Width        int     `mapstructure:"width" yaml:"width"`
-	Height       int     `mapstructure:"height" yaml:"height"`
-	Steps        int     `mapstructure:"steps" yaml:"steps"`
-	CFGScale     float64 `mapstructure:"cfg_scale" yaml:"cfg_scale"`
-	Scheduler    string  `mapstructure:"scheduler" yaml:"scheduler"`
-	OutputDir    string  `mapstructure:"output_dir" yaml:"output_dir"`
-	OutputFormat string  `mapstructure:"output_format" yaml:"output_format"`
-	Format       string  `mapstructure:"format" yaml:"format"`
+	OutputDir string `mapstructure:"output_dir" yaml:"output_dir"`
+	Format    string `mapstructure:"format" yaml:"format"`
 }
 
 // Preset is a named set of inference parameters for use with the run command.
@@ -67,14 +53,7 @@ func Init() error {
 
 	configDir = filepath.Join(home, ".runware")
 
-	viper.SetDefault("defaults.model", DefaultModel)
-	viper.SetDefault("defaults.width", DefaultWidth)
-	viper.SetDefault("defaults.height", DefaultHeight)
-	viper.SetDefault("defaults.steps", DefaultSteps)
-	viper.SetDefault("defaults.cfg_scale", DefaultCFGScale)
-	viper.SetDefault("defaults.scheduler", DefaultScheduler)
 	viper.SetDefault("defaults.output_dir", DefaultOutputDir)
-	viper.SetDefault("defaults.output_format", DefaultOutputFmt)
 	viper.SetDefault("defaults.format", DefaultFormat)
 
 	viper.SetConfigName("config")

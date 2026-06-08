@@ -11,21 +11,17 @@ import (
 func newResetCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "reset",
-		Short: "Reset configuration to defaults",
-		Example: `  # reset all config to defaults
+		Short: "Reset configuration defaults",
+		Example: `  # reset all config defaults (API key is preserved)
   runware config reset`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Preserve the API key — only the Defaults are reset.
+			existing := config.Get()
 			cfg := &config.Config{
+				APIKey: existing.APIKey,
 				Defaults: config.Defaults{
-					Model:        config.DefaultModel,
-					Width:        config.DefaultWidth,
-					Height:       config.DefaultHeight,
-					Steps:        config.DefaultSteps,
-					CFGScale:     config.DefaultCFGScale,
-					Scheduler:    config.DefaultScheduler,
-					OutputDir:    config.DefaultOutputDir,
-					OutputFormat: config.DefaultOutputFmt,
-					Format:       config.DefaultFormat,
+					OutputDir: config.DefaultOutputDir,
+					Format:    config.DefaultFormat,
 				},
 			}
 

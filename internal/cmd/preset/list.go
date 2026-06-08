@@ -21,7 +21,7 @@ type presetRow struct {
 	Params map[string]string `json:"params,omitempty"`
 }
 
-// paramssummary returns a compact human-readable summary of the params map,
+// paramsummary returns a compact human-readable summary of the params map,
 // e.g. "height=768, width=512". Keys are sorted alphabetically.
 func paramsummary(params map[string]string) string {
 	if len(params) == 0 {

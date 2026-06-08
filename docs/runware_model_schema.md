@@ -30,7 +30,7 @@ runware model schema <air> [flags]
 
 ```
       --debug              Show full debug output
-  -F, --format string      CLI output format: table, json, yaml
+  -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
 ```

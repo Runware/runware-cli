@@ -169,7 +169,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 	f := cmd.Flags()
 	f.StringVar(&flags.preset, "preset", "", "Load parameters from a saved preset (model and params used as defaults)")
 	f.StringVar(&flags.taskType, "task-type", "", "Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference)")
-	f.StringVar(&flags.outputDir, "output-dir", "./outputs", "Directory to save downloaded output files")
+	f.StringVar(&flags.outputDir, "output-dir", config.Get().Defaults.OutputDir, "Directory to save downloaded output files")
 	f.BoolVar(&flags.noDownload, "no-download", false, "Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)")
 	f.StringVar(&flags.deliveryMethod, "delivery-method", "", "Override delivery method (sync or async); default taken from model schema")
 	f.DurationVar(&flags.pollInterval, "poll-interval", 2*time.Second, "Polling interval when delivery method is async")

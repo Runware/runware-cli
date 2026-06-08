@@ -25,6 +25,13 @@ func newLogger() *log.Logger {
 
 // NewRootCmd builds and returns the root cobra command.
 func NewRootCmd(logger *log.Logger) *cobra.Command {
+	// Initialize config eagerly so subcommand constructors can read defaults
+	// for use in flag descriptions (help text). Errors are intentionally
+	// swallowed here — Init() is idempotent and PersistentPreRunE calls it
+	// again, surfacing any real error to the user at command-run time.
+	_ = config.Init()
+	cfg := config.Get()
+
 	root := &cobra.Command{
 		Use:   "runware",
 		Short: "CLI tool for the Runware inference API",
@@ -39,7 +46,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().StringP("format", "F", "", "CLI output format: table, json, yaml")
+	root.PersistentFlags().StringP("format", "F", cfg.Defaults.Format, "CLI output format: table, json, yaml")
 	root.PersistentFlags().BoolP("verbose", "v", false, "Show request/response details")
 	root.PersistentFlags().Bool("debug", false, "Show full debug output")
 	root.PersistentFlags().String("transport", "ws", "Transport protocol: ws (WebSocket) or http (REST)")

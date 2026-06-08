@@ -36,15 +36,8 @@ func TestSaveAndLoad(t *testing.T) {
 	cfg := &Config{
 		APIKey: "test-key-12345678",
 		Defaults: Defaults{
-			Model:        "test-model",
-			Width:        512,
-			Height:       512,
-			Steps:        10,
-			CFGScale:     7.0,
-			Scheduler:    "euler",
-			OutputDir:    "./test-output",
-			OutputFormat: "jpg",
-			Format:       "json",
+			OutputDir: "./test-output",
+			Format:    "json",
 		},
 		Presets: map[string]Preset{
 			"fast": {
@@ -94,9 +87,8 @@ func TestPresetOperations(t *testing.T) {
 	// Start with empty config
 	cfg := &Config{
 		Defaults: Defaults{
-			Model:  DefaultModel,
-			Width:  DefaultWidth,
-			Height: DefaultHeight,
+			OutputDir: DefaultOutputDir,
+			Format:    DefaultFormat,
 		},
 	}
 	if err := Save(cfg); err != nil {
