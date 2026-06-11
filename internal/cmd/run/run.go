@@ -214,13 +214,14 @@ func mergePresetParams(presetParams map[string]string, kvArgs []string) (map[str
 }
 
 func runProgress(spin *cmdutil.Spinner) func(p int) {
-	msg := "Waiting for result..."
+	const baseMsg = "Waiting for result..."
 
 	return func(p int) {
 		if p > 0 {
-			msg += fmt.Sprintf(" %d%%", p)
+			spin.SetMessage(fmt.Sprintf("%s %d%%", baseMsg, p))
+			return
 		}
 
-		spin.SetMessage(msg)
+		spin.SetMessage(baseMsg)
 	}
 }
