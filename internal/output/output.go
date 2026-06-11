@@ -14,6 +14,25 @@ const (
 	FormatYAML  Format = "yaml"
 )
 
+// ValidFormats returns the list of recognised output format names.
+func ValidFormats() []string {
+	return []string{
+		string(FormatTable),
+		string(FormatJSON),
+		string(FormatYAML),
+	}
+}
+
+// ValidFormat reports whether s is a recognised output format name.
+func ValidFormat(s string) bool {
+	switch Format(strings.ToLower(s)) {
+	case FormatTable, FormatJSON, FormatYAML:
+		return true
+	default:
+		return false
+	}
+}
+
 // ParseFormat parses a format string, defaulting to table.
 func ParseFormat(s string) Format {
 	switch strings.ToLower(s) {

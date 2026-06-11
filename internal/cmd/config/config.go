@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -23,15 +24,9 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 	return cmd
 }
 
-// defaultsKeys are config keys that live under the "defaults" namespace.
-var defaultsKeys = map[string]struct{}{
-	keyOutputDir: {},
-	keyFormat:    {},
-}
-
 // normalizeConfigKey maps shorthand keys like "steps" to "defaults.steps".
 func normalizeConfigKey(key string) string {
-	if _, ok := defaultsKeys[key]; ok {
+	if _, ok := config.ValidDefaultsKeys()[key]; ok {
 		return "defaults." + key
 	}
 	return key

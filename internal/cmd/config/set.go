@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
+	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,8 +34,13 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 			key := args[0]
 			value := args[1]
 
-			if _, ok := defaultsKeys[key]; !ok {
-				return fmt.Errorf("unknown config key %q: valid keys are: output_dir, format", key)
+			validKeys := config.ValidDefaultsKeys()
+			if _, ok := validKeys[key]; !ok {
+				keys := make([]string, 0, len(validKeys))
+				for k := range validKeys {
+					keys = append(keys, k)
+				}
+				return fmt.Errorf("unknown config key %q: valid keys are: %s", key, strings.Join(keys, ", "))
 			}
 
 			if err := validateConfigValue(key, value); err != nil {
@@ -58,10 +64,8 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 func validateConfigValue(key, value string) error {
 	switch key {
 	case keyFormat:
-		switch strings.ToLower(value) {
-		case "table", "json", "yaml":
-		default:
-			return fmt.Errorf("invalid format %q: must be one of: table, json, yaml", value)
+		if !output.ValidFormat(value) {
+			return fmt.Errorf("invalid format %q: must be one of: %s", value, strings.Join(output.ValidFormats(), ", "))
 		}
 	case keyOutputDir:
 		if value == "" {

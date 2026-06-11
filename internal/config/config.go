@@ -44,6 +44,15 @@ type Config struct {
 
 var configDir string
 
+// ValidDefaultsKeys returns the set of config keys that live under the
+// "defaults" namespace and can be set via `config set`.
+func ValidDefaultsKeys() map[string]struct{} {
+	return map[string]struct{}{
+		"output_dir": {},
+		"format":     {},
+	}
+}
+
 // Init sets up Viper to read from ~/.runware/config.yaml and sets defaults.
 func Init() error {
 	home, err := os.UserHomeDir()
@@ -76,30 +85,9 @@ func Init() error {
 }
 
 // Get returns the current merged config.
-// It reads the YAML file directly for preset data (bypassing Viper's
-// dot-as-path-separator behaviour which breaks dotted param keys),
-// then overlays Viper-managed fields (defaults, env overrides).
 func Get() *Config {
 	var cfg Config
-
-	// Read the raw YAML to preserve dotted keys in preset params.
-	if configDir != "" {
-		if data, err := os.ReadFile(ConfigPath()); err == nil {
-			yaml.Unmarshal(data, &cfg) //nolint:errcheck,gosec
-		}
-	}
-
-	// Overlay Viper-managed values (defaults + env overrides).
-	if v := viper.GetString("api_key"); v != "" {
-		cfg.APIKey = v
-	}
-	if v := viper.GetString("defaults.output_dir"); v != "" {
-		cfg.Defaults.OutputDir = v
-	}
-	if v := viper.GetString("defaults.format"); v != "" {
-		cfg.Defaults.Format = v
-	}
-
+	viper.Unmarshal(&cfg) //nolint:errcheck,gosec
 	return &cfg
 }
 
