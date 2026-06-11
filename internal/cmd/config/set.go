@@ -23,8 +23,8 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			if len(args) == 0 {
 				return []cobra.Completion{
-					"output_dir",
-					"format",
+					keyOutputDir,
+					keyFormat,
 				}, cobra.ShellCompDirectiveNoFileComp
 			}
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -57,13 +57,13 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 
 func validateConfigValue(key, value string) error {
 	switch key {
-	case "format":
+	case keyFormat:
 		switch strings.ToLower(value) {
 		case "table", "json", "yaml":
 		default:
 			return fmt.Errorf("invalid format %q: must be one of: table, json, yaml", value)
 		}
-	case "output_dir":
+	case keyOutputDir:
 		if value == "" {
 			return fmt.Errorf("output_dir cannot be empty")
 		}

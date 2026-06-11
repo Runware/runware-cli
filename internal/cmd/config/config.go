@@ -5,6 +5,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	keyOutputDir = "output_dir"
+	keyFormat    = "format"
+)
+
 // NewCmd returns the config command with show, set, reset, and path subcommands.
 func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
@@ -20,8 +25,8 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 
 // defaultsKeys are config keys that live under the "defaults" namespace.
 var defaultsKeys = map[string]struct{}{
-	"output_dir": {},
-	"format":     {},
+	keyOutputDir: {},
+	keyFormat:    {},
 }
 
 // normalizeConfigKey maps shorthand keys like "steps" to "defaults.steps".
