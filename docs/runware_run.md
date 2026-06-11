@@ -62,7 +62,7 @@ runware run <model> [key=value ...] [flags]
 ### Options
 
 ```
-      --delivery-method string   Override delivery method (sync or async); default taken from model schema
+      --delivery-method string   Delivery method (sync or async) (default "async")
   -h, --help                     help for run
       --no-download              Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)
       --output-dir string        Directory to save downloaded output files (default "./outputs")

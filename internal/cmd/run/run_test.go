@@ -1,9 +1,12 @@
 package run
 
 import (
+	"io"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
@@ -408,6 +411,19 @@ func TestPresetMerge_InvalidArgEmptyKey(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "key must not be empty") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// ---- flag default tests ----
+
+func TestNewCmd_DeliveryMethodDefaultsToAsync(t *testing.T) {
+	cmd := NewCmd(log.New(io.Discard))
+	got, err := cmd.Flags().GetString("delivery-method")
+	if err != nil {
+		t.Fatalf("GetString(delivery-method): %v", err)
+	}
+	if got != string(api.DeliveryMethodAsync) {
+		t.Errorf("delivery-method default = %q, want %q", got, api.DeliveryMethodAsync)
 	}
 }
 
