@@ -205,8 +205,27 @@ func TestGetDefaults(t *testing.T) {
 	if cfg.Defaults.Format != DefaultFormat {
 		t.Errorf("Format = %q, want %q", cfg.Defaults.Format, DefaultFormat)
 	}
+	if cfg.Defaults.Transport != DefaultTransport {
+		t.Errorf("Transport = %q, want %q", cfg.Defaults.Transport, DefaultTransport)
+	}
 	if cfg.APIKey != "" {
 		t.Errorf("APIKey = %q, want empty", cfg.APIKey)
+	}
+}
+
+func TestTransportRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir = tmpDir
+	t.Setenv("RUNWARE_API_KEY", "")
+
+	cfg := Get()
+	cfg.Defaults.Transport = "http"
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	if got := Get().Defaults.Transport; got != "http" {
+		t.Errorf("Transport = %q, want %q", got, "http")
 	}
 }
 

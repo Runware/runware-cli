@@ -188,7 +188,7 @@ runware completion              # Generate shell completions (bash/zsh/fish/powe
 | `--format json\|yaml\|table` | Output format (default: table) |
 | `-v, --verbose` | Show request/response details |
 | `--debug` | Full debug output |
-| `--transport ws\|http` | Transport protocol: WebSocket or REST (default: `ws`) |
+| `--transport ws\|http` | Transport protocol: WebSocket or REST (default: `defaults.transport` from config, or `ws`) |
 
 All commands support `--format json` for piping into `jq` or scripts.
 
@@ -208,6 +208,7 @@ api_key: your-api-key
 defaults:
     output_dir: ./outputs
     format: table
+    transport: ws
 presets:
     quick:
         model: runware:100@1

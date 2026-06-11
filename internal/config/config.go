@@ -14,12 +14,16 @@ const (
 	MaskedKeySuffix  = "•••••"
 	DefaultOutputDir = "./outputs"
 	DefaultFormat    = "table"
+	// DefaultTransport matches transport.SchemeWS; kept as a literal so the
+	// config package stays free of internal imports.
+	DefaultTransport = "ws"
 )
 
 // Defaults holds default values for commands.
 type Defaults struct {
 	OutputDir string `yaml:"output_dir"`
 	Format    string `yaml:"format"`
+	Transport string `yaml:"transport"`
 }
 
 // Preset is a named set of inference parameters for use with the run command.
@@ -48,6 +52,7 @@ func ValidDefaultsKeys() map[string]struct{} {
 	return map[string]struct{}{
 		"output_dir": {},
 		"format":     {},
+		"transport":  {},
 	}
 }
 
@@ -104,6 +109,9 @@ func Get() *Config {
 	}
 	if cfg.Defaults.Format == "" {
 		cfg.Defaults.Format = DefaultFormat
+	}
+	if cfg.Defaults.Transport == "" {
+		cfg.Defaults.Transport = DefaultTransport
 	}
 	if v := os.Getenv("RUNWARE_API_KEY"); v != "" {
 		cfg.APIKey = v
