@@ -67,7 +67,7 @@ runware run <model> [key=value ...] [flags]
 | `--task-type` | Override detected task type (e.g. `imageInference`, `videoInference`, `audioInference`, `textInference`) |
 | `--output-dir` | Directory to save downloaded output files (default `./outputs`) |
 | `--no-download` | Skip auto-downloading media files |
-| `--delivery-method` | Override delivery method (`sync` or `async`); default taken from model schema |
+| `--delivery-method` | Delivery method (`sync` or `async`) (default `async`) |
 | `--poll-interval` | Polling interval for async requests (default `2s`) |
 
 #### Image generation
