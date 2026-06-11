@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmd/account"
@@ -39,6 +41,13 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)
+			}
+			if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
+				switch strings.ToLower(f) {
+				case "table", "json", "yaml":
+				default:
+					return fmt.Errorf("invalid format %q: must be one of: table, json, yaml", f)
+				}
 			}
 			return config.Init()
 		},
