@@ -43,14 +43,18 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 			if key != "" {
 				maskedKey = config.MaskKey(key)
 
+				spin := cmdutil.NewSpinner("Checking auth status...")
+				spin.Start()
+
 				t, err := cmdutil.NewTransport(cmd, slog.New(logger))
 				if err != nil {
-					// Dial failure: network or config problem, not an auth issue.
+					spin.Stop()
 					status = "unreachable"
 				} else {
 					defer t.Close() //nolint:errcheck
 					client := api.NewClient(t, slog.New(logger))
 					_, err = client.Ping(cmd.Context())
+					spin.Stop()
 					switch {
 					case err == nil:
 						status = "valid"

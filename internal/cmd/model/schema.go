@@ -162,10 +162,15 @@ func newSchemaCmd(_ *log.Logger) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			air := args[0]
 
+			spin := cmdutil.NewSpinner("Fetching model schema...")
+			spin.Start()
+
 			schema, err := api.FetchModelSchema(cmd.Context(), air)
 			if err != nil {
+				spin.Stop()
 				return err
 			}
+			spin.Stop()
 
 			format := cmdutil.FormatFor(cmd)
 

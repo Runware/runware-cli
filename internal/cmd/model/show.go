@@ -100,8 +100,12 @@ func newShowCmd(logger *log.Logger) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			air := args[0]
 
+			spin := cmdutil.NewSpinner("Fetching model details...")
+			spin.Start()
+
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 			defer t.Close() //nolint:errcheck
@@ -113,9 +117,11 @@ func newShowCmd(logger *log.Logger) *cobra.Command {
 				Limit:  100,
 			})
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 
+			spin.Stop()
 			var found *api.ModelResult
 			for i := range result.Results {
 				if result.Results[i].AIR == air {
