@@ -12,6 +12,7 @@ const (
 	keyAPIKey    = "api_key"
 	keyOutputDir = "output_dir"
 	keyFormat    = "format"
+	keyTransport = "transport"
 )
 
 // NewCmd returns the config command with show, set, reset, and path subcommands.
@@ -45,6 +46,8 @@ func applyConfigValue(cfg *config.Config, key, value string) error {
 		cfg.Defaults.OutputDir = value
 	case "defaults." + keyFormat:
 		cfg.Defaults.Format = value
+	case "defaults." + keyTransport:
+		cfg.Defaults.Transport = value
 	default:
 		return fmt.Errorf("unknown config key %q", key)
 	}

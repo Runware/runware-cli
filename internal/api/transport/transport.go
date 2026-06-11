@@ -5,7 +5,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 )
+
+// Transport schemes supported by the CLI.
+const (
+	SchemeWS   = "ws"
+	SchemeHTTP = "http"
+)
+
+// ValidTransports returns the list of supported transport schemes.
+func ValidTransports() []string {
+	return []string{
+		SchemeWS,
+		SchemeHTTP,
+	}
+}
+
+// ValidTransport reports whether s names a supported transport scheme.
+// Matching is case-insensitive, consistent with output format validation.
+func ValidTransport(s string) bool {
+	switch strings.ToLower(s) {
+	case SchemeWS, SchemeHTTP:
+		return true
+	default:
+		return false
+	}
+}
 
 // APIResponse is the top-level envelope returned by the Runware API.
 type APIResponse struct {
@@ -24,15 +50,15 @@ type Transport interface {
 	Send(ctx context.Context, tasks []any) ([]json.RawMessage, error)
 }
 
-// DialContext dials a transport by scheme. scheme must be "ws" or "http".
-// Returns an error if the scheme is not recognised.
+// DialContext dials a transport by scheme. scheme must be "ws" or "http"
+// (case-insensitive). Returns an error if the scheme is not recognised.
 func DialContext(ctx context.Context, scheme, apiKey, url string, logger *slog.Logger) (Transport, error) {
-	switch scheme {
-	case "ws":
+	switch strings.ToLower(scheme) {
+	case SchemeWS:
 		return DialWS(ctx, apiKey, url, logger)
-	case "http":
+	case SchemeHTTP:
 		return DialHTTP(ctx, apiKey, url, logger)
 	default:
-		return nil, fmt.Errorf("unknown transport scheme %q: must be \"ws\" or \"http\"", scheme)
+		return nil, fmt.Errorf("unknown transport scheme %q: must be one of: %s", scheme, strings.Join(ValidTransports(), ", "))
 	}
 }

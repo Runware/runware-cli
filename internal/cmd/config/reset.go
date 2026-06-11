@@ -22,6 +22,7 @@ func newResetCmd(logger *log.Logger) *cobra.Command {
 				Defaults: config.Defaults{
 					OutputDir: config.DefaultOutputDir,
 					Format:    config.DefaultFormat,
+					Transport: config.DefaultTransport,
 				},
 			}
 

@@ -37,6 +37,16 @@ func TestApplyConfigValue_KnownKeys(t *testing.T) {
 			value: "yaml",
 			check: func(cfg *config.Config) string { return cfg.Defaults.Format },
 		},
+		{
+			key:   keyTransport,
+			value: "http",
+			check: func(cfg *config.Config) string { return cfg.Defaults.Transport },
+		},
+		{
+			key:   "defaults." + keyTransport,
+			value: "ws",
+			check: func(cfg *config.Config) string { return cfg.Defaults.Transport },
+		},
 	}
 
 	for _, tt := range tests {

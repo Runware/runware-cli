@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -18,13 +19,17 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
   runware config set output_dir ~/my-images
 
   # set the default output format (table, json, yaml)
-  runware config set format json`,
+  runware config set format json
+
+  # set the default transport (ws, http)
+  runware config set transport http`,
 		Args: cobra.ExactArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			if len(args) == 0 {
 				return []cobra.Completion{
 					keyOutputDir,
 					keyFormat,
+					keyTransport,
 				}, cobra.ShellCompDirectiveNoFileComp
 			}
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -69,6 +74,10 @@ func validateConfigValue(key, value string) error {
 	case keyOutputDir:
 		if value == "" {
 			return fmt.Errorf("output_dir cannot be empty")
+		}
+	case keyTransport:
+		if !transport.ValidTransport(value) {
+			return fmt.Errorf("invalid transport %q: must be one of: %s", value, strings.Join(transport.ValidTransports(), ", "))
 		}
 	}
 	return nil
