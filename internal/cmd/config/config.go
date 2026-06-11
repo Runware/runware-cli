@@ -1,12 +1,15 @@
 package config
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 const (
+	keyAPIKey    = "api_key"
 	keyOutputDir = "output_dir"
 	keyFormat    = "format"
 )
@@ -30,4 +33,20 @@ func normalizeConfigKey(key string) string {
 		return "defaults." + key
 	}
 	return key
+}
+
+// applyConfigValue sets the config field addressed by key (shorthand or
+// fully-qualified) to value. Unknown keys are an error.
+func applyConfigValue(cfg *config.Config, key, value string) error {
+	switch normalizeConfigKey(key) {
+	case keyAPIKey:
+		cfg.APIKey = value
+	case "defaults." + keyOutputDir:
+		cfg.Defaults.OutputDir = value
+	case "defaults." + keyFormat:
+		cfg.Defaults.Format = value
+	default:
+		return fmt.Errorf("unknown config key %q", key)
+	}
+	return nil
 }

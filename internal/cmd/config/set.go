@@ -8,7 +8,6 @@ import (
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func newSetCmd(logger *log.Logger) *cobra.Command {
@@ -47,10 +46,10 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 
-			viperKey := normalizeConfigKey(key)
-			viper.Set(viperKey, value)
-
 			cfg := config.Get()
+			if err := applyConfigValue(cfg, key, value); err != nil {
+				return err
+			}
 			if err := config.Save(cfg); err != nil {
 				return fmt.Errorf("failed to save config: %w", err)
 			}
