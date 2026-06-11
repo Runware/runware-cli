@@ -170,7 +170,7 @@ func annotatePresetCompletions(completions []cobra.Completion, presetKeys map[st
 // characters are replaced with spaces, and long values are truncated.
 func sanitizePresetValue(v string) string {
 	v = strings.Map(func(r rune) rune {
-		if r < ' ' {
+		if r < ' ' || r == 0x7f {
 			return ' '
 		}
 		return r

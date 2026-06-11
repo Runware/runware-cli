@@ -86,7 +86,7 @@ func load() (*Config, error) {
 		return nil, fmt.Errorf("error reading config: %w", err)
 	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("error reading config: %w", err)
+		return nil, fmt.Errorf("error parsing config: %w", err)
 	}
 	return &cfg, nil
 }
