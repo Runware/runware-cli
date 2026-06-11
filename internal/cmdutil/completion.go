@@ -145,6 +145,9 @@ func MakeSchemaArgCompleter(modelArgIdx int) func(*cobra.Command, []string, stri
 	}
 }
 
+// maxPresetValueLen caps the preset value shown in a completion description.
+const maxPresetValueLen = 40
+
 // annotatePresetCompletions prefixes the description of completions whose key
 // the preset already sets, so users can see the value they would override.
 // presetKeys maps canonical dot-notation keys to the preset's values.
@@ -157,9 +160,25 @@ func annotatePresetCompletions(completions []cobra.Completion, presetKeys map[st
 			out = append(out, c)
 			continue
 		}
-		out = append(out, cobra.CompletionWithDesc(key, "[preset: "+v+"] "+desc))
+		out = append(out, cobra.CompletionWithDesc(key, "[preset: "+sanitizePresetValue(v)+"] "+desc))
 	}
 	return out
+}
+
+// sanitizePresetValue makes a preset value safe for embedding in a completion
+// description: completion lines are tab-delimited and single-line, so control
+// characters are replaced with spaces, and long values are truncated.
+func sanitizePresetValue(v string) string {
+	v = strings.Map(func(r rune) rune {
+		if r < ' ' {
+			return ' '
+		}
+		return r
+	}, v)
+	if runes := []rune(v); len(runes) > maxPresetValueLen {
+		v = string(runes[:maxPresetValueLen]) + "…"
+	}
+	return v
 }
 
 // CollectCompletions recursively walks a schema node and emits a dot-notation
