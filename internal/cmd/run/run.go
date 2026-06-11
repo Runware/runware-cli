@@ -135,9 +135,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 				TaskType:       flags.taskType,
 				DeliveryMethod: flags.deliveryMethod,
 				PollInterval:   flags.pollInterval,
-				OnProgress: func(p int) {
-					spin.SetMessage(fmt.Sprintf("Waiting for result... %d%%", p))
-				},
+				OnProgress:     runProgress(spin),
 			})
 			if err != nil {
 				spin.Stop()
@@ -213,4 +211,17 @@ func mergePresetParams(presetParams map[string]string, kvArgs []string) (map[str
 		merged[k] = v
 	}
 	return merged, nil
+}
+
+func runProgress(spin *cmdutil.Spinner) func(p int) {
+	const baseMsg = "Waiting for result..."
+
+	return func(p int) {
+		if p > 0 {
+			spin.SetMessage(fmt.Sprintf("%s %d%%", baseMsg, p))
+			return
+		}
+
+		spin.SetMessage(baseMsg)
+	}
 }
