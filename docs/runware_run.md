@@ -52,11 +52,11 @@ runware run <model> [key=value ...] [flags]
   # Upscale
   runware run runware:35@2 settings.confidence=0.45 settings.maxDetections=3 settings.maskPadding=14 settings.maskBlur=4 inputs.image="https://assets.runware.ai/assets/inputs/38837c23-1b72-4322-8465-ec950f83e2ad.jpg"
 
-  # Remove background
-  runware run runware:110@1 --task-type removeBackground inputs.image="https://assets.runware.ai/assets/inputs/8e540ecf-ef5e-4a70-b07a-dc73ffd827a2.jpg"
+  # Remove background (inspect returned fields/URLs)
+  runware run runware:110@1 --task-type removeBackground --format json --no-download inputs.image="https://assets.runware.ai/assets/inputs/8e540ecf-ef5e-4a70-b07a-dc73ffd827a2.jpg"
 
-  # Caption
-  runware run memories:1@1 --task-type caption inputs.video="https://assets.runware.ai/assets/inputs/42b64dcb-3c21-4b50-83ab-779d338dde47.mp4"
+  # Caption (inspect returned fields/URLs)
+  runware run memories:1@1 --task-type caption --format json --no-download inputs.video="https://assets.runware.ai/assets/inputs/42b64dcb-3c21-4b50-83ab-779d338dde47.mp4"
 
   # Load a saved preset, overriding individual params
   runware run --preset portrait positivePrompt="Sunset over the ocean"
