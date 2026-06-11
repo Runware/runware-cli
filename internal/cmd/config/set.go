@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
@@ -29,10 +30,19 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			key := normalizeConfigKey(args[0])
+			key := args[0]
 			value := args[1]
 
-			viper.Set(key, value)
+			if _, ok := defaultsKeys[key]; !ok {
+				return fmt.Errorf("unknown config key %q: valid keys are: output_dir, format", key)
+			}
+
+			if err := validateConfigValue(key, value); err != nil {
+				return err
+			}
+
+			viperKey := normalizeConfigKey(key)
+			viper.Set(viperKey, value)
 
 			cfg := config.Get()
 			if err := config.Save(cfg); err != nil {
@@ -43,4 +53,20 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func validateConfigValue(key, value string) error {
+	switch key {
+	case "format":
+		switch strings.ToLower(value) {
+		case "table", "json", "yaml":
+		default:
+			return fmt.Errorf("invalid format %q: must be one of: table, json, yaml", value)
+		}
+	case "output_dir":
+		if value == "" {
+			return fmt.Errorf("output_dir cannot be empty")
+		}
+	}
+	return nil
 }
