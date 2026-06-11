@@ -83,8 +83,10 @@ func Get() *Config {
 	var cfg Config
 
 	// Read the raw YAML to preserve dotted keys in preset params.
-	if data, err := os.ReadFile(ConfigPath()); err == nil {
-		yaml.Unmarshal(data, &cfg) //nolint:errcheck,gosec
+	if configDir != "" {
+		if data, err := os.ReadFile(ConfigPath()); err == nil {
+			yaml.Unmarshal(data, &cfg) //nolint:errcheck,gosec
+		}
 	}
 
 	// Overlay Viper-managed values (defaults + env overrides).
