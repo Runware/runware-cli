@@ -44,6 +44,15 @@ type Config struct {
 
 var configDir string
 
+// ValidDefaultsKeys returns the set of config keys that live under the
+// "defaults" namespace and can be set via `config set`.
+func ValidDefaultsKeys() map[string]struct{} {
+	return map[string]struct{}{
+		"output_dir": {},
+		"format":     {},
+	}
+}
+
 // Init sets up Viper to read from ~/.runware/config.yaml and sets defaults.
 func Init() error {
 	home, err := os.UserHomeDir()

@@ -20,8 +20,8 @@ func (r configShowResult) Headers() []string {
 func (r configShowResult) Rows() [][]any {
 	return [][]any{
 		{"api_key", r.APIKey},
-		{"output_dir", r.OutputDir},
-		{"format", r.Format},
+		{keyOutputDir, r.OutputDir},
+		{keyFormat, r.Format},
 	}
 }
 

@@ -2,9 +2,11 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
+	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -22,17 +24,31 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			if len(args) == 0 {
 				return []cobra.Completion{
-					"output_dir",
-					"format",
+					keyOutputDir,
+					keyFormat,
 				}, cobra.ShellCompDirectiveNoFileComp
 			}
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			key := normalizeConfigKey(args[0])
+			key := args[0]
 			value := args[1]
 
-			viper.Set(key, value)
+			validKeys := config.ValidDefaultsKeys()
+			if _, ok := validKeys[key]; !ok {
+				keys := make([]string, 0, len(validKeys))
+				for k := range validKeys {
+					keys = append(keys, k)
+				}
+				return fmt.Errorf("unknown config key %q: valid keys are: %s", key, strings.Join(keys, ", "))
+			}
+
+			if err := validateConfigValue(key, value); err != nil {
+				return err
+			}
+
+			viperKey := normalizeConfigKey(key)
+			viper.Set(viperKey, value)
 
 			cfg := config.Get()
 			if err := config.Save(cfg); err != nil {
@@ -43,4 +59,18 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func validateConfigValue(key, value string) error {
+	switch key {
+	case keyFormat:
+		if !output.ValidFormat(value) {
+			return fmt.Errorf("invalid format %q: must be one of: %s", value, strings.Join(output.ValidFormats(), ", "))
+		}
+	case keyOutputDir:
+		if value == "" {
+			return fmt.Errorf("output_dir cannot be empty")
+		}
+	}
+	return nil
 }

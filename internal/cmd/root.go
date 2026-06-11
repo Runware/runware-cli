@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmd/account"
@@ -14,6 +16,7 @@ import (
 	cmdrun "github.com/runware/runware-cli/internal/cmd/run"
 	cmdversion "github.com/runware/runware-cli/internal/cmd/version"
 	"github.com/runware/runware-cli/internal/config"
+	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -40,6 +43,11 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)
 			}
+			if f, _ := cmd.Root().PersistentFlags().GetString("format"); f != "" {
+				if !output.ValidFormat(f) {
+					return fmt.Errorf("invalid format %q: must be one of: %s", f, strings.Join(output.ValidFormats(), ", "))
+				}
+			}
 			return config.Init()
 		},
 		SilenceUsage:  true,
@@ -52,7 +60,10 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root.PersistentFlags().String("transport", "ws", "Transport protocol: ws (WebSocket) or http (REST)")
 
 	root.RegisterFlagCompletionFunc("format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []cobra.Completion{"table", "json", "yaml"}, cobra.ShellCompDirectiveNoFileComp
+		formats := output.ValidFormats()
+		completions := make([]cobra.Completion, len(formats))
+		copy(completions, formats)
+		return completions, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	root.AddCommand(

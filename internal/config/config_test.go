@@ -134,6 +134,13 @@ func TestPresetOperations(t *testing.T) {
 	}
 }
 
+// TestPresetDotNotationParams is skipped: Viper's Unmarshal treats dots in
+// map keys as path separators, mangling preset params like "messages.0.role".
+// This will be fixed properly when Viper is removed (RUN-10482).
+func TestPresetDotNotationParams(t *testing.T) {
+	t.Skip("blocked on Viper removal (RUN-10482): dot-notation keys are mangled by viper.Unmarshal")
+}
+
 func TestConfigPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir = tmpDir
