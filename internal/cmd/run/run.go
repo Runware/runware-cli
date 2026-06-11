@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
@@ -136,6 +137,13 @@ The model positional argument may be omitted when --preset supplies one.`,
 				DeliveryMethod: flags.deliveryMethod,
 				PollInterval:   flags.pollInterval,
 				OnProgress:     runProgress(spin),
+				OnSubmit: func(taskUUID uuid.UUID) {
+					spin.Stop()
+					logger.Info("Task submitted", "taskUUID", taskUUID)
+					logger.Info("To resume waiting if interrupted: runware result " + taskUUID.String())
+					spin.SetMessage("Waiting for result...")
+					spin.Restart()
+				},
 			})
 			if err != nil {
 				spin.Stop()

@@ -74,6 +74,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 		cmdconfig.NewCmd(logger),
 		preset.NewCmd(logger),
 		cmdrun.NewCmd(logger),
+		cmdrun.NewResultCmd(logger),
 		cmdversion.NewCmd(),
 		cmdcompletion.NewCmd(),
 	)

@@ -185,14 +185,11 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		return nil, err
 	}
 
-	// Training is fire-and-forget: the initial response carries the taskUUID
-	// the user needs; polling would block indefinitely.
-	if taskType == string(taskTypeTraining) {
-		return initialResults, nil
-	}
-
 	// For async delivery, discard the submit acknowledgment and poll until done.
 	if deliveryMethod == string(DeliveryMethodAsync) {
+		if opts.OnSubmit != nil {
+			opts.OnSubmit(taskUUID)
+		}
 		interval := opts.PollInterval
 		return c.Poll(ctx, taskUUID, interval, opts.OnProgress)
 	}

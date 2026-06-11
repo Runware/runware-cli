@@ -68,7 +68,7 @@ runware run <model> [key=value ...] [flags]
       --output-dir string        Directory to save downloaded output files (default "./outputs")
       --poll-interval duration   Polling interval when delivery method is async (default 2s)
       --preset string            Load parameters from a saved preset (model and params used as defaults)
-      --task-type string         Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference)
+      --task-type string         Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference, training)
 ```
 
 ### Options inherited from parent commands

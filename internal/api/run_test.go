@@ -117,38 +117,6 @@ func TestClientRun_AsyncSuccess(t *testing.T) {
 	}
 }
 
-// TestClientRun_TrainingSkipsPolling: when taskType is "training" and delivery
-// is async, Run returns the submit response directly without entering the poll loop.
-func TestClientRun_TrainingSkipsPolling(t *testing.T) {
-	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("training", "async"))
-
-	submitAck := rawJSON(t, map[string]any{
-		fieldTaskType: "training",
-		fieldTaskUUID: "train-uuid-123",
-	})
-	mock := &mockTransport{
-		responses: []mockResponse{
-			{data: []json.RawMessage{submitAck}},
-		},
-	}
-
-	c := NewClient(mock, slog.Default())
-	c.schemaBaseURLOverride = srv.URL + "/"
-
-	results, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
-		PollInterval: time.Millisecond,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result (submit ack), got %d", len(results))
-	}
-	if mock.callCount != 1 {
-		t.Errorf("expected 1 transport call (submit only, no poll), got %d", mock.callCount)
-	}
-}
-
 // TestClientRun_SchemaUnavailable_TaskTypeProvided: schema endpoint returns 404;
 // because TaskType is provided in RunOptions the call proceeds without validation.
 func TestClientRun_SchemaUnavailable_TaskTypeProvided(t *testing.T) {

@@ -24,6 +24,10 @@ type RunOptions struct {
 	// OnProgress is called with the reported progress percentage (0–100) during async
 	// polling. It may be nil.
 	OnProgress func(int)
+
+	// OnSubmit is called with the generated task UUID after the initial request is
+	// submitted but before async polling begins. It may be nil.
+	OnSubmit func(taskUUID uuid.UUID)
 }
 
 // ImageInferenceRequest contains fields for the imageInference task type.
