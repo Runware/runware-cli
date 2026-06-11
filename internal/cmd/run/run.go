@@ -177,6 +177,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 			taskTypeAudio,
 			taskTypeText,
 			taskType3D,
+			taskTypeTraining,
 		}, cobra.ShellCompDirectiveNoFileComp
 	})
 
