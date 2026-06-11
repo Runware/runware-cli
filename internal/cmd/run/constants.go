@@ -9,8 +9,9 @@ const (
 	fieldAudioURL = "audioURL"
 	fieldModelURL = "modelURL"
 	fieldText     = "text"
+	fieldStatus   = "status"
 
-	// taskType* constants for known task type values used by the run command.
+	// taskType constants for known task type values used by the run command.
 	taskTypeImage    = "imageInference"
 	taskTypeVideo    = "videoInference"
 	taskTypeAudio    = "audioInference"

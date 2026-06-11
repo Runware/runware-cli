@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	runwarehttp "github.com/runware/runware-cli/internal/http"
 	"github.com/runware/runware-cli/internal/output"
@@ -92,9 +93,15 @@ func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMes
 		}
 
 		if tt == taskTypeTraining {
-			taskUUID, _ := parsed[fieldTaskUUID].(string)
-			logger.Info("Training task submitted successfully")
-			logger.Info("Training runs asynchronously. Please use the Runware dashboard or API to monitor progress or you will be notified on completion", "taskUUID", taskUUID)
+			status, _ := parsed[fieldStatus].(string)
+			if status != "success" {
+				taskUUIDStr, _ := parsed[fieldTaskUUID].(string)
+				if _, err := uuid.Parse(taskUUIDStr); err != nil {
+					return fmt.Errorf("result %d: invalid taskUUID %q: %w", i, taskUUIDStr, err)
+				}
+				logger.Info("Task submitted", "taskUUID", taskUUIDStr)
+				logger.Info("To resume waiting if interrupted: runware result " + taskUUIDStr)
+			}
 		}
 
 		if !noDownload {

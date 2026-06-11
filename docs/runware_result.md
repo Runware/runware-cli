@@ -1,14 +1,20 @@
 ## runware result
 
-Wait for and display the result of an async task
+Wait for and display the result of a task by taskUUID
 
 ### Synopsis
 
-Resume waiting for the result of an async task by its taskUUID.
+Wait for and display the result of a task by its taskUUID.
 
-This is useful when a long-running task (e.g. training) was submitted via
-"runware run" and the CLI was interrupted before the task completed. The
-taskUUID is printed when the task is first submitted.
+Polls the API until the task completes, then displays the result. This does
+not re-submit the task — it only retrieves an existing one.
+
+For async delivery, use this to resume waiting when "runware run" was
+interrupted before the task completed. The taskUUID is printed when the
+task is first submitted.
+
+For sync delivery, if the task already completed during "runware run", the
+result is returned on the first poll.
 
 ```
 runware result <taskUUID> [flags]
