@@ -21,7 +21,7 @@ runware preset save <name> <model> [key=value ...] [flags]
   runware preset save portrait runware:100@1 width=512 height=768
 
   # save a preset with steps and cfg scale
-  runware preset save fast runware:100@1 steps=20 cfg_scale=7
+  runware preset save fast runware:100@1 steps=20 CFGScale=7
 
   # save a preset for a text model with a system prompt
   runware preset save mychat minimax:m3@0 messages.0.role=system messages.0.content="You are a helpful assistant"
