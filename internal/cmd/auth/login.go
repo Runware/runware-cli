@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/api/transport"
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -50,17 +51,23 @@ func newLoginCmd(logger *log.Logger) *cobra.Command {
 				return fmt.Errorf("API key cannot be empty")
 			}
 
+			spin := cmdutil.NewSpinner("Verifying API key...")
+			spin.Start()
+
 			t, err := transport.DialHTTP(context.Background(), key, config.GetBaseURL(), slog.New(logger))
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 			defer t.Close() //nolint:errcheck
 			client := api.NewClient(t, slog.New(logger))
 			_, err = client.Ping(context.Background())
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 
+			spin.Stop()
 			if err := config.SetAPIKey(key); err != nil {
 				return fmt.Errorf("failed to save API key: %w", err)
 			}

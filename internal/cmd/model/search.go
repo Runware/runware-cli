@@ -117,20 +117,24 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
   # Paginate through results
   runware model search --search "anime" --limit 10 --offset 20`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
-			if err != nil {
-				return err
-			}
-			defer t.Close() //nolint:errcheck
-
-			client := api.NewClient(t, slog.New(logger))
-
 			if flags.limit < 1 || flags.limit > 100 {
 				return fmt.Errorf("--limit must be between 1 and 100")
 			}
 			if flags.offset < 0 {
 				return fmt.Errorf("--offset must be >= 0")
 			}
+
+			spin := cmdutil.NewSpinner("Searching models...")
+			spin.Start()
+
+			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			defer t.Close() //nolint:errcheck
+
+			client := api.NewClient(t, slog.New(logger))
 
 			req := api.ModelSearchRequest{
 				Search:       flags.search,
@@ -144,9 +148,11 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
 			result, err := client.ModelSearch(cmd.Context(), req)
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 
+			spin.Stop()
 			if err := output.Print(cmdutil.FormatFor(cmd), modelSearchResults{
 				models: result.Results,
 				wide:   flags.wide,

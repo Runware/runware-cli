@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"os"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
@@ -121,9 +119,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 				return fmt.Errorf("model is required: provide as first argument or via --preset")
 			}
 
-			spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond,
-				spinner.WithWriter(os.Stderr))
-			spin.Suffix = " Running inference..."
+			spin := cmdutil.NewSpinner("Running inference...")
 			spin.Start()
 
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
@@ -140,7 +136,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 				DeliveryMethod: flags.deliveryMethod,
 				PollInterval:   flags.pollInterval,
 				OnProgress: func(p int) {
-					spin.Suffix = fmt.Sprintf(" Waiting for result... %d%%", p)
+					spin.SetMessage(fmt.Sprintf("Waiting for result... %d%%", p))
 				},
 			})
 			if err != nil {

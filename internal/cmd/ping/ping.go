@@ -32,8 +32,12 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		Example: `  # check API connectivity
   runware ping`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			spin := cmdutil.NewSpinner("Pinging API...")
+			spin.Start()
+
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 			defer t.Close() //nolint:errcheck
@@ -42,9 +46,11 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 			start := time.Now()
 			_, err = client.Ping(cmd.Context())
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 
+			spin.Stop()
 			return output.Print(cmdutil.FormatFor(cmd), pingResult{
 				Status:    "ok",
 				LatencyMs: time.Since(start).Milliseconds(),

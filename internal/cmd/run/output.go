@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	runwarehttp "github.com/runware/runware-cli/internal/http"
@@ -61,7 +60,7 @@ func (r runResult) MarshalJSON() ([]byte, error) {
 }
 
 // handleResults outputs each raw API result and optionally downloads media files.
-func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMessage, outputDir string, noDownload bool, spin *spinner.Spinner) error {
+func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMessage, outputDir string, noDownload bool, spin *cmdutil.Spinner) error {
 	format := cmdutil.FormatFor(cmd)
 
 	for i, raw := range results {
@@ -220,7 +219,7 @@ func formatValue(v any) string {
 // downloadMedia scans the parsed result for known media URL fields and
 // downloads each to outputDir. Index and multi are used to generate filenames
 // when multiple results are returned. The spinner is updated to show progress.
-func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]any, outputDir string, idx int, multi bool, spin *spinner.Spinner) {
+func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]any, outputDir string, idx int, multi bool, spin *cmdutil.Spinner) {
 	// Flat top-level URL field derived from the task type.
 	tt, _ := parsed[fieldTaskType].(string)
 	if field, ok := taskTypeMediaField[tt]; ok {
@@ -228,7 +227,7 @@ func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]an
 		if urlStr != "" {
 			destPath := buildDestPath(outputDir, field, urlStr, idx, multi)
 
-			spin.Suffix = fmt.Sprintf(" Downloading %s...", field)
+			spin.SetMessage(fmt.Sprintf("Downloading %s...", field))
 			spin.Start()
 			dlErr := runwarehttp.Download(ctx, urlStr, destPath, 5*time.Minute)
 			spin.Stop()
@@ -247,7 +246,7 @@ func downloadMedia(ctx context.Context, logger *log.Logger, parsed map[string]an
 		label := fmt.Sprintf("%s.%s[%d]", fieldOutputs, fieldOutputFiles, i)
 		destPath := buildDestPath(outputDir, fieldOutputs, urlStr, i, len(outputURLs) > 1)
 
-		spin.Suffix = fmt.Sprintf(" Downloading %s...", label)
+		spin.SetMessage(fmt.Sprintf("Downloading %s...", label))
 		spin.Start()
 		dlErr := runwarehttp.Download(ctx, urlStr, destPath, 5*time.Minute)
 		spin.Stop()

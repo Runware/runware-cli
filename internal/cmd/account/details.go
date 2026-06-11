@@ -94,8 +94,12 @@ func newDetailsCmd(logger *log.Logger) *cobra.Command {
 		Example: `  # show full account details
   runware account details`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			spin := cmdutil.NewSpinner("Fetching account details...")
+			spin.Start()
+
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 			defer t.Close() //nolint:errcheck
@@ -103,9 +107,11 @@ func newDetailsCmd(logger *log.Logger) *cobra.Command {
 
 			result, err := client.AccountDetails(cmd.Context())
 			if err != nil {
+				spin.Stop()
 				return err
 			}
 
+			spin.Stop()
 			return output.Print(cmdutil.FormatFor(cmd), accountDetailsResult{
 				OrganizationName: result.OrganizationName,
 				OrganizationUUID: result.OrganizationUUID.String(),
