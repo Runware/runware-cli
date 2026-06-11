@@ -274,7 +274,6 @@ type ModelResult struct {
 	ThumbnailURL         string   `json:"thumbnailURL"`
 	Category             string   `json:"category"`
 	Private              bool     `json:"private"`
-	Primary              bool     `json:"primary"`
 	BaseModel            string   `json:"baseModel,omitempty"`
 	Version              string   `json:"version"`
 	Architecture         string   `json:"architecture"`
