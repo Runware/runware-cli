@@ -18,7 +18,7 @@ func main() {
 	buildinfo.Set(version, commit, date)
 	rootCmd, logger := cmd.NewRoot()
 	if err := rootCmd.Execute(); err != nil {
-		cmdutil.PrintError(logger, err)
+		cmdutil.PrintError(logger, cmdutil.FormatFor(rootCmd), err)
 		os.Exit(1)
 	}
 }

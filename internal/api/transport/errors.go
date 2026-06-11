@@ -238,25 +238,56 @@ type RunwareError struct {
 	Documentation string
 	// StatusCode is the HTTP status code when the error originated from an HTTP response.
 	StatusCode int
+	// RawItem holds the original API error object JSON when the error came from the API.
+	RawItem json.RawMessage
 }
 
 func (e *RunwareError) Error() string { return e.Message }
 
-// wireError is the raw JSON shape of an error item from the Runware API.
+// APIFields returns the error as a map matching the API error object shape.
+// When RawItem is present it is unmarshaled directly so all API fields are preserved.
+func (e *RunwareError) APIFields() map[string]any {
+	if len(e.RawItem) > 0 {
+		var m map[string]any
+		if err := json.Unmarshal(e.RawItem, &m); err == nil {
+			return m
+		}
+	}
+	m := map[string]any{
+		"code":    e.RawCode,
+		"message": e.Message,
+	}
+	if e.Parameter != "" {
+		m["parameter"] = e.Parameter
+	}
+	if e.TaskType != "" {
+		m["taskType"] = e.TaskType
+	}
+	if e.TaskUUID != "" {
+		m["taskUUID"] = e.TaskUUID
+	}
+	if e.Documentation != "" {
+		m["documentation"] = e.Documentation
+	}
+	return m
+}
+
+// wireError decodes only the API error fields used for RunwareError logic.
+// All other fields are preserved via RawItem.
 type wireError struct {
 	Code          string          `json:"code"`
 	Message       string          `json:"message"`
 	RawParameter  json.RawMessage `json:"parameter,omitempty"`
-	Type          string          `json:"type,omitempty"`
 	Documentation string          `json:"documentation,omitempty"`
 	TaskType      string          `json:"taskType,omitempty"`
 	TaskUUID      string          `json:"taskUUID,omitempty"`
-	AllowedValues []any           `json:"allowedValues,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler so RunwareError can be decoded
 // directly from an API errors array element.
 func (e *RunwareError) UnmarshalJSON(data []byte) error {
+	e.RawItem = append(json.RawMessage(nil), data...)
+
 	var w wireError
 	if err := json.Unmarshal(data, &w); err != nil {
 		return err
