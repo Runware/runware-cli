@@ -10,29 +10,69 @@ import (
 	"time"
 
 	"github.com/runware/runware-cli/internal/api"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
+// SplitModelArgs splits positional args into the model AIR and key=value
+// pairs. Model AIRs never contain "=", so a first argument containing "="
+// means the model was omitted (it then comes from a preset).
+func SplitModelArgs(args []string) (model string, kvArgs []string) {
+	if len(args) == 0 {
+		return "", nil
+	}
+	if strings.Contains(args[0], "=") {
+		return "", args
+	}
+	return args[0], args[1:]
+}
+
 // MakeSchemaArgCompleter returns a ValidArgsFunction that provides schema-driven
 // shell completion for key=value positional arguments. modelArgIdx is the index
-// in args that holds the model AIR:
+// in args where the model AIR may appear:
 //
 //	0 → run <model> [key=value ...]
 //	1 → preset save <name> <model> [key=value ...]
 //
-// When the model has not yet been typed (len(args) <= modelArgIdx), no
-// completions are offered. Once the model is present, the model's JSON Schema
-// is fetched and dot-notation leaf completions are returned for parameters not
-// already provided. Completion is best-effort: failures are silently ignored.
+// The model is taken from args when present; when the args at modelArgIdx are
+// already key=value pairs (or absent), the command's --preset flag is consulted
+// and the preset supplies the model. With no model from either source, no
+// completions are offered. Once the model is known, its JSON Schema is fetched
+// and dot-notation leaf completions are returned for parameters not already
+// typed on the command line. Keys the preset sets are still suggested — they
+// can be overridden — with their preset value shown in the description.
+// Completion is best-effort: failures are silently ignored.
 func MakeSchemaArgCompleter(modelArgIdx int) func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		// Model argument has not been typed yet — let the shell handle free-form text.
-		if len(args) <= modelArgIdx {
+		// Positional args before the model slot (e.g. the preset name for
+		// "preset save") have not been typed yet — let the shell handle them.
+		if len(args) < modelArgIdx {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
-		model := args[modelArgIdx]
+		var rest []string
+		if len(args) > modelArgIdx {
+			rest = args[modelArgIdx:]
+		}
+		model, kvArgs := SplitModelArgs(rest)
+
+		// Model not typed positionally — fall back to the --preset flag when the
+		// command has one and it names a preset that supplies a model.
+		var presetParams map[string]string
+		if model == "" {
+			if name, err := cmd.Flags().GetString("preset"); err == nil && name != "" {
+				config.Init() //nolint:errcheck,gosec
+				if p := config.GetPreset(name); p != nil {
+					model = p.Model
+					presetParams = p.Params
+				}
+			}
+		}
+		if model == "" {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
 		ctx, cancel := context.WithTimeout(cmd.Context(), 3*time.Second)
 		defer cancel()
 		modelSchema, err := api.FetchModelSchema(ctx, model)
@@ -49,8 +89,9 @@ func MakeSchemaArgCompleter(modelArgIdx int) func(*cobra.Command, []string, stri
 		// normalised through NormalizeProvidedKey so that auto-index sugar (e.g.
 		// "messages.role=user") is expanded to its canonical form ("messages.0.role")
 		// before being recorded. This ensures nextArrayIdx advances correctly and
-		// CollectCompletions doesn't re-suggest keys that are already set.
-		kvArgs := args[modelArgIdx+1:]
+		// CollectCompletions doesn't re-suggest keys that are already set. Preset
+		// params are deliberately not counted: they stay suggested so they can be
+		// overridden, annotated with the preset's value below.
 		provided := make(map[string]struct{}, len(kvArgs))
 		for _, a := range kvArgs {
 			if k := schema.NormalizeProvidedKey(a, node); k != "" {
@@ -88,10 +129,56 @@ func MakeSchemaArgCompleter(modelArgIdx int) func(*cobra.Command, []string, stri
 
 		completions := CollectCompletions("", node, provided, prefix, nextArrayIdx)
 
+		if len(presetParams) > 0 {
+			normalized := make(map[string]string, len(presetParams))
+			for k, v := range presetParams {
+				if n := schema.NormalizeProvidedKey(k+"="+v, node); n != "" {
+					normalized[n] = v
+				}
+			}
+			completions = annotatePresetCompletions(completions, normalized)
+		}
+
 		// NoSpace so the shell doesn't add a space after the '=', letting the user
 		// immediately type the value.
 		return completions, cobra.ShellCompDirectiveNoSpace | cobra.ShellCompDirectiveNoFileComp
 	}
+}
+
+// maxPresetValueLen caps the preset value shown in a completion description.
+const maxPresetValueLen = 40
+
+// annotatePresetCompletions prefixes the description of completions whose key
+// the preset already sets, so users can see the value they would override.
+// presetKeys maps canonical dot-notation keys to the preset's values.
+func annotatePresetCompletions(completions []cobra.Completion, presetKeys map[string]string) []cobra.Completion {
+	out := make([]cobra.Completion, 0, len(completions))
+	for _, c := range completions {
+		key, desc, _ := strings.Cut(c, "\t")
+		v, ok := presetKeys[strings.TrimSuffix(key, "=")]
+		if !ok {
+			out = append(out, c)
+			continue
+		}
+		out = append(out, cobra.CompletionWithDesc(key, "[preset: "+sanitizePresetValue(v)+"] "+desc))
+	}
+	return out
+}
+
+// sanitizePresetValue makes a preset value safe for embedding in a completion
+// description: completion lines are tab-delimited and single-line, so control
+// characters are replaced with spaces, and long values are truncated.
+func sanitizePresetValue(v string) string {
+	v = strings.Map(func(r rune) rune {
+		if r < ' ' || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, v)
+	if runes := []rune(v); len(runes) > maxPresetValueLen {
+		v = string(runes[:maxPresetValueLen]) + "…"
+	}
+	return v
 }
 
 // CollectCompletions recursively walks a schema node and emits a dot-notation

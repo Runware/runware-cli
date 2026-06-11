@@ -14,6 +14,9 @@ runware config set <key> <value> [flags]
 
   # set the default output format (table, json, yaml)
   runware config set format json
+
+  # set the default transport (ws, http)
+  runware config set transport http
 ```
 
 ### Options

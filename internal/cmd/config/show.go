@@ -11,6 +11,7 @@ type configShowResult struct {
 	APIKey    string `json:"api_key"`
 	OutputDir string `json:"output_dir"`
 	Format    string `json:"format"`
+	Transport string `json:"transport"`
 }
 
 func (r configShowResult) Headers() []string {
@@ -19,9 +20,10 @@ func (r configShowResult) Headers() []string {
 
 func (r configShowResult) Rows() [][]any {
 	return [][]any{
-		{"api_key", r.APIKey},
+		{keyAPIKey, r.APIKey},
 		{keyOutputDir, r.OutputDir},
 		{keyFormat, r.Format},
+		{keyTransport, r.Transport},
 	}
 }
 
@@ -45,6 +47,7 @@ func newShowCmd() *cobra.Command {
 				APIKey:    apiKey,
 				OutputDir: cfg.Defaults.OutputDir,
 				Format:    cfg.Defaults.Format,
+				Transport: cfg.Defaults.Transport,
 			})
 		},
 	}

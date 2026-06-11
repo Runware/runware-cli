@@ -96,12 +96,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			model := ""
-			kvArgs := []string{}
-			if len(args) >= 1 {
-				model = args[0]
-				kvArgs = args[1:]
-			}
+			model, kvArgs := cmdutil.SplitModelArgs(args)
 
 			if flags.preset != "" {
 				p := config.GetPreset(flags.preset)
