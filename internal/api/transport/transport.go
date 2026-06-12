@@ -50,6 +50,17 @@ type Transport interface {
 	Send(ctx context.Context, tasks []any) ([]json.RawMessage, error)
 }
 
+// StreamSender is implemented by transports that can deliver multiple result
+// frames for a single task over a persistent connection (e.g. WebSocket).
+// Tasks like modelUpload stream pipeline status frames that are not available
+// via getResponse polling.
+type StreamSender interface {
+	// SendStream transmits a single task and invokes onFrame for every result
+	// frame delivered for its taskUUID, until onFrame reports done or returns
+	// an error. API error frames for the task are returned as Go errors.
+	SendStream(ctx context.Context, task any, onFrame func(frame json.RawMessage) (done bool, err error)) error
+}
+
 // DialContext dials a transport by scheme. scheme must be "ws" or "http"
 // (case-insensitive). Returns an error if the scheme is not recognised.
 func DialContext(ctx context.Context, scheme, apiKey, url string, logger *slog.Logger) (Transport, error) {

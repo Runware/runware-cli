@@ -128,7 +128,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 				return fmt.Errorf("model is required: provide as first argument or via --preset")
 			}
 
-			spin := cmdutil.NewSpinner("Running inference...")
+			spin := cmdutil.NewSpinner("Running task...")
 			spin.Start()
 
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))

@@ -296,6 +296,52 @@ type ModelResult struct {
 	NegativeTriggerWords string   `json:"negativeTriggerWords,omitempty"`
 }
 
+// ModelUploadRequest contains fields for the modelUpload task type.
+// Optional non-string fields are pointers so they are omitted from the payload
+// unless explicitly set.
+type ModelUploadRequest struct {
+	TaskType             TaskType  `json:"taskType"`
+	TaskUUID             uuid.UUID `json:"taskUUID"`
+	Category             string    `json:"category"`
+	Name                 string    `json:"name"`
+	Version              string    `json:"version"`
+	DownloadURL          string    `json:"downloadURL"`
+	Architecture         string    `json:"architecture"`
+	Format               string    `json:"format,omitempty"`
+	Type                 string    `json:"type,omitempty"`
+	AIR                  string    `json:"air,omitempty"`
+	UniqueIdentifier     string    `json:"uniqueIdentifier,omitempty"`
+	HeroImageURL         string    `json:"heroImageURL,omitempty"`
+	Tags                 []string  `json:"tags,omitempty"`
+	ShortDescription     string    `json:"shortDescription,omitempty"`
+	Comment              string    `json:"comment,omitempty"`
+	Private              *bool     `json:"private,omitempty"`
+	DefaultCFG           *float64  `json:"defaultCFG,omitempty"`
+	DefaultSteps         *int      `json:"defaultSteps,omitempty"`
+	DefaultScheduler     string    `json:"defaultScheduler,omitempty"`
+	DefaultStrength      *float64  `json:"defaultStrength,omitempty"`
+	DefaultWeight        *float64  `json:"defaultWeight,omitempty"`
+	PositiveTriggerWords string    `json:"positiveTriggerWords,omitempty"`
+}
+
+// ModelUploadResult is a single status/result frame from the modelUpload
+// pipeline. Status progresses validated → downloaded → optimized → stored →
+// ready, or failed.
+type ModelUploadResult struct {
+	TaskType TaskType  `json:"taskType"`
+	TaskUUID uuid.UUID `json:"taskUUID"`
+	Status   string    `json:"status"`
+	Message  string    `json:"message,omitempty"`
+	AIR      string    `json:"air,omitempty"`
+}
+
+// ModelUploadOptions configures the behaviour of Client.ModelUpload.
+type ModelUploadOptions struct {
+	// OnStatus is called for each intermediate pipeline status
+	// (validated, downloaded, optimized, stored). It may be nil.
+	OnStatus func(status, message string)
+}
+
 // ModelSchema is the response from the schema resolve endpoint.
 type ModelSchema struct {
 	RequestSchema  json.RawMessage `json:"requestSchema"`

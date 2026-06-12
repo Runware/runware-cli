@@ -23,4 +23,5 @@ Manage and search models
 * [runware model schema](runware_model_schema.md)	 - Show the request/response schema for a model
 * [runware model search](runware_model_search.md)	 - Search models available on the Runware platform
 * [runware model show](runware_model_show.md)	 - Show full details for a model by AIR identifier
+* [runware model upload](runware_model_upload.md)	 - Upload a custom model to the Runware platform
 
