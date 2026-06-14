@@ -12,6 +12,7 @@ import (
 // default values while leaving the API key and saved presets untouched.
 func TestResetPreservesPresetsAndAPIKey(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", "")
 	if err := config.Init(); err != nil {
 		t.Fatalf("config.Init() error: %v", err)
 	}
@@ -63,6 +64,34 @@ func TestResetPreservesPresetsAndAPIKey(t *testing.T) {
 	}
 	if got.Defaults.Transport != config.DefaultTransport {
 		t.Errorf("Transport = %q, want %q", got.Defaults.Transport, config.DefaultTransport)
+	}
+}
+
+// TestResetDoesNotPersistEnvAPIKey verifies that an API key supplied only via
+// RUNWARE_API_KEY is not written into the config file by `config reset`.
+func TestResetDoesNotPersistEnvAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", "env-only-secret")
+	if err := config.Init(); err != nil {
+		t.Fatalf("config.Init() error: %v", err)
+	}
+
+	// Seed a config file with no stored api_key.
+	if err := config.Save(&config.Config{Defaults: config.Defaults{}}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	cmd := newResetCmd(log.New(io.Discard))
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("reset RunE error: %v", err)
+	}
+
+	onDisk, err := config.FileConfig()
+	if err != nil {
+		t.Fatalf("FileConfig() error: %v", err)
+	}
+	if onDisk.APIKey != "" {
+		t.Errorf("api_key written to file = %q, want empty (env key must not be persisted)", onDisk.APIKey)
 	}
 }
 

@@ -16,7 +16,12 @@ func newResetCmd(logger *log.Logger) *cobra.Command {
   runware config reset`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Preserve the API key and presets — only the Defaults are reset.
-			existing := config.Get()
+			// Read the on-disk config (not config.Get) so an env-only API key
+			// from RUNWARE_API_KEY is never persisted to the file.
+			existing, err := config.FileConfig()
+			if err != nil {
+				return fmt.Errorf("failed to read config: %w", err)
+			}
 			cfg := &config.Config{
 				APIKey:  existing.APIKey,
 				Presets: existing.Presets,
