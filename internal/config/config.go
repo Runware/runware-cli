@@ -213,8 +213,7 @@ func GetPreset(name string) *Preset {
 	return &p
 }
 
-// SavePreset saves a named preset. It reads the on-disk config so an env-only
-// API key is not persisted to the file.
+// SavePreset saves a named preset.
 func SavePreset(name string, preset Preset) error {
 	cfg, err := load()
 	if err != nil {
@@ -227,8 +226,7 @@ func SavePreset(name string, preset Preset) error {
 	return Save(cfg)
 }
 
-// DeletePreset removes a named preset. It reads the on-disk config so an
-// env-only API key is not persisted to the file.
+// DeletePreset removes a named preset.
 func DeletePreset(name string) error {
 	cfg, err := load()
 	if err != nil {
