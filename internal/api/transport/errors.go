@@ -251,7 +251,10 @@ type wireError struct {
 	Documentation string          `json:"documentation,omitempty"`
 	TaskType      string          `json:"taskType,omitempty"`
 	TaskUUID      string          `json:"taskUUID,omitempty"`
-	AllowedValues []any           `json:"allowedValues,omitempty"`
+	// AllowedValues is accepted in any JSON shape: the API returns an array for
+	// some errors and an object (e.g. an aspect-ratio→dimensions map) for others.
+	// Decoding it as json.RawMessage keeps error parsing from failing on either.
+	AllowedValues json.RawMessage `json:"allowedValues,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler so RunwareError can be decoded
