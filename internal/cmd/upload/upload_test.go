@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"path/filepath"
@@ -52,7 +53,7 @@ func TestBuildImageInput_LocalFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode base64: %v", err)
 	}
-	if string(decoded) != string(content) {
+	if !bytes.Equal(decoded, content) {
 		t.Errorf("decoded = %q, want %q", decoded, content)
 	}
 }

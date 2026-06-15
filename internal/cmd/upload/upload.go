@@ -57,8 +57,8 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 
 The argument may be a local file path, a publicly accessible URL, or a data URI.
 Local files are read and uploaded; URLs and data URIs are forwarded as-is. The
-command prints the imageUUID, which can be passed to image parameters such as
-seedImage on the run command.
+command prints the uploaded imageUUID (and taskUUID), which can be passed to
+image parameters such as inputs.seedImage on the run command.
 
 Supported file types: JPEG, JPG, PNG, WEBP, BMP, GIF. Video and audio upload is
 not yet supported by the API.`,

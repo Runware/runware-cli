@@ -42,7 +42,7 @@ func inferenceSchemaServer(t *testing.T, requestSchema any) *httptest.Server {
 // default (empty string means the property is omitted entirely).
 func requestSchemaWithTaskType(taskType, deliveryMethodDefault string) map[string]any {
 	props := map[string]any{
-		"taskType": map[string]any{
+		fieldTaskType: map[string]any{
 			"const": taskType,
 		},
 	}
@@ -171,7 +171,7 @@ func TestClientRun_SchemaUnavailable_NoTaskType(t *testing.T) {
 func TestClientRun_ValidationFailure(t *testing.T) {
 	schema := map[string]any{
 		"properties": map[string]any{
-			"taskType":       map[string]any{"const": "imageInference"},
+			fieldTaskType:    map[string]any{"const": "imageInference"},
 			"deliveryMethod": map[string]any{"default": "sync"},
 		},
 		"required": []string{"positivePrompt"},
@@ -234,7 +234,7 @@ func TestClientRun_OnProgressCalled(t *testing.T) {
 func TestClientRun_RawArgs_SchemaCoercesStringField(t *testing.T) {
 	requestSchema := map[string]any{
 		"properties": map[string]any{
-			"taskType": map[string]any{
+			fieldTaskType: map[string]any{
 				"const": "imageInference",
 			},
 			"deliveryMethod": map[string]any{
