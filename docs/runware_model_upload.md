@@ -12,6 +12,8 @@ After submission the upload progresses through a processing pipeline
 the command waits and reports each phase. On success the model's AIR
 identifier is printed and the model can be used with 'runware run'.
 
+NOTE: "model upload" is only supported by the WebSocket (ws) transport. If you have your default transport configured as http you must set the --transport ws flag when calling "model upload"
+
 ```
 runware model upload [flags]
 ```
@@ -20,16 +22,25 @@ runware model upload [flags]
 
 ```
   # Upload a FLUX checkpoint from a hosted safetensors file
-  runware model upload --category checkpoint --architecture flux1d \
-    --name "My Custom Model" --version 1.0 \
-    --download-url https://example.com/model.safetensors --private
+  runware model upload --air "myorg:42@1" \
+    --category checkpoint \
+    --architecture flux1d \
+    --name "My Custom Model"\
+    --version 1.0 \
+    --download-url https://example.com/model.safetensors\
+    --private
 
   # Upload a LoRA with metadata and defaults
-  runware model upload --category lora --architecture sdxl \
-    --name "Style LoRA" --version 1.0 \
+  runware model upload --air "myorg:42@1" \
+    --category lora \
+    --architecture sdxl \
+    --name "Style LoRA" \
+    --version 1.0 \
     --download-url https://example.com/lora.safetensors \
-    --tags style,portrait --default-weight 0.8 \
-    --positive-trigger-words "myStyle" --short-description "Portrait style LoRA"
+    --tags style,portrait \
+    --default-weight 0.8 \
+    --positive-trigger-words "myStyle" \
+    --short-description "Portrait style LoRA"
 ```
 
 ### Options
