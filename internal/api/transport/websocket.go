@@ -368,21 +368,13 @@ func (t *WSTransport) Close() error {
 	return nil
 }
 
-// Send marshals tasks, writes them to the WebSocket connection, and waits for
-// all expected results for each task UUID.
-//
-// If a task carries a "numberResults" field (int > 1), Send collects that many
-// result items before returning. All results for all tasks are returned as a
-// flat slice in task order. Defaults to 1 result per task if the field is absent.
-func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage, error) {
-	if t.apiKey == "" {
-		return nil, ErrNoAPIKey
-	}
-
+// ensureConnected bails out if the transport is permanently disconnected,
+// waits out any in-progress reconnect cycle, and lazily connects otherwise.
+func (t *WSTransport) ensureConnected(ctx context.Context) error {
 	// Bail immediately if permanently disconnected.
 	select {
 	case <-t.disconnected:
-		return nil, CreateRunwareError(
+		return CreateRunwareError(
 			"connectionFailed",
 			"WebSocket connection disconnected by client",
 			RunwareErrorDetails{},
@@ -405,25 +397,41 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 			connected = t.connected
 			t.mu.Unlock()
 			if !connected {
-				return nil, CreateRunwareError(
+				return CreateRunwareError(
 					"connectionFailed",
 					"reconnection failed",
 					RunwareErrorDetails{},
 				)
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return ctx.Err()
 		case <-t.disconnected:
-			return nil, CreateRunwareError(
+			return CreateRunwareError(
 				"connectionFailed",
 				"WebSocket connection disconnected by client",
 				RunwareErrorDetails{},
 			)
 		}
 	} else if !connected {
-		if err := t.connect(ctx); err != nil {
-			return nil, err
-		}
+		return t.connect(ctx)
+	}
+
+	return nil
+}
+
+// Send marshals tasks, writes them to the WebSocket connection, and waits for
+// all expected results for each task UUID.
+//
+// If a task carries a "numberResults" field (int > 1), Send collects that many
+// result items before returning. All results for all tasks are returned as a
+// flat slice in task order. Defaults to 1 result per task if the field is absent.
+func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage, error) {
+	if t.apiKey == "" {
+		return nil, ErrNoAPIKey
+	}
+
+	if err := t.ensureConnected(ctx); err != nil {
+		return nil, err
 	}
 
 	// Marshal once; also extract task UUIDs, task types, and expected result
@@ -499,6 +507,106 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	}
 
 	return results, nil
+}
+
+// streamChanBuffer is the result-channel buffer for SendStream entries. The
+// reader blocks when it fills; stream consumers are expected to drain quickly.
+const streamChanBuffer = 16
+
+// Compile-time interface check.
+var _ StreamSender = (*WSTransport)(nil)
+
+// SendStream implements [StreamSender]: it transmits a single task and
+// dispatches every result frame received for its taskUUID to onFrame, until
+// onFrame reports done or returns an error, the context is cancelled, or the
+// transport shuts down. API error frames for the task are returned as Go
+// errors. The in-flight entry survives reconnects, like Send.
+func (t *WSTransport) SendStream(ctx context.Context, task any, onFrame func(frame json.RawMessage) (done bool, err error)) error {
+	if t.apiKey == "" {
+		return ErrNoAPIKey
+	}
+
+	if err := t.ensureConnected(ctx); err != nil {
+		return err
+	}
+
+	body, metas, err := marshalAndExtractTaskMeta([]any{task})
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+	if len(metas) != 1 {
+		return fmt.Errorf("streaming task must carry a taskUUID")
+	}
+	meta := metas[0]
+
+	if t.logger != nil && t.logger.Enabled(ctx, slog.LevelDebug) {
+		t.logger.Debug("ws send", "body", string(redactTasks(body)))
+	}
+
+	t.mu.Lock()
+	conn := t.conn
+	t.mu.Unlock()
+	if conn == nil {
+		return CreateRunwareError(
+			"connectionFailed",
+			"WebSocket connection is not established",
+			RunwareErrorDetails{},
+		)
+	}
+
+	// Register an open-ended in-flight entry before writing: expected is never
+	// reached, so the reader keeps dispatching frames for this UUID until we
+	// deregister on return.
+	ch := make(chan wsResult, streamChanBuffer)
+	localChans := map[string]chan wsResult{meta.UUID: ch}
+	t.inflightMu.Lock()
+	t.inflight[meta.UUID] = inflightEntry{
+		taskType: meta.TaskType,
+		ch:       ch,
+		expected: math.MaxInt,
+	}
+	t.inflightByType[meta.TaskType] = append(t.inflightByType[meta.TaskType], meta.UUID)
+	t.inflightMu.Unlock()
+	defer t.cleanupLocalChans(localChans)
+
+	t.writeMu.Lock()
+	writeErr := conn.WriteMessage(websocket.TextMessage, body)
+	t.writeMu.Unlock()
+	if writeErr != nil {
+		return CreateRunwareError(
+			"connectionFailed",
+			fmt.Sprintf("WebSocket write failed: %v", writeErr),
+			RunwareErrorDetails{},
+		)
+	}
+
+	for {
+		select {
+		case r, ok := <-ch:
+			if !ok {
+				return CreateRunwareError(
+					"connectionFailed",
+					"WebSocket connection closed while waiting for response",
+					RunwareErrorDetails{},
+				)
+			}
+			if r.err != nil {
+				return r.err
+			}
+			done, err := onFrame(r.data)
+			if err != nil || done {
+				return err
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.disconnected:
+			return CreateRunwareError(
+				"connectionFailed",
+				"WebSocket connection disconnected by client",
+				RunwareErrorDetails{},
+			)
+		}
+	}
 }
 
 // drainTaskChan reads n results from ch, returning them in order.

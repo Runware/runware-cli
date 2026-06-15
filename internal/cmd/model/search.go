@@ -23,9 +23,9 @@ type modelSearchResults struct {
 
 func (r modelSearchResults) Headers() []string {
 	if r.wide {
-		return []string{"Name", "AIR", "Category", "Architecture", colType, "Version", "Private", "Default Size", "Tags"}
+		return []string{"Name", colAIR, "Category", "Architecture", colType, "Version", "Private", "Default Size", "Tags"}
 	}
-	return []string{"Name", "AIR", "Category", "Architecture", colType, "Version"}
+	return []string{"Name", colAIR, "Category", "Architecture", colType, "Version"}
 }
 
 func (r modelSearchResults) Rows() [][]any {

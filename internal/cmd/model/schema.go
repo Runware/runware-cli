@@ -14,8 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// colType is the shared column/field label used across model table views.
-const colType = "Type"
+// colType and colAIR are shared column/field labels used across model table views.
+const (
+	colType = "Type"
+	colAIR  = "AIR"
+)
 
 // table rendering. Only the fields needed for display are captured.
 type schemaNode struct {

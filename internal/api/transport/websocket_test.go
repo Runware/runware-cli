@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -264,6 +265,152 @@ func TestWSTransport_SendServerError(t *testing.T) {
 	}
 	if re.Code != CodeQuota {
 		t.Errorf("expected CodeQuota, got %v", re.Code)
+	}
+}
+
+func TestWSTransport_SendErrorAllowedValuesObject(t *testing.T) {
+	// Regression: the API can send allowedValues as a JSON object with numeric
+	// string keys. The frame must still parse and surface the error instead of
+	// being dropped (which left Send hanging forever).
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000007"
+	errFrame := []byte(`{"errors":[{
+		"code": "invalidCategory",
+		"message": "Invalid value for 'category' parameter.",
+		"parameter": "category",
+		"allowedValues": {"0": "checkpoint", "1": "lora"},
+		"taskUUID": "` + taskUUID + `"
+	}]}`)
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply(t, "sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, errFrame)                   //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
+
+	tasks := []any{testTask{TaskType: testTaskTypeInference, TaskUUID: taskUUID}}
+	_, err = tr.Send(context.Background(), tasks)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var re *RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != CodeValidation {
+		t.Errorf("expected CodeValidation, got %v", re.Code)
+	}
+	want := []string{"checkpoint", "lora"}
+	if !slices.Equal(re.AllowedValues, want) {
+		t.Errorf("AllowedValues = %v, want %v", re.AllowedValues, want)
+	}
+}
+
+func TestWSTransport_SendStream(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000008"
+	statusFrame := func(status string) []byte {
+		return []byte(`{"data":[{"taskType":"modelUpload","taskUUID":"` + taskUUID + `","status":"` + status + `"}]}`)
+	}
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply(t, "sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		// Stream multiple frames for the same task UUID.
+		conn.WriteMessage(websocket.TextMessage, statusFrame("validated"))  //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, statusFrame("downloaded")) //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, statusFrame("ready"))      //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
+
+	var statuses []string
+	err = tr.SendStream(context.Background(), testTask{TaskType: "modelUpload", TaskUUID: taskUUID}, func(frame json.RawMessage) (bool, error) {
+		var item struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(frame, &item); err != nil {
+			return false, err
+		}
+		statuses = append(statuses, item.Status)
+		return item.Status == "ready", nil
+	})
+	if err != nil {
+		t.Fatalf("SendStream error: %v", err)
+	}
+	want := []string{"validated", "downloaded", "ready"}
+	if !slices.Equal(statuses, want) {
+		t.Errorf("statuses = %v, want %v", statuses, want)
+	}
+
+	// The in-flight entry must be deregistered after the stream completes.
+	tr.inflightMu.RLock()
+	_, stillInflight := tr.inflight[taskUUID]
+	tr.inflightMu.RUnlock()
+	if stillInflight {
+		t.Error("in-flight entry not cleaned up after stream completion")
+	}
+}
+
+func TestWSTransport_SendStreamErrorFrame(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000009"
+	errFrame := mustMarshal(t, testErrorEnvelope{Errors: []testErrorItem{
+		{Code: "invalidCategory", Message: "bad category", TaskUUID: taskUUID},
+	}})
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply(t, "sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, errFrame)                   //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
+
+	err = tr.SendStream(context.Background(), testTask{TaskType: "modelUpload", TaskUUID: taskUUID}, func(json.RawMessage) (bool, error) {
+		return false, nil
+	})
+	var re *RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != CodeValidation {
+		t.Errorf("expected CodeValidation, got %v", re.Code)
 	}
 }
 

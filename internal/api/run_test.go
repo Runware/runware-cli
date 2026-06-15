@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -163,6 +164,50 @@ func TestClientRun_SchemaUnavailable_NoTaskType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "RunOptions.TaskType") {
 		t.Errorf("expected error to mention RunOptions.TaskType, got: %v", err)
+	}
+}
+
+// TestClientRun_ModelUploadRejected_TaskTypeOption: passing modelUpload via
+// RunOptions.TaskType must be rejected with a redirect to 'model upload'
+// before any transport call is made.
+func TestClientRun_ModelUploadRejected_TaskTypeOption(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	mock := &mockTransport{}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
+		TaskType: "modelUpload",
+	})
+	if !errors.Is(err, ErrModelUploadViaRun) {
+		t.Fatalf("expected ErrModelUploadViaRun, got: %v", err)
+	}
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
+	}
+}
+
+// TestClientRun_ModelUploadRejected_SchemaDetected: a schema that resolves to
+// taskType modelUpload must also be rejected with the redirect error.
+func TestClientRun_ModelUploadRejected_SchemaDetected(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("modelUpload", ""))
+
+	mock := &mockTransport{}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{})
+	if !errors.Is(err, ErrModelUploadViaRun) {
+		t.Fatalf("expected ErrModelUploadViaRun, got: %v", err)
+	}
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
 	}
 }
 

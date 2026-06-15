@@ -26,7 +26,7 @@ func (d modelDetail) Rows() [][]any {
 	m := d.m
 	rows := [][]any{
 		{"Name", m.Name},
-		{"AIR", m.AIR},
+		{colAIR, m.AIR},
 		{"Version", m.Version},
 		{"Category", m.Category},
 		{"Architecture", m.Architecture},
