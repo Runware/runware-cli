@@ -96,6 +96,14 @@ func load() (*Config, error) {
 	return &cfg, nil
 }
 
+// FileConfig returns the config exactly as stored on disk, without applying
+// environment overrides or default fallbacks. Use this for read-modify-write
+// operations so env-only secrets are never persisted to the file. A missing
+// file yields a zero config.
+func FileConfig() (*Config, error) {
+	return load()
+}
+
 // Get returns the current merged config: file values with fallback defaults
 // applied and the RUNWARE_API_KEY environment variable taking precedence
 // over the file's API key.
@@ -207,7 +215,10 @@ func GetPreset(name string) *Preset {
 
 // SavePreset saves a named preset.
 func SavePreset(name string, preset Preset) error {
-	cfg := Get()
+	cfg, err := load()
+	if err != nil {
+		return err
+	}
 	if cfg.Presets == nil {
 		cfg.Presets = make(map[string]Preset)
 	}
@@ -217,7 +228,10 @@ func SavePreset(name string, preset Preset) error {
 
 // DeletePreset removes a named preset.
 func DeletePreset(name string) error {
-	cfg := Get()
+	cfg, err := load()
+	if err != nil {
+		return err
+	}
 	if cfg.Presets == nil {
 		return nil
 	}

@@ -9,7 +9,7 @@ runware config reset [flags]
 ### Examples
 
 ```
-  # reset all config defaults (API key is preserved)
+  # reset all config defaults (API key and presets are preserved)
   runware config reset
 ```
 
