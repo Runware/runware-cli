@@ -12,6 +12,7 @@ const (
 	taskTypePing              TaskType = "ping"
 	taskTypeGetResponse       TaskType = "getResponse"
 	taskTypeAccountManagement TaskType = "accountManagement"
+	taskTypeImageUpload       TaskType = "imageUpload"
 )
 
 // DeliveryMethod specifies how task results are delivered.
