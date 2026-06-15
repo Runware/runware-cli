@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -230,6 +233,8 @@ type RunwareError struct {
 	Retryable bool
 	// Parameter is the request field that caused the error, if applicable.
 	Parameter string
+	// AllowedValues lists the accepted values for Parameter, if provided.
+	AllowedValues []string
 	// TaskType is the task type of the request that failed.
 	TaskType string
 	// TaskUUID is the unique identifier of the failed request.
@@ -244,14 +249,14 @@ func (e *RunwareError) Error() string { return e.Message }
 
 // wireError is the raw JSON shape of an error item from the Runware API.
 type wireError struct {
-	Code          string          `json:"code"`
-	Message       string          `json:"message"`
-	RawParameter  json.RawMessage `json:"parameter,omitempty"`
-	Type          string          `json:"type,omitempty"`
-	Documentation string          `json:"documentation,omitempty"`
-	TaskType      string          `json:"taskType,omitempty"`
-	TaskUUID      string          `json:"taskUUID,omitempty"`
-	AllowedValues []any           `json:"allowedValues,omitempty"`
+	Code             string          `json:"code"`
+	Message          string          `json:"message"`
+	RawParameter     json.RawMessage `json:"parameter,omitempty"`
+	Type             string          `json:"type,omitempty"`
+	Documentation    string          `json:"documentation,omitempty"`
+	TaskType         string          `json:"taskType,omitempty"`
+	TaskUUID         string          `json:"taskUUID,omitempty"`
+	RawAllowedValues json.RawMessage `json:"allowedValues,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler so RunwareError can be decoded
@@ -281,6 +286,8 @@ func (e *RunwareError) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	e.AllowedValues = normalizeAllowedValues(w.RawAllowedValues)
+
 	// Prefer the documentation URL from the API response; fall back to derived.
 	if w.Documentation != "" {
 		e.Documentation = w.Documentation
@@ -289,6 +296,53 @@ func (e *RunwareError) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+// normalizeAllowedValues accepts either a JSON array or a JSON object
+// (e.g. {"0":"checkpoint","1":"lora"}) and returns the values as strings.
+// The API sends both shapes. Unrecognized shapes yield nil; parsing never fails.
+func normalizeAllowedValues(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var arr []any
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		vals := make([]string, 0, len(arr))
+		for _, v := range arr {
+			vals = append(vals, fmt.Sprint(v))
+		}
+		return vals
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		keys := slices.Collect(maps.Keys(obj))
+		sortAllowedValueKeys(keys)
+		vals := make([]string, 0, len(keys))
+		for _, k := range keys {
+			vals = append(vals, fmt.Sprint(obj[k]))
+		}
+		return vals
+	}
+
+	return nil
+}
+
+// sortAllowedValueKeys orders keys numerically when every key parses as an
+// integer (the API's object shape uses numeric string keys), falling back to
+// lexicographic order otherwise.
+func sortAllowedValueKeys(keys []string) {
+	nums := make(map[string]int, len(keys))
+	for _, k := range keys {
+		n, err := strconv.Atoi(k)
+		if err != nil {
+			slices.Sort(keys)
+			return
+		}
+		nums[k] = n
+	}
+	slices.SortFunc(keys, func(a, b string) int { return nums[a] - nums[b] })
 }
 
 // RunwareErrorDetails carries optional context for CreateRunwareError.

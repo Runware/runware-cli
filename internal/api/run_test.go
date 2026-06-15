@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -166,17 +167,35 @@ func TestClientRun_SchemaUnavailable_NoTaskType(t *testing.T) {
 	}
 }
 
-// TestClientRun_ValidationFailure: schema declares a required field that is absent
-// from params; Run must return a validation error before submitting.
-func TestClientRun_ValidationFailure(t *testing.T) {
-	schema := map[string]any{
-		"properties": map[string]any{
-			fieldTaskType:    map[string]any{"const": "imageInference"},
-			"deliveryMethod": map[string]any{"default": "sync"},
-		},
-		"required": []string{"positivePrompt"},
+// TestClientRun_ModelUploadRejected_TaskTypeOption: passing modelUpload via
+// RunOptions.TaskType must be rejected with a redirect to 'model upload'
+// before any transport call is made.
+func TestClientRun_ModelUploadRejected_TaskTypeOption(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	mock := &mockTransport{}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
+		TaskType: "modelUpload",
+	})
+	if !errors.Is(err, ErrModelUploadViaRun) {
+		t.Fatalf("expected ErrModelUploadViaRun, got: %v", err)
 	}
-	srv := inferenceSchemaServer(t, schema)
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
+	}
+}
+
+// TestClientRun_ModelUploadRejected_SchemaDetected: a schema that resolves to
+// taskType modelUpload must also be rejected with the redirect error.
+func TestClientRun_ModelUploadRejected_SchemaDetected(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("modelUpload", ""))
 
 	mock := &mockTransport{}
 
@@ -184,6 +203,28 @@ func TestClientRun_ValidationFailure(t *testing.T) {
 	c.schemaBaseURLOverride = srv.URL + "/"
 
 	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{})
+	if !errors.Is(err, ErrModelUploadViaRun) {
+		t.Fatalf("expected ErrModelUploadViaRun, got: %v", err)
+	}
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
+	}
+}
+
+// TestClientRun_ValidationFailure: schema declares a required field that is absent
+// from params; with Validate enabled, Run must return a validation error before
+// submitting.
+func TestClientRun_ValidationFailure(t *testing.T) {
+	schema := requestSchemaWithTaskType("imageInference", "sync")
+	schema["required"] = []string{"positivePrompt"}
+	srv := inferenceSchemaServer(t, schema)
+
+	mock := &mockTransport{}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{Validate: true})
 	if err == nil {
 		t.Fatal("expected validation error for missing required field, got nil")
 	}
@@ -193,6 +234,32 @@ func TestClientRun_ValidationFailure(t *testing.T) {
 	// No transport calls should have been made — error must surface before submit.
 	if mock.callCount != 0 {
 		t.Errorf("expected 0 transport calls before validation error, got %d", mock.callCount)
+	}
+}
+
+// TestClientRun_ValidationOptIn_OffByDefault: the same missing-required-field
+// input is submitted (not rejected client-side) when Validate is off, so the API
+// is the source of truth for requirements (RUN-10584).
+func TestClientRun_ValidationOptIn_OffByDefault(t *testing.T) {
+	schema := requestSchemaWithTaskType("imageInference", "sync")
+	schema["required"] = []string{"positivePrompt"}
+	srv := inferenceSchemaServer(t, schema)
+
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{successItem(t, nil)}},
+		},
+	}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{})
+	if err != nil {
+		t.Fatalf("unexpected client-side validation error with Validate off: %v", err)
+	}
+	if mock.callCount != 1 {
+		t.Errorf("expected request to be submitted (1 transport call), got %d", mock.callCount)
 	}
 }
 

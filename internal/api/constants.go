@@ -9,6 +9,7 @@ const (
 	taskTypeAudioInference    TaskType = "audioInference"
 	taskTypeTextInference     TaskType = "textInference"
 	taskTypeModelSearch       TaskType = "modelSearch"
+	taskTypeModelUpload       TaskType = "modelUpload"
 	taskTypePing              TaskType = "ping"
 	taskTypeGetResponse       TaskType = "getResponse"
 	taskTypeAccountManagement TaskType = "accountManagement"
