@@ -177,6 +177,16 @@ func processingItem(t *testing.T, progress int) json.RawMessage {
 	return rawJSON(t, map[string]any{"status": "processing", "progress": progress})
 }
 
+// errorItem builds a raw JSON object with status "error" and failure details.
+func errorItem(t *testing.T, code, message string) json.RawMessage {
+	t.Helper()
+	return rawJSON(t, map[string]any{
+		"status":  "error",
+		"code":    code,
+		"message": message,
+	})
+}
+
 // TestPoll_SuccessOnFirstPoll: success item returned immediately.
 func TestPoll_SuccessOnFirstPoll(t *testing.T) {
 	mock := &mockTransport{
@@ -236,6 +246,45 @@ func TestPoll_OnProgressCalled(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != 25 || got[1] != 75 {
 		t.Errorf("expected progress [25 75], got %v", got)
+	}
+}
+
+// TestPoll_ErrorStatusReturnsError: a data item with status "error" stops polling.
+func TestPoll_ErrorStatusReturnsError(t *testing.T) {
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{errorItem(t, "timeoutProvider", "provider timed out")}},
+		},
+	}
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	if err == nil {
+		t.Fatal("expected error for status error, got nil")
+	}
+	if !strings.Contains(err.Error(), "timeoutProvider") || !strings.Contains(err.Error(), "provider timed out") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if mock.callCount != 1 {
+		t.Errorf("expected 1 poll call, got %d", mock.callCount)
+	}
+}
+
+// TestPoll_ErrorAfterProcessing: processing followed by error stops without hanging.
+func TestPoll_ErrorAfterProcessing(t *testing.T) {
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{processingItem(t, 40)}},
+			{data: []json.RawMessage{errorItem(t, "processingFailed", "generation failed")}},
+		},
+	}
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	if err == nil {
+		t.Fatal("expected error after processing, got nil")
+	}
+	if !strings.Contains(err.Error(), "generation failed") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if mock.callCount != 2 {
+		t.Errorf("expected 2 poll calls, got %d", mock.callCount)
 	}
 }
 

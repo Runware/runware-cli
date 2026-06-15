@@ -220,8 +220,9 @@ func (c *Client) ModelSearch(ctx context.Context, req ModelSearchRequest) (*Mode
 }
 
 // Poll polls for async task results using the getResponse task type.
-// It blocks until at least one result with status "success" is returned, the
-// context is cancelled, or a fatal API/auth error occurs.
+// It blocks until at least one result with status "success" is returned, a data
+// item reports status "error", the context is cancelled, or a fatal API/auth
+// error occurs.
 //
 // onProgress is called with the reported progress percentage (0–100) each time
 // a "processing" status item is received. It may be nil.
@@ -264,6 +265,8 @@ func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Durat
 					if onProgress != nil {
 						onProgress(item.Progress)
 					}
+				case "error":
+					return nil, pollTerminalError(item)
 				}
 			}
 			if len(results) > 0 {
@@ -277,4 +280,18 @@ func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Durat
 		case <-ticker.C:
 		}
 	}
+}
+
+// pollTerminalError formats a terminal poll failure from a getResponse data item.
+func pollTerminalError(item pollResponseItem) error {
+	if item.Message != "" {
+		if item.Code != "" {
+			return fmt.Errorf("task failed (%s): %s", item.Code, item.Message)
+		}
+		return fmt.Errorf("task failed: %s", item.Message)
+	}
+	if item.Code != "" {
+		return fmt.Errorf("task failed (%s)", item.Code)
+	}
+	return fmt.Errorf("task failed with status %q", item.Status)
 }
