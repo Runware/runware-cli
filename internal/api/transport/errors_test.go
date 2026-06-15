@@ -103,6 +103,54 @@ func TestAPIErrorParameterArray(t *testing.T) {
 	}
 }
 
+// TestAPIErrorAllowedValuesObject guards against a regression where the API
+// returns "allowedValues" as an object (e.g. an aspect-ratio→dimensions map)
+// rather than an array. A too-strict []any field previously failed the whole
+// envelope unmarshal, losing the real API message and hanging the ws poll loop.
+func TestAPIErrorAllowedValuesObject(t *testing.T) {
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "kontextMissingDimensionsOrReferenceImage",
+			"message": "The width/height parameters are required.",
+			"parameter": ["width", "height"],
+			"type": "integer",
+			"allowedValues": {"1:1": "1024x1024", "3:2": "1248x832"}
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if len(resp.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
+	}
+	if resp.Errors[0].Message != "The width/height parameters are required." {
+		t.Errorf("Message = %q, want the API message preserved", resp.Errors[0].Message)
+	}
+}
+
+// TestAPIErrorAllowedValuesArray confirms the array shape still parses.
+func TestAPIErrorAllowedValuesArray(t *testing.T) {
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "invalidParameter",
+			"message": "bad value",
+			"allowedValues": ["a", "b", "c"]
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if len(resp.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(resp.Errors))
+	}
+}
+
 func TestAPIErrorParameterMissing(t *testing.T) {
 	jsonData := `{
 		"data": [],

@@ -158,8 +158,10 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		schema.DeepSet(payload, path, v)
 	}
 
-	// Validate required fields and conditional constraints against the schema.
-	if modelSchema != nil {
+	// Validate required fields and conditional constraints — opt-in via --validate.
+	// Off by default so the API remains the source of truth for requirements; the
+	// fetched schema can disagree with the live API (see RUN-10584).
+	if modelSchema != nil && opts.Validate {
 		if err := schema.ValidateRequired(reqSchema, payload); err != nil {
 			return nil, err
 		}

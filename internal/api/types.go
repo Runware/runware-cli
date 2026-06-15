@@ -24,6 +24,12 @@ type RunOptions struct {
 	// OnProgress is called with the reported progress percentage (0–100) during async
 	// polling. It may be nil.
 	OnProgress func(int)
+
+	// Validate enables client-side validation of required and conditional
+	// constraints against the model schema. Off by default so the API remains the
+	// source of truth for requirements (the fetched schema can disagree with the
+	// live API — see RUN-10584).
+	Validate bool
 }
 
 // ImageInferenceRequest contains fields for the imageInference task type.
