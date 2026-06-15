@@ -9,6 +9,16 @@ import (
 	"testing"
 )
 
+// minimalPNG is a tiny valid PNG (1×1) recognised by http.DetectContentType.
+var minimalPNG = []byte{
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+	0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+	0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+	0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+	0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+	0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+}
+
 // TestBuildImageInput_Passthrough: URLs and data URIs are forwarded unchanged.
 func TestBuildImageInput_Passthrough(t *testing.T) {
 	cases := []string{
@@ -30,12 +40,11 @@ func TestBuildImageInput_Passthrough(t *testing.T) {
 }
 
 // TestBuildImageInput_LocalFile: a local image file is read and encoded as a
-// data URI with the MIME type derived from its extension.
+// data URI with the MIME type derived from its content.
 func TestBuildImageInput_LocalFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pic.png")
-	content := []byte("fake-png-bytes")
-	if err := os.WriteFile(path, content, 0600); err != nil {
+	if err := os.WriteFile(path, minimalPNG, 0600); err != nil {
 		t.Fatalf("write temp file: %v", err)
 	}
 
@@ -53,13 +62,31 @@ func TestBuildImageInput_LocalFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode base64: %v", err)
 	}
-	if !bytes.Equal(decoded, content) {
-		t.Errorf("decoded = %q, want %q", decoded, content)
+	if !bytes.Equal(decoded, minimalPNG) {
+		t.Errorf("decoded content mismatch")
 	}
 }
 
-// TestBuildImageInput_UnsupportedExtension: an unsupported extension is rejected.
-func TestBuildImageInput_UnsupportedExtension(t *testing.T) {
+// TestBuildImageInput_ContentOverridesExtension: magic-byte detection wins over
+// a misleading file extension.
+func TestBuildImageInput_ContentOverridesExtension(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "photo.jpg")
+	if err := os.WriteFile(path, minimalPNG, 0600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	got, err := buildImageInput(path)
+	if err != nil {
+		t.Fatalf("buildImageInput error: %v", err)
+	}
+	if !strings.HasPrefix(got, "data:image/png;base64,") {
+		t.Fatalf("got %q, want image/png MIME from content", got)
+	}
+}
+
+// TestBuildImageInput_UnsupportedContentType: non-image content is rejected.
+func TestBuildImageInput_UnsupportedContentType(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "notes.txt")
 	if err := os.WriteFile(path, []byte("hello"), 0600); err != nil {
@@ -67,7 +94,7 @@ func TestBuildImageInput_UnsupportedExtension(t *testing.T) {
 	}
 
 	if _, err := buildImageInput(path); err == nil {
-		t.Fatal("expected error for unsupported extension, got nil")
+		t.Fatal("expected error for unsupported content type, got nil")
 	}
 }
 

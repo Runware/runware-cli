@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,7 @@ func (r uploadResult) Rows() [][]any {
 }
 
 // imageExtMIME maps the file extensions accepted by the imageUpload API to their
-// MIME types, used to build a data URI for local files.
+// MIME types. Used as a fallback when magic-byte detection is unreliable (e.g. BMP).
 var imageExtMIME = map[string]string{
 	".jpg":  "image/jpeg",
 	".jpeg": "image/jpeg",
@@ -45,6 +46,15 @@ var imageExtMIME = map[string]string{
 	".webp": "image/webp",
 	".bmp":  "image/bmp",
 	".gif":  "image/gif",
+}
+
+// allowedImageMIME is the set of MIME types accepted by the imageUpload API.
+var allowedImageMIME = map[string]struct{}{
+	"image/jpeg": {},
+	"image/png":  {},
+	"image/webp": {},
+	"image/bmp":  {},
+	"image/gif":  {},
 }
 
 // NewCmd returns the "upload" command.
@@ -106,7 +116,7 @@ not yet supported by the API.`,
 
 // buildImageInput converts a CLI argument into the value accepted by the
 // imageUpload "image" field. Remote URLs and data URIs are returned unchanged;
-// local file paths are read, validated by extension, and encoded as a data URI.
+// local file paths are read, validated by content type, and encoded as a data URI.
 func buildImageInput(arg string) (string, error) {
 	if isRemoteOrDataURI(arg) {
 		return arg, nil
@@ -114,16 +124,10 @@ func buildImageInput(arg string) (string, error) {
 
 	info, err := os.Stat(arg)
 	if err != nil {
-		return "", fmt.Errorf("cannot read file %q: %w", arg, err)
+		return "", fmt.Errorf("cannot stat file %q: %w", arg, err)
 	}
 	if info.IsDir() {
 		return "", fmt.Errorf("%q is a directory, not a file", arg)
-	}
-
-	ext := strings.ToLower(filepath.Ext(arg))
-	mime, ok := imageExtMIME[ext]
-	if !ok {
-		return "", fmt.Errorf("unsupported file type %q: supported types are JPEG, JPG, PNG, WEBP, BMP, GIF", ext)
 	}
 
 	data, err := os.ReadFile(arg) //nolint:gosec // user-supplied path is expected for a CLI upload
@@ -131,7 +135,32 @@ func buildImageInput(arg string) (string, error) {
 		return "", fmt.Errorf("cannot read file %q: %w", arg, err)
 	}
 
+	mime, err := detectImageMIME(data, arg)
+	if err != nil {
+		return "", err
+	}
+
 	return fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(data)), nil
+}
+
+// detectImageMIME returns the MIME type for image data, preferring magic-byte
+// detection and falling back to the file extension when detection is unreliable.
+func detectImageMIME(data []byte, path string) (string, error) {
+	mime := http.DetectContentType(data)
+	if _, ok := allowedImageMIME[mime]; ok {
+		return mime, nil
+	}
+
+	if extMIME, ok := imageExtMIME[strings.ToLower(filepath.Ext(path))]; ok {
+		if _, allowed := allowedImageMIME[extMIME]; allowed {
+			return extMIME, nil
+		}
+	}
+
+	return "", fmt.Errorf(
+		"unsupported file type (detected %q): supported types are JPEG, JPG, PNG, WEBP, BMP, GIF",
+		mime,
+	)
 }
 
 // isRemoteOrDataURI reports whether arg should be forwarded to the API verbatim
