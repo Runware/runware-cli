@@ -8,7 +8,11 @@ Run an inference request against any Runware model.
 
 The model is identified by its AIR (AI Resource) identifier. Parameters are
 passed as key=value pairs. The model's JSON Schema is fetched automatically to
-validate inputs and determine the task type.
+coerce parameter types and determine the task type.
+
+The API validates the request, so parameters are not checked against the schema
+by default. Pass --validate to additionally enforce the schema's required and
+conditional constraints client-side before submitting.
 
 If the schema cannot determine the task type (e.g. for community or custom
 fine-tuned models), specify it explicitly with --task-type.
@@ -78,6 +82,7 @@ runware run <model> [key=value ...] [flags]
       --poll-interval duration   Polling interval when delivery method is async (default 2s)
       --preset string            Load parameters from a saved preset (model and params used as defaults)
       --task-type string         Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference)
+      --validate                 Validate parameters against the model schema before submitting (off by default; the API validates the request)
 ```
 
 ### Options inherited from parent commands

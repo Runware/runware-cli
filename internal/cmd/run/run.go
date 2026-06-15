@@ -27,6 +27,7 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		noDownload     bool
 		deliveryMethod string
 		pollInterval   time.Duration
+		validate       bool
 	}
 
 	cmd := &cobra.Command{
@@ -36,7 +37,11 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 
 The model is identified by its AIR (AI Resource) identifier. Parameters are
 passed as key=value pairs. The model's JSON Schema is fetched automatically to
-validate inputs and determine the task type.
+coerce parameter types and determine the task type.
+
+The API validates the request, so parameters are not checked against the schema
+by default. Pass --validate to additionally enforce the schema's required and
+conditional constraints client-side before submitting.
 
 If the schema cannot determine the task type (e.g. for community or custom
 fine-tuned models), specify it explicitly with --task-type.
@@ -140,6 +145,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 				DeliveryMethod: flags.deliveryMethod,
 				PollInterval:   flags.pollInterval,
 				OnProgress:     runProgress(spin),
+				Validate:       flags.validate,
 			})
 			if err != nil {
 				spin.Stop()
@@ -166,6 +172,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 	f.BoolVar(&flags.noDownload, "no-download", false, "Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)")
 	f.StringVar(&flags.deliveryMethod, "delivery-method", string(api.DeliveryMethodAsync), "Delivery method (sync or async)")
 	f.DurationVar(&flags.pollInterval, "poll-interval", 2*time.Second, "Polling interval when delivery method is async")
+	f.BoolVar(&flags.validate, "validate", false, "Validate parameters against the model schema before submitting (off by default; the API validates the request)")
 
 	//nolint:errcheck,gosec
 	cmd.RegisterFlagCompletionFunc("preset", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
