@@ -79,7 +79,7 @@ not yet supported by the API.`,
   runware upload https://example.com/photo.jpg
 
   # upload and use the UUID directly in a run command
-  runware run runware:100@1 positivePrompt="Same scene at night" \
+  runware run runware:100@1 positivePrompt="Same scene at night" width=1024 height=1024 \
     inputs.seedImage=$(runware upload ./photo.jpg -F json | jq -r '.imageUUID')`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
