@@ -79,9 +79,15 @@ func WithReconnectBaseDelay(d time.Duration) WSOption {
 
 // WithPollBurstWindow overrides the idle window used to collect a getResponse
 // poll reply (see wsPollBurstWindow). Intended for testing; production code
-// should rely on the default.
+// should rely on the default. Values <= 0 are clamped to wsPollBurstWindow to
+// prevent the getResponse path from blocking indefinitely.
 func WithPollBurstWindow(d time.Duration) WSOption {
-	return func(t *WSTransport) { t.pollBurstWindow = d }
+	return func(t *WSTransport) {
+		if d <= 0 {
+			d = wsPollBurstWindow
+		}
+		t.pollBurstWindow = d
+	}
 }
 
 // wsResult carries a single inbound result or an error for an in-flight Send.
@@ -685,6 +691,7 @@ func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int
 		case r, ok := <-ch:
 			if !ok {
 				stopIdle()
+				t.cleanupLocalChans(localChans)
 				return nil, CreateRunwareError(
 					"connectionFailed",
 					"WebSocket connection closed while waiting for response",
@@ -693,6 +700,7 @@ func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int
 			}
 			if r.err != nil {
 				stopIdle()
+				t.cleanupLocalChans(localChans)
 				return nil, r.err
 			}
 			results = append(results, r.data)
@@ -723,6 +731,7 @@ func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int
 			return nil, ctx.Err()
 		case <-t.disconnected:
 			stopIdle()
+			t.cleanupLocalChans(localChans)
 			return nil, CreateRunwareError(
 				"connectionFailed",
 				"WebSocket connection disconnected by client",
