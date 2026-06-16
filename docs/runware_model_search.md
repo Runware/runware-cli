@@ -29,13 +29,15 @@ runware model search [flags]
 
 ```
   -a, --architecture string   Filter by model architecture (e.g. sdxl, flux)
-  -c, --category string       Filter by category: modality (video, image, text, audio, 3d), checkpoint, lora, lycoris, vae, embeddings
+  -c, --category string       Filter by category: checkpoint, lora, lycoris, vae, embeddings
+      --conditioning string   Filter ControlNet models by conditioning type
   -h, --help                  help for search
   -l, --limit int             Maximum number of results to return (1-100) (default 20)
       --offset int            Number of results to skip for pagination
   -q, --search string         Search query (name, description, or AIR ID)
+      --tags strings          Filter by tags (repeatable: --tags style --tags portrait)
   -t, --type string           Filter checkpoint type: base, inpainting, refiner
-      --visibility string     Filter by visibility: public, private, community, favorite (default "public")
+      --visibility string     Filter by visibility: public, private, community, favorite, owned (default "public")
   -W, --wide                  Show additional columns: private, default size, tags
 ```
 
