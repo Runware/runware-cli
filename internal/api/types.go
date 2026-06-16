@@ -61,6 +61,21 @@ type ImageInferenceResult struct {
 	Seed      int64     `json:"seed"`
 }
 
+// ImageUploadRequest is the request payload for the imageUpload task.
+type ImageUploadRequest struct {
+	TaskType TaskType  `json:"taskType"`
+	TaskUUID uuid.UUID `json:"taskUUID"`
+	Image    string    `json:"image"`
+}
+
+// ImageUploadResult is the response from an imageUpload task. ImageUUID is the
+// stored asset identifier, reusable as input for other tasks.
+type ImageUploadResult struct {
+	TaskType  TaskType  `json:"taskType"`
+	TaskUUID  uuid.UUID `json:"taskUUID"`
+	ImageUUID uuid.UUID `json:"imageUUID"`
+}
+
 // PingRequest is the request payload for the ping task.
 type PingRequest struct {
 	TaskType TaskType  `json:"taskType"`

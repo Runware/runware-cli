@@ -27,5 +27,6 @@ Generate images, search models, manage your account, and more.
 * [runware ping](runware_ping.md)	 - Check API connectivity
 * [runware preset](runware_preset.md)	 - Manage named presets
 * [runware run](runware_run.md)	 - Run an inference request against any Runware model
+* [runware upload](runware_upload.md)	 - Upload an asset and return its UUID
 * [runware version](runware_version.md)	 - Print version information
 
