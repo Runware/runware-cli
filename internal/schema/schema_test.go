@@ -1006,3 +1006,49 @@ func containsString(s, sub string) bool {
 	}
 	return false
 }
+
+// ---- SchemaType UnmarshalJSON tests ----
+
+func TestNode_UnmarshalJSON_StringType(t *testing.T) {
+	raw := `{"type": "integer"}`
+	var node schema.Node
+	if err := json.Unmarshal([]byte(raw), &node); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.Type != schema.TypeInteger {
+		t.Errorf("expected %q, got %q", schema.TypeInteger, node.Type)
+	}
+}
+
+func TestNode_UnmarshalJSON_ArrayType(t *testing.T) {
+	raw := `{"type": ["string", "null"], "description": "nullable string"}`
+	var node schema.Node
+	if err := json.Unmarshal([]byte(raw), &node); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.Type != schema.TypeString {
+		t.Errorf("expected %q, got %q", schema.TypeString, node.Type)
+	}
+}
+
+func TestNode_UnmarshalJSON_ArrayTypeNullFirst(t *testing.T) {
+	raw := `{"type": ["null", "integer"]}`
+	var node schema.Node
+	if err := json.Unmarshal([]byte(raw), &node); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.Type != schema.TypeInteger {
+		t.Errorf("expected %q, got %q", schema.TypeInteger, node.Type)
+	}
+}
+
+func TestNode_UnmarshalJSON_ArrayTypeAllNull(t *testing.T) {
+	raw := `{"type": ["null"]}`
+	var node schema.Node
+	if err := json.Unmarshal([]byte(raw), &node); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.Type != "" {
+		t.Errorf("expected empty, got %q", node.Type)
+	}
+}

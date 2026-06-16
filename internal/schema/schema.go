@@ -20,6 +20,34 @@ const (
 	TypeObject  = "object"
 )
 
+// SchemaType holds the JSON Schema "type" value. JSON Schema allows "type" to be
+// either a string or an array of strings (e.g. ["string", "null"] for nullable
+// fields). UnmarshalJSON normalises both forms to the first non-"null" type string.
+type SchemaType string
+
+func (t *SchemaType) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '[' {
+		var types []string
+		if err := json.Unmarshal(b, &types); err != nil {
+			return err
+		}
+		for _, s := range types {
+			if s != "null" {
+				*t = SchemaType(s)
+				return nil
+			}
+		}
+		*t = SchemaType("")
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	*t = SchemaType(s)
+	return nil
+}
+
 // fieldDeliveryMethod is the payload key for the delivery method field.
 const fieldDeliveryMethod = "deliveryMethod"
 
@@ -29,7 +57,7 @@ const fieldDeliveryMethod = "deliveryMethod"
 type Node struct {
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
-	Type        string          `json:"type"`
+	Type        SchemaType      `json:"type"`
 	Default     json.RawMessage `json:"default"`
 	Properties  map[string]Node `json:"properties"`
 	Required    []string        `json:"required"`
