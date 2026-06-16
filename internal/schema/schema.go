@@ -26,25 +26,24 @@ const (
 type SchemaType string
 
 func (t *SchemaType) UnmarshalJSON(b []byte) error {
-	if len(b) > 0 && b[0] == '[' {
-		var types []string
-		if err := json.Unmarshal(b, &types); err != nil {
-			return err
-		}
-		for _, s := range types {
-			if s != "null" {
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	switch val := v.(type) {
+	case string:
+		*t = SchemaType(val)
+	case []any:
+		for _, elem := range val {
+			if s, ok := elem.(string); ok && s != "null" {
 				*t = SchemaType(s)
 				return nil
 			}
 		}
 		*t = SchemaType("")
-		return nil
+	default:
+		return fmt.Errorf("schema type: expected string or array, got %T", v)
 	}
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-	*t = SchemaType(s)
 	return nil
 }
 
