@@ -20,9 +20,11 @@ import (
 // Compile-time interface check.
 var _ Transport = (*WSTransport)(nil)
 
-const wsAuthTaskType = "authentication"
-const wsPingTaskType = "ping"
-const wsGetResponseTaskType = "getResponse"
+const (
+	wsAuthTaskType        = "authentication"
+	wsPingTaskType        = "ping"
+	wsGetResponseTaskType = "getResponse"
+)
 
 // wsAuthRequest is the authentication handshake payload sent on connect.
 // ConnectionSessionUUID is omitted when empty, so a fresh session is started.
