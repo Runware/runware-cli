@@ -29,3 +29,7 @@ func (sp *Spinner) Stop() { sp.s.Stop() }
 
 // SetMessage updates the spinner suffix text while it is running.
 func (sp *Spinner) SetMessage(msg string) { sp.s.Suffix = " " + msg }
+
+// Restart stops and restarts the spinner. Use this instead of Stop+Start
+// to reliably resume the animation.
+func (sp *Spinner) Restart() { sp.s.Restart() }

@@ -25,6 +25,10 @@ type RunOptions struct {
 	// polling. It may be nil.
 	OnProgress func(int)
 
+	// OnSubmit is called with the generated task UUID after the initial request is
+	// submitted but before async polling begins. It may be nil.
+	OnSubmit func(taskUUID uuid.UUID)
+
 	// Validate enables client-side validation of required and conditional
 	// constraints against the model schema. Off by default so the API remains the
 	// source of truth for requirements (the fetched schema can disagree with the
@@ -185,11 +189,13 @@ type GetResponseRequest struct {
 }
 
 // pollResponseItem is the minimal shape of each item returned by a getResponse
-// poll call. Status is "success", "processing", or similar; Progress is the
+// poll call. Status is "success", "processing", or "error"; Progress is the
 // completion percentage reported for "processing" items.
 type pollResponseItem struct {
 	Status   string `json:"status"`
 	Progress int    `json:"progress"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
 }
 
 // AudioInferenceRequest contains fields for the audioInference task type.

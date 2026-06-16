@@ -44,4 +44,5 @@ const (
 	fieldTaskType       = "taskType"
 	fieldTaskUUID       = "taskUUID"
 	fieldDeliveryMethod = "deliveryMethod"
+	fieldStatus         = "status"
 )

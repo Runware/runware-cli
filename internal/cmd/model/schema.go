@@ -16,8 +16,9 @@ import (
 
 // colType and colAIR are shared column/field labels used across model table views.
 const (
-	colType = "Type"
-	colAIR  = "AIR"
+	colType           = "Type"
+	colAIR            = "AIR"
+	defaultEmptyValue = "—"
 )
 
 // table rendering. Only the fields needed for display are captured.
@@ -112,14 +113,14 @@ func formatSchemaType(node schemaNode) string {
 	if node.Type != "" {
 		return node.Type
 	}
-	return "—"
+	return defaultEmptyValue
 }
 
 // formatSchemaDefault renders a json.RawMessage default value as a plain string.
 // Strings are unquoted; numbers and booleans are left as-is; null/absent → "—".
 func formatSchemaDefault(raw json.RawMessage) string {
 	if len(raw) == 0 {
-		return "—"
+		return defaultEmptyValue
 	}
 
 	// Try to unquote a JSON string.
@@ -131,7 +132,7 @@ func formatSchemaDefault(raw json.RawMessage) string {
 	// For numbers, booleans, etc., use the raw JSON token directly.
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "null" {
-		return "—"
+		return defaultEmptyValue
 	}
 	return trimmed
 }

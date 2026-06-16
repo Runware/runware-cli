@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	runwarehttp "github.com/runware/runware-cli/internal/http"
 	"github.com/runware/runware-cli/internal/output"
@@ -70,26 +71,36 @@ func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMes
 			return fmt.Errorf("failed to parse result %d: %w", i, err)
 		}
 
-		if format == output.FormatJSON || format == output.FormatYAML {
-			// Emit raw JSON / YAML directly without transformation.
+		tt, _ := parsed[fieldTaskType].(string)
+
+		switch {
+		case format == output.FormatJSON || format == output.FormatYAML:
 			if err := emitRaw(format, parsed); err != nil {
 				return err
 			}
-		} else if tt, _ := parsed[fieldTaskType].(string); tt == taskTypeText {
-			// Text inference: print the text field raw to stdout.
-			// A divider separates multiple results (e.g. numberResults > 1).
+		case tt == taskTypeText:
 			if i > 0 {
 				fmt.Println("---")
 			}
-
 			if s, ok := parsed[fieldText].(string); ok {
 				fmt.Println(s)
 			}
-		} else {
-			// Table: flatten to key-value rows, surfacing important fields first.
+		default:
 			res := buildRunResult(parsed)
 			if err := output.Print(format, res); err != nil {
 				return err
+			}
+		}
+
+		if tt == taskTypeTraining {
+			status, _ := parsed[fieldStatus].(string)
+			if status != "success" {
+				taskUUIDStr, _ := parsed[fieldTaskUUID].(string)
+				if _, err := uuid.Parse(taskUUIDStr); err != nil {
+					return fmt.Errorf("result %d: invalid taskUUID %q: %w", i, taskUUIDStr, err)
+				}
+				logger.Info("Task submitted", "taskUUID", taskUUIDStr)
+				logger.Info("To resume waiting if interrupted: runware result " + taskUUIDStr)
 			}
 		}
 

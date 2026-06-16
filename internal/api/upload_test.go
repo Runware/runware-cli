@@ -110,7 +110,7 @@ func uploadStatusItem(t *testing.T, status, message, air string) json.RawMessage
 	t.Helper()
 	return rawJSON(t, map[string]any{
 		fieldTaskType: "modelUpload",
-		"status":      status,
+		fieldStatus:   status,
 		"message":     message,
 		"air":         air,
 	})
