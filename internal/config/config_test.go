@@ -3,9 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-
-	"github.com/spf13/viper"
 )
 
 func TestMaskKey(t *testing.T) {
@@ -78,12 +77,6 @@ func TestPresetOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir = tmpDir
 
-	// Point Viper at the temp dir so ReadInConfig works after Save
-	viper.Reset()
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(tmpDir)
-
 	// Start with empty config
 	cfg := &Config{
 		Defaults: Defaults{
@@ -134,11 +127,128 @@ func TestPresetOperations(t *testing.T) {
 	}
 }
 
-// TestPresetDotNotationParams is skipped: Viper's Unmarshal treats dots in
-// map keys as path separators, mangling preset params like "messages.0.role".
-// This will be fixed properly when Viper is removed (RUN-10482).
-func TestPresetDotNotationParams(t *testing.T) {
-	t.Skip("blocked on Viper removal (RUN-10482): dot-notation keys are mangled by viper.Unmarshal")
+func TestPresetMixedCaseRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir = tmpDir
+	t.Setenv("RUNWARE_API_KEY", "")
+
+	preset := Preset{
+		Model: "runware:100@1",
+		Params: map[string]string{
+			"positivePrompt": "a cat",
+			"CFGScale":       "7",
+		},
+	}
+	if err := SavePreset("MyPreset", preset); err != nil {
+		t.Fatalf("SavePreset() error: %v", err)
+	}
+
+	got := GetPreset("MyPreset")
+	if got == nil {
+		t.Fatal("GetPreset(MyPreset) returned nil")
+	}
+	if got.Params["positivePrompt"] != "a cat" {
+		t.Errorf("positivePrompt = %q, want %q (keys: %v)", got.Params["positivePrompt"], "a cat", got.Params)
+	}
+	if got.Params["CFGScale"] != "7" {
+		t.Errorf("CFGScale = %q, want %q (keys: %v)", got.Params["CFGScale"], "7", got.Params)
+	}
+
+	// Preset names are case-sensitive too.
+	if p := GetPreset("mypreset"); p != nil {
+		t.Errorf("GetPreset(mypreset) = %v, want nil", p)
+	}
+
+	names := ListPresets()
+	found := false
+	for _, n := range names {
+		if n == "MyPreset" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ListPresets() = %v, want to contain %q", names, "MyPreset")
+	}
+
+	// The file on disk must keep the original casing.
+	data, err := os.ReadFile(ConfigPath())
+	if err != nil {
+		t.Fatalf("failed to read config file: %v", err)
+	}
+	if !strings.Contains(string(data), "positivePrompt") {
+		t.Errorf("config file does not contain %q:\n%s", "positivePrompt", data)
+	}
+
+	// A subsequent unrelated save must not rewrite the file with lowercased
+	// keys (the original corruption symptom).
+	if err := SetAPIKey("test-key-12345678"); err != nil {
+		t.Fatalf("SetAPIKey() error: %v", err)
+	}
+	got = GetPreset("MyPreset")
+	if got == nil {
+		t.Fatal("GetPreset(MyPreset) after SetAPIKey returned nil")
+	}
+	if got.Params["positivePrompt"] != "a cat" {
+		t.Errorf("positivePrompt after SetAPIKey = %q, want %q (keys: %v)", got.Params["positivePrompt"], "a cat", got.Params)
+	}
+}
+
+func TestGetDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir = tmpDir
+	t.Setenv("RUNWARE_API_KEY", "")
+
+	cfg := Get()
+	if cfg.Defaults.OutputDir != DefaultOutputDir {
+		t.Errorf("OutputDir = %q, want %q", cfg.Defaults.OutputDir, DefaultOutputDir)
+	}
+	if cfg.Defaults.Format != DefaultFormat {
+		t.Errorf("Format = %q, want %q", cfg.Defaults.Format, DefaultFormat)
+	}
+	if cfg.Defaults.Transport != DefaultTransport {
+		t.Errorf("Transport = %q, want %q", cfg.Defaults.Transport, DefaultTransport)
+	}
+	if cfg.APIKey != "" {
+		t.Errorf("APIKey = %q, want empty", cfg.APIKey)
+	}
+}
+
+func TestTransportRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir = tmpDir
+	t.Setenv("RUNWARE_API_KEY", "")
+
+	cfg := Get()
+	cfg.Defaults.Transport = "http"
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	if got := Get().Defaults.Transport; got != "http" {
+		t.Errorf("Transport = %q, want %q", got, "http")
+	}
+}
+
+func TestAPIKeyEnvOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir = tmpDir
+
+	if err := Save(&Config{APIKey: "file-key"}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	t.Setenv("RUNWARE_API_KEY", "env-key")
+	if got := Get().APIKey; got != "env-key" {
+		t.Errorf("Get().APIKey = %q, want %q", got, "env-key")
+	}
+	if got := GetAPIKey(); got != "env-key" {
+		t.Errorf("GetAPIKey() = %q, want %q", got, "env-key")
+	}
+
+	t.Setenv("RUNWARE_API_KEY", "")
+	if got := GetAPIKey(); got != "file-key" {
+		t.Errorf("GetAPIKey() = %q, want %q", got, "file-key")
+	}
 }
 
 func TestConfigPath(t *testing.T) {

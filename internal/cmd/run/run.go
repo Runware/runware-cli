@@ -28,6 +28,7 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		noDownload     bool
 		deliveryMethod string
 		pollInterval   time.Duration
+		validate       bool
 	}
 
 	cmd := &cobra.Command{
@@ -37,7 +38,11 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 
 The model is identified by its AIR (AI Resource) identifier. Parameters are
 passed as key=value pairs. The model's JSON Schema is fetched automatically to
-validate inputs and determine the task type.
+coerce parameter types and determine the task type.
+
+The API validates the request, so parameters are not checked against the schema
+by default. Pass --validate to additionally enforce the schema's required and
+conditional constraints client-side before submitting.
 
 If the schema cannot determine the task type (e.g. for community or custom
 fine-tuned models), specify it explicitly with --task-type.
@@ -70,6 +75,15 @@ The model positional argument may be omitted when --preset supplies one.`,
   # Community model — task type must be specified explicitly
   runware run civitai:305149@392545 --task-type imageInference positivePrompt="A portrait" width=1024 height=1024
 
+  # Upscale
+  runware run runware:35@2 settings.confidence=0.45 settings.maxDetections=3 settings.maskPadding=14 settings.maskBlur=4 inputs.image="https://assets.runware.ai/assets/inputs/38837c23-1b72-4322-8465-ec950f83e2ad.jpg"
+
+  # Remove background (inspect returned fields/URLs)
+  runware run runware:110@1 --task-type removeBackground --format json --no-download inputs.image="https://assets.runware.ai/assets/inputs/8e540ecf-ef5e-4a70-b07a-dc73ffd827a2.jpg"
+
+  # Caption (inspect returned fields/URLs)
+  runware run memories:1@1 --task-type caption --format json --no-download inputs.video="https://assets.runware.ai/assets/inputs/42b64dcb-3c21-4b50-83ab-779d338dde47.mp4"
+
   # Load a saved preset, overriding individual params
   runware run --preset portrait positivePrompt="Sunset over the ocean"
 
@@ -88,12 +102,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			model := ""
-			kvArgs := []string{}
-			if len(args) >= 1 {
-				model = args[0]
-				kvArgs = args[1:]
-			}
+			model, kvArgs := cmdutil.SplitModelArgs(args)
 
 			if flags.preset != "" {
 				p := config.GetPreset(flags.preset)
@@ -120,7 +129,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 				return fmt.Errorf("model is required: provide as first argument or via --preset")
 			}
 
-			spin := cmdutil.NewSpinner("Running inference...")
+			spin := cmdutil.NewSpinner("Running task...")
 			spin.Start()
 
 			t, err := cmdutil.NewTransport(cmd, slog.New(logger))
@@ -144,7 +153,9 @@ The model positional argument may be omitted when --preset supplies one.`,
 					spin.SetMessage("Waiting for result...")
 					spin.Restart()
 				},
+				Validate: flags.validate,
 			})
+
 			if err != nil {
 				spin.Stop()
 				return err
@@ -170,6 +181,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 	f.BoolVar(&flags.noDownload, "no-download", false, "Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)")
 	f.StringVar(&flags.deliveryMethod, "delivery-method", string(api.DeliveryMethodAsync), "Delivery method (sync or async)")
 	f.DurationVar(&flags.pollInterval, "poll-interval", 2*time.Second, "Polling interval when delivery method is async")
+	f.BoolVar(&flags.validate, "validate", false, "Validate parameters against the model schema before submitting (off by default; the API validates the request)")
 
 	//nolint:errcheck,gosec
 	cmd.RegisterFlagCompletionFunc("preset", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {

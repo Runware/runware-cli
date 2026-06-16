@@ -143,6 +143,12 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		taskType = detected
 	}
 
+	// modelUpload is a platform utility, not an inference task; it has its own
+	// command with explicit flags.
+	if taskType == string(taskTypeModelUpload) {
+		return nil, ErrModelUploadViaRun
+	}
+
 	// Parse args against the real schema so type coercion is schema-driven.
 	// Protected fields (taskType, taskUUID, model, deliveryMethod) are rejected here.
 	payload := make(map[string]any, len(args)+4)
@@ -158,8 +164,10 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		schema.DeepSet(payload, path, v)
 	}
 
-	// Validate required fields and conditional constraints against the schema.
-	if modelSchema != nil {
+	// Validate required fields and conditional constraints — opt-in via --validate.
+	// Off by default so the API remains the source of truth for requirements; the
+	// fetched schema can disagree with the live API (see RUN-10584).
+	if modelSchema != nil && opts.Validate {
 		if err := schema.ValidateRequired(reqSchema, payload); err != nil {
 			return nil, err
 		}
@@ -217,6 +225,79 @@ func (c *Client) ModelSearch(ctx context.Context, req ModelSearchRequest) (*Mode
 	}
 
 	return &result, nil
+}
+
+// modelUpload pipeline terminal statuses.
+const (
+	uploadStatusReady  = "ready"
+	uploadStatusFailed = "failed"
+)
+
+// ModelUpload submits a modelUpload task and follows the streamed pipeline
+// statuses (validated → downloaded → optimized → stored) until the model is
+// ready or the upload fails.
+//
+// The pipeline statuses are only delivered as streamed frames over the
+// WebSocket transport (the API does not expose them via getResponse polling),
+// so the transport must implement [transport.StreamSender].
+func (c *Client) ModelUpload(ctx context.Context, req ModelUploadRequest, opts ModelUploadOptions) (*ModelUploadResult, error) {
+	ss, ok := c.transport.(transport.StreamSender)
+	if !ok {
+		return nil, ErrModelUploadTransport
+	}
+
+	req.TaskType = taskTypeModelUpload
+	req.TaskUUID = uuid.New()
+
+	var result *ModelUploadResult
+	var lastStatus string
+	err := ss.SendStream(ctx, req, func(raw json.RawMessage) (bool, error) {
+		res, done, err := consumeUploadFrame(raw, opts.OnStatus, &lastStatus)
+		if done {
+			result = res
+		}
+		return done, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, fmt.Errorf("model upload stream ended without a terminal status")
+	}
+	return result, nil
+}
+
+// consumeUploadFrame inspects a single modelUpload pipeline frame. done is
+// true for a terminal frame ("ready" or "failed"). Intermediate statuses are
+// reported through onStatus, deduplicated against *lastStatus so repeated
+// frames for the same phase fire the callback once.
+func consumeUploadFrame(raw json.RawMessage, onStatus func(status, message string), lastStatus *string) (*ModelUploadResult, bool, error) {
+	var item ModelUploadResult
+	if err := json.Unmarshal(raw, &item); err != nil {
+		// Unparseable frames are skipped, not fatal: the stream continues
+		// until a terminal frame arrives.
+		return nil, false, nil //nolint:nilerr
+	}
+	switch item.Status {
+	case uploadStatusReady:
+		return &item, true, nil
+	case uploadStatusFailed:
+		msg := item.Message
+		if msg == "" {
+			msg = "no failure reason reported"
+		}
+		return nil, true, fmt.Errorf("model upload failed: %s", msg)
+	case "":
+		return nil, false, nil
+	default:
+		if item.Status != *lastStatus {
+			*lastStatus = item.Status
+			if onStatus != nil {
+				onStatus(item.Status, item.Message)
+			}
+		}
+		return nil, false, nil
+	}
 }
 
 // Poll polls for async task results using the getResponse task type.

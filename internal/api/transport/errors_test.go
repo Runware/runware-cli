@@ -3,6 +3,7 @@ package transport
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -100,6 +101,74 @@ func TestAPIErrorParameterArray(t *testing.T) {
 	param := resp.Errors[0].Parameter
 	if param != "positivePrompt" {
 		t.Errorf("Parameter = %q, want %q", param, "positivePrompt")
+	}
+}
+
+func TestAPIErrorAllowedValuesArray(t *testing.T) {
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "invalidCategory",
+			"message": "bad category",
+			"parameter": "category",
+			"allowedValues": ["checkpoint", "lora"]
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	got := resp.Errors[0].AllowedValues
+	want := []string{"checkpoint", "lora"}
+	if !slices.Equal(got, want) {
+		t.Errorf("AllowedValues = %v, want %v", got, want)
+	}
+}
+
+func TestAPIErrorAllowedValuesObject(t *testing.T) {
+	// The API sometimes sends allowedValues as an object with numeric string
+	// keys instead of an array; this must not fail the envelope unmarshal.
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "invalidCategory",
+			"message": "bad category",
+			"parameter": "category",
+			"allowedValues": {"0": "checkpoint", "1": "lora", "2": "controlnet", "10": "text"}
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	got := resp.Errors[0].AllowedValues
+	want := []string{"checkpoint", "lora", "controlnet", "text"}
+	if !slices.Equal(got, want) {
+		t.Errorf("AllowedValues = %v, want %v", got, want)
+	}
+}
+
+func TestAPIErrorAllowedValuesUnrecognizedShape(t *testing.T) {
+	jsonData := `{
+		"data": [],
+		"errors": [{
+			"code": "invalidCategory",
+			"message": "bad category",
+			"allowedValues": "checkpoint"
+		}]
+	}`
+
+	var resp APIResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if got := resp.Errors[0].AllowedValues; got != nil {
+		t.Errorf("AllowedValues = %v, want nil", got)
 	}
 }
 

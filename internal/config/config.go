@@ -1,12 +1,10 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -16,12 +14,16 @@ const (
 	MaskedKeySuffix  = "•••••"
 	DefaultOutputDir = "./outputs"
 	DefaultFormat    = "table"
+	// DefaultTransport matches transport.SchemeWS; kept as a literal so the
+	// config package stays free of internal imports.
+	DefaultTransport = "ws"
 )
 
 // Defaults holds default values for commands.
 type Defaults struct {
-	OutputDir string `mapstructure:"output_dir" yaml:"output_dir"`
-	Format    string `mapstructure:"format" yaml:"format"`
+	OutputDir string `yaml:"output_dir"`
+	Format    string `yaml:"format"`
+	Transport string `yaml:"transport"`
 }
 
 // Preset is a named set of inference parameters for use with the run command.
@@ -37,9 +39,9 @@ type Preset struct {
 
 // Config is the full configuration structure.
 type Config struct {
-	APIKey   string            `mapstructure:"api_key" yaml:"api_key,omitempty"`
-	Defaults Defaults          `mapstructure:"defaults" yaml:"defaults"`
-	Presets  map[string]Preset `mapstructure:"presets" yaml:"presets,omitempty"`
+	APIKey   string            `yaml:"api_key,omitempty"`
+	Defaults Defaults          `yaml:"defaults"`
+	Presets  map[string]Preset `yaml:"presets,omitempty"`
 }
 
 var configDir string
@@ -50,10 +52,13 @@ func ValidDefaultsKeys() map[string]struct{} {
 	return map[string]struct{}{
 		"output_dir": {},
 		"format":     {},
+		"transport":  {},
 	}
 }
 
-// Init sets up Viper to read from ~/.runware/config.yaml and sets defaults.
+// Init locates the config directory (~/.runware) and validates that the
+// config file, if present, parses cleanly so startup fails loudly on a
+// corrupt file.
 func Init() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -62,38 +67,69 @@ func Init() error {
 
 	configDir = filepath.Join(home, ".runware")
 
-	viper.SetDefault("defaults.output_dir", DefaultOutputDir)
-	viper.SetDefault("defaults.format", DefaultFormat)
-
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(configDir)
-
-	// Environment variable overrides
-	viper.SetEnvPrefix("")
-	viper.BindEnv("api_key", "RUNWARE_API_KEY") //nolint:errcheck,gosec
-
-	if err := viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
-			return fmt.Errorf("error reading config: %w", err)
-		}
-		// Config file not found is fine — we use defaults
+	if _, err := load(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-// Get returns the current merged config.
-func Get() *Config {
+// load reads and parses the config file. A missing file is not an error; it
+// yields a zero config.
+func load() (*Config, error) {
 	var cfg Config
-	viper.Unmarshal(&cfg) //nolint:errcheck,gosec
-	return &cfg
+	if configDir == "" {
+		// Init has not run; behave as if no config file exists rather than
+		// reading a relative ./config.yaml.
+		return &cfg, nil
+	}
+	data, err := os.ReadFile(ConfigPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &cfg, nil
+		}
+		return nil, fmt.Errorf("error reading config: %w", err)
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("error parsing config: %w", err)
+	}
+	return &cfg, nil
+}
+
+// FileConfig returns the config exactly as stored on disk, without applying
+// environment overrides or default fallbacks. Use this for read-modify-write
+// operations so env-only secrets are never persisted to the file. A missing
+// file yields a zero config.
+func FileConfig() (*Config, error) {
+	return load()
+}
+
+// Get returns the current merged config: file values with fallback defaults
+// applied and the RUNWARE_API_KEY environment variable taking precedence
+// over the file's API key.
+func Get() *Config {
+	cfg, err := load()
+	if err != nil {
+		cfg = &Config{}
+	}
+	if cfg.Defaults.OutputDir == "" {
+		cfg.Defaults.OutputDir = DefaultOutputDir
+	}
+	if cfg.Defaults.Format == "" {
+		cfg.Defaults.Format = DefaultFormat
+	}
+	if cfg.Defaults.Transport == "" {
+		cfg.Defaults.Transport = DefaultTransport
+	}
+	if v := os.Getenv("RUNWARE_API_KEY"); v != "" {
+		cfg.APIKey = v
+	}
+	return cfg
 }
 
 // GetAPIKey returns the API key.
 func GetAPIKey() string {
-	return viper.GetString("api_key")
+	return Get().APIKey
 }
 
 // GetBaseURL returns the HTTP API base URL.
@@ -131,7 +167,8 @@ func EnsureConfigDir() error {
 	return os.MkdirAll(configDir, 0700)
 }
 
-// Save writes the config to disk and reloads Viper so subsequent Get() calls reflect the change.
+// Save writes the config to disk. Subsequent Get() calls re-read the file,
+// so they reflect the change.
 func Save(cfg *Config) error {
 	if err := EnsureConfigDir(); err != nil {
 		return fmt.Errorf("cannot create config directory: %w", err)
@@ -145,9 +182,6 @@ func Save(cfg *Config) error {
 	if err := os.WriteFile(ConfigPath(), data, 0600); err != nil {
 		return fmt.Errorf("cannot write config: %w", err)
 	}
-
-	// Re-read so Viper picks up the changes
-	viper.ReadInConfig() //nolint:errcheck,gosec
 
 	return nil
 }
@@ -181,7 +215,10 @@ func GetPreset(name string) *Preset {
 
 // SavePreset saves a named preset.
 func SavePreset(name string, preset Preset) error {
-	cfg := Get()
+	cfg, err := load()
+	if err != nil {
+		return err
+	}
 	if cfg.Presets == nil {
 		cfg.Presets = make(map[string]Preset)
 	}
@@ -191,7 +228,10 @@ func SavePreset(name string, preset Preset) error {
 
 // DeletePreset removes a named preset.
 func DeletePreset(name string) error {
-	cfg := Get()
+	cfg, err := load()
+	if err != nil {
+		return err
+	}
 	if cfg.Presets == nil {
 		return nil
 	}

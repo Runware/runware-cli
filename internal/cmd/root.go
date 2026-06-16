@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmd/account"
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
@@ -48,6 +49,11 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 					return fmt.Errorf("invalid format %q: must be one of: %s", f, strings.Join(output.ValidFormats(), ", "))
 				}
 			}
+			if t, _ := cmd.Root().PersistentFlags().GetString("transport"); t != "" {
+				if !transport.ValidTransport(t) {
+					return fmt.Errorf("invalid transport %q: must be one of: %s", t, strings.Join(transport.ValidTransports(), ", "))
+				}
+			}
 			return config.Init()
 		},
 		SilenceUsage:  true,
@@ -57,12 +63,19 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root.PersistentFlags().StringP("format", "F", cfg.Defaults.Format, "CLI output format: table, json, yaml")
 	root.PersistentFlags().BoolP("verbose", "v", false, "Show request/response details")
 	root.PersistentFlags().Bool("debug", false, "Show full debug output")
-	root.PersistentFlags().String("transport", "ws", "Transport protocol: ws (WebSocket) or http (REST)")
+	root.PersistentFlags().String("transport", cfg.Defaults.Transport, "Transport protocol: ws (WebSocket) or http (REST)")
 
 	root.RegisterFlagCompletionFunc("format", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		formats := output.ValidFormats()
 		completions := make([]cobra.Completion, len(formats))
 		copy(completions, formats)
+		return completions, cobra.ShellCompDirectiveNoFileComp
+	})
+
+	root.RegisterFlagCompletionFunc("transport", func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		transports := transport.ValidTransports()
+		completions := make([]cobra.Completion, len(transports))
+		copy(completions, transports)
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	})
 
