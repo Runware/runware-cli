@@ -164,7 +164,7 @@ func TestSend_NoAPIKey(t *testing.T) {
 // successItem builds a raw JSON object with status "success" and an arbitrary field.
 func successItem(t *testing.T, extra map[string]any) json.RawMessage {
 	t.Helper()
-	m := map[string]any{"status": "success"}
+	m := map[string]any{fieldStatus: "success"}
 	for k, v := range extra {
 		m[k] = v
 	}
@@ -174,16 +174,16 @@ func successItem(t *testing.T, extra map[string]any) json.RawMessage {
 // processingItem builds a raw JSON object with status "processing" and a progress value.
 func processingItem(t *testing.T, progress int) json.RawMessage {
 	t.Helper()
-	return rawJSON(t, map[string]any{"status": "processing", "progress": progress})
+	return rawJSON(t, map[string]any{fieldStatus: "processing", "progress": progress})
 }
 
 // errorItem builds a raw JSON object with status "error" and failure details.
 func errorItem(t *testing.T, code, message string) json.RawMessage {
 	t.Helper()
 	return rawJSON(t, map[string]any{
-		"status":  "error",
-		"code":    code,
-		"message": message,
+		fieldStatus: "error",
+		"code":      code,
+		"message":   message,
 	})
 }
 
