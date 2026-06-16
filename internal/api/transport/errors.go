@@ -243,11 +243,47 @@ type RunwareError struct {
 	Documentation string
 	// StatusCode is the HTTP status code when the error originated from an HTTP response.
 	StatusCode int
+	// RawItem holds the original API error object when the error was decoded from
+	// the API. Used by APIFields to preserve fields not modeled on RunwareError.
+	RawItem json.RawMessage
 }
 
 func (e *RunwareError) Error() string { return e.Message }
 
-// wireError is the raw JSON shape of an error item from the Runware API.
+// APIFields returns the error as a map in API wire shape. When RawItem is set,
+// it is unmarshaled directly so every API field (min, max, multiplier, etc.) is
+// preserved. For CLI-constructed errors, a minimal map is built from typed fields.
+func (e *RunwareError) APIFields() map[string]any {
+	if len(e.RawItem) > 0 {
+		var m map[string]any
+		if err := json.Unmarshal(e.RawItem, &m); err == nil {
+			return m
+		}
+	}
+	m := map[string]any{
+		"code":    e.RawCode,
+		"message": e.Message,
+	}
+	if e.Parameter != "" {
+		m["parameter"] = e.Parameter
+	}
+	if e.TaskType != "" {
+		m["taskType"] = e.TaskType
+	}
+	if e.TaskUUID != "" {
+		m["taskUUID"] = e.TaskUUID
+	}
+	if e.Documentation != "" {
+		m["documentation"] = e.Documentation
+	}
+	if len(e.AllowedValues) > 0 {
+		m["allowedValues"] = e.AllowedValues
+	}
+	return m
+}
+
+// wireError decodes API error fields used for RunwareError logic. Additional
+// fields are preserved via RawItem.
 type wireError struct {
 	Code             string          `json:"code"`
 	Message          string          `json:"message"`
@@ -262,6 +298,8 @@ type wireError struct {
 // UnmarshalJSON implements json.Unmarshaler so RunwareError can be decoded
 // directly from an API errors array element.
 func (e *RunwareError) UnmarshalJSON(data []byte) error {
+	e.RawItem = append(json.RawMessage(nil), data...)
+
 	var w wireError
 	if err := json.Unmarshal(data, &w); err != nil {
 		return err
