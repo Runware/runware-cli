@@ -175,7 +175,7 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 	f.StringSliceVar(&flags.tags, "tags", nil, "Filter by tags (repeatable: --tags style --tags portrait)")
 	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: checkpoint, lora, lycoris, vae, embeddings")
 	f.StringVarP(&flags.architecture, "architecture", "a", "", "Filter by model architecture (e.g. sdxl, flux)")
-	f.StringVarP(&flags.modelType, "type", "t", "", "Filter checkpoint type: base, inpainting, refiner")
+	f.StringVarP(&flags.modelType, "type", "t", "", "Filter by checkpoint type (only with --category checkpoint): base, inpainting, refiner")
 	f.StringVar(&flags.conditioning, "conditioning", "", "Filter ControlNet models by conditioning type")
 	f.StringVar(&flags.visibility, "visibility", "public", "Filter by visibility: public, private, community, favorite, owned")
 	f.IntVarP(&flags.limit, "limit", "l", 20, "Maximum number of results to return (1-100)")
