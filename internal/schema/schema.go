@@ -32,7 +32,11 @@ func (t *SchemaType) UnmarshalJSON(b []byte) error {
 	}
 	switch val := v.(type) {
 	case string:
-		*t = SchemaType(val)
+		if val == "null" {
+			*t = SchemaType("")
+		} else {
+			*t = SchemaType(val)
+		}
 	case []any:
 		for _, elem := range val {
 			if s, ok := elem.(string); ok && s != "null" {

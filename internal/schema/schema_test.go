@@ -1052,3 +1052,14 @@ func TestNode_UnmarshalJSON_ArrayTypeAllNull(t *testing.T) {
 		t.Errorf("expected empty, got %q", node.Type)
 	}
 }
+
+func TestNode_UnmarshalJSON_StringTypeNull(t *testing.T) {
+	raw := `{"type": "null"}`
+	var node schema.Node
+	if err := json.Unmarshal([]byte(raw), &node); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.Type != "" {
+		t.Errorf("string null should normalise to empty, got %q", node.Type)
+	}
+}
