@@ -12,6 +12,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const fieldMessage = "message"
+
 // PrintError logs err with formatting that matches the CLI output format.
 //
 // Special cases:
@@ -25,9 +27,9 @@ func PrintError(logger *log.Logger, format output.Format, err error) {
 	if errors.Is(err, transport.ErrNoAPIKey) {
 		if isStructuredFormat(format) {
 			writeStructuredError(format, structuredErrors(map[string]any{
-				"code":    "missingApiKey",
-				"message": "No API key configured",
-				"hint":    "Run 'runware auth login' to set your API key",
+				"code":       "missingApiKey",
+				fieldMessage: "No API key configured",
+				"hint":       "Run 'runware auth login' to set your API key",
 			}))
 			return
 		}
@@ -53,7 +55,7 @@ func PrintError(logger *log.Logger, format output.Format, err error) {
 
 	if isStructuredFormat(format) {
 		writeStructuredError(format, structuredErrors(map[string]any{
-			"message": err.Error(),
+			fieldMessage: err.Error(),
 		}))
 		return
 	}
@@ -68,8 +70,8 @@ func PrintErrorMsg(logger *log.Logger, format output.Format, message string, err
 	if errors.As(err, &re) {
 		if isStructuredFormat(format) {
 			writeStructuredError(format, map[string]any{
-				"message": message,
-				"errors":  []map[string]any{re.APIFields()},
+				fieldMessage: message,
+				"errors":     []map[string]any{re.APIFields()},
 			})
 			return
 		}
@@ -109,7 +111,7 @@ func runwareErrorLogArgs(re *transport.RunwareError) []any {
 func sortedFieldKeys(fields map[string]any) []string {
 	keys := make([]string, 0, len(fields))
 	for k := range fields {
-		if k == "message" {
+		if k == fieldMessage {
 			continue
 		}
 		keys = append(keys, k)
