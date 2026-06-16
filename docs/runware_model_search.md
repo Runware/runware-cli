@@ -36,7 +36,7 @@ runware model search [flags]
       --offset int            Number of results to skip for pagination
   -q, --search string         Search query (name, description, or AIR ID)
       --tags strings          Filter by tags (repeatable: --tags style --tags portrait)
-  -t, --type string           Filter checkpoint type: base, inpainting, refiner
+  -t, --type string           Filter by checkpoint type (only with --category checkpoint): base, inpainting, refiner
       --visibility string     Filter by visibility: public, private, community, favorite, owned (default "public")
   -W, --wide                  Show additional columns: private, default size, tags
 ```
