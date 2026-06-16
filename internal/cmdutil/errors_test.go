@@ -3,6 +3,7 @@ package cmdutil
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"reflect"
@@ -21,6 +22,7 @@ func captureStderr(t *testing.T, fn func()) string {
 	if err != nil {
 		t.Fatalf("pipe: %v", err)
 	}
+	defer r.Close() //nolint:errcheck,gosec
 	os.Stderr = w
 	t.Cleanup(func() {
 		os.Stderr = old
@@ -118,6 +120,73 @@ func TestPrintErrorStructuredOutput(t *testing.T) {
 				t.Errorf("stderr error = %#v, want %#v", payload.Errors[0], want)
 			}
 		})
+	}
+}
+
+func TestPrintErrorNoAPIKeyJSON(t *testing.T) {
+	logger := log.New(io.Discard)
+	out := captureStderr(t, func() {
+		PrintError(logger, output.FormatJSON, transport.ErrNoAPIKey)
+	})
+
+	var payload struct {
+		Errors []map[string]any `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, out)
+	}
+	if len(payload.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(payload.Errors))
+	}
+	if payload.Errors[0]["code"] != "missingApiKey" {
+		t.Errorf("code = %v", payload.Errors[0]["code"])
+	}
+	if payload.Errors[0]["message"] != "No API key configured" {
+		t.Errorf("message = %v", payload.Errors[0]["message"])
+	}
+}
+
+func TestPrintErrorGenericJSON(t *testing.T) {
+	logger := log.New(io.Discard)
+	out := captureStderr(t, func() {
+		PrintError(logger, output.FormatJSON, errors.New("something broke"))
+	})
+
+	var payload struct {
+		Errors []map[string]any `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, out)
+	}
+	if len(payload.Errors) != 1 || payload.Errors[0]["message"] != "something broke" {
+		t.Errorf("unexpected payload: %#v", payload.Errors)
+	}
+}
+
+func TestPrintErrorMsgPreservesAPIErrorMessage(t *testing.T) {
+	const apiRaw = `{"code":"invalidCustomHeight","message":"Invalid height.","parameter":"height"}`
+	re := runwareErrorFromRaw(t, apiRaw)
+
+	logger := log.New(io.Discard)
+	out := captureStderr(t, func() {
+		PrintErrorMsg(logger, output.FormatJSON, "custom warning", re)
+	})
+
+	var payload struct {
+		Message string           `json:"message"`
+		Errors  []map[string]any `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal: %v\noutput: %s", err, out)
+	}
+	if payload.Message != "custom warning" {
+		t.Errorf("top-level message = %q, want %q", payload.Message, "custom warning")
+	}
+	if len(payload.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(payload.Errors))
+	}
+	if payload.Errors[0]["message"] != "Invalid height." {
+		t.Errorf("API message overwritten: %v", payload.Errors[0]["message"])
 	}
 }
 

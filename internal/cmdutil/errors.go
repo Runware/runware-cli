@@ -24,10 +24,11 @@ import (
 func PrintError(logger *log.Logger, format output.Format, err error) {
 	if errors.Is(err, transport.ErrNoAPIKey) {
 		if isStructuredFormat(format) {
-			writeStructuredError(format, map[string]any{
-				"error": "No API key configured",
-				"hint":  "Run 'runware auth login' to set your API key",
-			})
+			writeStructuredError(format, structuredErrors(map[string]any{
+				"code":    "missingApiKey",
+				"message": "No API key configured",
+				"hint":    "Run 'runware auth login' to set your API key",
+			}))
 			return
 		}
 		logger.Error("No API key configured. Run 'runware auth login' to set your API key.")
@@ -37,9 +38,7 @@ func PrintError(logger *log.Logger, format output.Format, err error) {
 	var re *transport.RunwareError
 	if errors.As(err, &re) {
 		if isStructuredFormat(format) {
-			writeStructuredError(format, map[string]any{
-				"errors": []map[string]any{re.APIFields()},
-			})
+			writeStructuredError(format, structuredErrors(re.APIFields()))
 			return
 		}
 
@@ -53,7 +52,9 @@ func PrintError(logger *log.Logger, format output.Format, err error) {
 	}
 
 	if isStructuredFormat(format) {
-		writeStructuredError(format, map[string]any{"error": err.Error()})
+		writeStructuredError(format, structuredErrors(map[string]any{
+			"message": err.Error(),
+		}))
 		return
 	}
 	logger.Error(err.Error())
@@ -66,10 +67,9 @@ func PrintErrorMsg(logger *log.Logger, format output.Format, message string, err
 	var re *transport.RunwareError
 	if errors.As(err, &re) {
 		if isStructuredFormat(format) {
-			fields := re.APIFields()
-			fields["message"] = message
 			writeStructuredError(format, map[string]any{
-				"errors": []map[string]any{fields},
+				"message": message,
+				"errors":  []map[string]any{re.APIFields()},
 			})
 			return
 		}
@@ -81,6 +81,10 @@ func PrintErrorMsg(logger *log.Logger, format output.Format, message string, err
 
 func isStructuredFormat(format output.Format) bool {
 	return format == output.FormatJSON || format == output.FormatYAML
+}
+
+func structuredErrors(items ...map[string]any) map[string]any {
+	return map[string]any{"errors": items}
 }
 
 func logRunwareError(logger *log.Logger, re *transport.RunwareError, message string) {
