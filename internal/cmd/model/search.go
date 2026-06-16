@@ -90,9 +90,11 @@ func formatTags(tags []string, maxTags int) string {
 func newSearchCmd(logger *log.Logger) *cobra.Command {
 	var flags struct {
 		search       string
+		tags         []string
 		category     string
 		architecture string
 		modelType    string
+		conditioning string
 		visibility   string
 		limit        int
 		offset       int
@@ -138,9 +140,11 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
 			req := api.ModelSearchRequest{
 				Search:       flags.search,
+				Tags:         flags.tags,
 				Category:     flags.category,
 				Architecture: flags.architecture,
 				Type:         flags.modelType,
+				Conditioning: flags.conditioning,
 				Visibility:   flags.visibility,
 				Limit:        flags.limit,
 				Offset:       flags.offset,
@@ -168,10 +172,12 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&flags.search, "search", "q", "", "Search query (name, description, or AIR ID)")
-	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: modality (video, image, text, audio, 3d), checkpoint, lora, lycoris, vae, embeddings")
+	f.StringSliceVar(&flags.tags, "tags", nil, "Filter by tags (repeatable: --tags style --tags portrait)")
+	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: checkpoint, lora, lycoris, vae, embeddings")
 	f.StringVarP(&flags.architecture, "architecture", "a", "", "Filter by model architecture (e.g. sdxl, flux)")
 	f.StringVarP(&flags.modelType, "type", "t", "", "Filter checkpoint type: base, inpainting, refiner")
-	f.StringVar(&flags.visibility, "visibility", "public", "Filter by visibility: public, private, community, favorite")
+	f.StringVar(&flags.conditioning, "conditioning", "", "Filter ControlNet models by conditioning type")
+	f.StringVar(&flags.visibility, "visibility", "public", "Filter by visibility: public, private, community, favorite, owned")
 	f.IntVarP(&flags.limit, "limit", "l", 20, "Maximum number of results to return (1-100)")
 	f.IntVar(&flags.offset, "offset", 0, "Number of results to skip for pagination")
 	f.BoolVarP(&flags.wide, "wide", "W", false, "Show additional columns: private, default size, tags")
@@ -181,13 +187,20 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 	}
 
 	cmd.RegisterFlagCompletionFunc("category", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []cobra.Completion{"video", "image", "text", "audio", "3d", "checkpoint", "lora", "lycoris", "vae", "embeddings"}, cobra.ShellCompDirectiveNoFileComp
+		return []cobra.Completion{"checkpoint", "lora", "lycoris", "vae", "embeddings"}, cobra.ShellCompDirectiveNoFileComp
 	})
 	cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"base", "inpainting", "refiner"}, cobra.ShellCompDirectiveNoFileComp
 	})
+	cmd.RegisterFlagCompletionFunc("conditioning", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{
+			"blur", "canny", "depth", "gray", "hed", "inpaint", "inpaintdepth",
+			"lineart", "lowquality", "normal", "openmlsd", "openpose", "outfit",
+			"pix2pix", "qrcode", "scribble", "seg", "shuffle", "sketch", "softedge", "tile",
+		}, cobra.ShellCompDirectiveNoFileComp
+	})
 	cmd.RegisterFlagCompletionFunc("visibility", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []cobra.Completion{"public", "private", "community", "favorite"}, cobra.ShellCompDirectiveNoFileComp
+		return []cobra.Completion{"public", "private", "community", "favorite", "owned"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd

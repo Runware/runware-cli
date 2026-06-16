@@ -315,6 +315,7 @@ type ModelResult struct {
 	DefaultStrength      float64  `json:"defaultStrength,omitempty"`
 	PositiveTriggerWords string   `json:"positiveTriggerWords,omitempty"`
 	NegativeTriggerWords string   `json:"negativeTriggerWords,omitempty"`
+	Primary              bool     `json:"primary,omitempty"`
 }
 
 // ModelUploadRequest contains fields for the modelUpload task type.
