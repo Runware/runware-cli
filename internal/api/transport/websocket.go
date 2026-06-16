@@ -22,6 +22,7 @@ var _ Transport = (*WSTransport)(nil)
 
 const wsAuthTaskType = "authentication"
 const wsPingTaskType = "ping"
+const wsGetResponseTaskType = "getResponse"
 
 // wsAuthRequest is the authentication handshake payload sent on connect.
 // ConnectionSessionUUID is omitted when empty, so a fresh session is started.
@@ -44,6 +45,12 @@ const (
 	wsInactivityTimeout  = 100 * time.Second
 	wsReconnectBaseDelay = time.Second
 	wsReconnectMaxDelay  = 30 * time.Second
+	// wsPollBurstWindow is the idle gap after which a getResponse poll reply is
+	// treated as complete. Every result item for one poll arrives in a single
+	// frame and is dispatched back-to-back, so a short window reliably captures
+	// the whole set while letting "processing" replies (a single item) return
+	// promptly. See drainTaskChan and Send's burst handling.
+	wsPollBurstWindow = 300 * time.Millisecond
 )
 
 // WSOption is a functional option for configuring a WSTransport.
@@ -68,6 +75,13 @@ func WithReconnectBaseDelay(d time.Duration) WSOption {
 	return func(t *WSTransport) { t.reconnectBaseDelay = d }
 }
 
+// WithPollBurstWindow overrides the idle window used to collect a getResponse
+// poll reply (see wsPollBurstWindow). Intended for testing; production code
+// should rely on the default.
+func WithPollBurstWindow(d time.Duration) WSOption {
+	return func(t *WSTransport) { t.pollBurstWindow = d }
+}
+
 // wsResult carries a single inbound result or an error for an in-flight Send.
 type wsResult struct {
 	data json.RawMessage
@@ -78,14 +92,27 @@ type wsResult struct {
 // needs to track. It is used both for JSON decoding and as the in-flight
 // registry key.
 type taskMeta struct {
-	UUID          string `json:"taskUUID"`
-	TaskType      string `json:"taskType"`
-	NumberResults int    `json:"numberResults"`
+	UUID           string `json:"taskUUID"`
+	TaskType       string `json:"taskType"`
+	NumberResults  int    `json:"numberResults"`
+	DeliveryMethod string `json:"deliveryMethod"`
 }
+
+// deliveryMethodAsync is the deliveryMethod value for tasks whose results are
+// fetched later via getResponse polling rather than pushed on the same call.
+const deliveryMethodAsync = "async"
 
 // expected returns the number of results to collect for this task.
 // Defaults to 1 when NumberResults is absent or zero.
+//
+// An async submit is acknowledged with a single frame regardless of
+// numberResults; the actual results are delivered later via getResponse
+// polling. Waiting for numberResults frames here would block forever, since
+// only the one acknowledgment ever arrives on the submit call.
 func (m taskMeta) expected() int {
+	if m.DeliveryMethod == deliveryMethodAsync {
+		return 1
+	}
 	if m.NumberResults < 1 {
 		return 1
 	}
@@ -127,6 +154,7 @@ type WSTransport struct {
 	maxReconnectAttempts int
 	pingInterval         time.Duration
 	reconnectBaseDelay   time.Duration
+	pollBurstWindow      time.Duration
 
 	// mu guards conn, connCancel, sessionUUID, connected, shouldReconnect,
 	// reconnectAttempt, reconnectCh, and lastActivity.
@@ -180,6 +208,7 @@ func DialWS(ctx context.Context, apiKey, baseURL string, logger *slog.Logger, op
 		maxReconnectAttempts: 10,
 		pingInterval:         wsPingInterval,
 		reconnectBaseDelay:   wsReconnectBaseDelay,
+		pollBurstWindow:      wsPollBurstWindow,
 		inflight:             make(map[string]inflightEntry),
 		inflightByType:       make(map[string][]string),
 		disconnected:         make(chan struct{}),
@@ -460,19 +489,27 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	// results immediately after the write completes.
 	//
 	// Channel buffer: expected + 1. The +1 ensures broadcastErr can always
-	// enqueue one error even when all result slots are already full.
+	// enqueue one error even when all result slots are already full. getResponse
+	// polls are collected as a burst (see Send's collection loop and
+	// drainTaskChan), so their entry is left open-ended and uses a fixed buffer.
 	localChans := make(map[string]chan wsResult, len(metas))
 	t.inflightMu.Lock()
 	for _, m := range metas {
 		if m.UUID == "" {
 			continue
 		}
-		ch := make(chan wsResult, m.expected()+1)
+		expected := m.expected()
+		buffer := expected + 1
+		if m.TaskType == wsGetResponseTaskType {
+			expected = math.MaxInt
+			buffer = streamChanBuffer
+		}
+		ch := make(chan wsResult, buffer)
 		localChans[m.UUID] = ch
 		t.inflight[m.UUID] = inflightEntry{
 			taskType: m.TaskType,
 			ch:       ch,
-			expected: m.expected(),
+			expected: expected,
 		}
 		t.inflightByType[m.TaskType] = append(t.inflightByType[m.TaskType], m.UUID)
 	}
@@ -499,7 +536,18 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 			continue
 		}
 		ch := localChans[m.UUID]
-		got, err := t.drainTaskChan(ctx, ch, m.expected(), localChans)
+		// A getResponse reply delivers every result item for the poll in a single
+		// frame, all keyed to the same taskUUID. Collect the whole burst (idle
+		// window) rather than a fixed count: a synchronous task pushes exactly
+		// numberResults frames, but a poll's item count is variable (one
+		// "processing" item, or numberResults "success" items).
+		target := m.expected()
+		idle := time.Duration(0)
+		if m.TaskType == wsGetResponseTaskType {
+			target = math.MaxInt
+			idle = t.pollBurstWindow
+		}
+		got, err := t.drainTaskChan(ctx, ch, target, idle, localChans)
 		if err != nil {
 			return nil, err
 		}
@@ -609,15 +657,32 @@ func (t *WSTransport) SendStream(ctx context.Context, task any, onFrame func(fra
 	}
 }
 
-// drainTaskChan reads n results from ch, returning them in order.
+// drainTaskChan reads results from ch, returning them in order. It stops once n
+// results have been read, or — when idle > 0 — once no further result arrives
+// within idle of the previous one (a complete response burst). The idle timer
+// is armed only after the first result, so an arbitrarily long wait for the
+// reply itself is never cut short. idle <= 0 disables the idle path, giving a
+// strict wait for exactly n results.
+//
 // It returns early with an error on context cancellation, client disconnect,
-// channel close, or a server-side error result.
-func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int, localChans map[string]chan wsResult) ([]json.RawMessage, error) {
-	results := make([]json.RawMessage, 0, n)
-	for range n {
+// channel close, or a server-side error result. Because an open-ended entry
+// (n == math.MaxInt) is never removed by the dispatcher, the in-flight entry is
+// cleaned up here on every return.
+func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int, idle time.Duration, localChans map[string]chan wsResult) ([]json.RawMessage, error) {
+	results := make([]json.RawMessage, 0)
+	var idleTimer *time.Timer
+	var idleC <-chan time.Time
+	stopIdle := func() {
+		if idleTimer != nil {
+			idleTimer.Stop()
+		}
+	}
+
+	for len(results) < n {
 		select {
 		case r, ok := <-ch:
 			if !ok {
+				stopIdle()
 				return nil, CreateRunwareError(
 					"connectionFailed",
 					"WebSocket connection closed while waiting for response",
@@ -625,13 +690,37 @@ func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int
 				)
 			}
 			if r.err != nil {
+				stopIdle()
 				return nil, r.err
 			}
 			results = append(results, r.data)
+			if idle > 0 {
+				if idleTimer == nil {
+					idleTimer = time.NewTimer(idle)
+				} else {
+					if !idleTimer.Stop() {
+						select {
+						case <-idleTimer.C:
+						default:
+						}
+					}
+					idleTimer.Reset(idle)
+				}
+				idleC = idleTimer.C
+			}
+		case <-idleC:
+			// No further result within the idle window: the burst is complete.
+			// Only an open-ended (burst) entry reaches here, and it is never
+			// removed by the dispatcher, so clean up just this entry — not the
+			// sibling tasks sharing localChans in a multi-task Send.
+			t.cleanupChan(ch)
+			return results, nil
 		case <-ctx.Done():
+			stopIdle()
 			t.cleanupLocalChans(localChans)
 			return nil, ctx.Err()
 		case <-t.disconnected:
+			stopIdle()
 			return nil, CreateRunwareError(
 				"connectionFailed",
 				"WebSocket connection disconnected by client",
@@ -639,6 +728,9 @@ func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int
 			)
 		}
 	}
+	// Count target reached. A finite-count entry is removed by the dispatcher
+	// once all expected results arrive, so no cleanup is needed here.
+	stopIdle()
 	return results, nil
 }
 
@@ -652,6 +744,22 @@ func (t *WSTransport) cleanupLocalChans(localChans map[string]chan wsResult) {
 		if ch, ok := localChans[uuid]; ok && entry.ch == ch {
 			removeFromTypeQueue(t.inflightByType, entry.taskType, uuid)
 			delete(t.inflight, uuid)
+		}
+	}
+}
+
+// cleanupChan removes the single in-flight entry whose channel is ch. Used to
+// retire an open-ended (burst) entry once its response burst is complete,
+// without touching sibling tasks that share the same Send's localChans map.
+func (t *WSTransport) cleanupChan(ch chan wsResult) {
+	t.inflightMu.Lock()
+	defer t.inflightMu.Unlock()
+
+	for uuid, entry := range t.inflight {
+		if entry.ch == ch {
+			removeFromTypeQueue(t.inflightByType, entry.taskType, uuid)
+			delete(t.inflight, uuid)
+			return
 		}
 	}
 }
