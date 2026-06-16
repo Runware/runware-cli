@@ -82,6 +82,39 @@ func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
 	return &result, nil
 }
 
+// UploadImage uploads an image to the Runware platform via the imageUpload task
+// and returns the stored asset's UUID. image may be a publicly accessible URL, a
+// data URI, or a base64-encoded image, per the API contract.
+func (c *Client) UploadImage(ctx context.Context, image string) (*ImageUploadResult, error) {
+	if image == "" {
+		return nil, fmt.Errorf("image is required")
+	}
+
+	tasks := []any{
+		&ImageUploadRequest{
+			TaskType: taskTypeImageUpload,
+			TaskUUID: uuid.New(),
+			Image:    image,
+		},
+	}
+
+	data, err := c.transport.Send(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty response from imageUpload")
+	}
+
+	var result ImageUploadResult
+	if err := json.Unmarshal(data[0], &result); err != nil {
+		return nil, fmt.Errorf("failed to parse imageUpload response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // submit sends a single arbitrary task payload and returns all raw JSON responses.
 // It is the low-level wire call used by Run after system fields have been injected.
 func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.RawMessage, error) {
