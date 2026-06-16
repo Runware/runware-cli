@@ -677,7 +677,11 @@ func (t *WSTransport) SendStream(ctx context.Context, task any, onFrame func(fra
 // (n == math.MaxInt) is never removed by the dispatcher, the in-flight entry is
 // cleaned up here on every return.
 func (t *WSTransport) drainTaskChan(ctx context.Context, ch chan wsResult, n int, idle time.Duration, localChans map[string]chan wsResult) ([]json.RawMessage, error) {
-	results := make([]json.RawMessage, 0)
+	capacity := n
+	if capacity == math.MaxInt {
+		capacity = 0
+	}
+	results := make([]json.RawMessage, 0, capacity)
 	var idleTimer *time.Timer
 	var idleC <-chan time.Time
 	stopIdle := func() {
