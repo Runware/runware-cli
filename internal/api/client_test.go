@@ -195,7 +195,7 @@ func TestPoll_SuccessOnFirstPoll(t *testing.T) {
 		},
 	}
 	c := NewClient(mock, slog.Default())
-	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestPoll_ProcessingSkippedUntilSuccess(t *testing.T) {
 		},
 	}
 	c := NewClient(mock, slog.Default())
-	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestPoll_OnProgressCalled(t *testing.T) {
 	c := NewClient(mock, slog.Default())
 
 	var got []int
-	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, func(p int) {
+	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, 1, func(p int) {
 		got = append(got, p)
 	})
 	if err != nil {
@@ -256,7 +256,7 @@ func TestPoll_ErrorStatusReturnsError(t *testing.T) {
 			{data: []json.RawMessage{errorItem(t, "timeoutProvider", "provider timed out")}},
 		},
 	}
-	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if err == nil {
 		t.Fatal("expected error for status error, got nil")
 	}
@@ -276,7 +276,7 @@ func TestPoll_ErrorAfterProcessing(t *testing.T) {
 			{data: []json.RawMessage{errorItem(t, "processingFailed", "generation failed")}},
 		},
 	}
-	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if err == nil {
 		t.Fatal("expected error after processing, got nil")
 	}
@@ -285,6 +285,36 @@ func TestPoll_ErrorAfterProcessing(t *testing.T) {
 	}
 	if mock.callCount != 2 {
 		t.Errorf("expected 2 poll calls, got %d", mock.callCount)
+	}
+}
+
+// TestPoll_MultiResultReturnsAllFromOneCycle: minResults=4 keeps retrying when
+// a partial burst delivers fewer than 4 success items, then returns all 4 once
+// the server delivers them together in one cycle. Each poll cycle is evaluated
+// independently — no cross-cycle accumulation — so no duplicates arise even
+// though the server re-sends all completed results on every getResponse call.
+func TestPoll_MultiResultReturnsAllFromOneCycle(t *testing.T) {
+	mock := &mockTransport{
+		responses: []mockResponse{
+			// Cycle 1: only 2 success items (partial burst / task still in progress).
+			{data: []json.RawMessage{successItem(t, nil), successItem(t, nil)}},
+			// Cycle 2: all 4 success items — server re-sends the full completed set.
+			{data: []json.RawMessage{
+				successItem(t, nil), successItem(t, nil),
+				successItem(t, nil), successItem(t, nil),
+			}},
+		},
+	}
+	c := NewClient(mock, slog.Default())
+	results, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, 4, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 4 {
+		t.Fatalf("expected 4 results (from cycle 2 only), got %d", len(results))
+	}
+	if mock.callCount != 2 {
+		t.Errorf("expected exactly 2 poll calls, got %d", mock.callCount)
 	}
 }
 
@@ -297,7 +327,7 @@ func TestPoll_NilProgressCallback(t *testing.T) {
 		},
 	}
 	c := NewClient(mock, slog.Default())
-	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	_, err := c.Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

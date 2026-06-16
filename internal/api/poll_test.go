@@ -65,7 +65,7 @@ func TestClientPoll_TransientErrorKeepsPolling(t *testing.T) {
 		},
 	}
 
-	results, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	results, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestClientPoll_AuthErrorFatal(t *testing.T) {
 		},
 	}
 
-	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if !transport.IsAuthError(err) {
 		t.Errorf("expected auth error, got %v", err)
 	}
@@ -99,7 +99,7 @@ func TestClientPoll_APIErrorFatal(t *testing.T) {
 		},
 	}
 
-	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, nil)
+	_, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -116,7 +116,7 @@ func TestClientPoll_ContextCancelled(t *testing.T) {
 		},
 	}
 
-	_, err := NewClient(mock, slog.Default()).Poll(ctx, uuid.Nil, time.Millisecond, nil)
+	_, err := NewClient(mock, slog.Default()).Poll(ctx, uuid.Nil, time.Millisecond, 1, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected %v, got error: %v", context.Canceled, err)
 	}
@@ -130,7 +130,7 @@ func TestClientPoll_ContextTimeout(t *testing.T) {
 	// Never return success — mock returns nil indefinitely.
 	mock := &mockTransport{}
 
-	_, err := NewClient(mock, slog.Default()).Poll(ctx, uuid.Nil, time.Millisecond, nil)
+	_, err := NewClient(mock, slog.Default()).Poll(ctx, uuid.Nil, time.Millisecond, 1, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected %v, got error: %v", context.DeadlineExceeded, err)
 	}
