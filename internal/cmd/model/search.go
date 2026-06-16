@@ -168,7 +168,7 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVarP(&flags.search, "search", "q", "", "Search query (name, description, or AIR ID)")
-	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: checkpoint, lora, lycoris, vae, embeddings")
+	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: modality (video, image, text, audio, 3d), checkpoint, lora, lycoris, vae, embeddings")
 	f.StringVarP(&flags.architecture, "architecture", "a", "", "Filter by model architecture (e.g. sdxl, flux)")
 	f.StringVarP(&flags.modelType, "type", "t", "", "Filter checkpoint type: base, inpainting, refiner")
 	f.StringVar(&flags.visibility, "visibility", "public", "Filter by visibility: public, private, community, favorite")

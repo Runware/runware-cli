@@ -29,7 +29,7 @@ runware model search [flags]
 
 ```
   -a, --architecture string   Filter by model architecture (e.g. sdxl, flux)
-  -c, --category string       Filter by category: checkpoint, lora, lycoris, vae, embeddings
+  -c, --category string       Filter by category: modality (video, image, text, audio, 3d), checkpoint, lora, lycoris, vae, embeddings
   -h, --help                  help for search
   -l, --limit int             Maximum number of results to return (1-100) (default 20)
       --offset int            Number of results to skip for pagination
