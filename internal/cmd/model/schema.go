@@ -11,6 +11,7 @@ import (
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
+	"github.com/runware/runware-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ const (
 type schemaNode struct {
 	Title       string                `json:"title"`
 	Description string                `json:"description"`
-	Type        string                `json:"type"`
+	Type        schema.SchemaType     `json:"type"`
 	Default     json.RawMessage       `json:"default"`
 	Properties  map[string]schemaNode `json:"properties"`
 	Required    []string              `json:"required"`
@@ -111,7 +112,7 @@ func buildRows(node schemaNode, requiredSet map[string]struct{}, depth, maxDepth
 // formatSchemaType returns a display string for a schema node's type.
 func formatSchemaType(node schemaNode) string {
 	if node.Type != "" {
-		return node.Type
+		return string(node.Type)
 	}
 	return defaultEmptyValue
 }
