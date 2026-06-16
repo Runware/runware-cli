@@ -26,10 +26,11 @@ const (
 
 // testTask is a typed outbound task for transport tests.
 type testTask struct {
-	TaskType      string `json:"taskType"`
-	TaskUUID      string `json:"taskUUID"`
-	NumberResults int    `json:"numberResults,omitempty"`
-	Ping          bool   `json:"ping,omitempty"`
+	TaskType       string `json:"taskType"`
+	TaskUUID       string `json:"taskUUID"`
+	NumberResults  int    `json:"numberResults,omitempty"`
+	DeliveryMethod string `json:"deliveryMethod,omitempty"`
+	Ping           bool   `json:"ping,omitempty"`
 }
 
 // testResultItem is a generic typed item for test server data frames.
@@ -736,6 +737,160 @@ func TestWSTransport_MultiResultMultiFrame(t *testing.T) {
 	}
 	if len(results) != 3 {
 		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+}
+
+// TestWSTransport_AsyncSubmitSingleAck verifies that an async submit with
+// numberResults>1 returns on the single acknowledgment frame instead of
+// blocking forever waiting for numberResults frames (the actual results are
+// delivered later via getResponse polling).
+func TestWSTransport_AsyncSubmitSingleAck(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000010"
+	ack := makeDataFrame(t,
+		testResultItem{TaskType: testTaskTypeInference, TaskUUID: taskUUID},
+	)
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply(t, "sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, ack)                        //nolint:errcheck,gosec
+		// Deliberately send nothing further: an async submit is acknowledged once.
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default())
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
+
+	tasks := []any{testTask{
+		TaskType:       testTaskTypeInference,
+		TaskUUID:       taskUUID,
+		NumberResults:  2,
+		DeliveryMethod: deliveryMethodAsync,
+	}}
+
+	done := make(chan struct{})
+	var results []json.RawMessage
+	var sendErr error
+	go func() {
+		results, sendErr = tr.Send(context.Background(), tasks)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Send hung on async submit with numberResults=2 (expected single-ack return)")
+	}
+	if sendErr != nil {
+		t.Fatalf("Send error: %v", sendErr)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 ack result, got %d", len(results))
+	}
+}
+
+// TestWSTransport_GetResponseBurstMultiResult verifies that a getResponse poll
+// returns every result item from the reply, even though they all arrive in a
+// single frame keyed to the same taskUUID and the request carries no
+// numberResults (which would otherwise cap collection at one).
+func TestWSTransport_GetResponseBurstMultiResult(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000011"
+	reply := makeDataFrame(t,
+		testResultItem{TaskType: testTaskTypeInference, TaskUUID: taskUUID, Seq: 1},
+		testResultItem{TaskType: testTaskTypeInference, TaskUUID: taskUUID, Seq: 2},
+	)
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply(t, "sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, reply)                      //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default(),
+		WithPollBurstWindow(50*time.Millisecond))
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
+
+	tasks := []any{testTask{TaskType: wsGetResponseTaskType, TaskUUID: taskUUID}}
+	results, err := tr.Send(context.Background(), tasks)
+	if err != nil {
+		t.Fatalf("Send error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 burst results, got %d", len(results))
+	}
+}
+
+// TestWSTransport_GetResponseBurstSingleItem verifies that a getResponse poll
+// returning a single item (e.g. a "processing" status) returns promptly after
+// the idle window rather than blocking for more items that never come.
+func TestWSTransport_GetResponseBurstSingleItem(t *testing.T) {
+	const taskUUID = "aaaaaaaa-0000-0000-0000-000000000012"
+	reply := makeDataFrame(t,
+		testResultItem{TaskType: testTaskTypeInference, TaskUUID: taskUUID, Seq: 1},
+	)
+
+	srv := newWSTestServer(nil)
+	srv.handler = func(conn *websocket.Conn) {
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, authSuccessReply(t, "sid")) //nolint:errcheck,gosec
+		conn.ReadMessage()                                                   //nolint:errcheck,gosec
+		conn.WriteMessage(websocket.TextMessage, reply)                      //nolint:errcheck,gosec
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}
+	defer srv.server.Close()
+
+	tr, err := DialWS(context.Background(), "key", wsURL(srv.server), slog.Default(),
+		WithPollBurstWindow(50*time.Millisecond))
+	if err != nil {
+		t.Fatalf("DialWS: %v", err)
+	}
+	defer tr.Close() //nolint:errcheck,gosec
+
+	tasks := []any{testTask{TaskType: wsGetResponseTaskType, TaskUUID: taskUUID}}
+
+	done := make(chan struct{})
+	var results []json.RawMessage
+	var sendErr error
+	go func() {
+		results, sendErr = tr.Send(context.Background(), tasks)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Send hung on single-item getResponse poll")
+	}
+	if sendErr != nil {
+		t.Fatalf("Send error: %v", sendErr)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 }
 

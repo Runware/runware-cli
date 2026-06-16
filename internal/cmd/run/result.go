@@ -60,7 +60,7 @@ result is returned on the first poll.`,
 
 			client := api.NewClient(t, slog.New(logger))
 
-			results, err := client.Poll(cmd.Context(), taskUUID, flags.pollInterval, func(p int) {
+			results, err := client.Poll(cmd.Context(), taskUUID, flags.pollInterval, 1, func(p int) {
 				if p > 0 {
 					spin.SetMessage(fmt.Sprintf("Waiting for result... %d%%", p))
 					return

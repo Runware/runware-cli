@@ -232,7 +232,11 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 			opts.OnSubmit(taskUUID)
 		}
 		interval := opts.PollInterval
-		return c.Poll(ctx, taskUUID, interval, opts.OnProgress)
+		minResults := extractInt(payload, "numberResults")
+		if minResults < 1 {
+			minResults = 1
+		}
+		return c.Poll(ctx, taskUUID, interval, minResults, opts.OnProgress)
 	}
 
 	return initialResults, nil
@@ -334,13 +338,17 @@ func consumeUploadFrame(raw json.RawMessage, onStatus func(status, message strin
 }
 
 // Poll polls for async task results using the getResponse task type.
-// It blocks until at least one result with status "success" is returned, a data
-// item reports status "error", the context is cancelled, or a fatal API/auth
-// error occurs.
+// It blocks until at least minResults items with status "success" have been
+// returned in a single poll cycle, a data item reports status "error", the
+// context is cancelled, or a fatal API/auth error occurs. minResults < 1 is
+// treated as 1.
 //
 // onProgress is called with the reported progress percentage (0–100) each time
 // a "processing" status item is received. It may be nil.
-func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Duration, onProgress func(int)) ([]json.RawMessage, error) {
+func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Duration, minResults int, onProgress func(int)) ([]json.RawMessage, error) {
+	if minResults < 1 {
+		minResults = 1
+	}
 	if interval == 0 {
 		interval = 2 * time.Second
 	}
@@ -348,7 +356,6 @@ func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Durat
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	var results []json.RawMessage
 	for {
 		tasks := []any{
 			&GetResponseRequest{
@@ -367,6 +374,12 @@ func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Durat
 				c.logger.Debug("poll error", "err", err)
 			}
 		} else {
+			// Evaluate each poll cycle independently: the server re-sends all
+			// completed results on every getResponse call, so accumulating across
+			// cycles would produce duplicates. We wait until one cycle returns
+			// at least minResults success items (they all arrive together once
+			// the task is done), or keep retrying while the task is processing.
+			var cycleResults []json.RawMessage
 			for _, raw := range data {
 				var item pollResponseItem
 				if err := json.Unmarshal(raw, &item); err != nil {
@@ -374,7 +387,7 @@ func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Durat
 				}
 				switch item.Status {
 				case "success":
-					results = append(results, raw)
+					cycleResults = append(cycleResults, raw)
 				case "processing":
 					if onProgress != nil {
 						onProgress(item.Progress)
@@ -383,8 +396,8 @@ func (c *Client) Poll(ctx context.Context, taskID uuid.UUID, interval time.Durat
 					return nil, pollTerminalError(item)
 				}
 			}
-			if len(results) > 0 {
-				return results, nil
+			if len(cycleResults) >= minResults {
+				return cycleResults, nil
 			}
 		}
 
@@ -408,4 +421,20 @@ func pollTerminalError(item pollResponseItem) error {
 		return fmt.Errorf("task failed (%s)", item.Code)
 	}
 	return fmt.Errorf("task failed with status %q", item.Status)
+}
+
+// extractInt returns the value stored at key in m as an int.
+// It handles both int64 (schema-coerced integer) and float64 (bestEffortDecode
+// fallback). Returns 0 when the key is absent or the value is not a number.
+func extractInt(m map[string]any, key string) int {
+	switch v := m[key].(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }
