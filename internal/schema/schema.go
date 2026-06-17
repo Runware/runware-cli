@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -203,10 +204,8 @@ func ParseKV(arg string, node Node) (path []string, value any, err error) {
 	}
 
 	segments := strings.Split(k, ".")
-	for _, seg := range segments {
-		if seg == "" {
-			return nil, nil, fmt.Errorf("key contains empty segment (got %q)", arg)
-		}
+	if slices.Contains(segments, "") {
+		return nil, nil, fmt.Errorf("key contains empty segment (got %q)", arg)
 	}
 
 	segments = normalisePathSegments(segments, node)
@@ -467,6 +466,110 @@ func ValidateAllOf(node Node, payload map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// ValidateEnums checks that every string value in payload that maps to a
+// schema property with a string-enum constraint (oneOf consts or direct enum)
+// is one of the allowed values. It recurses into nested objects and arrays.
+func ValidateEnums(node Node, payload map[string]any) error {
+	return validateEnumsInObject(node, payload, "")
+}
+
+func validateEnumsInObject(node Node, obj map[string]any, prefix string) error {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		prop, ok := node.Properties[key]
+		if !ok {
+			continue
+		}
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		if err := validateEnumsInValue(prop, obj[key], path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateEnumsInValue(prop Node, val any, path string) error {
+	switch v := val.(type) {
+	case string:
+		if allowed := stringEnumValues(prop); len(allowed) > 0 {
+			if !slices.Contains(allowed, v) {
+				return fmt.Errorf("invalid value for %q: must be one of: %s", path, strings.Join(allowed, ", "))
+			}
+		}
+	case map[string]any:
+		if err := validateEnumsInObject(prop, v, path); err != nil {
+			return err
+		}
+	case []any:
+		if prop.Items != nil {
+			for i, item := range v {
+				if err := validateEnumsInValue(*prop.Items, item, fmt.Sprintf("%s.%d", path, i)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// stringEnumValues returns the allowed string values for a string-typed schema
+// node. It collects from three sources in priority order:
+//
+//  1. A bare top-level const (single allowed value, e.g. const: "async")
+//  2. String const values from oneOf branches
+//  3. Direct enum entries
+//
+// Returns nil when the node has no string enum constraint.
+func stringEnumValues(prop Node) []string {
+	if len(prop.Const) > 0 {
+		var s string
+		if err := json.Unmarshal(prop.Const, &s); err == nil {
+			return []string{s}
+		}
+	}
+
+	var vals []string
+	for i := range prop.OneOf {
+		if len(prop.OneOf[i].Const) == 0 {
+			continue
+		}
+		var s string
+		if err := json.Unmarshal(prop.OneOf[i].Const, &s); err == nil {
+			vals = append(vals, s)
+		}
+	}
+	if len(vals) == 0 {
+		for _, raw := range prop.Enum {
+			var s string
+			if err := json.Unmarshal(raw, &s); err == nil {
+				vals = append(vals, s)
+			}
+		}
+	}
+	if len(vals) == 0 {
+		return nil
+	}
+
+	// De-dupe while preserving schema order.
+	seen := make(map[string]struct{}, len(vals))
+	out := make([]string, 0, len(vals))
+	for _, s := range vals {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 func checkDependentRequired(depReq map[string][]string, payload map[string]any) error {

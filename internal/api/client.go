@@ -207,6 +207,12 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		if err := schema.ValidateAllOf(reqSchema, payload); err != nil {
 			return nil, err
 		}
+		if dm := schema.ResolveDeliveryMethod(opts.DeliveryMethod, payload, reqSchema); dm != "" {
+			payload[fieldDeliveryMethod] = dm
+		}
+		if err := schema.ValidateEnums(reqSchema, payload); err != nil {
+			return nil, err
+		}
 	}
 
 	// Resolve delivery method: payload value > opts override > schema default.
@@ -232,10 +238,7 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 			opts.OnSubmit(taskUUID)
 		}
 		interval := opts.PollInterval
-		minResults := extractInt(payload, "numberResults")
-		if minResults < 1 {
-			minResults = 1
-		}
+		minResults := max(extractInt(payload, "numberResults"), 1)
 		return c.Poll(ctx, taskUUID, interval, minResults, opts.OnProgress)
 	}
 

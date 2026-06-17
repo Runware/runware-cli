@@ -20,6 +20,9 @@ const (
 	testFieldText           = "text"
 	testFieldRole           = "role"
 	testFieldContent        = "content"
+	testFieldSettings       = "settings"
+	testFieldStyle          = "style"
+	testFieldThinking       = "thinking"
 	testValHello            = "Hello"
 	testValUser             = "user"
 	testMsg0Role            = "messages.0.role"
@@ -376,7 +379,7 @@ func TestParseKV_DotNotation_ArrayAutoIndex(t *testing.T) {
 func TestParseKV_DotNotation_NestedObjectCoercesType(t *testing.T) {
 	node := schema.Node{
 		Properties: map[string]schema.Node{
-			"settings": {
+			testFieldSettings: {
 				Type: schema.TypeObject,
 				Properties: map[string]schema.Node{
 					"maxTokens": {Type: schema.TypeInteger},
@@ -388,11 +391,189 @@ func TestParseKV_DotNotation_NestedObjectCoercesType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(path) != 2 || path[0] != "settings" || path[1] != "maxTokens" {
+	if len(path) != 2 || path[0] != testFieldSettings || path[1] != "maxTokens" {
 		t.Errorf("path: want [settings maxTokens], got %v", path)
 	}
 	if v != int64(512) {
 		t.Errorf("value: want int64(512), got %v (%T)", v, v)
+	}
+}
+
+func TestParseKV_StringNoEnum_AnyValueAccepted(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldPositivePrompt: {Type: schema.TypeString},
+		},
+	}
+	_, v, err := schema.ParseKV("positivePrompt=any value goes", node)
+	if err != nil {
+		t.Fatalf("unexpected error for string field with no enum: %v", err)
+	}
+	if v != "any value goes" {
+		t.Errorf("want 'any value goes', got %v", v)
+	}
+}
+
+func TestParseKV_StringEnum_PassthroughWithoutValidate(t *testing.T) {
+	// ParseKV does not validate enum constraints — that is deferred to
+	// ValidateEnums (--validate path). An invalid value is coerced as-is.
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldThinking: {
+				Type: schema.TypeString,
+				OneOf: []schema.Node{
+					{Const: json.RawMessage(`"enabled"`)},
+					{Const: json.RawMessage(`"disabled"`)},
+				},
+			},
+		},
+	}
+	_, v, err := schema.ParseKV(testFieldThinking+"=true", node)
+	if err != nil {
+		t.Fatalf("ParseKV must not validate enums: %v", err)
+	}
+	if v != "true" {
+		t.Errorf("want string 'true' passed through, got %v", v)
+	}
+}
+
+// ---- ValidateEnums tests ----
+
+func thinkingNode() schema.Node {
+	return schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldSettings: {
+				Type: schema.TypeObject,
+				Properties: map[string]schema.Node{
+					testFieldThinking: {
+						Type: schema.TypeString,
+						OneOf: []schema.Node{
+							{Const: json.RawMessage(`"enabled"`)},
+							{Const: json.RawMessage(`"disabled"`)},
+							{Const: json.RawMessage(`"auto"`)},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestValidateEnums_ValidNestedOneOf(t *testing.T) {
+	payload := map[string]any{
+		testFieldSettings: map[string]any{testFieldThinking: "enabled"},
+	}
+	if err := schema.ValidateEnums(thinkingNode(), payload); err != nil {
+		t.Errorf("unexpected error for valid enum value: %v", err)
+	}
+}
+
+func TestValidateEnums_InvalidNestedOneOf(t *testing.T) {
+	payload := map[string]any{
+		testFieldSettings: map[string]any{testFieldThinking: "true"},
+	}
+	err := schema.ValidateEnums(thinkingNode(), payload)
+	if err == nil {
+		t.Fatal("expected error for invalid enum value 'true'")
+	}
+	for _, want := range []string{"enabled", "disabled", "auto"} {
+		if !containsString(err.Error(), want) {
+			t.Errorf("error should list allowed value %q; got: %v", want, err)
+		}
+	}
+}
+
+func TestValidateEnums_ValidDirectEnum(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldStyle: {
+				Type: schema.TypeString,
+				Enum: []json.RawMessage{
+					json.RawMessage(`"anime"`),
+					json.RawMessage(`"cyberpunk"`),
+				},
+			},
+		},
+	}
+	payload := map[string]any{testFieldStyle: "anime"}
+	if err := schema.ValidateEnums(node, payload); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEnums_InvalidDirectEnum(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldStyle: {
+				Type: schema.TypeString,
+				Enum: []json.RawMessage{
+					json.RawMessage(`"anime"`),
+					json.RawMessage(`"cyberpunk"`),
+				},
+			},
+		},
+	}
+	payload := map[string]any{testFieldStyle: "realistic"}
+	err := schema.ValidateEnums(node, payload)
+	if err == nil {
+		t.Fatal("expected error for value not in enum")
+	}
+	if !containsString(err.Error(), "anime") || !containsString(err.Error(), "cyberpunk") {
+		t.Errorf("error should list allowed values; got: %v", err)
+	}
+}
+
+func TestValidateEnums_NoConstraint_Passes(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldPositivePrompt: {Type: schema.TypeString},
+		},
+	}
+	if err := schema.ValidateEnums(node, map[string]any{testFieldPositivePrompt: "any text"}); err != nil {
+		t.Errorf("unexpected error for unconstrained string: %v", err)
+	}
+}
+
+func TestValidateEnums_BareConst_ValidValue(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldDeliveryMethod: {
+				Type:  schema.TypeString,
+				Const: json.RawMessage(`"async"`),
+			},
+		},
+	}
+	if err := schema.ValidateEnums(node, map[string]any{testFieldDeliveryMethod: "async"}); err != nil {
+		t.Errorf("unexpected error for matching const: %v", err)
+	}
+}
+
+func TestValidateEnums_BareConst_InvalidValue(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldDeliveryMethod: {
+				Type:  schema.TypeString,
+				Const: json.RawMessage(`"async"`),
+			},
+		},
+	}
+	err := schema.ValidateEnums(node, map[string]any{testFieldDeliveryMethod: "sync"})
+	if err == nil {
+		t.Fatal("expected error for value not matching const")
+	}
+	if !containsString(err.Error(), "async") {
+		t.Errorf("error should show allowed const value; got: %v", err)
+	}
+}
+
+func TestValidateEnums_UnknownKeyIgnored(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			"known": {Type: schema.TypeString},
+		},
+	}
+	if err := schema.ValidateEnums(node, map[string]any{"unknown": "whatever"}); err != nil {
+		t.Errorf("unexpected error for key not in schema: %v", err)
 	}
 }
 
