@@ -25,6 +25,18 @@ case "$ARCH" in
     ;;
 esac
 
+if [ "$OS" = "darwin" ]; then
+  if command -v brew >/dev/null 2>&1; then
+    echo "==> 🍺 Homebrew detected — installing via brew (recommended for macOS)..."
+    brew install --cask runware/tap/runware
+    exit 0
+  else
+    echo "==> ⚠️  Homebrew not found. Falling back to direct binary download."
+    echo "    To install Homebrew: https://brew.sh"
+    echo ""
+  fi
+fi
+
 echo "==> 🔍 Detected OS: $OS, Architecture: $ARCH"
 
 echo "==> 🌐 Fetching latest version..."

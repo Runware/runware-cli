@@ -7,8 +7,7 @@ A command-line tool for interacting with the [Runware](https://runware.ai) infer
 ### Homebrew (macOS)
 
 ```shell
-brew tap runware/tap
-brew install runware
+brew install --cask runware/tap/runware
 ```
 
 ### Scoop (Windows)
