@@ -499,13 +499,14 @@ func validateEnumsInValue(prop Node, val any, path string) error {
 //
 // Returns nil when the node has no string enum constraint.
 func stringEnumValues(prop Node) []string {
-	var vals []string
 	if len(prop.Const) > 0 {
 		var s string
 		if err := json.Unmarshal(prop.Const, &s); err == nil {
 			return []string{s}
 		}
 	}
+
+	var vals []string
 	for i := range prop.OneOf {
 		if len(prop.OneOf[i].Const) == 0 {
 			continue
@@ -515,13 +516,29 @@ func stringEnumValues(prop Node) []string {
 			vals = append(vals, s)
 		}
 	}
-	for _, raw := range prop.Enum {
-		var s string
-		if err := json.Unmarshal(raw, &s); err == nil {
-			vals = append(vals, s)
+	if len(vals) == 0 {
+		for _, raw := range prop.Enum {
+			var s string
+			if err := json.Unmarshal(raw, &s); err == nil {
+				vals = append(vals, s)
+			}
 		}
 	}
-	return vals
+	if len(vals) == 0 {
+		return nil
+	}
+
+	// De-dupe while preserving schema order.
+	seen := make(map[string]struct{}, len(vals))
+	out := make([]string, 0, len(vals))
+	for _, s := range vals {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 func checkDependentRequired(depReq map[string][]string, payload map[string]any) error {

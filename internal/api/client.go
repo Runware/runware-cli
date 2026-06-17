@@ -207,6 +207,9 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		if err := schema.ValidateAllOf(reqSchema, payload); err != nil {
 			return nil, err
 		}
+		if dm := schema.ResolveDeliveryMethod(opts.DeliveryMethod, payload, reqSchema); dm != "" {
+			payload[fieldDeliveryMethod] = dm
+		}
 		if err := schema.ValidateEnums(reqSchema, payload); err != nil {
 			return nil, err
 		}
