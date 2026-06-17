@@ -186,6 +186,43 @@ func TestModelUpload_DuplicateStatusDeduped(t *testing.T) {
 	}
 }
 
+// TestModelUpload_ErrorDownloadingReturnsError: pipeline error statuses such as
+// "error downloading" must terminate the stream instead of waiting indefinitely.
+func TestModelUpload_ErrorDownloadingReturnsError(t *testing.T) {
+	mock := &mockStreamTransport{
+		frames: []json.RawMessage{
+			uploadStatusItem(t, "validated", "", ""),
+			uploadStatusItem(t, "error downloading", "could not fetch file", ""),
+		},
+	}
+
+	_, err := NewClient(mock, slog.Default()).ModelUpload(context.Background(), minimalUploadRequest(), ModelUploadOptions{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "could not fetch file") {
+		t.Errorf("expected error to contain failure message, got: %v", err)
+	}
+}
+
+// TestModelUpload_ErrorDownloadingWithoutMessage: when the API omits a message,
+// the status string is used as the failure reason.
+func TestModelUpload_ErrorDownloadingWithoutMessage(t *testing.T) {
+	mock := &mockStreamTransport{
+		frames: []json.RawMessage{
+			uploadStatusItem(t, "error downloading", "", ""),
+		},
+	}
+
+	_, err := NewClient(mock, slog.Default()).ModelUpload(context.Background(), minimalUploadRequest(), ModelUploadOptions{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "error downloading") {
+		t.Errorf("expected error to contain status, got: %v", err)
+	}
+}
+
 // TestModelUpload_FailedReturnsError: a "failed" frame surfaces its message.
 func TestModelUpload_FailedReturnsError(t *testing.T) {
 	mock := &mockStreamTransport{

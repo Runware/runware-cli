@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -308,9 +309,10 @@ func (c *Client) ModelUpload(ctx context.Context, req ModelUploadRequest, opts M
 }
 
 // consumeUploadFrame inspects a single modelUpload pipeline frame. done is
-// true for a terminal frame ("ready" or "failed"). Intermediate statuses are
-// reported through onStatus, deduplicated against *lastStatus so repeated
-// frames for the same phase fire the callback once.
+// true for a terminal frame ("ready", "failed", or other error statuses such as
+// "error downloading"). Intermediate statuses are reported through onStatus,
+// deduplicated against *lastStatus so repeated frames for the same phase fire
+// the callback once.
 func consumeUploadFrame(raw json.RawMessage, onStatus func(status, message string), lastStatus *string) (*ModelUploadResult, bool, error) {
 	var item ModelUploadResult
 	if err := json.Unmarshal(raw, &item); err != nil {
@@ -321,15 +323,12 @@ func consumeUploadFrame(raw json.RawMessage, onStatus func(status, message strin
 	switch item.Status {
 	case uploadStatusReady:
 		return &item, true, nil
-	case uploadStatusFailed:
-		msg := item.Message
-		if msg == "" {
-			msg = "no failure reason reported"
-		}
-		return nil, true, fmt.Errorf("model upload failed: %s", msg)
 	case "":
 		return nil, false, nil
 	default:
+		if msg, failed := uploadFailureMessage(item.Status, item.Message); failed {
+			return nil, true, fmt.Errorf("model upload failed: %s", msg)
+		}
 		if item.Status != *lastStatus {
 			*lastStatus = item.Status
 			if onStatus != nil {
@@ -338,6 +337,21 @@ func consumeUploadFrame(raw json.RawMessage, onStatus func(status, message strin
 		}
 		return nil, false, nil
 	}
+}
+
+// uploadFailureMessage reports whether a modelUpload pipeline status is terminal
+// failure and returns the message to surface to the caller.
+func uploadFailureMessage(status, message string) (string, bool) {
+	if status == uploadStatusFailed || strings.Contains(strings.ToLower(status), "error") {
+		if message != "" {
+			return message, true
+		}
+		if status == uploadStatusFailed {
+			return "no failure reason reported", true
+		}
+		return status, true
+	}
+	return "", false
 }
 
 // Poll polls for async task results using the getResponse task type.
