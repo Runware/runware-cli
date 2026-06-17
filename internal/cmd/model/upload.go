@@ -76,7 +76,9 @@ identifier is printed and the model can be used with 'runware run'.
 
 NOTE: "model upload" is only supported by the WebSocket (ws) transport. If you have your default transport configured as http you must set the --transport ws flag when calling "model upload"`,
 		Example: `  # Upload a FLUX checkpoint from a hosted safetensors file
-  runware model upload --air "myorg:42@1" \
+  # NOTE: --air must use your configured AIR source (see: runware account details)
+  runware model upload --air "<your-air-source>:42@1" \
+    --unique-identifier "my-custom-model-v1" \
     --category checkpoint \
     --architecture flux1d \
     --name "My Custom Model"\
@@ -85,7 +87,8 @@ NOTE: "model upload" is only supported by the WebSocket (ws) transport. If you h
     --private
 
   # Upload a LoRA with metadata and defaults
-  runware model upload --air "myorg:42@1" \
+  runware model upload --air "<your-air-source>:42@1" \
+    --unique-identifier "style-lora-v1" \
     --category lora \
     --architecture sdxl \
     --name "Style LoRA" \
@@ -166,8 +169,8 @@ NOTE: "model upload" is only supported by the WebSocket (ws) transport. If you h
 	f.StringVarP(&flags.architecture, "architecture", "a", "", "Model architecture (e.g. flux1d, sdxl, sd1x)")
 	f.StringVar(&flags.format, "format", "safetensors", "Model file format")
 	f.StringVarP(&flags.modelType, "type", "t", "", "Model type (checkpoint: base, inpainting; lora/embeddings: positive, negative)")
-	f.StringVar(&flags.air, "air", "", "Custom AIR identifier (provider:model@version)")
-	f.StringVar(&flags.uniqueIdentifier, "unique-identifier", "", "Custom unique identifier for the model")
+	f.StringVar(&flags.air, "air", "", "Custom AIR identifier (<air-source>:<name>@<version>; see 'runware account details' for your air-source)")
+	f.StringVar(&flags.uniqueIdentifier, "unique-identifier", "", "Unique identifier for this model version/state (5-64 chars)")
 	f.StringVar(&flags.heroImageURL, "hero-image-url", "", "URL of a display image for the model")
 	f.StringSliceVar(&flags.tags, "tags", nil, "Comma-separated categorical labels")
 	f.StringVar(&flags.shortDescription, "short-description", "", "Brief model summary")
@@ -180,7 +183,7 @@ NOTE: "model upload" is only supported by the WebSocket (ws) transport. If you h
 	f.Float64Var(&flags.defaultWeight, "default-weight", 0, "Default weight (lora, lycoris)")
 	f.StringVar(&flags.positiveTriggerWords, "positive-trigger-words", "", "Activation keywords (lora, lycoris)")
 
-	for _, name := range []string{"category", "name", "version", "download-url", "architecture"} {
+	for _, name := range []string{"air", "unique-identifier", "category", "name", "version", "download-url", "architecture"} {
 		if err := cmd.MarkFlagRequired(name); err != nil {
 			panic(err)
 		}
