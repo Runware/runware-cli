@@ -192,6 +192,9 @@ NOTE: "model upload" is only supported by the WebSocket (ws) transport. If you h
 	cmd.RegisterFlagCompletionFunc("format", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"safetensors"}, cobra.ShellCompDirectiveNoFileComp
 	})
+	cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{"base", "inpainting", "positive", "negative"}, cobra.ShellCompDirectiveNoFileComp
+	})
 
 	return cmd
 }
