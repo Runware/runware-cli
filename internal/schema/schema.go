@@ -445,7 +445,12 @@ func ValidateEnums(node Node, payload map[string]any) error {
 }
 
 func validateEnumsInObject(node Node, obj map[string]any, prefix string) error {
-	for key, val := range obj {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
 		prop, ok := node.Properties[key]
 		if !ok {
 			continue
@@ -454,7 +459,7 @@ func validateEnumsInObject(node Node, obj map[string]any, prefix string) error {
 		if prefix != "" {
 			path = prefix + "." + key
 		}
-		if err := validateEnumsInValue(prop, val, path); err != nil {
+		if err := validateEnumsInValue(prop, obj[key], path); err != nil {
 			return err
 		}
 	}
