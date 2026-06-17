@@ -242,7 +242,7 @@ func CollectCompletions(
 			if _, done := provided[indexedPrefix]; !done && strings.HasPrefix(indexedPrefix, toCompletePrefix) {
 				desc := prop.Description
 				if desc == "" {
-					desc = prop.Type
+					desc = string(prop.Type)
 				}
 				out = append(out, cobra.CompletionWithDesc(candidate, desc))
 			}
@@ -254,7 +254,7 @@ func CollectCompletions(
 		if _, done := provided[full]; !done && strings.HasPrefix(full, toCompletePrefix) {
 			desc := prop.Description
 			if desc == "" {
-				desc = prop.Type
+				desc = string(prop.Type)
 			}
 			out = append(out, cobra.CompletionWithDesc(candidate, desc))
 		}

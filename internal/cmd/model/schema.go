@@ -11,6 +11,7 @@ import (
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
+	"github.com/runware/runware-cli/internal/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ const (
 type schemaNode struct {
 	Title       string                `json:"title"`
 	Description string                `json:"description"`
-	Type        string                `json:"type"`
+	Type        schema.SchemaType     `json:"type"`
 	Default     json.RawMessage       `json:"default"`
 	Properties  map[string]schemaNode `json:"properties"`
 	Required    []string              `json:"required"`
@@ -111,7 +112,7 @@ func buildRows(node schemaNode, requiredSet map[string]struct{}, depth, maxDepth
 // formatSchemaType returns a display string for a schema node's type.
 func formatSchemaType(node schemaNode) string {
 	if node.Type != "" {
-		return node.Type
+		return string(node.Type)
 	}
 	return defaultEmptyValue
 }
@@ -169,7 +170,7 @@ func newSchemaCmd(_ *log.Logger) *cobra.Command {
 			spin := cmdutil.NewSpinner("Fetching model schema...")
 			spin.Start()
 
-			schema, err := api.FetchModelSchema(cmd.Context(), air)
+			modelSchema, err := api.FetchModelSchema(cmd.Context(), air)
 			if err != nil {
 				spin.Stop()
 				return err
@@ -180,13 +181,13 @@ func newSchemaCmd(_ *log.Logger) *cobra.Command {
 
 			// For JSON/YAML emit the full envelope unchanged.
 			if format != output.FormatTable {
-				return output.Print(format, schema)
+				return output.Print(format, modelSchema)
 			}
 
 			// For table, parse the selected schema and build indented rows.
-			selected := schema.RequestSchema
+			selected := modelSchema.RequestSchema
 			if flags.response {
-				selected = schema.ResponseSchema
+				selected = modelSchema.ResponseSchema
 			}
 
 			var node schemaNode
@@ -199,8 +200,8 @@ func newSchemaCmd(_ *log.Logger) *cobra.Command {
 				return err
 			}
 
-			if schema.Documentation != "" {
-				fmt.Fprintf(os.Stderr, "Docs: %s\n", schema.Documentation)
+			if modelSchema.Documentation != "" {
+				fmt.Fprintf(os.Stderr, "Docs: %s\n", modelSchema.Documentation)
 			}
 
 			return nil
