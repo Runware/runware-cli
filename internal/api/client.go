@@ -151,7 +151,7 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	ms, err := fetchModelSchema(ctx, model, schemaClient, baseURL)
 	if err != nil {
 		if opts.TaskType == "" {
-			return nil, fmt.Errorf("could not fetch schema for %q: %w; set RunOptions.TaskType to skip validation", model, err)
+			return nil, fmt.Errorf("could not fetch schema for %q: %w; set --task-type to skip validation", model, err)
 		}
 		c.logger.Warn("schema unavailable; skipping validation", "model", model, "err", err)
 	} else {
@@ -171,7 +171,7 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	if taskType == "" {
 		detected, ok := schema.ExtractTaskType(reqSchema)
 		if !ok {
-			return nil, fmt.Errorf("could not detect task type for model %q; set RunOptions.TaskType", model)
+			return nil, fmt.Errorf("could not detect task type for model %q; set --task-type", model)
 		}
 		taskType = detected
 	}
