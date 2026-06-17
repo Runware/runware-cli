@@ -30,7 +30,8 @@ jobs:
           config: cliff.toml
           args: --latest --strip header --output CHANGELOG.md
 
-      - uses: sigstore/cosign-installer@v3
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
 
       - uses: goreleaser/goreleaser-action@v6
         with:
