@@ -148,7 +148,7 @@ func TestClientRun_SchemaUnavailable_TaskTypeProvided(t *testing.T) {
 }
 
 // TestClientRun_SchemaUnavailable_NoTaskType: schema endpoint returns 404 and no
-// TaskType is provided; Run must return a descriptive error.
+// task type is provided; Run must return a descriptive error.
 func TestClientRun_SchemaUnavailable_NoTaskType(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -162,8 +162,8 @@ func TestClientRun_SchemaUnavailable_NoTaskType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when schema unavailable and no TaskType, got nil")
 	}
-	if !strings.Contains(err.Error(), "RunOptions.TaskType") {
-		t.Errorf("expected error to mention RunOptions.TaskType, got: %v", err)
+	if !strings.Contains(err.Error(), "--task-type") {
+		t.Errorf("expected error to mention --task-type, got: %v", err)
 	}
 }
 
