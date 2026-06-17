@@ -7,34 +7,36 @@ LDFLAGS = -s -w \
 	-X main.commit=$(COMMIT) \
 	-X main.date=$(DATE)
 
+GOFLAGS = -trimpath
+
 BINARY=runware
 
 .PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs go-tidy
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
+	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
 
 build-all: windows-amd64 windows-arm64 darwin linux-amd64 linux-arm64
 
 windows-amd64:
-	GOARCH=amd64 GOOS=windows go build -ldflags "$(LDFLAGS)" -o bin/${BINARY}-windows-amd64.exe ./cmd/runware
+	GOARCH=amd64 GOOS=windows go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY}-windows-amd64.exe ./cmd/runware
 
 windows-arm64:
-	GOARCH=arm64 GOOS=windows go build -ldflags "$(LDFLAGS)" -o bin/${BINARY}-windows-arm64.exe ./cmd/runware
+	GOARCH=arm64 GOOS=windows go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY}-windows-arm64.exe ./cmd/runware
 
 darwin: darwin-arm64 darwin-amd64
 
 darwin-arm64:
-	GOARCH=arm64 GOOS=darwin go build -ldflags "$(LDFLAGS)" -o bin/${BINARY}-darwin-arm64 ./cmd/runware
+	GOARCH=arm64 GOOS=darwin go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY}-darwin-arm64 ./cmd/runware
 
 darwin-amd64:
-	GOARCH=amd64 GOOS=darwin go build -ldflags "$(LDFLAGS)" -o bin/${BINARY}-darwin-amd64 ./cmd/runware
+	GOARCH=amd64 GOOS=darwin go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY}-darwin-amd64 ./cmd/runware
 
 linux-amd64:
-	GOARCH=amd64 GOOS=linux go build -ldflags "$(LDFLAGS)" -o bin/${BINARY}-linux-amd64 ./cmd/runware
+	GOARCH=amd64 GOOS=linux go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY}-linux-amd64 ./cmd/runware
 
 linux-arm64:
-	GOARCH=arm64 GOOS=linux go build -ldflags "$(LDFLAGS)" -o bin/${BINARY}-linux-arm64 ./cmd/runware
+	GOARCH=arm64 GOOS=linux go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY}-linux-arm64 ./cmd/runware
 
 run:
 	go run -ldflags "$(LDFLAGS)" ./cmd/runware $(ARGS)
@@ -49,7 +51,7 @@ clean:
 	rm -rf bin dist
 
 install:
-	go install -ldflags "$(LDFLAGS)" ./cmd/runware
+	go install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/runware
 
 snapshot:
 	goreleaser build --snapshot --clean
