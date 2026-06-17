@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -28,6 +29,9 @@ jobs:
         with:
           config: cliff.toml
           args: --latest --strip header --output CHANGELOG.md
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
 
       - uses: goreleaser/goreleaser-action@v6
         with:
