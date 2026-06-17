@@ -534,6 +534,38 @@ func TestValidateEnums_NoConstraint_Passes(t *testing.T) {
 	}
 }
 
+func TestValidateEnums_BareConst_ValidValue(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldDeliveryMethod: {
+				Type:  schema.TypeString,
+				Const: json.RawMessage(`"async"`),
+			},
+		},
+	}
+	if err := schema.ValidateEnums(node, map[string]any{testFieldDeliveryMethod: "async"}); err != nil {
+		t.Errorf("unexpected error for matching const: %v", err)
+	}
+}
+
+func TestValidateEnums_BareConst_InvalidValue(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldDeliveryMethod: {
+				Type:  schema.TypeString,
+				Const: json.RawMessage(`"async"`),
+			},
+		},
+	}
+	err := schema.ValidateEnums(node, map[string]any{testFieldDeliveryMethod: "sync"})
+	if err == nil {
+		t.Fatal("expected error for value not matching const")
+	}
+	if !containsString(err.Error(), "async") {
+		t.Errorf("error should show allowed const value; got: %v", err)
+	}
+}
+
 func TestValidateEnums_UnknownKeyIgnored(t *testing.T) {
 	node := schema.Node{
 		Properties: map[string]schema.Node{

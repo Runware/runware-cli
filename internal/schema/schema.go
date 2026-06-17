@@ -491,10 +491,21 @@ func validateEnumsInValue(prop Node, val any, path string) error {
 }
 
 // stringEnumValues returns the allowed string values for a string-typed schema
-// node, collecting string const values from oneOf branches and direct enum
-// entries. Returns nil when the node has no string enum constraint.
+// node. It collects from three sources in priority order:
+//
+//  1. A bare top-level const (single allowed value, e.g. const: "async")
+//  2. String const values from oneOf branches
+//  3. Direct enum entries
+//
+// Returns nil when the node has no string enum constraint.
 func stringEnumValues(prop Node) []string {
 	var vals []string
+	if len(prop.Const) > 0 {
+		var s string
+		if err := json.Unmarshal(prop.Const, &s); err == nil {
+			return []string{s}
+		}
+	}
 	for i := range prop.OneOf {
 		if len(prop.OneOf[i].Const) == 0 {
 			continue
