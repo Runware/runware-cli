@@ -170,7 +170,7 @@ func newSchemaCmd(_ *log.Logger) *cobra.Command {
 			spin := cmdutil.NewSpinner("Fetching model schema...")
 			spin.Start()
 
-			schema, err := api.FetchModelSchema(cmd.Context(), air)
+			modelSchema, err := api.FetchModelSchema(cmd.Context(), air)
 			if err != nil {
 				spin.Stop()
 				return err
@@ -181,13 +181,13 @@ func newSchemaCmd(_ *log.Logger) *cobra.Command {
 
 			// For JSON/YAML emit the full envelope unchanged.
 			if format != output.FormatTable {
-				return output.Print(format, schema)
+				return output.Print(format, modelSchema)
 			}
 
 			// For table, parse the selected schema and build indented rows.
-			selected := schema.RequestSchema
+			selected := modelSchema.RequestSchema
 			if flags.response {
-				selected = schema.ResponseSchema
+				selected = modelSchema.ResponseSchema
 			}
 
 			var node schemaNode
@@ -200,8 +200,8 @@ func newSchemaCmd(_ *log.Logger) *cobra.Command {
 				return err
 			}
 
-			if schema.Documentation != "" {
-				fmt.Fprintf(os.Stderr, "Docs: %s\n", schema.Documentation)
+			if modelSchema.Documentation != "" {
+				fmt.Fprintf(os.Stderr, "Docs: %s\n", modelSchema.Documentation)
 			}
 
 			return nil

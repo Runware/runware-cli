@@ -33,7 +33,7 @@ func (t *SchemaType) UnmarshalJSON(b []byte) error {
 	switch val := v.(type) {
 	case string:
 		if val == "null" {
-			*t = SchemaType("")
+			*t = ""
 		} else {
 			*t = SchemaType(val)
 		}
@@ -44,7 +44,7 @@ func (t *SchemaType) UnmarshalJSON(b []byte) error {
 				return nil
 			}
 		}
-		*t = SchemaType("")
+		*t = ""
 	default:
 		return fmt.Errorf("schema type: expected string or array, got %T", v)
 	}
