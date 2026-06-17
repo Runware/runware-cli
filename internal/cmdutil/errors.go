@@ -3,6 +3,7 @@ package cmdutil
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"slices"
 
@@ -24,9 +25,15 @@ const fieldMessage = "message"
 //
 // For all other errors, err.Error() is used as the message.
 func PrintError(logger *log.Logger, format output.Format, err error) {
+	PrintErrorTo(logger, os.Stderr, format, err)
+}
+
+// PrintErrorTo logs err with formatting that matches the CLI output format,
+// writing structured output to w.
+func PrintErrorTo(logger *log.Logger, w io.Writer, format output.Format, err error) {
 	if errors.Is(err, transport.ErrNoAPIKey) {
 		if isStructuredFormat(format) {
-			writeStructuredError(format, structuredErrors(map[string]any{
+			writeStructuredError(w, format, structuredErrors(map[string]any{
 				"code":       "missingApiKey",
 				fieldMessage: "No API key configured",
 				"hint":       "Run 'runware auth login' to set your API key",
@@ -40,7 +47,7 @@ func PrintError(logger *log.Logger, format output.Format, err error) {
 	var re *transport.RunwareError
 	if errors.As(err, &re) {
 		if isStructuredFormat(format) {
-			writeStructuredError(format, structuredErrors(re.APIFields()))
+			writeStructuredError(w, format, structuredErrors(re.APIFields()))
 			return
 		}
 
@@ -54,7 +61,7 @@ func PrintError(logger *log.Logger, format output.Format, err error) {
 	}
 
 	if isStructuredFormat(format) {
-		writeStructuredError(format, structuredErrors(map[string]any{
+		writeStructuredError(w, format, structuredErrors(map[string]any{
 			fieldMessage: err.Error(),
 		}))
 		return
@@ -66,10 +73,15 @@ func PrintError(logger *log.Logger, format output.Format, err error) {
 // when err is a *transport.RunwareError. Use for warning-style output that does
 // not exit the process.
 func PrintErrorMsg(logger *log.Logger, format output.Format, message string, err error) {
+	PrintErrorMsgTo(logger, os.Stderr, format, message, err)
+}
+
+// PrintErrorMsgTo logs a custom message and writes structured output to w.
+func PrintErrorMsgTo(logger *log.Logger, w io.Writer, format output.Format, message string, err error) {
 	var re *transport.RunwareError
 	if errors.As(err, &re) {
 		if isStructuredFormat(format) {
-			writeStructuredError(format, map[string]any{
+			writeStructuredError(w, format, map[string]any{
 				fieldMessage: message,
 				"errors":     []map[string]any{re.APIFields()},
 			})
@@ -85,8 +97,8 @@ func isStructuredFormat(format output.Format) bool {
 	return format == output.FormatJSON || format == output.FormatYAML
 }
 
-func structuredErrors(items ...map[string]any) map[string]any {
-	return map[string]any{"errors": items}
+func structuredErrors(item map[string]any) map[string]any {
+	return map[string]any{"errors": []map[string]any{item}}
 }
 
 func logRunwareError(logger *log.Logger, re *transport.RunwareError, message string) {
@@ -120,14 +132,14 @@ func sortedFieldKeys(fields map[string]any) []string {
 	return keys
 }
 
-func writeStructuredError(format output.Format, data any) {
+func writeStructuredError(w io.Writer, format output.Format, data any) {
 	switch format {
 	case output.FormatJSON:
-		enc := json.NewEncoder(os.Stderr)
+		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(data) //nolint:errcheck,gosec
 	case output.FormatYAML:
-		enc := yaml.NewEncoder(os.Stderr)
+		enc := yaml.NewEncoder(w)
 		enc.SetIndent(2)
 		_ = enc.Encode(data) //nolint:errcheck,gosec
 		_ = enc.Close()      //nolint:errcheck,gosec

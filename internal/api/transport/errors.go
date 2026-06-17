@@ -259,10 +259,15 @@ func (e *RunwareError) APIFields() map[string]any {
 		if err := json.Unmarshal(e.RawItem, &m); err == nil {
 			return m
 		}
+		// Fall back to typed fields when RawItem is not a JSON object.
 	}
 	m := map[string]any{
-		"code":    e.RawCode,
 		"message": e.Message,
+	}
+	if e.RawCode != "" {
+		m["code"] = e.RawCode
+	} else if e.Code != "" {
+		m["code"] = string(e.Code)
 	}
 	if e.Parameter != "" {
 		m["parameter"] = e.Parameter

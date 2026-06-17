@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 	"reflect"
 	"testing"
 
@@ -14,31 +13,6 @@ import (
 	"github.com/runware/runware-cli/internal/output"
 	"gopkg.in/yaml.v3"
 )
-
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	defer r.Close() //nolint:errcheck,gosec
-	os.Stderr = w
-	t.Cleanup(func() {
-		os.Stderr = old
-	})
-
-	fn()
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
-	}
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatalf("read stderr: %v", err)
-	}
-	return buf.String()
-}
 
 func runwareErrorFromRaw(t *testing.T, raw string) *transport.RunwareError {
 	t.Helper()
@@ -73,9 +47,9 @@ func TestPrintErrorStructuredOutput(t *testing.T) {
 	for _, tt := range fixtures {
 		t.Run(tt.name+"/json", func(t *testing.T) {
 			re := runwareErrorFromRaw(t, tt.raw)
-			out := captureStderr(t, func() {
-				PrintError(logger, output.FormatJSON, re)
-			})
+			var buf bytes.Buffer
+			PrintErrorTo(logger, &buf, output.FormatJSON, re)
+			out := buf.String()
 
 			var payload struct {
 				Errors []map[string]any `json:"errors"`
@@ -98,9 +72,9 @@ func TestPrintErrorStructuredOutput(t *testing.T) {
 
 		t.Run(tt.name+"/yaml", func(t *testing.T) {
 			re := runwareErrorFromRaw(t, tt.raw)
-			out := captureStderr(t, func() {
-				PrintError(logger, output.FormatYAML, re)
-			})
+			var buf bytes.Buffer
+			PrintErrorTo(logger, &buf, output.FormatYAML, re)
+			out := buf.String()
 
 			var payload struct {
 				Errors []map[string]any `yaml:"errors"`
@@ -125,9 +99,9 @@ func TestPrintErrorStructuredOutput(t *testing.T) {
 
 func TestPrintErrorNoAPIKeyJSON(t *testing.T) {
 	logger := log.New(io.Discard)
-	out := captureStderr(t, func() {
-		PrintError(logger, output.FormatJSON, transport.ErrNoAPIKey)
-	})
+	var buf bytes.Buffer
+	PrintErrorTo(logger, &buf, output.FormatJSON, transport.ErrNoAPIKey)
+	out := buf.String()
 
 	var payload struct {
 		Errors []map[string]any `json:"errors"`
@@ -148,9 +122,9 @@ func TestPrintErrorNoAPIKeyJSON(t *testing.T) {
 
 func TestPrintErrorGenericJSON(t *testing.T) {
 	logger := log.New(io.Discard)
-	out := captureStderr(t, func() {
-		PrintError(logger, output.FormatJSON, errors.New("something broke"))
-	})
+	var buf bytes.Buffer
+	PrintErrorTo(logger, &buf, output.FormatJSON, errors.New("something broke"))
+	out := buf.String()
 
 	var payload struct {
 		Errors []map[string]any `json:"errors"`
@@ -168,9 +142,9 @@ func TestPrintErrorMsgPreservesAPIErrorMessage(t *testing.T) {
 	re := runwareErrorFromRaw(t, apiRaw)
 
 	logger := log.New(io.Discard)
-	out := captureStderr(t, func() {
-		PrintErrorMsg(logger, output.FormatJSON, "custom warning", re)
-	})
+	var buf bytes.Buffer
+	PrintErrorMsgTo(logger, &buf, output.FormatJSON, "custom warning", re)
+	out := buf.String()
 
 	var payload struct {
 		Message string           `json:"message"`
