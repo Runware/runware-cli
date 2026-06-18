@@ -177,10 +177,10 @@ Config is stored at `~/.runware/config.yaml`.
 ### Upload
 
 ```shell
-runware upload <file|url>       # Upload an image asset; prints imageUUID for use in run params
+runware upload <file|url>       # Upload an image asset; prints imageUUID (and taskUUID) for use in run params
 ```
 
-Accepts a local file path, public URL, or data URI. The returned imageUUID can be passed to parameters like `inputs.seedImage=` on the `run` command.
+Accepts a local file path, public URL, or data URI. The returned imageUUID can be passed to parameters like `inputs.seedImage=` on the `run` command. The taskUUID can be used with `runware result`.
 
 ### Result
 
