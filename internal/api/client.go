@@ -132,8 +132,9 @@ func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.Raw
 // args is a slice of key=value strings (e.g. ["positivePrompt=hello", "width=1024"]).
 // They are parsed against the model's fetched JSON Schema so that type coercion
 // (string vs number vs bool) is schema-driven rather than best-effort.
-// System fields (taskType, taskUUID, deliveryMethod) are injected automatically;
-// callers must not include them in rawArgs.
+// System fields (taskType) are injected automatically; callers must not include it in args.
+// deliveryMethod may be set via --delivery-method or a key=value argument.
+// taskUUID is optional: supply it to use a specific identifier, or omit it to have one generated.
 //
 // For async delivery Run polls until a success result is received or the context
 // is cancelled. For sync delivery the submit response is returned directly.
@@ -184,7 +185,7 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	}
 
 	// Parse args against the real schema so type coercion is schema-driven.
-	// Protected fields (taskType, taskUUID, model, deliveryMethod) are rejected here.
+	// Protected fields are rejected here.
 	payload := make(map[string]any, len(args)+4)
 	payload[fieldModel] = model
 	for _, a := range args {
@@ -222,8 +223,21 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		payload[fieldDeliveryMethod] = deliveryMethod
 	}
 
-	// Inject system fields.
-	taskUUID := uuid.New()
+	// Inject system fields. Use a caller-supplied taskUUID if provided, otherwise generate.
+	var taskUUID uuid.UUID
+	if raw, ok := payload[fieldTaskUUID]; ok {
+		s, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("taskUUID: expected string UUID, got %T", raw)
+		}
+		parsed, err := uuid.Parse(s)
+		if err != nil {
+			return nil, fmt.Errorf("taskUUID: invalid UUID %q: %w", s, err)
+		}
+		taskUUID = parsed
+	} else {
+		taskUUID = uuid.New()
+	}
 	payload[fieldTaskType] = taskType
 	payload[fieldTaskUUID] = taskUUID
 

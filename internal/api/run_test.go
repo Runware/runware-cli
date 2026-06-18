@@ -401,3 +401,70 @@ func TestClientRun_RawArgs_InvalidKV(t *testing.T) {
 		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
 	}
 }
+
+// TestClientRun_UserProvidedTaskUUID: a caller-supplied taskUUID must be accepted and used
+// (after UUID validation) instead of being overwritten with a new UUID.
+func TestClientRun_UserProvidedTaskUUID(t *testing.T) {
+	const wantUUID = "d58cbacc-bed6-413e-9e4a-b118e4d84035"
+
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{successItem(t, nil)}},
+		},
+	}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, []string{"taskUUID=" + wantUUID}, RunOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mock.captured) == 0 {
+		t.Fatal("no transport calls captured")
+	}
+	tasks := mock.captured[0]
+	if len(tasks) == 0 {
+		t.Fatal("submitted tasks slice is empty")
+	}
+	taskBytes, err := json.Marshal(tasks[0])
+	if err != nil {
+		t.Fatalf("marshal captured task: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(taskBytes, &payload); err != nil {
+		t.Fatalf("unmarshal captured task: %v", err)
+	}
+	got, ok := payload["taskUUID"]
+	if !ok {
+		t.Fatal("taskUUID not present in submitted payload")
+	}
+	if s, _ := got.(string); s != wantUUID {
+		t.Errorf("taskUUID: got %q, want %q", s, wantUUID)
+	}
+}
+
+// TestClientRun_UserProvidedTaskUUID_Invalid: an invalid UUID value must return
+// an error before any transport call is made.
+func TestClientRun_UserProvidedTaskUUID_Invalid(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	mock := &mockTransport{}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, []string{"taskUUID=not-a-uuid"}, RunOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid taskUUID, got nil")
+	}
+	if !strings.Contains(err.Error(), "taskUUID") {
+		t.Errorf("expected error to mention %q, got: %v", "taskUUID", err)
+	}
+	if mock.callCount != 0 {
+		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
+	}
+}

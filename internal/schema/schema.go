@@ -106,8 +106,7 @@ var ManagedFields = map[string]ManagedField{
 		Hint:      "use the --task-type flag instead",
 	},
 	"taskUUID": {
-		Protected: true,
-		Hint:      "this field is system-generated and cannot be set manually",
+		Protected: false,
 	},
 	"deliveryMethod": {
 		Protected: false,
