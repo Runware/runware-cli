@@ -404,6 +404,7 @@ func TestClientRun_RawArgs_InvalidKV(t *testing.T) {
 
 // TestClientRun_UserProvidedTaskUUID: a caller-supplied taskUUID must be accepted and used
 // (after UUID validation) instead of being overwritten with a new UUID.
+func TestClientRun_UserProvidedTaskUUID(t *testing.T) {
 	const wantUUID = "d58cbacc-bed6-413e-9e4a-b118e4d84035"
 
 	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
