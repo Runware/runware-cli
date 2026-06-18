@@ -22,7 +22,9 @@ runware model upload [flags]
 
 ```
   # Upload a FLUX checkpoint from a hosted safetensors file
-  runware model upload --air "myorg:42@1" \
+  # NOTE: --air must use your configured AIR source (see: runware account details)
+  runware model upload --air "<your-air-source>:42@1" \
+    --unique-identifier "my-custom-model-v1" \
     --category checkpoint \
     --architecture flux1d \
     --name "My Custom Model"\
@@ -31,7 +33,8 @@ runware model upload [flags]
     --private
 
   # Upload a LoRA with metadata and defaults
-  runware model upload --air "myorg:42@1" \
+  runware model upload --air "<your-air-source>:42@1" \
+    --unique-identifier "style-lora-v1" \
     --category lora \
     --architecture sdxl \
     --name "Style LoRA" \
@@ -46,7 +49,7 @@ runware model upload [flags]
 ### Options
 
 ```
-      --air string                      Custom AIR identifier (provider:model@version)
+      --air string                      Custom AIR identifier (<air-source>:<name>@<version>; see 'runware account details' for your air-source)
   -a, --architecture string             Model architecture (e.g. flux1d, sdxl, sd1x)
   -c, --category string                 Model category: checkpoint, lora, lycoris, vae, embeddings
       --comment string                  Internal notes
@@ -65,7 +68,7 @@ runware model upload [flags]
       --short-description string        Brief model summary
       --tags strings                    Comma-separated categorical labels
   -t, --type string                     Model type (checkpoint: base, inpainting; lora/embeddings: positive, negative)
-      --unique-identifier string        Custom unique identifier for the model
+      --unique-identifier string        Unique identifier for this model version/state (5-64 chars)
       --version string                  Version identifier (e.g. 1.0)
 ```
 
