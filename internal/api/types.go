@@ -348,7 +348,7 @@ type ModelUploadRequest struct {
 
 // ModelUploadResult is a single status/result frame from the modelUpload
 // pipeline. Status progresses validated → downloaded → optimized → stored →
-// ready, or failed.
+// ready, or terminates with a failure status such as "failed" or "error downloading".
 type ModelUploadResult struct {
 	TaskType TaskType  `json:"taskType"`
 	TaskUUID uuid.UUID `json:"taskUUID"`
