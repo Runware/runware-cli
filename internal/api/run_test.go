@@ -426,7 +426,11 @@ func TestClientRun_UserProvidedTaskUUID(t *testing.T) {
 	if len(mock.captured) == 0 {
 		t.Fatal("no transport calls captured")
 	}
-	taskBytes, err := json.Marshal(mock.captured[0][0])
+	tasks := mock.captured[0]
+	if len(tasks) == 0 {
+		t.Fatal("submitted tasks slice is empty")
+	}
+	taskBytes, err := json.Marshal(tasks[0])
 	if err != nil {
 		t.Fatalf("marshal captured task: %v", err)
 	}

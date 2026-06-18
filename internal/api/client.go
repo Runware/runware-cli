@@ -185,7 +185,7 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	}
 
 	// Parse args against the real schema so type coercion is schema-driven.
-	// Protected fields (taskType, model, deliveryMethod) are rejected here.
+	// Protected fields are rejected here.
 	payload := make(map[string]any, len(args)+4)
 	payload[fieldModel] = model
 	for _, a := range args {
