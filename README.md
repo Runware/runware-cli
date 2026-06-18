@@ -63,7 +63,7 @@ runware run <model> [key=value ...] [flags]
 
 | Flag | Description |
 |------|-------------|
-| `--preset` | Load parameters from a saved preset (model and params used as defaults) |
+| `--preset` | Load parameters from a saved preset (model and params used as defaults; `<model>` may be omitted when the preset provides one) |
 | `--task-type` | Override detected task type (e.g. `imageInference`, `videoInference`, `audioInference`, `textInference`) |
 | `--output-dir` | Directory to save downloaded output files (default `./outputs`) |
 | `--no-download` | Skip auto-downloading media files |
@@ -180,7 +180,7 @@ Config is stored at `~/.runware/config.yaml`.
 runware upload <file|url>       # Upload an image asset; prints imageUUID (and taskUUID) for use in run params
 ```
 
-Accepts a local file path, public URL, or data URI. The returned imageUUID can be passed to parameters like `inputs.seedImage=` on the `run` command. The taskUUID can be used with `runware result`.
+Accepts a local file path, public URL, or data URI. The returned imageUUID can be passed to parameters like `inputs.seedImage=<imageUUID>` on the `run` command. The taskUUID can be used with `runware result`.
 
 ### Result
 

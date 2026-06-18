@@ -43,7 +43,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 		Long: `A command-line tool for interacting with the Runware inference API.
 Generate images, search models, manage your account, and more.
 
-By creating an account, you agree to our Terms of Service (https://runware.ai/terms) and Privacy Policy (https://runware.ai/privacy).`,
+Use of Runware services is subject to our Terms of Service (https://runware.ai/terms) and Privacy Policy (https://runware.ai/privacy).`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)
