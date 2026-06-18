@@ -132,9 +132,9 @@ func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.Raw
 // args is a slice of key=value strings (e.g. ["positivePrompt=hello", "width=1024"]).
 // They are parsed against the model's fetched JSON Schema so that type coercion
 // (string vs number vs bool) is schema-driven rather than best-effort.
-// System fields (taskType, deliveryMethod) are injected automatically; callers must
-// not include them in rawArgs. taskUUID is optional: supply it to use a specific
-// identifier, or omit it to have one generated.
+// System fields (taskType) are injected automatically; callers must not include it in args.
+// deliveryMethod may be set via --delivery-method or a key=value argument.
+// taskUUID is optional: supply it to use a specific identifier, or omit it to have one generated.
 //
 // For async delivery Run polls until a success result is received or the context
 // is cancelled. For sync delivery the submit response is returned directly.
