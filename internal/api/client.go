@@ -226,7 +226,10 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	// Inject system fields. Use a caller-supplied taskUUID if provided, otherwise generate.
 	var taskUUID uuid.UUID
 	if raw, ok := payload[fieldTaskUUID]; ok {
-		s, _ := raw.(string)
+		s, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("taskUUID: expected string UUID, got %T", raw)
+		}
 		parsed, err := uuid.Parse(s)
 		if err != nil {
 			return nil, fmt.Errorf("taskUUID: invalid UUID %q: %w", s, err)
