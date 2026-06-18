@@ -40,7 +40,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "runware",
 		Short: "CLI tool for the Runware inference API",
-		Long:  "A command-line tool for interacting with the Runware inference API.\nGenerate images, search models, manage your account, and more.",
+		Long:  "A command-line tool for interacting with the Runware inference API.\nGenerate images, search models, manage your account, and more.\nBy creating an account, you agree to our Terms (https://runware.ai/terms) and Privacy Policy (https://runware.ai/privacy)",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if verbose, _ := cmd.Root().PersistentFlags().GetBool("verbose"); verbose {
 				logger.SetLevel(log.DebugLevel)

@@ -63,11 +63,13 @@ runware run <model> [key=value ...] [flags]
 
 | Flag | Description |
 |------|-------------|
+| `--preset` | Load parameters from a saved preset (model and params used as defaults) |
 | `--task-type` | Override detected task type (e.g. `imageInference`, `videoInference`, `audioInference`, `textInference`) |
 | `--output-dir` | Directory to save downloaded output files (default `./outputs`) |
 | `--no-download` | Skip auto-downloading media files |
 | `--delivery-method` | Delivery method (`sync` or `async`) (default `async`) |
 | `--poll-interval` | Polling interval for async requests (default `2s`) |
+| `--validate` | Validate parameters against the model schema before submitting |
 
 #### Image generation
 
@@ -155,7 +157,7 @@ runware model schema google:3@2 --response              # Show response schema i
 Save frequently used configurations:
 
 ```shell
-runware preset save quick-flux --model runware:100@1 --width 512 --height 512 --steps 4
+runware preset save quick-flux runware:100@1 width=512 height=512 steps=4
 runware preset list
 runware preset show quick-flux
 runware preset delete quick-flux
@@ -171,6 +173,22 @@ runware config path             # Print config file path
 ```
 
 Config is stored at `~/.runware/config.yaml`.
+
+### Upload
+
+```shell
+runware upload <file|url>       # Upload an image asset; prints imageUUID for use in run params
+```
+
+Accepts a local file path, public URL, or data URI. The returned imageUUID can be passed to parameters like `inputs.seedImage=` on the `run` command.
+
+### Result
+
+```shell
+runware result <taskUUID>       # Resume waiting for an async task by UUID
+```
+
+Use when `runware run` was interrupted before a task completed. The taskUUID is printed when the task is first submitted.
 
 ### Other
 
@@ -315,7 +333,8 @@ Once installed, `Tab` works at every level:
 # Complete subcommands
 $ runware <Tab>
 auth        account     completion  config      model
-ping        preset      run         version
+ping        preset      result      run         upload
+version
 
 # Complete model AIR identifiers for `run`
 $ runware run <Tab>
