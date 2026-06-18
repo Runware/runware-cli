@@ -629,10 +629,10 @@ func TestIsProtected_ModelRejected(t *testing.T) {
 	}
 }
 
-func TestIsProtected_TaskUUIDRejected(t *testing.T) {
+func TestIsProtected_TaskUUIDAllowed(t *testing.T) {
 	_, blocked := schema.IsProtected("taskUUID")
-	if !blocked {
-		t.Error("expected taskUUID to be protected")
+	if blocked {
+		t.Error("taskUUID must not be protected — callers may supply their own task identifier")
 	}
 }
 

@@ -222,8 +222,18 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		payload[fieldDeliveryMethod] = deliveryMethod
 	}
 
-	// Inject system fields.
-	taskUUID := uuid.New()
+	// Inject system fields. Use a caller-supplied taskUUID if provided, otherwise generate.
+	var taskUUID uuid.UUID
+	if raw, ok := payload[fieldTaskUUID]; ok {
+		s, _ := raw.(string)
+		parsed, err := uuid.Parse(s)
+		if err != nil {
+			return nil, fmt.Errorf("taskUUID: invalid UUID %q: %w", s, err)
+		}
+		taskUUID = parsed
+	} else {
+		taskUUID = uuid.New()
+	}
 	payload[fieldTaskType] = taskType
 	payload[fieldTaskUUID] = taskUUID
 
