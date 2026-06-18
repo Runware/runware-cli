@@ -182,14 +182,14 @@ func DeriveCode(raw string) ErrorCode {
 
 const (
 	docsBase        = "https://runware.ai/docs"
-	sdkErrorDocPath = "getting-started/errors"
+	sdkErrorDocPath = "platform/errors"
 )
 
 var utilityDocPaths = map[string]string{
 	"modelSearch":       "platform/model-search",
 	"modelUpload":       "platform/model-upload",
 	"imageUpload":       "platform/image-upload",
-	"getResponse":       "platform/get-response",
+	"getResponse":       "platform/task-polling",
 	"accountManagement": "platform/account-management",
 }
 
