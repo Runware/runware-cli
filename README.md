@@ -154,7 +154,7 @@ runware model pricing google:gemini@3.1-pro             # Pricing breakdown for 
 runware model examples google:gemini@3.1-pro            # Example requests for a model
 ```
 
-`model pricing` and `model examples` read from the public model catalog and accept either the AIR or the model id. For examples, use `--format json` to get the full request and response payloads you can adapt for `runware run`.
+`model pricing` and `model examples` read from the public model catalog and accept either the AIR or the model id. `model examples` prints a ready-to-run `runware run` command for each example, so you can copy one, tweak the prompt, and run it. Add `--format json` for the full request and response payloads.
 
 Upload a custom model to your account (WebSocket transport only):
 

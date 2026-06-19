@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/runware/runware-cli/internal/api"
@@ -22,43 +23,48 @@ func TestModelPricingRows(t *testing.T) {
 	}
 }
 
-func TestModelExamplesRows_PromptColumn(t *testing.T) {
-	r := modelExamples{examples: []api.ModelExample{
-		{ID: "ex-1", Title: "", Capability: "io:text-to-image",
-			Request: map[string]any{"positivePrompt": "A red fox in snow"}},
-	}}
-	rows := r.Rows()
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 row, got %d", len(rows))
+func TestRequestToCommand(t *testing.T) {
+	req := map[string]any{
+		"taskType":       "imageInference",
+		"taskUUID":       "abc-123",
+		"positivePrompt": "a red fox",
+		"width":          float64(1024),
+		"CFGScale":       3.5,
+		"acceleration":   "high",
 	}
-	// An empty title renders as an em-dash, matching `model show`'s orDash helper.
-	if rows[0][0] != "—" {
-		t.Errorf("empty title should render as an em-dash, got: %v", rows[0][0])
+	req[fieldModel] = "runware:100@1"
+	cmd := requestToCommand("runware:100@1", req)
+
+	if !strings.HasPrefix(cmd, "runware run runware:100@1 ") {
+		t.Fatalf("unexpected prefix: %s", cmd)
 	}
-	if rows[0][2] != "A red fox in snow" {
-		t.Errorf("prompt column should show positivePrompt, got: %v", rows[0][2])
+	for _, skipped := range []string{"taskType=", "taskUUID=", "model="} {
+		if strings.Contains(cmd, skipped) {
+			t.Errorf("should skip %q: %s", skipped, cmd)
+		}
+	}
+	for _, want := range []string{`positivePrompt="a red fox"`, "width=1024", "CFGScale=3.5", "acceleration=high"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("missing %q in: %s", want, cmd)
+		}
 	}
 }
 
-func TestPromptPreview(t *testing.T) {
-	// positivePrompt wins, and whitespace is collapsed.
-	if got := promptPreview(map[string]any{"positivePrompt": "  hello   world\n"}, 60); got != "hello world" {
-		t.Errorf("positivePrompt: got %q", got)
+func TestRequestToCommand_Nested(t *testing.T) {
+	req := map[string]any{
+		"settings": map[string]any{"maxTokens": float64(900), "temperature": 0.3},
+		"messages": []any{map[string]any{"role": "user", "content": "Describe the video"}},
 	}
-	// Falls back to the last user message's content.
-	msgReq := map[string]any{"messages": []any{
-		map[string]any{"role": "user", "content": "Describe the video"},
-	}}
-	if got := promptPreview(msgReq, 60); got != "Describe the video" {
-		t.Errorf("messages: got %q", got)
-	}
-	// Long text is truncated with an ellipsis.
-	got := promptPreview(map[string]any{"positivePrompt": "abcdefghijklmnop"}, 10)
-	if r := []rune(got); len(r) != 10 || r[len(r)-1] != '…' {
-		t.Errorf("truncate: got %q (len %d)", got, len([]rune(got)))
-	}
-	// No recognizable prompt yields an empty string.
-	if got := promptPreview(map[string]any{"width": 1024}, 60); got != "" {
-		t.Errorf("no prompt: got %q", got)
+	cmd := requestToCommand("google:gemini@3.1-pro", req)
+
+	for _, want := range []string{
+		"settings.maxTokens=900",
+		"settings.temperature=0.3",
+		"messages.0.role=user",
+		`messages.0.content="Describe the video"`,
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("missing %q in: %s", want, cmd)
+		}
 	}
 }
