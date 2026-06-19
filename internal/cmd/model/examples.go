@@ -43,10 +43,6 @@ func newExamplesCmd(_ *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "examples <air>",
 		Short: "Show example requests for a model by AIR identifier",
-		Long: `Show example requests for a model by AIR identifier.
-
-The table lists each example's title and capability. Use --format json to see
-the full request and response payloads, which you can adapt for 'runware run'.`,
 		Example: `  # Examples for a model
   runware model examples google:gemini@3.1-pro
 
