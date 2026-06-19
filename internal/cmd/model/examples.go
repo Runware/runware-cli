@@ -36,7 +36,11 @@ func (r modelExamples) MarshalYAML() (any, error) {
 
 const fieldModel = "model"
 
-var skipRequestKeys = map[string]bool{"taskType": true, "taskUUID": true, fieldModel: true}
+var skipRequestKeys = map[string]struct{}{
+	"taskType": {},
+	"taskUUID": {},
+	fieldModel: {},
+}
 
 // requestToCommand renders an example request as a copy-pasteable `runware run`
 // command. Nested objects and arrays become the CLI's dot-notation key=value
@@ -56,7 +60,7 @@ func requestToCommand(air string, req map[string]any) string {
 func flattenRequest(req map[string]any) []string {
 	var pairs []string
 	for k, v := range req {
-		if skipRequestKeys[k] {
+		if _, ok := skipRequestKeys[k]; ok {
 			continue
 		}
 		flattenValue(k, v, &pairs)
