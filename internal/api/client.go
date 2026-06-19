@@ -215,7 +215,7 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 		if err := schema.ValidateEnums(reqSchema, payload); err != nil {
 			return nil, err
 		}
-		if err := schema.ValidateNumericConstraints(reqSchema, payload); err != nil {
+		if err := schema.ValidateConstraints(reqSchema, payload); err != nil {
 			return nil, err
 		}
 	}

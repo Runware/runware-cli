@@ -2,6 +2,7 @@ package schema_test
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/runware/runware-cli/internal/schema"
@@ -1268,7 +1269,7 @@ func boundedWidthNode() schema.Node {
 }
 
 func TestValidateNumericConstraints_BelowMinimum(t *testing.T) {
-	err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(-1)})
+	err := schema.ValidateConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(-1)})
 	if err == nil {
 		t.Fatal("expected error for width below minimum")
 	}
@@ -1278,7 +1279,7 @@ func TestValidateNumericConstraints_BelowMinimum(t *testing.T) {
 }
 
 func TestValidateNumericConstraints_AboveMaximum(t *testing.T) {
-	err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(4096)})
+	err := schema.ValidateConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(4096)})
 	if err == nil {
 		t.Fatal("expected error for width above maximum")
 	}
@@ -1288,7 +1289,7 @@ func TestValidateNumericConstraints_AboveMaximum(t *testing.T) {
 }
 
 func TestValidateNumericConstraints_NotMultipleOf(t *testing.T) {
-	err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(1000)})
+	err := schema.ValidateConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(1000)})
 	if err == nil {
 		t.Fatal("expected error for width not a multiple of 16")
 	}
@@ -1298,7 +1299,7 @@ func TestValidateNumericConstraints_NotMultipleOf(t *testing.T) {
 }
 
 func TestValidateNumericConstraints_ValidValue(t *testing.T) {
-	if err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(1024)}); err != nil {
+	if err := schema.ValidateConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(1024)}); err != nil {
 		t.Errorf("1024 satisfies [512,2048] step 16; got: %v", err)
 	}
 }
@@ -1309,7 +1310,7 @@ func TestValidateNumericConstraints_NoConstraint_Passes(t *testing.T) {
 			testFieldWidth: {Type: schema.TypeInteger},
 		},
 	}
-	if err := schema.ValidateNumericConstraints(node, map[string]any{testFieldWidth: int64(-1)}); err != nil {
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldWidth: int64(-1)}); err != nil {
 		t.Errorf("unconstrained integer should pass, got: %v", err)
 	}
 }
@@ -1320,7 +1321,7 @@ func TestValidateNumericConstraints_NegativeMinimumAllowed(t *testing.T) {
 			testFieldWeight: {Type: testTypeNumber, Minimum: f64(-4), Maximum: f64(4), MultipleOf: f64(0.01)},
 		},
 	}
-	if err := schema.ValidateNumericConstraints(node, map[string]any{testFieldWeight: -3.5}); err != nil {
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldWeight: -3.5}); err != nil {
 		t.Errorf("a value inside a negative-minimum range should pass, got: %v", err)
 	}
 }
@@ -1337,7 +1338,7 @@ func TestValidateNumericConstraints_NestedObject(t *testing.T) {
 		},
 	}
 	payload := map[string]any{testFieldAccel: map[string]any{testFieldCachePct: int64(150)}}
-	err := schema.ValidateNumericConstraints(node, payload)
+	err := schema.ValidateConstraints(node, payload)
 	if err == nil {
 		t.Fatal("expected error for nested value above maximum")
 	}
@@ -1361,7 +1362,7 @@ func TestValidateNumericConstraints_ArrayItems(t *testing.T) {
 		},
 	}
 	payload := map[string]any{testFieldLora: []any{map[string]any{testFieldWeight: -10.0}}}
-	err := schema.ValidateNumericConstraints(node, payload)
+	err := schema.ValidateConstraints(node, payload)
 	if err == nil {
 		t.Fatal("expected error for array-item value below minimum")
 	}
@@ -1376,14 +1377,193 @@ func TestValidateNumericConstraints_FloatMultipleOf(t *testing.T) {
 			testFieldCFGScale: {Type: testTypeNumber, Minimum: f64(1), Maximum: f64(20), MultipleOf: f64(0.01)},
 		},
 	}
-	if err := schema.ValidateNumericConstraints(node, map[string]any{testFieldCFGScale: 4.5}); err != nil {
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 4.5}); err != nil {
 		t.Errorf("4.5 is a valid multiple of 0.01, got: %v", err)
 	}
-	err := schema.ValidateNumericConstraints(node, map[string]any{testFieldCFGScale: 4.567})
+	err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 4.567})
 	if err == nil {
 		t.Fatal("expected error for 4.567, not a multiple of 0.01")
 	}
 	if !containsString(err.Error(), "multiple") {
 		t.Errorf("error should report the multiple-of bound; got: %v", err)
+	}
+}
+
+// ---- ValidateConstraints: NaN / Inf / exclusive bounds / string / array ----
+
+func iptr(v int) *int { return &v }
+
+const (
+	testFieldImageURL  = "imageURL"
+	testFieldTaskUUID  = "taskUUID"
+	testFieldCreatedAt = "createdAt"
+	testFieldEmail     = "email"
+	testFieldTags      = "tags"
+)
+
+func TestValidateConstraints_RejectsNaN(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldCFGScale: {Type: testTypeNumber, Minimum: f64(1), Maximum: f64(20)},
+	}}
+	err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: math.NaN()})
+	if err == nil {
+		t.Fatal("expected error for NaN on a bounded field")
+	}
+	if !containsString(err.Error(), "finite") {
+		t.Errorf("error should report a non-finite value; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_RejectsInf(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldCFGScale: {Type: testTypeNumber, Minimum: f64(1), Maximum: f64(20)},
+	}}
+	err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: math.Inf(1)})
+	if err == nil {
+		t.Fatal("expected error for +Inf on a bounded field")
+	}
+	if !containsString(err.Error(), "finite") {
+		t.Errorf("error should report a non-finite value; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_ExclusiveMinimum(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldCFGScale: {Type: testTypeNumber, ExclusiveMinimum: f64(0)},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 0.0}); err == nil {
+		t.Fatal("expected error for value equal to the exclusive minimum")
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 0.1}); err != nil {
+		t.Errorf("0.1 is above the exclusive minimum of 0; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_ExclusiveMaximum(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldCFGScale: {Type: testTypeNumber, ExclusiveMaximum: f64(1)},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 1.0}); err == nil {
+		t.Fatal("expected error for value equal to the exclusive maximum")
+	}
+}
+
+func TestValidateConstraints_MinLength(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldPositivePrompt: {Type: schema.TypeString, MinLength: iptr(3)},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldPositivePrompt: "ab"}); err == nil {
+		t.Fatal("expected error for a string below minLength")
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldPositivePrompt: "abc"}); err != nil {
+		t.Errorf("'abc' meets minLength 3; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_MaxLength(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldPositivePrompt: {Type: schema.TypeString, MaxLength: iptr(5)},
+	}}
+	err := schema.ValidateConstraints(node, map[string]any{testFieldPositivePrompt: "abcdef"})
+	if err == nil {
+		t.Fatal("expected error for a string above maxLength")
+	}
+	if !containsString(err.Error(), "at most") {
+		t.Errorf("error should report the maxLength; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_Pattern(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldStyle: {Type: schema.TypeString, Pattern: "^[a-z]+$"},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldStyle: "ABC"}); err == nil {
+		t.Fatal("expected error for a value not matching the pattern")
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldStyle: "abc"}); err != nil {
+		t.Errorf("'abc' matches ^[a-z]+$; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_FormatURI(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldImageURL: {Type: schema.TypeString, Format: "uri"},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldImageURL: "not a uri"}); err == nil {
+		t.Fatal("expected error for an invalid uri")
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldImageURL: "https://im.runware.ai/x.jpg"}); err != nil {
+		t.Errorf("a valid https uri should pass; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_FormatUUID(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldTaskUUID: {Type: schema.TypeString, Format: "uuid"},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldTaskUUID: "nope"}); err == nil {
+		t.Fatal("expected error for an invalid uuid")
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldTaskUUID: "60cb0ed5-3fdc-4b6f-ba78-2f724441520b"}); err != nil {
+		t.Errorf("a valid uuid should pass; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_FormatDateTimeAndEmail(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldCreatedAt: {Type: schema.TypeString, Format: "date-time"},
+		testFieldEmail:     {Type: schema.TypeString, Format: "email"},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldCreatedAt: "yesterday"}); err == nil {
+		t.Fatal("expected error for an invalid date-time")
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldCreatedAt: "2026-06-19T10:00:00Z"}); err != nil {
+		t.Errorf("an RFC3339 date-time should pass; got: %v", err)
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldEmail: "notanemail"}); err == nil {
+		t.Fatal("expected error for an invalid email")
+	}
+}
+
+func TestValidateConstraints_UnknownFormatPasses(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldStyle: {Type: schema.TypeString, Format: "color-hex"},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldStyle: "anything"}); err != nil {
+		t.Errorf("an unrecognised format should pass; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_MinItems(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldTags: {Type: schema.TypeArray, MinItems: iptr(2)},
+	}}
+	err := schema.ValidateConstraints(node, map[string]any{testFieldTags: []any{"a"}})
+	if err == nil {
+		t.Fatal("expected error for an array below minItems")
+	}
+	if !containsString(err.Error(), "at least") {
+		t.Errorf("error should report minItems; got: %v", err)
+	}
+}
+
+func TestValidateConstraints_MaxItems(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldTags: {Type: schema.TypeArray, MaxItems: iptr(2)},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldTags: []any{"a", "b", "c"}}); err == nil {
+		t.Fatal("expected error for an array above maxItems")
+	}
+}
+
+func TestValidateConstraints_UniqueItems(t *testing.T) {
+	node := schema.Node{Properties: map[string]schema.Node{
+		testFieldTags: {Type: schema.TypeArray, UniqueItems: true},
+	}}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldTags: []any{"a", "a"}}); err == nil {
+		t.Fatal("expected error for duplicate array items")
+	}
+	if err := schema.ValidateConstraints(node, map[string]any{testFieldTags: []any{"a", "b"}}); err != nil {
+		t.Errorf("distinct items should pass; got: %v", err)
 	}
 }

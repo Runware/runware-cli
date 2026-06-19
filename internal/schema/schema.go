@@ -8,10 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/mail"
+	"net/url"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 // JSON Schema "type" field values.
@@ -75,9 +80,20 @@ type Node struct {
 	// Minimum, Maximum, and MultipleOf carry numeric value constraints. Pointers
 	// so an absent keyword is distinguishable from a real zero bound (e.g. a
 	// minimum of 0 is meaningful and must not be treated as "no minimum").
-	Minimum    *float64 `json:"minimum"`
-	Maximum    *float64 `json:"maximum"`
-	MultipleOf *float64 `json:"multipleOf"`
+	Minimum          *float64 `json:"minimum"`
+	Maximum          *float64 `json:"maximum"`
+	MultipleOf       *float64 `json:"multipleOf"`
+	ExclusiveMinimum *float64 `json:"exclusiveMinimum"`
+	ExclusiveMaximum *float64 `json:"exclusiveMaximum"`
+	// String constraints. Pattern and Format are absent when empty.
+	MinLength *int   `json:"minLength"`
+	MaxLength *int   `json:"maxLength"`
+	Pattern   string `json:"pattern"`
+	Format    string `json:"format"`
+	// Array constraints.
+	MinItems    *int `json:"minItems"`
+	MaxItems    *int `json:"maxItems"`
+	UniqueItems bool `json:"uniqueItems"`
 	// AllOf, OneOf, and DependentRequired support structural constraints used by
 	// model schemas to express mutually-exclusive option sets (e.g. dimension
 	// combinations) and co-dependent fields.
@@ -788,14 +804,15 @@ func ResolveDeliveryMethod(flagVal string, payload map[string]any, node Node) st
 	return ""
 }
 
-// ValidateNumericConstraints checks every numeric value in payload against the
-// minimum, maximum, and multipleOf bounds declared on its schema property. It
-// recurses into nested objects and array items, mirroring ValidateEnums.
-func ValidateNumericConstraints(node Node, payload map[string]any) error {
-	return validateNumericInObject(node, payload, "")
+// ValidateConstraints checks the value constraints declared on each schema
+// property against the corresponding payload value: numeric bounds, string
+// length/pattern/format, and array length/uniqueness. It recurses into nested
+// objects and array items, mirroring ValidateEnums.
+func ValidateConstraints(node Node, payload map[string]any) error {
+	return validateConstraintsInObject(node, payload, "")
 }
 
-func validateNumericInObject(node Node, obj map[string]any, prefix string) error {
+func validateConstraintsInObject(node Node, obj map[string]any, prefix string) error {
 	keys := make([]string, 0, len(obj))
 	for key := range obj {
 		keys = append(keys, key)
@@ -810,25 +827,30 @@ func validateNumericInObject(node Node, obj map[string]any, prefix string) error
 		if prefix != "" {
 			path = prefix + "." + key
 		}
-		if err := validateNumericInValue(prop, obj[key], path); err != nil {
+		if err := validateConstraintsInValue(prop, obj[key], path); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateNumericInValue(prop Node, val any, path string) error {
+func validateConstraintsInValue(prop Node, val any, path string) error {
 	switch v := val.(type) {
 	case map[string]any:
-		return validateNumericInObject(prop, v, path)
+		return validateConstraintsInObject(prop, v, path)
 	case []any:
+		if err := checkArrayConstraints(prop, v, path); err != nil {
+			return err
+		}
 		if prop.Items != nil {
 			for i, item := range v {
-				if err := validateNumericInValue(*prop.Items, item, fmt.Sprintf("%s.%d", path, i)); err != nil {
+				if err := validateConstraintsInValue(*prop.Items, item, fmt.Sprintf("%s.%d", path, i)); err != nil {
 					return err
 				}
 			}
 		}
+	case string:
+		return checkStringConstraints(prop, v, path)
 	default:
 		if f, ok := asFloat(v); ok {
 			return checkNumericBounds(prop, f, path)
@@ -837,13 +859,28 @@ func validateNumericInValue(prop Node, val any, path string) error {
 	return nil
 }
 
-// checkNumericBounds reports the first violated bound on a single numeric value.
+// checkNumericBounds reports the first violated numeric bound. A property with no
+// numeric constraints is skipped; one that does carry bounds rejects non-finite
+// values (NaN, ±Inf) up front, since they cannot satisfy any finite bound.
 func checkNumericBounds(prop Node, val float64, path string) error {
+	if prop.Minimum == nil && prop.Maximum == nil && prop.MultipleOf == nil &&
+		prop.ExclusiveMinimum == nil && prop.ExclusiveMaximum == nil {
+		return nil
+	}
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return fmt.Errorf("invalid value for %q: %s is not a finite number", path, formatNumber(val))
+	}
 	if prop.Minimum != nil && val < *prop.Minimum {
 		return fmt.Errorf("invalid value for %q: %s is below the minimum of %s", path, formatNumber(val), formatNumber(*prop.Minimum))
 	}
+	if prop.ExclusiveMinimum != nil && val <= *prop.ExclusiveMinimum {
+		return fmt.Errorf("invalid value for %q: %s must be greater than %s", path, formatNumber(val), formatNumber(*prop.ExclusiveMinimum))
+	}
 	if prop.Maximum != nil && val > *prop.Maximum {
 		return fmt.Errorf("invalid value for %q: %s is above the maximum of %s", path, formatNumber(val), formatNumber(*prop.Maximum))
+	}
+	if prop.ExclusiveMaximum != nil && val >= *prop.ExclusiveMaximum {
+		return fmt.Errorf("invalid value for %q: %s must be less than %s", path, formatNumber(val), formatNumber(*prop.ExclusiveMaximum))
 	}
 	if prop.MultipleOf != nil && *prop.MultipleOf > 0 {
 		ratio := val / *prop.MultipleOf
@@ -851,6 +888,79 @@ func checkNumericBounds(prop Node, val float64, path string) error {
 		// still catching genuine off-grid values.
 		if math.Abs(ratio-math.Round(ratio)) > 1e-9 {
 			return fmt.Errorf("invalid value for %q: %s must be a multiple of %s", path, formatNumber(val), formatNumber(*prop.MultipleOf))
+		}
+	}
+	return nil
+}
+
+// checkStringConstraints reports the first violated string constraint: length
+// (counted in Unicode code points, matching JSON Schema), regex pattern, and the
+// named formats the API uses.
+func checkStringConstraints(prop Node, val string, path string) error {
+	if prop.MinLength != nil || prop.MaxLength != nil {
+		n := utf8.RuneCountInString(val)
+		if prop.MinLength != nil && n < *prop.MinLength {
+			return fmt.Errorf("invalid value for %q: must be at least %d character(s)", path, *prop.MinLength)
+		}
+		if prop.MaxLength != nil && n > *prop.MaxLength {
+			return fmt.Errorf("invalid value for %q: must be at most %d character(s)", path, *prop.MaxLength)
+		}
+	}
+	if prop.Pattern != "" {
+		// A pattern the Go engine cannot compile is left for the server to enforce.
+		if re, err := regexp.Compile(prop.Pattern); err == nil && !re.MatchString(val) {
+			return fmt.Errorf("invalid value for %q: must match pattern %s", path, prop.Pattern)
+		}
+	}
+	if prop.Format != "" && !matchesFormat(prop.Format, val) {
+		return fmt.Errorf("invalid value for %q: must be a valid %s", path, prop.Format)
+	}
+	return nil
+}
+
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// matchesFormat validates the named formats present in Runware schemas. An
+// unrecognised format passes, matching ajv-formats' behaviour for formats it
+// does not register.
+func matchesFormat(format, val string) bool {
+	switch format {
+	case "uri":
+		u, err := url.Parse(val)
+		return err == nil && u.IsAbs()
+	case "uuid":
+		return uuidPattern.MatchString(val)
+	case "date-time":
+		_, err := time.Parse(time.RFC3339, val)
+		return err == nil
+	case "email":
+		_, err := mail.ParseAddress(val)
+		return err == nil
+	}
+	return true
+}
+
+// checkArrayConstraints reports the first violated array constraint: item count
+// and uniqueness.
+func checkArrayConstraints(prop Node, val []any, path string) error {
+	if prop.MinItems != nil && len(val) < *prop.MinItems {
+		return fmt.Errorf("invalid value for %q: must have at least %d item(s)", path, *prop.MinItems)
+	}
+	if prop.MaxItems != nil && len(val) > *prop.MaxItems {
+		return fmt.Errorf("invalid value for %q: must have at most %d item(s)", path, *prop.MaxItems)
+	}
+	if prop.UniqueItems {
+		seen := make(map[string]struct{}, len(val))
+		for _, item := range val {
+			// json.Marshal sorts object keys, giving each item a stable identity.
+			key, err := json.Marshal(item)
+			if err != nil {
+				continue
+			}
+			if _, dup := seen[string(key)]; dup {
+				return fmt.Errorf("invalid value for %q: items must be unique", path)
+			}
+			seen[string(key)] = struct{}{}
 		}
 	}
 	return nil
