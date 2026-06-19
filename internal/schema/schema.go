@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -71,6 +72,12 @@ type Node struct {
 	// Items holds the schema for elements of an array-typed property.
 	// Used to coerce values when dot-notation paths descend into arrays.
 	Items *Node `json:"items"`
+	// Minimum, Maximum, and MultipleOf carry numeric value constraints. Pointers
+	// so an absent keyword is distinguishable from a real zero bound (e.g. a
+	// minimum of 0 is meaningful and must not be treated as "no minimum").
+	Minimum    *float64 `json:"minimum"`
+	Maximum    *float64 `json:"maximum"`
+	MultipleOf *float64 `json:"multipleOf"`
 	// AllOf, OneOf, and DependentRequired support structural constraints used by
 	// model schemas to express mutually-exclusive option sets (e.g. dimension
 	// combinations) and co-dependent fields.
@@ -779,4 +786,100 @@ func ResolveDeliveryMethod(flagVal string, payload map[string]any, node Node) st
 		return options[0]
 	}
 	return ""
+}
+
+// ValidateNumericConstraints checks every numeric value in payload against the
+// minimum, maximum, and multipleOf bounds declared on its schema property. It
+// recurses into nested objects and array items, mirroring ValidateEnums.
+func ValidateNumericConstraints(node Node, payload map[string]any) error {
+	return validateNumericInObject(node, payload, "")
+}
+
+func validateNumericInObject(node Node, obj map[string]any, prefix string) error {
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		prop, ok := node.Properties[key]
+		if !ok {
+			continue
+		}
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		if err := validateNumericInValue(prop, obj[key], path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNumericInValue(prop Node, val any, path string) error {
+	switch v := val.(type) {
+	case map[string]any:
+		return validateNumericInObject(prop, v, path)
+	case []any:
+		if prop.Items != nil {
+			for i, item := range v {
+				if err := validateNumericInValue(*prop.Items, item, fmt.Sprintf("%s.%d", path, i)); err != nil {
+					return err
+				}
+			}
+		}
+	default:
+		if f, ok := asFloat(v); ok {
+			return checkNumericBounds(prop, f, path)
+		}
+	}
+	return nil
+}
+
+// checkNumericBounds reports the first violated bound on a single numeric value.
+func checkNumericBounds(prop Node, val float64, path string) error {
+	if prop.Minimum != nil && val < *prop.Minimum {
+		return fmt.Errorf("invalid value for %q: %s is below the minimum of %s", path, formatNumber(val), formatNumber(*prop.Minimum))
+	}
+	if prop.Maximum != nil && val > *prop.Maximum {
+		return fmt.Errorf("invalid value for %q: %s is above the maximum of %s", path, formatNumber(val), formatNumber(*prop.Maximum))
+	}
+	if prop.MultipleOf != nil && *prop.MultipleOf > 0 {
+		ratio := val / *prop.MultipleOf
+		// Tolerance absorbs float representation error (e.g. 0.29/0.01) while
+		// still catching genuine off-grid values.
+		if math.Abs(ratio-math.Round(ratio)) > 1e-9 {
+			return fmt.Errorf("invalid value for %q: %s must be a multiple of %s", path, formatNumber(val), formatNumber(*prop.MultipleOf))
+		}
+	}
+	return nil
+}
+
+// asFloat extracts a float64 from the Go types coerceValue and JSON decoding
+// produce for numbers: int64 for integers, float64 for numbers. Non-numeric
+// values return ok=false and are skipped.
+func asFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int64:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	}
+	return 0, false
+}
+
+// formatNumber renders a bound for an error message: integral values print
+// without a decimal point (512, -4), fractional values use their shortest
+// representation (0.01).
+func formatNumber(f float64) string {
+	if f == math.Trunc(f) && math.Abs(f) < 1e15 {
+		return strconv.FormatInt(int64(f), 10)
+	}
+	return strconv.FormatFloat(f, 'g', -1, 64)
 }

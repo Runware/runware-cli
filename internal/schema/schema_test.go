@@ -1244,3 +1244,146 @@ func TestNode_UnmarshalJSON_StringTypeNull(t *testing.T) {
 		t.Errorf("string null should normalise to empty, got %q", node.Type)
 	}
 }
+
+// ---- ValidateNumericConstraints tests ----
+
+const (
+	testFieldCFGScale = "CFGScale"
+	testFieldWeight   = "weight"
+	testFieldLora     = "lora"
+	testFieldAccel    = "acceleratorOptions"
+	testFieldCachePct = "cacheEndStepPercentage"
+	testTypeNumber    = "number"
+)
+
+func f64(v float64) *float64 { return &v }
+
+// boundedWidthNode mirrors a real image model's width: [512, 2048], step 16.
+func boundedWidthNode() schema.Node {
+	return schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldWidth: {Type: schema.TypeInteger, Minimum: f64(512), Maximum: f64(2048), MultipleOf: f64(16)},
+		},
+	}
+}
+
+func TestValidateNumericConstraints_BelowMinimum(t *testing.T) {
+	err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(-1)})
+	if err == nil {
+		t.Fatal("expected error for width below minimum")
+	}
+	if !containsString(err.Error(), "minimum") || !containsString(err.Error(), "512") {
+		t.Errorf("error should report the minimum bound; got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_AboveMaximum(t *testing.T) {
+	err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(4096)})
+	if err == nil {
+		t.Fatal("expected error for width above maximum")
+	}
+	if !containsString(err.Error(), "maximum") {
+		t.Errorf("error should report the maximum bound; got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_NotMultipleOf(t *testing.T) {
+	err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(1000)})
+	if err == nil {
+		t.Fatal("expected error for width not a multiple of 16")
+	}
+	if !containsString(err.Error(), "multiple") {
+		t.Errorf("error should report the multiple-of bound; got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_ValidValue(t *testing.T) {
+	if err := schema.ValidateNumericConstraints(boundedWidthNode(), map[string]any{testFieldWidth: int64(1024)}); err != nil {
+		t.Errorf("1024 satisfies [512,2048] step 16; got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_NoConstraint_Passes(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldWidth: {Type: schema.TypeInteger},
+		},
+	}
+	if err := schema.ValidateNumericConstraints(node, map[string]any{testFieldWidth: int64(-1)}); err != nil {
+		t.Errorf("unconstrained integer should pass, got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_NegativeMinimumAllowed(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldWeight: {Type: testTypeNumber, Minimum: f64(-4), Maximum: f64(4), MultipleOf: f64(0.01)},
+		},
+	}
+	if err := schema.ValidateNumericConstraints(node, map[string]any{testFieldWeight: -3.5}); err != nil {
+		t.Errorf("a value inside a negative-minimum range should pass, got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_NestedObject(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldAccel: {
+				Type: schema.TypeObject,
+				Properties: map[string]schema.Node{
+					testFieldCachePct: {Type: schema.TypeInteger, Minimum: f64(1), Maximum: f64(100)},
+				},
+			},
+		},
+	}
+	payload := map[string]any{testFieldAccel: map[string]any{testFieldCachePct: int64(150)}}
+	err := schema.ValidateNumericConstraints(node, payload)
+	if err == nil {
+		t.Fatal("expected error for nested value above maximum")
+	}
+	if !containsString(err.Error(), testFieldAccel+"."+testFieldCachePct) {
+		t.Errorf("error should include the nested path; got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_ArrayItems(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldLora: {
+				Type: schema.TypeArray,
+				Items: &schema.Node{
+					Type: schema.TypeObject,
+					Properties: map[string]schema.Node{
+						testFieldWeight: {Type: testTypeNumber, Minimum: f64(-4), Maximum: f64(4)},
+					},
+				},
+			},
+		},
+	}
+	payload := map[string]any{testFieldLora: []any{map[string]any{testFieldWeight: -10.0}}}
+	err := schema.ValidateNumericConstraints(node, payload)
+	if err == nil {
+		t.Fatal("expected error for array-item value below minimum")
+	}
+	if !containsString(err.Error(), testFieldLora+".0."+testFieldWeight) {
+		t.Errorf("error should include the array-item path; got: %v", err)
+	}
+}
+
+func TestValidateNumericConstraints_FloatMultipleOf(t *testing.T) {
+	node := schema.Node{
+		Properties: map[string]schema.Node{
+			testFieldCFGScale: {Type: testTypeNumber, Minimum: f64(1), Maximum: f64(20), MultipleOf: f64(0.01)},
+		},
+	}
+	if err := schema.ValidateNumericConstraints(node, map[string]any{testFieldCFGScale: 4.5}); err != nil {
+		t.Errorf("4.5 is a valid multiple of 0.01, got: %v", err)
+	}
+	err := schema.ValidateNumericConstraints(node, map[string]any{testFieldCFGScale: 4.567})
+	if err == nil {
+		t.Fatal("expected error for 4.567, not a multiple of 0.01")
+	}
+	if !containsString(err.Error(), "multiple") {
+		t.Errorf("error should report the multiple-of bound; got: %v", err)
+	}
+}
