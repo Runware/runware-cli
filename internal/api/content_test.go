@@ -72,6 +72,9 @@ func TestFetchModelPricing_404(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for a 404 response")
 	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should report not found; got: %v", err)
+	}
 	if !strings.Contains(err.Error(), "no:such@model") {
 		t.Errorf("error should name the identifier; got: %v", err)
 	}

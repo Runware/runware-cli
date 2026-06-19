@@ -1,9 +1,9 @@
 ## runware model pricing
 
-Show pricing for a model by AIR identifier
+Show pricing for a model
 
 ```
-runware model pricing <air> [flags]
+runware model pricing <model> [flags]
 ```
 
 ### Examples

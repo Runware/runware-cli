@@ -39,8 +39,8 @@ func (r modelPricing) MarshalYAML() (any, error) {
 
 func newPricingCmd(_ *log.Logger) *cobra.Command {
 	return &cobra.Command{
-		Use:   "pricing <air>",
-		Short: "Show pricing for a model by AIR identifier",
+		Use:   "pricing <model>",
+		Short: "Show pricing for a model",
 		Example: `  # Pricing for a model
   runware model pricing google:gemini@3.1-pro
 
@@ -48,12 +48,12 @@ func newPricingCmd(_ *log.Logger) *cobra.Command {
   runware model pricing google:gemini@3.1-pro --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			air := args[0]
+			id := args[0]
 
 			spin := cmdutil.NewSpinner("Fetching pricing...")
 			spin.Start()
 
-			pricing, err := api.FetchModelPricing(cmd.Context(), air)
+			pricing, err := api.FetchModelPricing(cmd.Context(), id)
 			spin.Stop()
 			if err != nil {
 				return err

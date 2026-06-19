@@ -1,9 +1,9 @@
 ## runware model examples
 
-Show example requests for a model by AIR identifier
+Show example requests for a model
 
 ```
-runware model examples <air> [flags]
+runware model examples <model> [flags]
 ```
 
 ### Examples
