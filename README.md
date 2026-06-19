@@ -150,7 +150,11 @@ runware model search -q "anime" --wide                  # Include tags and defau
 runware model show civitai:305149@392545                # Full details for a model
 runware model schema google:3@2                         # Show request parameters for a model
 runware model schema google:3@2 --response              # Show response schema instead
+runware model pricing google:gemini@3.1-pro             # Pricing breakdown for a model
+runware model examples google:gemini@3.1-pro            # Example requests for a model
 ```
+
+`model pricing` and `model examples` read from the public model catalog and accept either the AIR or the model id. For examples, use `--format json` to get the full request and response payloads you can adapt for `runware run`.
 
 Upload a custom model to your account (WebSocket transport only):
 
