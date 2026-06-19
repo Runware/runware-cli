@@ -41,7 +41,7 @@ runware auth login
 runware ping
 
 # Generate an image
-runware run runware:101@1 positivePrompt="a chess match in the park" width=1024 height=1024
+runware run runware:400@1 positivePrompt="a chess match in the park" width=1024 height=1024
 
 # Check your account details
 runware account details
@@ -64,7 +64,7 @@ runware run <model> [key=value ...] [flags]
 | Flag | Description |
 |------|-------------|
 | `--preset` | Load parameters from a saved preset (model and params used as defaults; `<model>` may be omitted when the preset provides one) |
-| `--task-type` | Override detected task type (e.g. `imageInference`, `videoInference`, `audioInference`, `textInference`) |
+| `--task-type` | Override the detected task type. Accepts any API task type, e.g. `imageInference`, `videoInference`, `audioInference`, `textInference`, `3dInference`, or an operation like `removeBackground` |
 | `--output-dir` | Directory to save downloaded output files (default `./outputs`) |
 | `--no-download` | Skip auto-downloading media files |
 | `--delivery-method` | Delivery method (`sync` or `async`) (default `async`) |
@@ -75,13 +75,13 @@ runware run <model> [key=value ...] [flags]
 
 ```shell
 # Text-to-image
-runware run runware:101@1 positivePrompt="A serene mountain landscape" width=1024 height=1024
+runware run runware:400@1 positivePrompt="A serene mountain landscape" width=1024 height=1024
 
 # Save to a specific directory
-runware run runware:101@1 positivePrompt="Abstract art" --output-dir ./my-images width=1024 height=1024
+runware run runware:400@1 positivePrompt="Abstract art" --output-dir ./my-images width=1024 height=1024
 
 # Get the URL without downloading
-runware run runware:101@1 positivePrompt="Abstract art" --format json --no-download
+runware run runware:400@1 positivePrompt="Abstract art" --format json --no-download
 
 # Community model — specify task type explicitly
 runware run civitai:305149@392545 --task-type imageInference positivePrompt="A portrait" width=1024 height=1024
@@ -90,27 +90,27 @@ runware run civitai:305149@392545 --task-type imageInference positivePrompt="A p
 #### Video generation
 
 ```shell
-runware run klingai:5@3 positivePrompt="Ocean waves at sunset" width=1920 height=1080 duration=10
+runware run google:3@3 positivePrompt="Ocean waves at sunset" width=1280 height=720 duration=8
 ```
 
 #### Audio generation
 
 ```shell
 # Music generation
-runware run elevenlabs:1@1 positivePrompt="Upbeat electronic dance music with driving bass and synth leads" duration=30
+runware run minimax:music@2.6 positivePrompt="Upbeat electronic dance music with driving bass and synth leads" settings.instrumental=true
 
-# Text-to-speech
-runware run minimax:speech@2.8 speech.text="Hello, this is a text-to-speech example." speech.voice=English_expressive_narrator
+# Text-to-speech (the voice is designed from the prompt)
+runware run alibaba:qwen@3-tts-1.7b-voicedesign positivePrompt="A calm, friendly young woman with a soft tone" speech.text="Hello, this is a text-to-speech example." speech.voice=design
 ```
 
 #### Text inference (LLM)
 
 ```shell
 # Single message
-runware run minimax:m3@0 messages.0.role=user messages.0.content="Explain quantum computing"
+runware run google:gemma@4-31b messages.0.role=user messages.0.content="Explain quantum computing"
 
 # Multi-turn conversation
-runware run minimax:m3@0 \
+runware run google:gemma@4-31b \
   messages.0.role=user    messages.0.content="What is Go?" \
   messages.1.role=assistant messages.1.content="A compiled language." \
   messages.2.role=user    messages.2.content="How do I install it?"
@@ -151,6 +151,19 @@ runware model show civitai:305149@392545                # Full details for a mod
 runware model schema google:3@2                         # Show request parameters for a model
 runware model schema google:3@2 --response              # Show response schema instead
 ```
+
+Upload a custom model to your account (WebSocket transport only):
+
+```shell
+runware model upload \
+  --air "myorg:my-model@1.0" \
+  --name "My Custom Model" \
+  --category checkpoint \
+  --architecture sdxl \
+  --download-url "https://example.com/model.safetensors"
+```
+
+Run `runware model upload --help` for the full flag set (LoRA trigger words, default scheduler and steps, visibility, and more). Your AIR source is shown by `runware account details`.
 
 ### Presets
 
@@ -202,7 +215,7 @@ runware completion              # Generate shell completions (bash/zsh/fish/powe
 
 | Flag | Description |
 |------|-------------|
-| `--format json\|yaml\|table` | Output format (default: table) |
+| `-F, --format json\|yaml\|table` | Output format (default: table) |
 | `-v, --verbose` | Show request/response details |
 | `--debug` | Full debug output |
 | `--transport ws\|http` | Transport protocol: WebSocket or REST (default: `defaults.transport` from config, or `ws`) |
@@ -338,13 +351,13 @@ version
 
 # Complete model AIR identifiers for `run`
 $ runware run <Tab>
-runware:101@1  -- FLUX Dev — fast, high-quality image generation
-minimax:m3@0   -- MiniMax M3 text model
-klingai:5@3    -- Kling AI video generation
+runware:400@1       -- FLUX.2 [dev] image generation
+google:gemma@4-31b  -- Gemma text model
+google:3@3          -- Veo 3.1 video generation
 ...
 
 # Complete parameter names (schema-driven, per model)
-$ runware run runware:101@1 <Tab>
+$ runware run runware:400@1 <Tab>
 positivePrompt=  -- Text prompt describing the image
 width=           -- Output width in pixels
 height=          -- Output height in pixels
@@ -352,12 +365,12 @@ steps=           -- Number of diffusion steps
 ...
 
 # Array fields use dot-notation with auto-advancing indices
-$ runware run minimax:m3@0 <Tab>
+$ runware run google:gemma@4-31b <Tab>
 messages.0.role=     -- Role of the message sender
 messages.0.content=  -- Content of the message
 
 # After messages.0.* are filled, next Tab suggests index 1
-$ runware run minimax:m3@0 messages.0.role=user messages.0.content="What is Go?" <Tab>
+$ runware run google:gemma@4-31b messages.0.role=user messages.0.content="What is Go?" <Tab>
 messages.1.role=     -- Role of the message sender
 messages.1.content=  -- Content of the message
 ```
