@@ -90,14 +90,14 @@ runware run civitai:305149@392545 --task-type imageInference positivePrompt="A p
 #### Video generation
 
 ```shell
-runware run google:3@3 positivePrompt="Ocean waves at sunset" duration=8
+runware run google:3@3 positivePrompt="Ocean waves at sunset" width=1280 height=720 duration=8
 ```
 
 #### Audio generation
 
 ```shell
 # Music generation
-runware run minimax:music@2.6 positivePrompt="Upbeat electronic dance music with driving bass and synth leads"
+runware run minimax:music@2.6 positivePrompt="Upbeat electronic dance music with driving bass and synth leads" settings.instrumental=true
 
 # Text-to-speech (the voice is designed from the prompt)
 runware run alibaba:qwen@3-tts-1.7b-voicedesign positivePrompt="A calm, friendly young woman with a soft tone" speech.text="Hello, this is a text-to-speech example." speech.voice=design
