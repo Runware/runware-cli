@@ -56,7 +56,8 @@ homebrew_casks:
           end
 
 scoops:
-  - repository:
+  - name: runware
+    repository:
       owner: Runware
       name: scoop-bucket
     directory: bucket
