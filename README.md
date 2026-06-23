@@ -1,6 +1,8 @@
 # Runware CLI
 
-A command-line tool for interacting with the [Runware](https://runware.ai) inference API. Built in Go, distributed as a single static binary.
+A command-line tool for interacting with the [Runware](https://runware.ai) API. Built in Go, distributed as a single static binary.
+
+Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, and more.
 
 ## Install
 

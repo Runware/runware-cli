@@ -26,6 +26,6 @@ Account information, team, and API keys
 
 ### SEE ALSO
 
-* [runware](runware.md)	 - CLI tool for the Runware inference API
+* [runware](runware.md)	 - CLI tool for the Runware API
 * [runware account details](runware_account_details.md)	 - Show account details, team, API keys, and usage
 

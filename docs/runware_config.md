@@ -19,7 +19,7 @@ Manage CLI configuration
 
 ### SEE ALSO
 
-* [runware](runware.md)	 - CLI tool for the Runware inference API
+* [runware](runware.md)	 - CLI tool for the Runware API
 * [runware config path](runware_config_path.md)	 - Print config file path
 * [runware config reset](runware_config_reset.md)	 - Reset configuration defaults
 * [runware config set](runware_config_set.md)	 - Set a config value

@@ -59,5 +59,5 @@ runware completion [bash|zsh|fish|powershell] [flags]
 
 ### SEE ALSO
 
-* [runware](runware.md)	 - CLI tool for the Runware inference API
+* [runware](runware.md)	 - CLI tool for the Runware API
 
