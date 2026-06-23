@@ -19,7 +19,7 @@ Manage and search models
 
 ### SEE ALSO
 
-* [runware](runware.md)	 - CLI tool for the Runware inference API
+* [runware](runware.md)	 - CLI tool for the Runware API
 * [runware model examples](runware_model_examples.md)	 - Show example requests for a model
 * [runware model pricing](runware_model_pricing.md)	 - Show pricing for a model
 * [runware model schema](runware_model_schema.md)	 - Show the request/response schema for a model

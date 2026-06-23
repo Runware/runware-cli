@@ -39,9 +39,9 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "runware",
-		Short: "CLI tool for the Runware inference API",
-		Long: `A command-line tool for interacting with the Runware inference API.
-Generate images, search models, manage your account, and more.
+		Short: "CLI tool for the Runware API",
+		Long: `A command-line tool for interacting with the full Runware API.
+Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, and more.
 
 Use of Runware services is subject to our Terms of Service (https://runware.ai/terms) and Privacy Policy (https://runware.ai/privacy).`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
