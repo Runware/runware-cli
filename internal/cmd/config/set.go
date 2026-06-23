@@ -51,7 +51,10 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 
-			cfg := config.Get()
+			cfg, err := config.FileConfig()
+			if err != nil {
+				return fmt.Errorf("failed to read config: %w", err)
+			}
 			if err := applyConfigValue(cfg, key, value); err != nil {
 				return err
 			}

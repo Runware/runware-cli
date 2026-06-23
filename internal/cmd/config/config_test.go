@@ -95,6 +95,33 @@ func TestResetDoesNotPersistEnvAPIKey(t *testing.T) {
 	}
 }
 
+// TestSetDoesNotPersistEnvAPIKey verifies that an API key supplied only via
+// RUNWARE_API_KEY is not written into the config file by `config set`.
+func TestSetDoesNotPersistEnvAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", "env-only-secret")
+	if err := config.Init(); err != nil {
+		t.Fatalf("config.Init() error: %v", err)
+	}
+
+	if err := config.Save(&config.Config{Defaults: config.Defaults{}}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	cmd := newSetCmd(log.New(io.Discard))
+	if err := cmd.RunE(cmd, []string{"format", "json"}); err != nil {
+		t.Fatalf("set RunE error: %v", err)
+	}
+
+	onDisk, err := config.FileConfig()
+	if err != nil {
+		t.Fatalf("FileConfig() error: %v", err)
+	}
+	if onDisk.APIKey != "" {
+		t.Errorf("api_key written to file = %q, want empty (env key must not be persisted)", onDisk.APIKey)
+	}
+}
+
 func TestApplyConfigValue_KnownKeys(t *testing.T) {
 	tests := []struct {
 		key   string
