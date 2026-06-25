@@ -284,6 +284,26 @@ type ModelSearchRequest struct {
 	Offset       int       `json:"offset,omitempty"`
 }
 
+// ModelTags decodes a JSON array of strings. Non-string elements (e.g. internal
+// numeric IDs returned when a server-side join fails) are silently dropped.
+type ModelTags []string
+
+func (s *ModelTags) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	result := make([]string, 0, len(raw))
+	for _, r := range raw {
+		var str string
+		if err := json.Unmarshal(r, &str); err == nil {
+			result = append(result, str)
+		}
+	}
+	*s = result
+	return nil
+}
+
 // ModelSearchResponse is the response wrapper from modelSearch.
 type ModelSearchResponse struct {
 	TaskType     TaskType      `json:"taskType"`
@@ -294,28 +314,28 @@ type ModelSearchResponse struct {
 
 // ModelResult is a single model from the search results.
 type ModelResult struct {
-	Name                 string   `json:"name"`
-	AIR                  string   `json:"air"`
-	Tags                 []string `json:"tags"`
-	ImageURL             string   `json:"imageURL"`
-	ThumbnailURL         string   `json:"thumbnailURL"`
-	Category             string   `json:"category"`
-	Private              bool     `json:"private"`
-	BaseModel            string   `json:"baseModel,omitempty"`
-	Version              string   `json:"version"`
-	Architecture         string   `json:"architecture"`
-	NSFWLevel            int      `json:"nsfwLevel"`
-	Type                 string   `json:"type,omitempty"`
-	DefaultWeight        float64  `json:"defaultWeight,omitempty"`
-	DefaultWidth         int      `json:"defaultWidth,omitempty"`
-	DefaultHeight        int      `json:"defaultHeight,omitempty"`
-	DefaultSteps         int      `json:"defaultSteps,omitempty"`
-	DefaultScheduler     string   `json:"defaultScheduler,omitempty"`
-	DefaultCFG           float64  `json:"defaultCFG,omitempty"`
-	DefaultStrength      float64  `json:"defaultStrength,omitempty"`
-	PositiveTriggerWords string   `json:"positiveTriggerWords,omitempty"`
-	NegativeTriggerWords string   `json:"negativeTriggerWords,omitempty"`
-	Primary              bool     `json:"primary,omitempty"`
+	Name                 string    `json:"name"`
+	AIR                  string    `json:"air"`
+	Tags                 ModelTags `json:"tags"`
+	ImageURL             string    `json:"imageURL"`
+	ThumbnailURL         string    `json:"thumbnailURL"`
+	Category             string    `json:"category"`
+	Private              bool      `json:"private"`
+	BaseModel            string    `json:"baseModel,omitempty"`
+	Version              string    `json:"version"`
+	Architecture         string    `json:"architecture"`
+	NSFWLevel            int       `json:"nsfwLevel"`
+	Type                 string    `json:"type,omitempty"`
+	DefaultWeight        float64   `json:"defaultWeight,omitempty"`
+	DefaultWidth         int       `json:"defaultWidth,omitempty"`
+	DefaultHeight        int       `json:"defaultHeight,omitempty"`
+	DefaultSteps         int       `json:"defaultSteps,omitempty"`
+	DefaultScheduler     string    `json:"defaultScheduler,omitempty"`
+	DefaultCFG           float64   `json:"defaultCFG,omitempty"`
+	DefaultStrength      float64   `json:"defaultStrength,omitempty"`
+	PositiveTriggerWords string    `json:"positiveTriggerWords,omitempty"`
+	NegativeTriggerWords string    `json:"negativeTriggerWords,omitempty"`
+	Primary              bool      `json:"primary,omitempty"`
 }
 
 // ModelUploadRequest contains fields for the modelUpload task type.
