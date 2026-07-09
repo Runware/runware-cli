@@ -11,6 +11,7 @@ import (
 	"github.com/runware/runware-cli/internal/cmd/auth"
 	cmdcompletion "github.com/runware/runware-cli/internal/cmd/completion"
 	cmdconfig "github.com/runware/runware-cli/internal/cmd/config"
+	"github.com/runware/runware-cli/internal/cmd/media"
 	"github.com/runware/runware-cli/internal/cmd/model"
 	"github.com/runware/runware-cli/internal/cmd/ping"
 	"github.com/runware/runware-cli/internal/cmd/preset"
@@ -92,6 +93,7 @@ Use of Runware services is subject to our Terms of Service (https://runware.ai/t
 		preset.NewCmd(logger),
 		cmdrun.NewCmd(logger),
 		cmdrun.NewResultCmd(logger),
+		media.NewCmd(logger),
 		cmdupload.NewCmd(logger),
 		cmdversion.NewCmd(),
 		cmdcompletion.NewCmd(),
