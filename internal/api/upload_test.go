@@ -21,7 +21,7 @@ func TestUploadImage_Success(t *testing.T) {
 		responses: []mockResponse{
 			{data: []json.RawMessage{rawJSON(t, map[string]any{
 				fieldTaskType: "imageUpload",
-				"taskUUID":    uuid.New().String(),
+				fieldTaskUUID: uuid.New().String(),
 				"imageUUID":   imageUUID.String(),
 			})}},
 		},

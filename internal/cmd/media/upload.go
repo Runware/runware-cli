@@ -44,7 +44,7 @@ Local files are read and uploaded; URLs and data URIs are forwarded as-is. The
 command prints the stored mediaUUID and mediaURL, which can be passed to media
 parameters such as inputs.seedImage on the run command.
 
-Supported file types: JPEG, JPG, PNG, WEBP, BMP, GIF.`,
+Accepts any media type: images, video, audio, 3D models, and more.`,
 		Example: `  # upload a local image and print its UUID
   runware media upload ./photo.jpg
 
@@ -56,7 +56,7 @@ Supported file types: JPEG, JPG, PNG, WEBP, BMP, GIF.`,
     inputs.seedImage=$(runware media upload ./photo.jpg -F json | jq -r '.mediaUUID')`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			media, err := cmdutil.BuildImageInput(args[0])
+			media, err := cmdutil.BuildMediaInput(args[0])
 			if err != nil {
 				return err
 			}

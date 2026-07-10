@@ -12,7 +12,7 @@ Local files are read and uploaded; URLs and data URIs are forwarded as-is. The
 command prints the stored mediaUUID and mediaURL, which can be passed to media
 parameters such as inputs.seedImage on the run command.
 
-Supported file types: JPEG, JPG, PNG, WEBP, BMP, GIF.
+Accepts any media type: images, video, audio, 3D models, and more.
 
 ```
 runware media upload <file|url> [flags]

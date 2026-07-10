@@ -18,7 +18,7 @@ func TestMediaStorage_UploadSuccess(t *testing.T) {
 		responses: []mockResponse{
 			{data: []json.RawMessage{rawJSON(t, map[string]any{
 				fieldTaskType: "mediaStorage",
-				"taskUUID":    uuid.New().String(),
+				fieldTaskUUID: uuid.New().String(),
 				"operation":   MediaOperationUpload,
 				"mediaUUID":   mediaUUID.String(),
 				"mediaURL":    mediaURL,
@@ -64,7 +64,7 @@ func TestMediaStorage_DeleteSuccess(t *testing.T) {
 		responses: []mockResponse{
 			{data: []json.RawMessage{rawJSON(t, map[string]any{
 				fieldTaskType: "mediaStorage",
-				"taskUUID":    uuid.New().String(),
+				fieldTaskUUID: uuid.New().String(),
 				"operation":   MediaOperationDelete,
 				"mediaUUID":   mediaUUID.String(),
 			})}},

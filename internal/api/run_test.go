@@ -90,7 +90,7 @@ func TestClientRun_SyncSuccess(t *testing.T) {
 func TestClientRun_AsyncSuccess(t *testing.T) {
 	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("videoInference", "async"))
 
-	submitAck := rawJSON(t, map[string]any{"taskUUID": "some-uuid"})
+	submitAck := rawJSON(t, map[string]any{fieldTaskUUID: "some-uuid"})
 	pollResult := successItem(t, map[string]any{"videoURL": "https://example.com/vid.mp4"})
 
 	mock := &mockTransport{
@@ -270,7 +270,7 @@ func TestClientRun_OnProgressCalled(t *testing.T) {
 
 	mock := &mockTransport{
 		responses: []mockResponse{
-			{data: []json.RawMessage{rawJSON(t, map[string]any{"taskUUID": "x"})}}, // submit
+			{data: []json.RawMessage{rawJSON(t, map[string]any{fieldTaskUUID: "x"})}}, // submit
 			{data: []json.RawMessage{processingItem(t, 30)}},
 			{data: []json.RawMessage{processingItem(t, 70)}},
 			{data: []json.RawMessage{successItem(t, nil)}},
@@ -438,7 +438,7 @@ func TestClientRun_UserProvidedTaskUUID(t *testing.T) {
 	if err := json.Unmarshal(taskBytes, &payload); err != nil {
 		t.Fatalf("unmarshal captured task: %v", err)
 	}
-	got, ok := payload["taskUUID"]
+	got, ok := payload[fieldTaskUUID]
 	if !ok {
 		t.Fatal("taskUUID not present in submitted payload")
 	}
@@ -461,8 +461,8 @@ func TestClientRun_UserProvidedTaskUUID_Invalid(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid taskUUID, got nil")
 	}
-	if !strings.Contains(err.Error(), "taskUUID") {
-		t.Errorf("expected error to mention %q, got: %v", "taskUUID", err)
+	if !strings.Contains(err.Error(), fieldTaskUUID) {
+		t.Errorf("expected error to mention %q, got: %v", fieldTaskUUID, err)
 	}
 	if mock.callCount != 0 {
 		t.Errorf("expected 0 transport calls, got %d", mock.callCount)

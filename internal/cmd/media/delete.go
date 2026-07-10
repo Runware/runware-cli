@@ -1,9 +1,11 @@
 package media
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
@@ -39,6 +41,10 @@ identified by its mediaUUID. This cannot be undone.`,
   runware media delete 5f1d2c3b-8a4e-4c2a-9f1a-2b3c4d5e6f70`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if _, err := uuid.Parse(args[0]); err != nil {
+				return fmt.Errorf("invalid mediaUUID %q: %w", args[0], err)
+			}
+
 			spin := cmdutil.NewSpinner("Deleting...")
 			spin.Start()
 
