@@ -1,7 +1,4 @@
-// Package upload implements the deprecated "upload" command, which uploads image
-// files to the Runware platform and returns their reusable UUID. Superseded by
-// the "media" command group, which handles any media type and supports deletion.
-package upload
+package media
 
 import (
 	"log/slog"
@@ -13,11 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// uploadResult wraps the imageUpload API response for display. JSON and YAML
+// uploadResult wraps the mediaStorage upload response for display. JSON and YAML
 // output the struct directly (keys match the API for easy chaining); the table
 // renderer flattens it into a two-column key/value layout.
 type uploadResult struct {
-	ImageUUID string `json:"imageUUID" yaml:"imageUUID"`
+	MediaUUID string `json:"mediaUUID" yaml:"mediaUUID"`
+	MediaURL  string `json:"mediaURL"  yaml:"mediaURL"`
 	TaskUUID  string `json:"taskUUID"  yaml:"taskUUID"`
 }
 
@@ -27,39 +25,38 @@ func (r uploadResult) Headers() []string {
 
 func (r uploadResult) Rows() [][]any {
 	return [][]any{
-		{"Image UUID", r.ImageUUID},
+		{"Media UUID", r.MediaUUID},
+		{"Media URL", r.MediaURL},
 		{"Task UUID", r.TaskUUID},
 	}
 }
 
-// NewCmd returns the deprecated "upload" command.
-func NewCmd(logger *log.Logger) *cobra.Command {
+// newUploadCmd returns the "media upload" command.
+func newUploadCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
-		Use:        "upload <file|url>",
-		Short:      "Upload an asset and return its UUID",
-		Deprecated: `use "runware media upload" instead.`,
-		Long: `Upload an image to the Runware platform for use as input in other tasks
+		Use:   "upload <file|url>",
+		Short: "Upload media and return its UUID",
+		Long: `Upload media to the Runware platform for use as input in other tasks
 (e.g. image-to-image, upscaling, background removal).
 
 The argument may be a local file path, a publicly accessible URL, or a data URI.
 Local files are read and uploaded; URLs and data URIs are forwarded as-is. The
-command prints the uploaded imageUUID (and taskUUID), which can be passed to
-image parameters such as inputs.seedImage on the run command.
+command prints the stored mediaUUID and mediaURL, which can be passed to media
+parameters such as inputs.seedImage on the run command.
 
-Supported file types: JPEG, JPG, PNG, WEBP, BMP, GIF. Video and audio upload is
-not yet supported by the API.`,
+Accepts any media type: images, video, audio, 3D models, and more.`,
 		Example: `  # upload a local image and print its UUID
-  runware upload ./photo.jpg
+  runware media upload ./photo.jpg
 
   # upload a remote image by URL
-  runware upload https://example.com/photo.jpg
+  runware media upload https://example.com/photo.jpg
 
   # upload and use the UUID directly in a run command
   runware run runware:100@1 positivePrompt="Same scene at night" width=1024 height=1024 \
-    inputs.seedImage=$(runware upload ./photo.jpg -F json | jq -r '.imageUUID')`,
+    inputs.seedImage=$(runware media upload ./photo.jpg -F json | jq -r '.mediaUUID')`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			image, err := cmdutil.BuildImageInput(args[0])
+			media, err := cmdutil.BuildMediaInput(args[0])
 			if err != nil {
 				return err
 			}
@@ -75,7 +72,7 @@ not yet supported by the API.`,
 			defer t.Close() //nolint:errcheck
 
 			client := api.NewClient(t, slog.New(logger))
-			result, err := client.UploadImage(cmd.Context(), image)
+			result, err := client.MediaStorage(cmd.Context(), api.MediaOperationUpload, media)
 			if err != nil {
 				spin.Stop()
 				return err
@@ -83,7 +80,8 @@ not yet supported by the API.`,
 
 			spin.Stop()
 			return output.Print(cmdutil.FormatFor(cmd), uploadResult{
-				ImageUUID: result.ImageUUID.String(),
+				MediaUUID: result.MediaUUID.String(),
+				MediaURL:  result.MediaURL,
 				TaskUUID:  result.TaskUUID.String(),
 			})
 		},

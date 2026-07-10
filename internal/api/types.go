@@ -80,6 +80,26 @@ type ImageUploadResult struct {
 	ImageUUID uuid.UUID `json:"imageUUID"`
 }
 
+// MediaStorageRequest is the request payload for the mediaStorage task. Operation
+// is "upload" or "delete". Media is the asset (publicly accessible URL, data URI,
+// or base64 string) for upload, or the mediaUUID to remove for delete.
+type MediaStorageRequest struct {
+	TaskType  TaskType  `json:"taskType"`
+	TaskUUID  uuid.UUID `json:"taskUUID"`
+	Operation string    `json:"operation"`
+	Media     string    `json:"media"`
+}
+
+// MediaStorageResult is the response from a mediaStorage task. MediaURL is set
+// only for the upload operation; delete returns just the MediaUUID that was removed.
+type MediaStorageResult struct {
+	TaskType  TaskType  `json:"taskType"`
+	TaskUUID  uuid.UUID `json:"taskUUID"`
+	Operation string    `json:"operation"`
+	MediaUUID uuid.UUID `json:"mediaUUID"`
+	MediaURL  string    `json:"mediaURL,omitempty"`
+}
+
 // PingRequest is the request payload for the ping task.
 type PingRequest struct {
 	TaskType TaskType  `json:"taskType"`

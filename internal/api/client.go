@@ -86,6 +86,9 @@ func (c *Client) AccountDetails(ctx context.Context) (*AccountResult, error) {
 // UploadImage uploads an image to the Runware platform via the imageUpload task
 // and returns the stored asset's UUID. image may be a publicly accessible URL, a
 // data URI, or a base64-encoded image, per the API contract.
+//
+// Superseded by MediaStorage, which handles any media type and supports deletion;
+// retained for the deprecated "upload" command.
 func (c *Client) UploadImage(ctx context.Context, image string) (*ImageUploadResult, error) {
 	if image == "" {
 		return nil, fmt.Errorf("image is required")
@@ -111,6 +114,44 @@ func (c *Client) UploadImage(ctx context.Context, image string) (*ImageUploadRes
 	var result ImageUploadResult
 	if err := json.Unmarshal(data[0], &result); err != nil {
 		return nil, fmt.Errorf("failed to parse imageUpload response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// MediaStorage stores or removes media via the mediaStorage task. operation is
+// "upload" or "delete"; media is the asset (publicly accessible URL, data URI, or
+// base64 string) for upload, or the mediaUUID to remove for delete. Upload returns
+// the stored asset's MediaUUID and MediaURL; delete returns just the MediaUUID.
+func (c *Client) MediaStorage(ctx context.Context, operation, media string) (*MediaStorageResult, error) {
+	if operation == "" {
+		return nil, fmt.Errorf("operation is required")
+	}
+	if media == "" {
+		return nil, fmt.Errorf("media is required")
+	}
+
+	tasks := []any{
+		&MediaStorageRequest{
+			TaskType:  taskTypeMediaStorage,
+			TaskUUID:  uuid.New(),
+			Operation: operation,
+			Media:     media,
+		},
+	}
+
+	data, err := c.transport.Send(ctx, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty response from mediaStorage")
+	}
+
+	var result MediaStorageResult
+	if err := json.Unmarshal(data[0], &result); err != nil {
+		return nil, fmt.Errorf("failed to parse mediaStorage response: %w", err)
 	}
 
 	return &result, nil

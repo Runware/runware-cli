@@ -193,13 +193,16 @@ runware config path             # Print config file path
 
 Config is stored at `~/.runware/config.yaml`.
 
-### Upload
+### Media
 
 ```shell
-runware upload <file|url>       # Upload an image asset; prints imageUUID (and taskUUID) for use in run params
+runware media upload <file|url>   # Upload media; prints mediaUUID (and mediaURL) for use in run params
+runware media delete <mediaUUID>  # Permanently delete stored media by its UUID
 ```
 
-Accepts a local file path, public URL, or data URI. The returned imageUUID can be passed to parameters like `inputs.seedImage=<imageUUID>` on the `run` command. The taskUUID can be used with `runware result`.
+Accepts a local file path, public URL, or data URI for upload. The returned mediaUUID can be passed to parameters like `inputs.seedImage=<mediaUUID>` on the `run` command. The taskUUID can be used with `runware result`.
+
+The older `runware upload` command is deprecated; use `runware media upload` instead.
 
 ### Result
 

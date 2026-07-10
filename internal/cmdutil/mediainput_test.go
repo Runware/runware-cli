@@ -1,4 +1,4 @@
-package upload
+package cmdutil
 
 import (
 	"bytes"
@@ -28,13 +28,13 @@ func TestBuildImageInput_Passthrough(t *testing.T) {
 		"data:image/png;base64,AAAA",
 	}
 	for _, in := range cases {
-		got, err := buildImageInput(in)
+		got, err := BuildImageInput(in)
 		if err != nil {
-			t.Errorf("buildImageInput(%q) error: %v", in, err)
+			t.Errorf("BuildImageInput(%q) error: %v", in, err)
 			continue
 		}
 		if got != in {
-			t.Errorf("buildImageInput(%q) = %q, want unchanged", in, got)
+			t.Errorf("BuildImageInput(%q) = %q, want unchanged", in, got)
 		}
 	}
 }
@@ -48,9 +48,9 @@ func TestBuildImageInput_LocalFile(t *testing.T) {
 		t.Fatalf("write temp file: %v", err)
 	}
 
-	got, err := buildImageInput(path)
+	got, err := BuildImageInput(path)
 	if err != nil {
-		t.Fatalf("buildImageInput error: %v", err)
+		t.Fatalf("BuildImageInput error: %v", err)
 	}
 
 	wantPrefix := "data:image/png;base64,"
@@ -76,9 +76,9 @@ func TestBuildImageInput_ContentOverridesExtension(t *testing.T) {
 		t.Fatalf("write temp file: %v", err)
 	}
 
-	got, err := buildImageInput(path)
+	got, err := BuildImageInput(path)
 	if err != nil {
-		t.Fatalf("buildImageInput error: %v", err)
+		t.Fatalf("BuildImageInput error: %v", err)
 	}
 	if !strings.HasPrefix(got, "data:image/png;base64,") {
 		t.Fatalf("got %q, want image/png MIME from content", got)
@@ -93,21 +93,70 @@ func TestBuildImageInput_UnsupportedContentType(t *testing.T) {
 		t.Fatalf("write temp file: %v", err)
 	}
 
-	if _, err := buildImageInput(path); err == nil {
+	if _, err := BuildImageInput(path); err == nil {
 		t.Fatal("expected error for unsupported content type, got nil")
 	}
 }
 
 // TestBuildImageInput_MissingFile: a non-existent path returns an error.
 func TestBuildImageInput_MissingFile(t *testing.T) {
-	if _, err := buildImageInput(filepath.Join(t.TempDir(), "nope.png")); err == nil {
+	if _, err := BuildImageInput(filepath.Join(t.TempDir(), "nope.png")); err == nil {
 		t.Fatal("expected error for missing file, got nil")
 	}
 }
 
 // TestBuildImageInput_Directory: a directory path is rejected.
 func TestBuildImageInput_Directory(t *testing.T) {
-	if _, err := buildImageInput(t.TempDir()); err == nil {
+	if _, err := BuildImageInput(t.TempDir()); err == nil {
 		t.Fatal("expected error for directory, got nil")
+	}
+}
+
+// TestBuildMediaInput_NonImageAccepted: mediaStorage takes any media type, so a
+// non-image file is encoded as a data URI instead of being rejected.
+func TestBuildMediaInput_NonImageAccepted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clip.bin")
+	if err := os.WriteFile(path, []byte("not an image at all"), 0600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	got, err := BuildMediaInput(path)
+	if err != nil {
+		t.Fatalf("BuildMediaInput error: %v", err)
+	}
+	if !strings.HasPrefix(got, "data:") || !strings.Contains(got, ";base64,") {
+		t.Fatalf("got %q, want a data URI", got)
+	}
+}
+
+// TestBuildMediaInput_ImageStillWorks: an image file is also accepted (any type).
+func TestBuildMediaInput_ImageStillWorks(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pic.png")
+	if err := os.WriteFile(path, minimalPNG, 0600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	got, err := BuildMediaInput(path)
+	if err != nil {
+		t.Fatalf("BuildMediaInput error: %v", err)
+	}
+	if !strings.HasPrefix(got, "data:image/png;base64,") {
+		t.Fatalf("got %q, want image/png data URI", got)
+	}
+}
+
+// TestBuildMediaInput_Passthrough: URLs and data URIs are forwarded unchanged.
+func TestBuildMediaInput_Passthrough(t *testing.T) {
+	for _, in := range []string{"https://example.com/a.mp4", "data:video/mp4;base64,AAAA"} {
+		got, err := BuildMediaInput(in)
+		if err != nil {
+			t.Errorf("BuildMediaInput(%q) error: %v", in, err)
+			continue
+		}
+		if got != in {
+			t.Errorf("BuildMediaInput(%q) = %q, want unchanged", in, got)
+		}
 	}
 }

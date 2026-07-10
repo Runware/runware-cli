@@ -14,6 +14,13 @@ const (
 	taskTypeGetResponse       TaskType = "getResponse"
 	taskTypeAccountManagement TaskType = "accountManagement"
 	taskTypeImageUpload       TaskType = "imageUpload"
+	taskTypeMediaStorage      TaskType = "mediaStorage"
+)
+
+// Media storage operations, passed to Client.MediaStorage.
+const (
+	MediaOperationUpload = "upload"
+	MediaOperationDelete = "delete"
 )
 
 // DeliveryMethod specifies how task results are delivered.
