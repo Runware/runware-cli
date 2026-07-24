@@ -9,11 +9,13 @@ import (
 )
 
 const (
-	DefaultBaseURL   = "https://api.runware.ai/v1"
-	DefaultWSBaseURL = "wss://ws-api.runware.ai/v1"
-	MaskedKeySuffix  = "•••••"
-	DefaultOutputDir = "./outputs"
-	DefaultFormat    = "table"
+	DefaultBaseURL           = "https://api.runware.ai/v1"
+	DefaultWSBaseURL         = "wss://ws-api.runware.ai/v1"
+	DefaultServerlessBaseURL = "https://api.serverless.runware.ai"
+	DefaultDashboardURL      = "https://my.runware.ai"
+	MaskedKeySuffix          = "•••••"
+	DefaultOutputDir         = "./outputs"
+	DefaultFormat            = "table"
 	// DefaultTransport matches transport.SchemeWS; kept as a literal so the
 	// config package stays free of internal imports.
 	DefaultTransport = "ws"
@@ -150,6 +152,25 @@ func GetWSBaseURL() string {
 		return v
 	}
 	return DefaultWSBaseURL
+}
+
+// GetServerlessBaseURL returns the Serverless API base URL.
+// RUNWARE_SERVERLESS_BASE_URL overrides the default; this is not exposed in the
+// user-facing config file and is intended for internal testing only.
+func GetServerlessBaseURL() string {
+	if v := os.Getenv("RUNWARE_SERVERLESS_BASE_URL"); v != "" {
+		return v
+	}
+	return DefaultServerlessBaseURL
+}
+
+// GetDashboardURL returns the base URL of the Runware web dashboard.
+// RUNWARE_DASHBOARD_URL overrides the default.
+func GetDashboardURL() string {
+	if v := os.Getenv("RUNWARE_DASHBOARD_URL"); v != "" {
+		return v
+	}
+	return DefaultDashboardURL
 }
 
 // ConfigDir returns the config directory path.
