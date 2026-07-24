@@ -12,7 +12,7 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serverless",
 		Short: "Manage Runware serverless deployments",
-		Long:  "Deploy, monitor, and manage Runware serverless deployments on the platform",
+		Long:  "Deploy, monitor, and manage Runware serverless applications on the platform",
 	}
 	cmd.AddCommand(
 		newGPUsCmd(logger),

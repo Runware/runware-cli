@@ -4,7 +4,7 @@ Manage Runware serverless deployments
 
 ### Synopsis
 
-Deploy, monitor, and manage Runware serverless deployments on the platform
+Deploy, monitor, and manage Runware serverless applications on the platform
 
 ### Options
 
