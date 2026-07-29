@@ -20,11 +20,11 @@ func TestListGpuTypes(t *testing.T) {
 			t.Errorf("missing/incorrect auth header: %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"id":"h100","name":"H100","memory":"80GB","availability":"available","pricing":{"currency":"USD","perSecond":"0.000767"}}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"id":"h100","name":"H100","memory":"80 GB HBM","availability":"available","pricing":{"perSecond":"0.000767"}}]}`))
 	}))
 	defer srv.Close()
 
-	c := NewClient("test-key", srv.URL, slog.Default())
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
 	gpus, err := c.ListGpuTypes(context.Background())
 	if err != nil {
 		t.Fatalf("ListGpuTypes: %v", err)
@@ -32,11 +32,11 @@ func TestListGpuTypes(t *testing.T) {
 	if len(gpus) != 1 {
 		t.Fatalf("expected 1 gpu, got %d", len(gpus))
 	}
-	if gpus[0].ID != "h100" || gpus[0].Pricing.PerSecond != "0.000767" {
+	if gpus[0].Id != "h100" || gpus[0].Pricing.PerSecond != "0.000767" {
 		t.Errorf("unexpected gpu: %+v", gpus[0])
 	}
-	if gpus[0].Memory == nil || *gpus[0].Memory != "80GB" {
-		t.Errorf("unexpected memory: %v", gpus[0].Memory)
+	if gpus[0].Memory != "80 GB HBM" {
+		t.Errorf("unexpected memory: %q", gpus[0].Memory)
 	}
 }
 
@@ -49,12 +49,13 @@ func TestListGpuTypes_NoAPIKey(t *testing.T) {
 
 func TestListGpuTypes_AuthError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"code":401,"message":"Missing or invalid API key"}`))
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Unauthorized","status":401,"detail":"Missing or invalid API key"}`))
 	}))
 	defer srv.Close()
 
-	c := NewClient("bad", srv.URL, slog.Default())
+	c := newClient("bad", srv.URL, slog.Default(), srv.Client())
 	_, err := c.ListGpuTypes(context.Background())
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
@@ -62,5 +63,8 @@ func TestListGpuTypes_AuthError(t *testing.T) {
 	}
 	if re.Code != transport.CodeAuth {
 		t.Errorf("expected CodeAuth, got %v", re.Code)
+	}
+	if re.Message != "Missing or invalid API key" {
+		t.Errorf("unexpected message: %q", re.Message)
 	}
 }

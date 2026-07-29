@@ -1,34 +1,32 @@
 package serverless
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 
+	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-// wireError is the Serverless API error envelope: {"code":int,"message":string}.
-type wireError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// parseError converts a non-2xx Serverless API response into a
+// problemToError converts an RFC 9457 ProblemDetails (or a bare status) into a
 // *transport.RunwareError so the CLI's shared error rendering (including the
 // auth hint on 401/403) applies uniformly.
-func parseError(body []byte, statusCode int) error {
-	var w wireError
-	if err := json.Unmarshal(body, &w); err != nil || w.Message == "" {
-		return transport.CreateRunwareError(
-			rawCodeForStatus(statusCode),
-			fmt.Sprintf("HTTP %d: %s", statusCode, http.StatusText(statusCode)),
-			transport.RunwareErrorDetails{StatusCode: statusCode},
-		)
+func problemToError(p *gen.ProblemDetails, statusCode int) error {
+	msg := fmt.Sprintf("HTTP %d: %s", statusCode, http.StatusText(statusCode))
+	if p != nil {
+		if p.Status != 0 {
+			statusCode = int(p.Status)
+		}
+		switch {
+		case p.Detail != nil && *p.Detail != "":
+			msg = *p.Detail
+		case p.Title != "":
+			msg = p.Title
+		}
 	}
 	return transport.CreateRunwareError(
 		rawCodeForStatus(statusCode),
-		w.Message,
+		msg,
 		transport.RunwareErrorDetails{StatusCode: statusCode},
 	)
 }

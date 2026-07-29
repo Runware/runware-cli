@@ -18,8 +18,6 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		newDeployCmd(),
 		newGPUsCmd(logger),
 		newOpenCmd(),
-		newRegistryCmd(),
-		newAppsCmd(),
 	)
 	return cmd
 }

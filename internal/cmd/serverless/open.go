@@ -2,9 +2,11 @@ package serverless
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
+	"github.com/pkg/browser"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -37,15 +39,15 @@ func newOpenCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
-			url := strings.TrimSuffix(config.GetDashboardURL(), "/") + "/serverless/" + id
+			dashboardURL := strings.TrimSuffix(config.GetDashboardURL(), "/") + "/serverless/" + url.PathEscape(id)
 
-			if err := cmdutil.OpenBrowser(cmd.Context(), url); err != nil {
+			if err := browser.OpenURL(dashboardURL); err != nil {
 				fmt.Fprintf(os.Stderr, "Could not open browser automatically: %v\n", err)
 			}
 
 			return output.Print(cmdutil.FormatFor(cmd), openResult{
 				DeploymentID: id,
-				URL:          url,
+				URL:          dashboardURL,
 			})
 		},
 	}

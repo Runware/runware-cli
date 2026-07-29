@@ -23,14 +23,10 @@ func (r gpuTypesResult) Rows() [][]any {
 	rows := make([][]any, len(r))
 	for i := range r {
 		g := &r[i]
-		memory := "-"
-		if g.Memory != nil && *g.Memory != "" {
-			memory = *g.Memory
-		}
 		rows[i] = []any{
-			g.ID,
+			g.Id,
 			g.Name,
-			memory,
+			g.Memory,
 			string(g.Availability),
 			g.Pricing.PerSecond,
 		}
@@ -48,15 +44,14 @@ func newGPUsCmd(logger *log.Logger) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			spin := cmdutil.NewSpinner("Fetching GPU types...")
 			spin.Start()
+			defer spin.Stop()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
 			gpus, err := client.ListGpuTypes(cmd.Context())
 			if err != nil {
-				spin.Stop()
 				return err
 			}
 
-			spin.Stop()
 			return output.Print(cmdutil.FormatFor(cmd), gpuTypesResult(gpus))
 		},
 	}

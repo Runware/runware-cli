@@ -6,8 +6,8 @@ Deploy a new serverless application
 
 Deploy a new serverless application from a Python file.
 
-The application settings come from the project
-configuration created by 'runware serverless init' or the dashboard.
+The application settings come from the project configuration (via the
+dashboard, or 'runware serverless init' when available).
 
 ```
 runware serverless deploy [file] [flags]

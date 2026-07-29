@@ -12,8 +12,8 @@ func newDeployCmd() *cobra.Command {
 		Short: "Deploy a new serverless application",
 		Long: `Deploy a new serverless application from a Python file.
 
-The application settings come from the project
-configuration created by 'runware serverless init' or the dashboard.`,
+The application settings come from the project configuration (via the
+dashboard, or 'runware serverless init' when available).`,
 		Example: `  # deploy the application in the current project
   runware serverless deploy
 
@@ -21,7 +21,8 @@ configuration created by 'runware serverless init' or the dashboard.`,
   runware serverless deploy ./app.py`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("not implemented yet")
+			_ = cmd.Help()
+			return fmt.Errorf("serverless deploy is not implemented yet")
 		},
 	}
 }
