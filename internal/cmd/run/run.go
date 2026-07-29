@@ -69,7 +69,7 @@ The model positional argument may be omitted when --preset supplies one.`,
   runware run tencent:hunyuan-3d@3.1-pro inputs.images.0="https://example.com/product.jpg"
 
   # Audio inference
-  runware run elevenlabs:1@1 positivePrompt="Upbeat electronic dance music with driving bass and synth leads" duration=30
+  runware run runware:ace-step@v1.5-turbo positivePrompt="Upbeat electronic dance music with driving bass and synth leads" duration=30 steps=8
   runware run minimax:speech@2.8 speech.text="Hello, this is a text-to-speech example." speech.voice=English_expressive_narrator
 
   # Community model — task type must be specified explicitly
