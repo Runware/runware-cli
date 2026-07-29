@@ -11,7 +11,7 @@ import (
 func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serverless",
-		Short: "Manage Runware serverless deployments",
+		Short: "Manage Runware serverless applications",
 		Long:  "Deploy, monitor, and manage Runware serverless applications on the platform",
 	}
 	cmd.AddCommand(
