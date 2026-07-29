@@ -155,8 +155,9 @@ func GetWSBaseURL() string {
 }
 
 // GetServerlessBaseURL returns the Serverless API base URL.
-// RUNWARE_SERVERLESS_BASE_URL overrides the default; this is not exposed in the
-// user-facing config file and is intended for internal testing only.
+// Override with RUNWARE_SERVERLESS_BASE_URL for internal testing only
+// (e.g. pointing at a local or staging control plane). This is not a
+// user-facing config key and must not be documented in `runware config`.
 func GetServerlessBaseURL() string {
 	if v := os.Getenv("RUNWARE_SERVERLESS_BASE_URL"); v != "" {
 		return v
@@ -165,7 +166,8 @@ func GetServerlessBaseURL() string {
 }
 
 // GetDashboardURL returns the base URL of the Runware web dashboard.
-// RUNWARE_DASHBOARD_URL overrides the default.
+// Users may override with RUNWARE_DASHBOARD_URL (e.g. a regional console).
+// Unlike the serverless API base URL, this is a supported end-user override.
 func GetDashboardURL() string {
 	if v := os.Getenv("RUNWARE_DASHBOARD_URL"); v != "" {
 		return v

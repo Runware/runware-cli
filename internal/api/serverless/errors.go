@@ -44,6 +44,8 @@ func rawCodeForStatus(statusCode int) string {
 	case http.StatusConflict:
 		return "conflict"
 	default:
-		return "serverError"
+		// Must be a key in transport.serverErrorCodes so DeriveCode returns
+		// CodeServerError rather than CodeUnknown.
+		return "internalServerError"
 	}
 }

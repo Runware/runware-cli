@@ -68,3 +68,25 @@ func TestListGpuTypes_AuthError(t *testing.T) {
 		t.Errorf("unexpected message: %q", re.Message)
 	}
 }
+
+func TestListGpuTypes_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("upstream boom"))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.ListGpuTypes(context.Background())
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeServerError {
+		t.Errorf("expected CodeServerError, got %v", re.Code)
+	}
+	if re.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", re.StatusCode)
+	}
+}
