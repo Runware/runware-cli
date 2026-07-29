@@ -30,5 +30,5 @@ runware serverless gpus [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless deployments
+* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
 

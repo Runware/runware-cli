@@ -40,5 +40,5 @@ runware serverless deploy [file] [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless deployments
+* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
 

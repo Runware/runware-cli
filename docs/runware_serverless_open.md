@@ -1,6 +1,6 @@
 ## runware serverless open
 
-Open a deployment in the Runware dashboard
+Open an application in the Runware dashboard
 
 ```
 runware serverless open <deploymentId> [flags]
@@ -9,7 +9,7 @@ runware serverless open <deploymentId> [flags]
 ### Examples
 
 ```
-  # open a deployment's dashboard page in your browser
+  # open a application's dashboard page in your browser
   runware serverless open my-model-abc
 ```
 
@@ -30,5 +30,5 @@ runware serverless open <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless deployments
+* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
 

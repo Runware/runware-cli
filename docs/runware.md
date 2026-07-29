@@ -31,6 +31,6 @@ Use of Runware services is subject to our Terms of Service (https://runware.ai/t
 * [runware preset](runware_preset.md)	 - Manage named presets
 * [runware result](runware_result.md)	 - Wait for and display the result of a task by taskUUID
 * [runware run](runware_run.md)	 - Run an inference request against any Runware model
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless deployments
+* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
 * [runware version](runware_version.md)	 - Print version information
 
