@@ -6,7 +6,7 @@ import "github.com/spf13/cobra"
 // deployed serverless applications (API: deployments).
 func newAppsCmd() *cobra.Command {
 	cmd := stubGroup("apps", "Manage deployed serverless applications")
-	cmd.Long = "Manage deployed serverless applications (deployments) on the Runware platform."
+	cmd.Long = "Manage deployed serverless applications on the Runware platform."
 	cmd.AddCommand(
 		newAppsListCmd(),
 		newAppsShowCmd(),
