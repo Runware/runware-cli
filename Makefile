@@ -11,7 +11,7 @@ GOFLAGS = -trimpath
 
 BINARY=runware
 
-.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs go-tidy
+.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs go-tidy generate-serverless
 
 build:
 	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
@@ -61,3 +61,7 @@ docs:
 
 go-tidy:
 	go mod tidy && go mod verify
+
+# Regenerate the Serverless API client from api/serverless/openapi.yaml.
+generate-serverless:
+	go tool oapi-codegen -config api/serverless/oapi-codegen.yaml api/serverless/openapi.yaml

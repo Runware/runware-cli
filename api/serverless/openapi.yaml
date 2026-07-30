@@ -1,0 +1,2239 @@
+openapi: 3.0.3
+servers:
+  - url: https://api.serverless.runware.ai
+
+info:
+  title: Serverless API
+  version: 0.3.0
+  license:
+    name: Proprietary
+  description: >
+    Control plane and task-ingestion API for the Runware Serverless platform.
+
+    A Runware organisation is the tenant boundary. Deployments are addressed as
+    `/v1/deployments/{deploymentId}` and endpoints are invoked as
+    `/v1/deployments/{deploymentId}/invoke-async/{endpointPath}` (async invocation) or
+    `/v1/deployments/{deploymentId}/invoke-sync/{endpointPath}` (sync invocation).
+
+    Authentication uses a Runware API key validated against the existing Runware platform
+    (server-to-server). The key identifies the organisation; resources are always scoped to the
+    authenticated organisation.
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Tasks
+    description: Task ingestion — submit work to a deployment endpoint
+  - name: Deployments
+    description: Manage deployments and their lifecycle
+  - name: Builds
+    description: Immutable builds
+  - name: Versions
+    description: Deployment versions produced by successful builds
+  - name: Endpoints
+    description: Named endpoints exposed by a deployment
+  - name: Compute
+    description: Compute hardware catalogues (GPU types) and pricing
+  - name: Workers
+    description: Running worker instances (read-only runtime state)
+  - name: Secrets
+    description: Organisation-scoped encrypted secrets
+  - name: EnvironmentVariables
+    description: Plain-text environment variables scoped to a deployment
+  - name: Observability
+    description: Tasks, usage, events and errors
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Compute (GPU catalogue)
+  # ---------------------------------------------------------------------------
+  /v1/gpu-types:
+    get:
+      tags:
+        - Compute
+      summary: List supported GPU types and their pricing
+      description: >
+         Returns the global GPU type catalogue and pricing. The result is not organisation-specific,
+         but the request still requires authentication.
+      operationId: listGpuTypes
+      responses:
+        '200':
+          description: GPU type catalogue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuTypeList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ---------------------------------------------------------------------------
+  # Tasks
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/invoke-async/{endpointPath}:
+    post:
+      tags:
+        - Tasks
+      summary: Start a new async task
+      description: >
+        Starts a new async task on `deploymentId`, routing the request body payload to an available
+        worker. The task runs asynchronously and the response is `202`; poll
+        `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+      operationId: startAsyncTask
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/EndpointPath'
+      requestBody:
+        $ref: '#/components/requestBodies/TaskPayload'
+      responses:
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/deployments/{deploymentId}/invoke-sync/{endpointPath}:
+    post:
+      tags:
+        - Tasks
+      summary: Start a new sync task
+      description: >
+        Starts a new sync task on `deploymentId`, routing the request body payload to an available
+        worker. The request blocks until the task is terminal and returns the result inline (`200`),
+        or `504` if it does not complete within the wait window.
+      operationId: startSyncTask
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/EndpointPath'
+      requestBody:
+        $ref: '#/components/requestBodies/TaskPayload'
+      responses:
+        '200':
+          $ref: '#/components/responses/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '504':
+          $ref: '#/components/responses/Timeout'
+
+  /v1/deployments/{deploymentId}/tasks/{taskId}:
+    get:
+      tags:
+        - Tasks
+      summary: Get a task
+      description: >
+        Returns the task's current status, read through the inference transport layer from the
+        shared result store. When `completed`, includes the result `output` and `completedAt`;
+        when `failed`, includes `error`; when `pending`, neither is set.
+      operationId: getTask
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Opaque task identifier returned by the execution backend.
+      responses:
+        '200':
+          $ref: '#/components/responses/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Deployments
+  # ---------------------------------------------------------------------------
+  /v1/deployments:
+    get:
+      tags:
+        - Deployments
+      summary: List deployments
+      operationId: listDeployments
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/DeploymentStatus'
+      responses:
+        '200':
+          description: A page of deployments
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - Deployments
+      summary: Create a deployment
+      description: >
+        Creates a deployment together with its worker configuration and endpoints, as declared
+        in the submitted IaC config. The deployment starts in `initializing` and an initial rollout
+        begins immediately based on the deployment source type:
+
+        - `code` source: the codebase is submitted to the build pipeline; once the image is built
+          and workers become healthy the deployment transitions to `active`.
+
+        - `container` source: the pre-built image is deployed directly with no build step; once
+          workers become healthy the deployment transitions to `active`.
+
+        If the build, validation, or rollout fails the deployment is marked `failed`.
+      operationId: createDeployment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeploymentCreate'
+      responses:
+        '201':
+          description: Deployment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/deployments/{deploymentId}:
+    get:
+      tags:
+        - Deployments
+      summary: Get a deployment
+      operationId: getDeployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: The deployment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Deployments
+      summary: Update a deployment
+      description: >
+        Patches one or more aspects of a deployment in place. All fields are optional; omitted
+        fields are left unchanged. Valid in any non-`deleted` status, including `stopped`
+        (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`,
+        `resume`, and `delete` operations.
+
+        **Currently persisted:** `deploymentName` and `configuration` only. Supplying
+        `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
+        until those stores land.
+
+        Target behaviour (once fully wired):
+
+        - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
+          restart with the new configuration. If the rollout fails, the deployment remains on
+          the previous configuration.
+
+        - `deploymentSource`: triggers a build (for `code` sources) or image validation (for `container`
+          sources); on success the new version is deployed automatically. If the build or
+          validation fails, the deployment remains on the previous version.
+
+        - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
+          current set — any item absent from the request is deleted. Endpoints take effect
+          immediately. Changes to secrets or environment variables trigger a rollout so workers
+          restart and pick up the new values.
+      operationId: updateDeployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeploymentUpdate'
+      responses:
+        '200':
+          description: Updated deployment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - Deployments
+      summary: Delete a deployment
+      description: >
+        Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted.
+        Router removal, cancelling in-progress builds, and worker drain
+        (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler;
+        `status` becomes `deleted` once all workers stop. All rows are retained for billing
+        finalisation, audit, and usage history. Idempotent if the deployment is already
+        `deleting`.
+      operationId: deleteDeployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '202':
+          description: Delete accepted; status is deleting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/deployments/{deploymentId}/deploy:
+    post:
+      tags:
+        - Deployments
+      summary: Deploy a version
+      description: >
+        Activates a `ready` version by number, setting `activeVersionId` and returning `202`
+        once that intent is persisted. Worker rollout, routing switch, and cancelling
+        in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously
+        by the deployer/Scaler. Permitted in any addressable status, including `initializing`
+        and `failed`.
+
+        To roll back, supply an older `versionNumber` — the operation is identical to a forward
+        deploy.
+
+        **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits
+        for at least one to become healthy, switches task routing to the new version, then
+        drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to
+        finish in-flight tasks before being force-terminated. If new workers fail to become
+        healthy, old workers are not drained and the deployment continues on the previous
+        version.
+
+        Errors:
+        - Deploy to a `deleting` deployment returns `409 Conflict`
+        - `versionNumber` not found or not `ready` returns `409 Conflict`
+        - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+      operationId: deployVersion
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '202':
+          description: Deploy accepted; activeVersionId updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/deployments/{deploymentId}/stop:
+    post:
+      tags:
+        - Deployments
+      summary: Stop a deployment
+      description: >
+        Moves the deployment to `stopping` and returns `202` once that intent is persisted.
+        Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status`
+        becomes `stopped` once all workers drain. In-flight tasks have a grace period
+        (`gracefulStopTtlSecs`) to complete; workers that exceed it are force-terminated and
+        their tasks return to the queue per delivery guarantees. New task submissions are still
+        accepted and queued while stopped, but not consumed. Precondition: `status = active`.
+      operationId: stopDeployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '202':
+          description: Stop accepted; status is stopping
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/deployments/{deploymentId}/resume:
+    post:
+      tags:
+        - Deployments
+      summary: Resume a deployment
+      description: >
+        Moves the deployment to `initializing` and returns `202` once that intent is persisted.
+        The Scaler then starts workers and sets the deployment to `active`; tasks queued during
+        the stopped period are consumed as workers come online. Precondition: `status = stopped`.
+      operationId: resumeDeployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '202':
+          description: Resume accepted; deployment is initializing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/deployment-summary:
+    get:
+      tags:
+        - Deployments
+      summary: Deployment summary metrics for the authenticated organisation
+      description: >
+        Aggregate dashboard metrics across all deployments owned by the authenticated organisation.
+        Metrics whose backing system is not yet available are omitted from the
+        response rather than reported as zero.
+      operationId: getDeploymentSummary
+      responses:
+        '200':
+          description: Deployment summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ---------------------------------------------------------------------------
+  # Builds
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/builds:
+    get:
+      tags:
+        - Builds
+      summary: List builds
+      operationId: listBuilds
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of builds
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Build'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/deployments/{deploymentId}/builds/{buildId}:
+    get:
+      tags:
+        - Builds
+      summary: Get a build
+      operationId: getBuild
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The build
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Versions
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/versions:
+    get:
+      tags:
+        - Versions
+      summary: List versions
+      operationId: listVersions
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of versions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Version'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/deployments/{deploymentId}/versions/{versionNumber}:
+    get:
+      tags:
+        - Versions
+      summary: Get a version
+      operationId: getVersion
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - name: versionNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: The version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Endpoints
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/endpoints:
+    get:
+      tags:
+        - Endpoints
+      summary: List endpoints
+      operationId: listEndpoints
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of deployment's endpoints
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Endpoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Workers (read-only runtime state)
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/workers:
+    get:
+      tags:
+        - Workers
+      summary: List workers
+      operationId: listWorkers
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/WorkerStatus'
+      responses:
+        '200':
+          description: A page of workers
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Worker'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Secrets (organisation-scoped)
+  # ---------------------------------------------------------------------------
+  /v1/secrets:
+    get:
+      tags:
+        - Secrets
+      summary: List secrets
+      description: Returns secret metadata only; encrypted values are never returned.
+      operationId: listSecrets
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the authenticated organisation's secrets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Secret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - Secrets
+      summary: Create a secret
+      operationId: createSecret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretCreate'
+      responses:
+        '201':
+          description: Secret created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/secrets/{secretName}:
+    put:
+      tags:
+        - Secrets
+      summary: Update a secret
+      operationId: updateSecret
+      parameters:
+        - $ref: '#/components/parameters/SecretName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretUpdate'
+      responses:
+        '200':
+          description: Updated secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - Secrets
+      summary: Delete a secret
+      operationId: deleteSecret
+      parameters:
+        - $ref: '#/components/parameters/SecretName'
+      responses:
+        '204':
+          description: Secret deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Deployment <-> secret attachments
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/secrets:
+    get:
+      tags:
+        - Secrets
+      summary: List secrets attached to a deployment
+      operationId: listDeploymentSecrets
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of attached secrets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Secret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+        - Secrets
+      summary: Attach a secret to a deployment
+      description: Returns 409 if the secret is already attached to this deployment.
+      operationId: attachDeploymentSecret
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretAttach'
+      responses:
+        '204':
+          description: Secret attached
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/deployments/{deploymentId}/secrets/{secretName}:
+    delete:
+      tags:
+        - Secrets
+      summary: Detach a secret from a deployment
+      operationId: detachDeploymentSecret
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/SecretName'
+      responses:
+        '204':
+          description: Secret detached
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Environment Variables (plain-text env vars)
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/environment-variables:
+    get:
+      tags:
+        - EnvironmentVariables
+      summary: List deployment environment variables
+      operationId: listDeploymentEnvironmentVariables
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of environment variables
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/EnvironmentVariable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/deployments/{deploymentId}/environment-variables/{variableName}:
+    put:
+      tags:
+        - EnvironmentVariables
+      summary: Upsert a deployment environment variable
+      operationId: upsertDeploymentEnvironmentVariable
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - name: variableName
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentVariableUpsert'
+      responses:
+        '200':
+          description: Environment variable upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentVariable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - EnvironmentVariables
+      summary: Delete a deployment environment variable
+      operationId: deleteDeploymentEnvironmentVariable
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - name: variableName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Environment variable deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Observability
+  # ---------------------------------------------------------------------------
+  /v1/deployments/{deploymentId}/tasks:
+    get:
+      tags:
+        - Observability
+      summary: List tasks for a deployment
+      operationId: listTasks
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+      responses:
+        '200':
+          description: A page of tasks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/deployments/{deploymentId}/events:
+    get:
+      tags:
+        - Observability
+      summary: List deployment events
+      operationId: listDeploymentEvents
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/DeploymentEventType'
+      responses:
+        '200':
+          description: A page of events
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DeploymentEvent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/usage:
+    get:
+      tags:
+        - Observability
+      summary: List usage events
+      description: Append-only billing telemetry; one row per worker state transition.
+      operationId: listUsageEvents
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: deploymentId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/DeploymentId'
+        - name: from
+          in: query
+          required: false
+          description: Inclusive lower bound on event time (RFC 3339).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Exclusive upper bound on event time (RFC 3339).
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: A page of usage events
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UsageEvent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Runware API key supplied as a bearer token. Validated server-to-server against the
+        existing Runware platform; the key identifies the organisation.
+
+  parameters:
+    DeploymentId:
+      name: deploymentId
+      in: path
+      required: true
+      description: Immutable deployment identifier, unique within the authenticated organisation.
+      schema:
+        $ref: '#/components/schemas/DeploymentId'
+    EndpointPath:
+      name: endpointPath
+      in: path
+      required: true
+      description: Path of the endpoint to route the task to, as returned by `listEndpoints`.
+      schema:
+        type: string
+    SecretName:
+      name: secretName
+      in: path
+      required: true
+      description: Secret name, unique within the authenticated organisation.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque pagination cursor returned as `nextCursor` by a previous call.
+      schema:
+        type: string
+
+  requestBodies:
+    TaskPayload:
+      required: true
+      description: Arbitrary JSON payload forwarded to the endpoint's RPC handler.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+
+  responses:
+    Task:
+      description: The task
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Task'
+    TaskAccepted:
+      description: Task accepted and pending
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Task'
+    BadRequest:
+      description: >
+        The request was malformed and could not be parsed (e.g. invalid JSON).
+        A well-formed request that fails validation returns `422` instead.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Forbidden:
+      description: Authenticated but not permitted to access this resource
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: Resource already exists or conflicts with current state
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    ValidationError:
+      description: >
+        The request was well-formed but semantically invalid (e.g. a missing or
+        out-of-range field). A request that could not be parsed returns `400`.
+        The `errors` array carries one entry per offending field.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Timeout:
+      description: Task timed out
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+
+  schemas:
+    DeploymentId:
+      type: string
+      description: Immutable deployment identifier, unique within the authenticated organisation.
+      minLength: 6
+      maxLength: 30
+      pattern: '^[a-z][a-z0-9-]{4,28}[a-z0-9]$'
+
+    # ---- Enums -------------------------------------------------------------
+    DeploymentStatus:
+      type: string
+      enum:
+        - initializing
+        - active
+        - stopping
+        - stopped
+        - deleting
+        - deleted
+        - failed
+    BuildStatus:
+      type: string
+      description: Build/validation lifecycle status.
+      enum:
+        - queued
+        - building
+        - ready
+        - failed
+        - superseded
+    ComputeType:
+      type: string
+      enum:
+        - gpu
+        - cpu
+    WorkerStatus:
+      type: string
+      description: >
+        Worker lifecycle status. Also the event type of a `UsageEvent`, which
+        records a transition into one of these states.
+      enum:
+        - pending
+        - pulling
+        - loading
+        - ready
+        - busy
+        - draining
+        - stopping
+        - stopped
+    TaskStatus:
+      type: string
+      enum:
+        - pending
+        - completed
+        - failed
+    SecretType:
+      type: string
+      enum:
+        - generic
+        - registry
+    DeploymentEventType:
+      type: string
+      enum:
+        - deploy
+        - scaling
+        - audit
+        - error
+
+    # ---- Compute catalogue ----------------------------------------------
+    GpuTypeId:
+      type: string
+      description: >
+        Public catalogue code for a supported GPU type (e.g. `h100`, `rtx_6000`).
+        Must match an `id` returned by `GET /v1/gpu-types` (validated at request
+        time against the catalogue). This is not the internal database row UUID.
+      minLength: 1
+      maxLength: 64
+      pattern: '^[a-z][a-z0-9_]{0,63}$'
+
+    GpuAvailability:
+      type: string
+      description: Scheduler provisioning availability for this GPU type.
+      enum:
+        - available
+        - reserved
+        - custom
+
+    GpuPricing:
+      type: object
+      required:
+        - perSecond
+      properties:
+        perSecond:
+          type: string
+          minLength: 1
+          pattern: '^\d+\.\d+$'
+          description: >
+            Price per GPU per second in USD major units as an exact decimal
+            string (e.g. "0.000767"). Stored and billed from nanodollars
+            internally; the platform bills in USD only.
+          example: "0.000767"
+
+    GpuType:
+      type: object
+      required:
+        - id
+        - name
+        - memory
+        - availability
+        - pricing
+      properties:
+        id:
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          description: >
+            Public catalogue code referenced by `gpuType` in worker configuration
+            (not the internal database row UUID).
+        name:
+          type: string
+          example: H100
+        memory:
+          type: string
+          description: Human-readable memory capacity.
+          example: 80 GB HBM
+        availability:
+          $ref: '#/components/schemas/GpuAvailability'
+        pricing:
+          $ref: '#/components/schemas/GpuPricing'
+
+    GpuTypeList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GpuType'
+
+    # ---- Pagination --------------------------------------------------------
+    Page:
+      type: object
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor for the next page; null when there are no more items.
+
+    # ---- Money -------------------------------------------------------------
+    Currency:
+      type: string
+      description: ISO 4217 alphabetic code. The platform bills in USD only.
+      enum:
+        - USD
+
+    MoneyAmount:
+      type: object
+      description: >
+        A monetary amount as an exact decimal string in the currency's major
+        unit. Money is never represented as a float (see `GpuPricing.perSecond`).
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: string
+          pattern: '^\d+\.\d+$'
+          description: Amount in major units as an exact decimal string.
+          example: "312.40"
+        currency:
+          $ref: '#/components/schemas/Currency'
+
+    # ---- Core resources ----------------------------------------------------
+    DeploymentSummary:
+      type: object
+      description: >
+        Aggregate dashboard metrics for every deployment in the authenticated organisation. Metrics
+        whose backing system is not yet available are omitted (rendered as "no
+        data" by the frontend) rather than reported as zero.
+      required:
+        - totalDeployments
+        - activeDeployments
+        - calculatedAt
+      properties:
+        activeDeployments:
+          type: integer
+          format: int64
+          description: Deployments currently in the `active` status.
+        totalDeployments:
+          type: integer
+          format: int64
+          description: All deployments in the organisation excluding soft-deleted ones.
+        activeWorkers:
+          type: integer
+          format: int64
+          description: Running workers across all deployments. Omitted until worker state is tracked.
+        provisionedGpuCount:
+          type: integer
+          format: int64
+          description: GPUs currently provisioned across all workers. Omitted until worker state is tracked.
+        requests24h:
+          type: integer
+          format: int64
+          description: Requests served in the last 24h. Omitted until request metrics are available.
+        errorRate24h:
+          type: number
+          format: double
+          description: Error ratio (0–1) over the last 24h. Omitted until request metrics are available.
+        spendToday:
+          allOf:
+            - $ref: '#/components/schemas/MoneyAmount'
+          description: >
+            Estimated spend since 00:00 UTC. Omitted until billing rollups are
+            available.
+        calculatedAt:
+          type: string
+          format: date-time
+          description: When these metrics were computed.
+
+    Deployment:
+      type: object
+      required:
+        - deploymentId
+        - deploymentName
+        - configuration
+        - secrets
+        - environmentVariables
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        deploymentName:
+          type: string
+        configuration:
+          allOf:
+            - $ref: '#/components/schemas/WorkerConfig'
+          description: Live worker configuration. Updated via `PATCH /deployments/{deploymentId}`.
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Secret'
+        environmentVariables:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvironmentVariable'
+        status:
+          $ref: '#/components/schemas/DeploymentStatus'
+        activeVersionId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Current deployed version; null until the first version is successfully deployed.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeploymentCreate:
+      type: object
+      # Unknown fields are rejected rather than ignored: a stale client sending a
+      # field that has moved (e.g. the top-level `computeType`, now inside
+      # `configuration`) must fail loudly instead of silently getting the default.
+      additionalProperties: false
+      required:
+        - deploymentId
+        - deploymentName
+        - configuration
+        - deploymentSource
+      properties:
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        deploymentName:
+          type: string
+        configuration:
+          $ref: '#/components/schemas/WorkerConfigCreate'
+        deploymentSource:
+          allOf:
+            - $ref: '#/components/schemas/DeploymentSourceUpsert'
+          description: >
+            Write-only. Source for the initial deployment; not returned in the Deployment response.
+            Use the `/builds` endpoints to inspect build status.
+
+            - `code`: the codebase is submitted to the build pipeline; a new image is built and
+              deployed once ready.
+
+            - `container`: a new version is created from the provided image reference and deployed
+              directly, with no build step.
+
+            The deployment transitions to `active` once the first version is ready, or to `failed`
+            if the build, validation, or rollout fails.
+        secrets:
+          type: array
+          description: Names of existing secrets to attach to this deployment.
+          items:
+            type: string
+        environmentVariables:
+          type: object
+          description: Map with environment variables. Keys are the environment variable names,
+            values are the environment variable values
+          additionalProperties:
+            type: string
+        endpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/EndpointCreate'
+
+    DeploymentUpdate:
+      type: object
+      description: >
+        Updates one or more aspects of a deployment in place. All fields are optional;
+        omitted fields are left unchanged. Lifecycle transitions (stop/resume/delete/deploy)
+        use their dedicated operations.
+
+        **Currently applied:** `deploymentName` and `configuration`. Supplying
+        `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
+        until those stores land. When wired, configuration/env/secret changes take effect on
+        the next Scaler cycle; `deploymentSource` triggers a new build and rollout.
+      additionalProperties: false
+      properties:
+        deploymentName:
+          type: string
+          description: Mutable display name; does not affect deployment identity or routing.
+        configuration:
+          $ref: '#/components/schemas/WorkerConfigPatch'
+        deploymentSource:
+          allOf:
+            - $ref: '#/components/schemas/DeploymentSourceUpsert'
+          description: >
+            Write-only. New source to build and deploy; not returned in the Deployment response.
+            Use the `/builds` endpoints to inspect build status. Triggers a build (for `code`
+            sources) or image validation (for `container` sources); on success the resulting
+            version is deployed automatically. On failure the deployment remains on the previous
+            version. Not persisted yet — supplying this field returns `422`.
+        secrets:
+          type: array
+          description: >
+            Names of existing secrets to attach to this deployment. Not persisted yet —
+            supplying this field returns `422`.
+          items:
+            type: string
+        environmentVariables:
+          type: object
+          description: >
+            Map with environment variables. Keys are the environment variable names, values
+            are the environment variable values. Setting the value of an environment variable
+            to null deletes the environment variable from the deployment. Not persisted yet —
+            supplying this field returns `422`.
+          additionalProperties:
+            type: string
+            nullable: true
+        endpoints:
+          type: array
+          description: >
+            Replaces the deployment's endpoints. Not persisted yet — supplying this field
+            returns `422`.
+          items:
+            $ref: '#/components/schemas/EndpointCreate'
+
+    WorkerConfig:
+      type: object
+      required:
+        - id
+        - deploymentId
+        - computeType
+        - gpusPerWorker
+        - minWorkers
+        - maxWorkers
+        - idleTtlSecs
+        - scalingDelaySecs
+        - concurrency
+        - gracefulStopTtlSecs
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        computeType:
+          $ref: '#/components/schemas/ComputeType'
+        gpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          nullable: true
+          description: Preferred GPU type; null when computeType is `cpu`.
+        fallbackGpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          nullable: true
+          description: Secondary GPU type used if the preferred type is unavailable.
+        gpusPerWorker:
+          type: integer
+          format: int32
+          default: 1
+        minWorkers:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+          description: Floor for scale-down; 0 = scale to zero.
+        maxWorkers:
+          type: integer
+          format: int32
+          minimum: 1
+        minAvailableWorkers:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 0
+          description: Minimum number of available (idle) workers kept as a pre-emptive buffer.
+        availableWorkersPct:
+          type: integer
+          format: int32
+          nullable: true
+          description: Scaling buffer as a percentage of incoming task load.
+        idleTtlSecs:
+          type: integer
+          format: int32
+          description: Seconds a worker can sit idle before the Scaler removes it.
+        scalingDelaySecs:
+          type: integer
+          format: int32
+          description: Cooldown between consecutive scaling decisions.
+        concurrency:
+          type: integer
+          format: int32
+          default: 1
+          description: Max tasks a single worker handles simultaneously.
+        gracefulStopTtlSecs:
+          type: integer
+          format: int32
+          default: 120
+          description: Seconds a draining worker is given to finish in-flight tasks before force termination.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WorkerConfigCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - maxWorkers
+        - idleTtlSecs
+        - scalingDelaySecs
+      properties:
+        computeType:
+          allOf:
+            - $ref: '#/components/schemas/ComputeType'
+          default: 'gpu'
+        gpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          nullable: true
+        fallbackGpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          nullable: true
+        gpusPerWorker:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 1
+        minWorkers:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 0
+        maxWorkers:
+          type: integer
+          format: int32
+          minimum: 1
+        minAvailableWorkers:
+          type: integer
+          format: int32
+          minimum: 0
+          nullable: true
+        availableWorkersPct:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+          nullable: true
+        idleTtlSecs:
+          type: integer
+          format: int32
+          minimum: 1
+        scalingDelaySecs:
+          type: integer
+          format: int32
+          minimum: 1
+        concurrency:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 1
+        gracefulStopTtlSecs:
+          type: integer
+          format: int32
+          minimum: 1
+          default: 120
+
+    WorkerConfigPatch:
+      type: object
+      description: >
+        Partial worker configuration. Any field present overwrites the live value; omitted
+        fields are left unchanged. Clearing a nullable live field (setting it to null) is not
+        supported — omit the field to leave it unchanged. `computeType` is create-time only and
+        cannot be patched. Changing `gpuType` or `gpusPerWorker` affects only newly created workers.
+      additionalProperties: false
+      properties:
+        gpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          description: Preferred GPU type. Omit to leave unchanged.
+        fallbackGpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          description: Secondary GPU type. Omit to leave unchanged.
+        gpusPerWorker:
+          type: integer
+          format: int32
+          minimum: 0
+        minWorkers:
+          type: integer
+          format: int32
+          minimum: 0
+        maxWorkers:
+          type: integer
+          format: int32
+          minimum: 1
+        minAvailableWorkers:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Pre-emptive idle-worker buffer. Omit to leave unchanged.
+        availableWorkersPct:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+          description: Scaling buffer as a percentage of load. Omit to leave unchanged.
+        idleTtlSecs:
+          type: integer
+          format: int32
+          minimum: 1
+        scalingDelaySecs:
+          type: integer
+          format: int32
+          minimum: 1
+        concurrency:
+          type: integer
+          format: int32
+          minimum: 1
+        gracefulStopTtlSecs:
+          type: integer
+          format: int32
+          minimum: 1
+
+    Version:
+      type: object
+      required:
+        - id
+        - deploymentId
+        - versionNumber
+        - buildId
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        versionNumber:
+          type: integer
+          format: int32
+          description: Monotonically increasing per deployment; a failed build does not generate a version.
+        buildId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    Build:
+      type: object
+      description: Details of a code build or container validation.
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/BuildStatus"
+        error:
+          type: string
+          nullable: true
+          description: Error message or failure reason; null when the build is still running or succeeded.
+        exitCode:
+          type: integer
+          format: int32
+          nullable: true
+        logTail:
+          type: string
+          nullable: true
+          description: Trailing build log output.
+        createdAt:
+          type: string
+          format: date-time
+
+    ContainerSource:
+      type: object
+      required:
+        - imageRef
+      properties:
+        imageRef:
+          type: string
+          description: Registry URI of a pre-built image, e.g. `ghcr.io/acme/model:v2`.
+        registrySecretName:
+          type: string
+          nullable: true
+          description: Name of a `registry`-type secret used to pull the image.
+
+    CodebaseSource:
+      type: object
+      required:
+        - zipBase64
+        - modelFile
+      properties:
+        zipBase64:
+          type: string
+          description: >
+            Base64-encoded zip archive of the customer's code.
+            Note: move to presigned URL upload for production — base64 bloats the request body for large codebases.
+        modelFile:
+          type: string
+          description: Path within the zip to the MLflow model entry point (e.g. `model.py`).
+
+    DeploymentSourceUpsert:
+      type: object
+      required:
+        - type
+        - source
+      properties:
+        type:
+          type: string
+          enum: [code, container]
+          description: >
+            Selects the version creation path. `code` submits customer source code to
+            the Image Build Service; `container` references a pre-built OCI image.
+        source:
+          oneOf:
+            - $ref: '#/components/schemas/CodeSourceUpsert'
+            - $ref: '#/components/schemas/ContainerSource'
+
+    CodeSourceUpsert:
+      type: object
+      required:
+        - baseImage
+        - codebase
+      properties:
+        baseImage:
+          type: string
+          description: Base image for the builder, e.g. `python:3.11-slim`.
+        requirements:
+          type: array
+          items:
+            type: string
+          description: Additional pip packages to install alongside the codebase.
+        codebase:
+          $ref: '#/components/schemas/CodebaseSource'
+
+    DeployRequest:
+      type: object
+      required:
+        - versionNumber
+      properties:
+        versionNumber:
+          type: integer
+          format: int32
+          description: >
+            Version number to deploy. Must reference a `ready` version on this deployment.
+            Any in-progress or queued builds are cancelled. Use an older version number to roll back.
+
+    Endpoint:
+      type: object
+      required:
+        - id
+        - deploymentId
+        - path
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        path:
+          type: string
+          description: >
+            HTTP path the endpoint is served under, e.g. `/infer`. Inferred from the
+            deployed code and unique within the deployment, so it identifies the
+            endpoint on its own.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EndpointCreate:
+      type: object
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^\S+$'
+          description: >
+            HTTP path the endpoint is served under, e.g. `/infer`. Unique within the
+            deployment. Carries no whitespace, since it lands in a URL path segment,
+            and fits within a URI, hence the 255 character ceiling.
+
+    Worker:
+      type: object
+      required:
+        - id
+        - deploymentId
+        - versionId
+        - podName
+        - nodeName
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        versionId:
+          type: string
+          format: uuid
+        podName:
+          type: string
+        nodeName:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkerStatus'
+        lastSeenAt:
+          type: string
+          format: date-time
+          description: Heartbeat from the shim.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Secret:
+      type: object
+      description: Secret metadata. The encrypted value is never returned.
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/SecretType'
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: >
+            For `registry` secrets: `{"registry_host": "ghcr.io", "username": "acme-bot"}`.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SecretAttach:
+      type: object
+      required:
+        - secretName
+      properties:
+        secretName:
+          type: string
+          description: Name of the secret to attach.
+
+    SecretCreate:
+      type: object
+      required:
+        - name
+        - type
+        - value
+      properties:
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/SecretType'
+        value:
+          type: string
+          description: Plain-text value; encrypted at rest by the platform.
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    SecretUpdate:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    EnvironmentVariable:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        key:
+          type: string
+        value:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EnvironmentVariableUpsert:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+
+    Task:
+      type: object
+      required:
+        - id
+        - status
+        - deploymentId
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: Opaque task identifier returned by the execution backend.
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Inference result payload on success; null otherwise.
+        error:
+          type: string
+          nullable: true
+          description: Failure detail when status is `failed`; null otherwise.
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    UsageEvent:
+      type: object
+      required:
+        - id
+        - deploymentId
+        - workerId
+        - eventType
+        - gpuCount
+        - occurredAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        workerId:
+          type: string
+          format: uuid
+        eventType:
+          $ref: '#/components/schemas/WorkerStatus'
+        gpuCount:
+          type: integer
+          format: int32
+        occurredAt:
+          type: string
+          format: date-time
+          description: >
+            When the transition happened. This is the event time the `from` and
+            `to` filters apply to, and the field to bill on.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the event was recorded. Audit only — may lag `occurredAt`.
+
+    DeploymentEvent:
+      type: object
+      required:
+        - id
+        - deploymentId
+        - type
+        - message
+      properties:
+        id:
+          type: string
+          format: uuid
+        deploymentId:
+          $ref: '#/components/schemas/DeploymentId'
+        workerId:
+          type: string
+          format: uuid
+          nullable: true
+        endpointId:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          $ref: '#/components/schemas/DeploymentEventType'
+        message:
+          type: string
+          pattern: '\S'
+          description: Human-readable description of what happened. Never blank.
+        createdAt:
+          type: string
+          format: date-time
+
+    ProblemDetails:
+      type: object
+      description: >
+        RFC 9457 problem details. Every error response from this API uses this
+        schema with media type `application/problem+json`. `type` is a URI that
+        identifies the problem class and dereferences to its documentation;
+        clients should switch on `type` (not `status` or `detail`, which are not
+        stable identifiers). Additional members beyond those below may appear.
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+          description: >
+            URI reference identifying the problem type. Dereferences to
+            human-readable documentation. `about:blank` denotes "no semantics
+            beyond the HTTP status".
+          example: https://docs.runware.ai/serverless/errors#not-found
+        title:
+          type: string
+          description: >
+            Short, human-readable summary of the problem type (the standard HTTP
+            status text). Stable for a given `type`; does not change from
+            occurrence to occurrence.
+          example: Not Found
+        status:
+          type: integer
+          format: int32
+          description: HTTP status code generated for this occurrence.
+          example: 404
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence.
+          example: No deployment 'img-gen' exists for the authenticated organisation.
+        instance:
+          type: string
+          format: uri-reference
+          description: URI reference identifying the specific occurrence (the request path).
+          example: /v1/deployments/img-gen
+        requestId:
+          type: string
+          description: >
+            Extension member. Correlation id for this request, echoed in the
+            `X-Request-Id` response header; quote it when reporting problems.
+        errors:
+          type: array
+          description: >
+            Extension member. Present on validation failures (`422`); one entry
+            per offending request field.
+          items:
+            $ref: '#/components/schemas/ProblemError'
+
+    ProblemError:
+      type: object
+      description: A single field-level validation error within a ProblemDetails.
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable reason this field was rejected.
+          example: is required
+        pointer:
+          type: string
+          description: >
+            JSON Pointer (RFC 6901) to the offending field in the request body,
+            e.g. `/configuration/maxWorkers`. Absent for non-body parameters.
+          example: /configuration/maxWorkers
