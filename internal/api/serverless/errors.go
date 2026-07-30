@@ -40,9 +40,11 @@ func rawCodeForStatus(statusCode int) string {
 	case http.StatusForbidden:
 		return "forbidden"
 	case http.StatusNotFound:
-		return "notFound"
+		return "resourceNotFound"
 	case http.StatusConflict:
 		return "conflict"
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return "validationFailed"
 	default:
 		// Must be a key in transport.serverErrorCodes so DeriveCode returns
 		// CodeServerError rather than CodeUnknown.

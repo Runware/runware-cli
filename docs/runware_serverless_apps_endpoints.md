@@ -3,7 +3,7 @@
 List endpoints for a serverless application
 
 ```
-runware serverless apps endpoints <name> [flags]
+runware serverless apps endpoints <deploymentId> [flags]
 ```
 
 ### Examples
@@ -16,7 +16,8 @@ runware serverless apps endpoints <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for endpoints
+  -h, --help        help for endpoints
+      --limit int   Maximum number of endpoints to return (1-100)
 ```
 
 ### Options inherited from parent commands

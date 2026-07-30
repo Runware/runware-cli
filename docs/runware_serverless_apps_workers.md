@@ -3,7 +3,7 @@
 List workers for a serverless application
 
 ```
-runware serverless apps workers <name> [flags]
+runware serverless apps workers <deploymentId> [flags]
 ```
 
 ### Examples
@@ -11,12 +11,17 @@ runware serverless apps workers <name> [flags]
 ```
   # list workers for an application
   runware serverless apps workers my-app
+
+  # filter by status
+  runware serverless apps workers my-app --status ready
 ```
 
 ### Options
 
 ```
-  -h, --help   help for workers
+  -h, --help            help for workers
+      --limit int       Maximum number of workers to return (1-100)
+      --status string   Filter by status (ready, busy, pending, …)
 ```
 
 ### Options inherited from parent commands

@@ -17,13 +17,13 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 	cmd.AddCommand(
 		newInitCmd(),
 		newDevCmd(),
-		newDeployCmd(),
+		newDeployCmd(logger),
 		newUsageCmd(),
 		newGPUsCmd(logger),
 		newOpenCmd(),
 		newUseCmd(),
 		newRegistryCmd(),
-		newAppsCmd(),
+		newAppsCmd(logger),
 	)
 	return cmd
 }

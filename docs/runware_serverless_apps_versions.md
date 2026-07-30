@@ -3,7 +3,7 @@
 List versions of a serverless application
 
 ```
-runware serverless apps versions <name> [flags]
+runware serverless apps versions <deploymentId> [flags]
 ```
 
 ### Examples
@@ -16,7 +16,8 @@ runware serverless apps versions <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for versions
+  -h, --help        help for versions
+      --limit int   Maximum number of versions to return (1-100)
 ```
 
 ### Options inherited from parent commands
