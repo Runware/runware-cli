@@ -4,7 +4,7 @@ Manage deployed serverless applications
 
 ### Synopsis
 
-Manage deployed serverless applications (deployments) on the Runware platform.
+Manage deployed serverless applications on the Runware platform.
 
 ```
 runware serverless apps [flags]
