@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,5 +66,29 @@ func TestPackPythonFile_Directory(t *testing.T) {
 	_, _, err := packPythonFile(t.TempDir())
 	if err == nil {
 		t.Fatal("expected error for directory")
+	}
+}
+
+func TestPackPythonFile_TooLarge(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "huge.py")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(maxPackEntryBytes + 1); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = packPythonFile(path)
+	if err == nil {
+		t.Fatal("expected error for oversized entry file")
+	}
+	if !strings.Contains(err.Error(), "maximum supported size") {
+		t.Errorf("error %q does not mention size limit", err)
 	}
 }
