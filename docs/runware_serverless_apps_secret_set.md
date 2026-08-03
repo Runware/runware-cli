@@ -3,7 +3,7 @@
 Set a secret on a serverless application
 
 ```
-runware serverless apps secret set <name> [flags]
+runware serverless apps secret set <deploymentId> [flags]
 ```
 
 ### Examples

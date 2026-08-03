@@ -3,7 +3,7 @@
 Stop a serverless application
 
 ```
-runware serverless apps stop <name> [flags]
+runware serverless apps stop <deploymentId> [flags]
 ```
 
 ### Examples

@@ -23,6 +23,10 @@ import (
 // defaultTimeout bounds a single REST request.
 const defaultTimeout = 30 * time.Second
 
+// createDeploymentTimeout bounds createDeployment, which uploads a base64 zip
+// and can exceed the default request timeout on slow links or larger codebases.
+const createDeploymentTimeout = 5 * time.Minute
+
 // GpuType is the public catalogue entry for a supported GPU type.
 type GpuType = gen.GpuType
 
@@ -82,9 +86,11 @@ const DeploymentSourceTypeCode = gen.Code
 
 // Client talks to the Serverless control-plane REST API.
 type Client struct {
-	apiKey string
-	inner  *gen.ClientWithResponses
-	logger *slog.Logger
+	apiKey  string
+	baseURL string
+	doer    gen.HttpRequestDoer
+	inner   *gen.ClientWithResponses
+	logger  *slog.Logger
 }
 
 // NewClient creates a Serverless API client for the given API key and base URL.
@@ -93,13 +99,24 @@ func NewClient(apiKey, baseURL string, logger *slog.Logger) *Client {
 }
 
 func newClient(apiKey, baseURL string, logger *slog.Logger, httpClient gen.HttpRequestDoer) *Client {
+	base := strings.TrimSuffix(baseURL, "/") + "/"
+	return &Client{
+		apiKey:  apiKey,
+		baseURL: base,
+		doer:    httpClient,
+		inner:   newGeneratedClient(apiKey, base, httpClient),
+		logger:  logger,
+	}
+}
+
+func newGeneratedClient(apiKey, baseURL string, httpClient gen.HttpRequestDoer) *gen.ClientWithResponses {
 	ua := buildinfo.UserAgent()
 	if agent := agents.Detect(); agent != "" {
 		ua += " agent/" + string(agent)
 	}
 
 	inner, err := gen.NewClientWithResponses(
-		strings.TrimSuffix(baseURL, "/")+"/",
+		baseURL,
 		gen.WithHTTPClient(httpClient),
 		gen.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -113,12 +130,24 @@ func newClient(apiKey, baseURL string, logger *slog.Logger, httpClient gen.HttpR
 		// our options do not, so treat this as a programmer error.
 		panic(fmt.Sprintf("serverless client: %v", err))
 	}
+	return inner
+}
 
-	return &Client{
-		apiKey: apiKey,
-		inner:  inner,
-		logger: logger,
+// createInner returns a generated client suitable for createDeployment.
+// When the underlying doer is an *http.Client with a positive Timeout shorter
+// than createDeploymentTimeout, a clone with the longer timeout is used so
+// large uploads are not cut off. A zero Timeout (no deadline) is left unchanged.
+func (c *Client) createInner() *gen.ClientWithResponses {
+	hc, ok := c.doer.(*http.Client)
+	if !ok {
+		return c.inner
 	}
+	if hc.Timeout == 0 || hc.Timeout >= createDeploymentTimeout {
+		return c.inner
+	}
+	cloned := *hc
+	cloned.Timeout = createDeploymentTimeout
+	return newGeneratedClient(c.apiKey, c.baseURL, &cloned)
 }
 
 // ListGpuTypes returns the catalogue of supported GPU types and their pricing.
@@ -151,7 +180,7 @@ func (c *Client) ListGpuTypes(ctx context.Context) ([]GpuType, error) {
 	case http.StatusForbidden:
 		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	default:
-		return nil, problemToError(nil, resp.StatusCode())
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
@@ -161,7 +190,7 @@ func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreate) (*
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.CreateDeploymentWithResponse(ctx, body)
+	resp, err := c.createInner().CreateDeploymentWithResponse(ctx, body)
 	if err != nil {
 		return nil, fmt.Errorf("create deployment: %w", err)
 	}
@@ -191,7 +220,7 @@ func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreate) (*
 	case http.StatusUnprocessableEntity:
 		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
-		return nil, problemToError(nil, resp.StatusCode())
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
@@ -225,7 +254,7 @@ func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsPar
 	case http.StatusForbidden:
 		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	default:
-		return nil, problemToError(nil, resp.StatusCode())
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
@@ -261,7 +290,7 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentID string) (*Deplo
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
-		return nil, problemToError(nil, resp.StatusCode())
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
@@ -297,7 +326,7 @@ func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params 
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
-		return nil, problemToError(nil, resp.StatusCode())
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
@@ -333,7 +362,7 @@ func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
-		return nil, problemToError(nil, resp.StatusCode())
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
@@ -369,7 +398,7 @@ func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *L
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
-		return nil, problemToError(nil, resp.StatusCode())
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 

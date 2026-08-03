@@ -3,7 +3,7 @@
 Remove a secret from a serverless application
 
 ```
-runware serverless apps secret remove <name> [flags]
+runware serverless apps secret remove <deploymentId> [flags]
 ```
 
 ### Examples

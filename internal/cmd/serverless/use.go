@@ -4,7 +4,7 @@ import "github.com/spf13/cobra"
 
 func newUseCmd() *cobra.Command {
 	return stubLeaf(
-		"use <name>",
+		"use <deploymentId>",
 		"Set the default serverless application",
 		`  # set my-app as the default deployment for subsequent commands
   runware serverless use my-app`,

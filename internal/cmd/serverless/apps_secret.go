@@ -15,7 +15,7 @@ func newAppsSecretCmd() *cobra.Command {
 
 func newAppsSecretSetCmd() *cobra.Command {
 	return stubLeaf(
-		"set <name>",
+		"set <deploymentId>",
 		"Set a secret on a serverless application",
 		`  # attach or update a secret on an application
   runware serverless apps secret set my-app`,
@@ -25,7 +25,7 @@ func newAppsSecretSetCmd() *cobra.Command {
 
 func newAppsSecretListCmd() *cobra.Command {
 	return stubLeaf(
-		"list <name>",
+		"list <deploymentId>",
 		"List secrets for a serverless application",
 		`  # list secrets attached to an application
   runware serverless apps secret list my-app`,
@@ -35,7 +35,7 @@ func newAppsSecretListCmd() *cobra.Command {
 
 func newAppsSecretRemoveCmd() *cobra.Command {
 	return stubLeaf(
-		"remove <name>",
+		"remove <deploymentId>",
 		"Remove a secret from a serverless application",
 		`  # detach a secret from an application
   runware serverless apps secret remove my-app`,

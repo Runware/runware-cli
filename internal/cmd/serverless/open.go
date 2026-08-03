@@ -34,7 +34,7 @@ func newOpenCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "open <deploymentId>",
 		Short: "Open an application in the Runware dashboard",
-		Example: `  # open a application's dashboard page in your browser
+		Example: `  # open an application's dashboard page in your browser
   runware serverless open my-model-abc`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

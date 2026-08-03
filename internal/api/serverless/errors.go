@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -29,6 +30,23 @@ func problemToError(p *gen.ProblemDetails, statusCode int) error {
 		msg,
 		transport.RunwareErrorDetails{StatusCode: statusCode},
 	)
+}
+
+// problemFromBody attempts to decode an RFC 9457 ProblemDetails from a response
+// body when the generated client did not bind a typed problem for this status.
+// Falls back to a status-only error when the body is empty or not a problem.
+func problemFromBody(body []byte, statusCode int) error {
+	if len(body) > 0 {
+		var p gen.ProblemDetails
+		if err := json.Unmarshal(body, &p); err == nil && isProblemDetails(p) {
+			return problemToError(&p, statusCode)
+		}
+	}
+	return problemToError(nil, statusCode)
+}
+
+func isProblemDetails(p gen.ProblemDetails) bool {
+	return p.Title != "" || p.Type != "" || p.Status != 0 || (p.Detail != nil && *p.Detail != "")
 }
 
 // rawCodeForStatus maps an HTTP status to a raw error code string that

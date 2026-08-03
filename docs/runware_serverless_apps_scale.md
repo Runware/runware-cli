@@ -3,7 +3,7 @@
 Scale a serverless application
 
 ```
-runware serverless apps scale <name> [flags]
+runware serverless apps scale <deploymentId> [flags]
 ```
 
 ### Examples

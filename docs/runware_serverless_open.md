@@ -9,7 +9,7 @@ runware serverless open <deploymentId> [flags]
 ### Examples
 
 ```
-  # open a application's dashboard page in your browser
+  # open an application's dashboard page in your browser
   runware serverless open my-model-abc
 ```
 

@@ -93,6 +93,28 @@ func TestListGpuTypes_ServerError(t *testing.T) {
 	}
 }
 
+func TestListGpuTypes_UnhandledStatusKeepsProblemDetails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Service Unavailable","status":503,"detail":"Control plane is draining"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.ListGpuTypes(context.Background())
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Message != "Control plane is draining" {
+		t.Errorf("unexpected message: %q", re.Message)
+	}
+	if re.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", re.StatusCode)
+	}
+}
+
 func TestCreateDeployment(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/deployments" {

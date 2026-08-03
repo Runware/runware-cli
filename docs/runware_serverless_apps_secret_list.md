@@ -3,7 +3,7 @@
 List secrets for a serverless application
 
 ```
-runware serverless apps secret list <name> [flags]
+runware serverless apps secret list <deploymentId> [flags]
 ```
 
 ### Examples

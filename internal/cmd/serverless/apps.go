@@ -183,7 +183,7 @@ func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
 
 func newAppsLogsCmd() *cobra.Command {
 	return stubLeaf(
-		"logs <name>",
+		"logs <deploymentId>",
 		"Show logs for a serverless application",
 		`  # fetch or stream logs for an application
   runware serverless apps logs my-app`,
@@ -255,7 +255,7 @@ func listLimitParams(limit int) *serverlessapi.ListEndpointsParams {
 
 func newAppsScaleCmd() *cobra.Command {
 	return stubLeaf(
-		"scale <name>",
+		"scale <deploymentId>",
 		"Scale a serverless application",
 		`  # update scaling configuration for an application
   runware serverless apps scale my-app`,
@@ -265,7 +265,7 @@ func newAppsScaleCmd() *cobra.Command {
 
 func newAppsUsageCmd() *cobra.Command {
 	return stubLeaf(
-		"usage <name>",
+		"usage <deploymentId>",
 		"Show usage for a serverless application",
 		`  # show usage events for an application
   runware serverless apps usage my-app`,
@@ -275,7 +275,7 @@ func newAppsUsageCmd() *cobra.Command {
 
 func newAppsStopCmd() *cobra.Command {
 	return stubLeaf(
-		"stop <name>",
+		"stop <deploymentId>",
 		"Stop a serverless application",
 		`  # stop a running application
   runware serverless apps stop my-app`,
@@ -285,7 +285,7 @@ func newAppsStopCmd() *cobra.Command {
 
 func newAppsResumeCmd() *cobra.Command {
 	return stubLeaf(
-		"resume <name>",
+		"resume <deploymentId>",
 		"Resume a stopped serverless application",
 		`  # resume a stopped application
   runware serverless apps resume my-app`,
@@ -295,7 +295,7 @@ func newAppsResumeCmd() *cobra.Command {
 
 func newAppsDeleteCmd() *cobra.Command {
 	return stubLeaf(
-		"delete <name>",
+		"delete <deploymentId>",
 		"Delete a serverless application",
 		`  # delete an application
   runware serverless apps delete my-app`,
