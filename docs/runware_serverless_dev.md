@@ -1,22 +1,25 @@
-## runware serverless open
+## runware serverless dev
 
-Open an application in the Runware dashboard
+Run a serverless application locally for development
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless dev [file] [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # run the project entrypoint locally
+  runware serverless dev
+
+  # run a specific Python file
+  runware serverless dev ./app.py
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for dev
 ```
 
 ### Options inherited from parent commands

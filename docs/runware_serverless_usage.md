@@ -1,22 +1,22 @@
-## runware serverless open
+## runware serverless usage
 
-Open an application in the Runware dashboard
+Show serverless usage and billing events
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless usage [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # list usage events for the authenticated organisation
+  runware serverless usage
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for usage
 ```
 
 ### Options inherited from parent commands

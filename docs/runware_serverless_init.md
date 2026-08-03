@@ -1,22 +1,25 @@
-## runware serverless open
+## runware serverless init
 
-Open an application in the Runware dashboard
+Initialize a new serverless project
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless init [name] [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # scaffold a new serverless project in the current directory
+  runware serverless init
+
+  # scaffold a project with a specific name
+  runware serverless init my-app
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for init
 ```
 
 ### Options inherited from parent commands

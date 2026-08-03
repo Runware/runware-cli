@@ -1,22 +1,22 @@
-## runware serverless open
+## runware serverless apps delete
 
-Open an application in the Runware dashboard
+Delete a serverless application
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless apps delete <deploymentId> [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # delete an application
+  runware serverless apps delete my-app
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +30,5 @@ runware serverless open <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
 

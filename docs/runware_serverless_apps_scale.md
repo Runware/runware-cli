@@ -1,22 +1,22 @@
-## runware serverless open
+## runware serverless apps scale
 
-Open an application in the Runware dashboard
+Scale a serverless application
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless apps scale <deploymentId> [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # update scaling configuration for an application
+  runware serverless apps scale my-app
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for scale
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +30,5 @@ runware serverless open <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
 

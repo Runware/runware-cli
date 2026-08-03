@@ -1,22 +1,22 @@
-## runware serverless open
+## runware serverless apps logs
 
-Open an application in the Runware dashboard
+Show logs for a serverless application
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless apps logs <deploymentId> [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # fetch or stream logs for an application
+  runware serverless apps logs my-app
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for logs
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +30,5 @@ runware serverless open <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
 

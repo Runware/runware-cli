@@ -1,22 +1,22 @@
-## runware serverless open
+## runware serverless registry add
 
-Open an application in the Runware dashboard
+Add a container registry
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless registry add <name> [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # add a container registry credential
+  runware serverless registry add ghcr
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for add
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +30,5 @@ runware serverless open <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless registry](runware_serverless_registry.md)	 - Manage container registries for serverless deployments
 

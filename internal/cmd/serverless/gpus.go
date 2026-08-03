@@ -44,13 +44,14 @@ func newGPUsCmd(logger *log.Logger) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			spin := cmdutil.NewSpinner("Fetching GPU types...")
 			spin.Start()
-			defer spin.Stop()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
 			gpus, err := client.ListGpuTypes(cmd.Context())
 			if err != nil {
+				spin.Stop()
 				return err
 			}
+			spin.Stop()
 
 			return output.Print(cmdutil.FormatFor(cmd), gpuTypesResult(gpus))
 		},

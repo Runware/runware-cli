@@ -15,9 +15,15 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		Long:  "Deploy, monitor, and manage Runware serverless applications on the platform",
 	}
 	cmd.AddCommand(
-		newDeployCmd(),
+		newInitCmd(),
+		newDevCmd(),
+		newDeployCmd(logger),
+		newUsageCmd(),
 		newGPUsCmd(logger),
 		newOpenCmd(),
+		newUseCmd(),
+		newRegistryCmd(),
+		newAppsCmd(logger),
 	)
 	return cmd
 }

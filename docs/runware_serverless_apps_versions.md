@@ -1,22 +1,23 @@
-## runware serverless open
+## runware serverless apps versions
 
-Open an application in the Runware dashboard
+List versions of a serverless application
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless apps versions <deploymentId> [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # list deployed versions
+  runware serverless apps versions my-app
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help        help for versions
+      --limit int   Maximum number of versions to return (1-100)
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +31,5 @@ runware serverless open <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
 

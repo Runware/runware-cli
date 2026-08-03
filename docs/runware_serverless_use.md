@@ -1,22 +1,22 @@
-## runware serverless open
+## runware serverless use
 
-Open an application in the Runware dashboard
+Set the default serverless application
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless use <deploymentId> [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # set my-app as the default deployment for subsequent commands
+  runware serverless use my-app
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for use
 ```
 
 ### Options inherited from parent commands

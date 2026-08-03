@@ -1,22 +1,22 @@
-## runware serverless open
+## runware serverless apps secret remove
 
-Open an application in the Runware dashboard
+Remove a secret from a serverless application
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless apps secret remove <deploymentId> [flags]
 ```
 
 ### Examples
 
 ```
-  # open an application's dashboard page in your browser
-  runware serverless open my-model-abc
+  # detach a secret from an application
+  runware serverless apps secret remove my-app
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -h, --help   help for remove
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +30,5 @@ runware serverless open <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless apps secret](runware_serverless_apps_secret.md)	 - Manage secrets for a serverless application
 
