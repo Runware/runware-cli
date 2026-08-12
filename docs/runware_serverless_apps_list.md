@@ -14,11 +14,15 @@ runware serverless apps list [flags]
 
   # filter by status
   runware serverless apps list --status active
+
+  # page through results
+  runware serverless apps list --limit 20 --cursor <nextCursor>
 ```
 
 ### Options
 
 ```
+      --cursor string   Pagination cursor from a previous nextCursor
   -h, --help            help for list
       --limit int       Maximum number of applications to return (1-100)
       --status string   Filter by status (active, initializing, stopped, …)

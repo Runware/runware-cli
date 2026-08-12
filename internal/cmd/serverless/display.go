@@ -1,9 +1,12 @@
 package serverless
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/output"
 )
 
 const (
@@ -29,7 +32,7 @@ func (r deploymentResult) Rows() [][]any {
 	}}
 }
 
-// deploymentsResult wraps a deployment list for table/json/yaml display.
+// deploymentsResult wraps a deployment list for table display.
 type deploymentsResult []serverlessapi.Deployment
 
 func (r deploymentsResult) Headers() []string {
@@ -50,7 +53,7 @@ func (r deploymentsResult) Rows() [][]any {
 	return rows
 }
 
-// endpointsResult wraps endpoint lists for display.
+// endpointsResult wraps endpoint lists for table display.
 type endpointsResult []serverlessapi.Endpoint
 
 func (r endpointsResult) Headers() []string {
@@ -70,7 +73,7 @@ func (r endpointsResult) Rows() [][]any {
 	return rows
 }
 
-// versionsResult wraps version lists for display.
+// versionsResult wraps version lists for table display.
 type versionsResult []serverlessapi.Version
 
 func (r versionsResult) Headers() []string {
@@ -91,7 +94,7 @@ func (r versionsResult) Rows() [][]any {
 	return rows
 }
 
-// workersResult wraps worker lists for display.
+// workersResult wraps worker lists for table display.
 type workersResult []serverlessapi.Worker
 
 func (r workersResult) Headers() []string {
@@ -118,4 +121,26 @@ func formatOptionalTime(t *time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+// printPage prints a cursor-paginated list. JSON/YAML use the API page shape
+// (data + nextCursor). Table format renders rows, then hints at --cursor on stderr.
+func printPage[T any](format output.Format, page serverlessapi.Page[T], table output.Tabular) error {
+	switch format {
+	case output.FormatJSON, output.FormatYAML:
+		return output.Print(format, page)
+	default:
+		if err := output.Print(format, table); err != nil {
+			return err
+		}
+		printNextCursor(page.NextCursor)
+		return nil
+	}
+}
+
+func printNextCursor(next *string) {
+	if next == nil || *next == "" {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "\nNext page: --cursor %s\n", *next)
 }

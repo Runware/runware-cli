@@ -14,11 +14,15 @@ runware serverless apps workers <deploymentId> [flags]
 
   # filter by status
   runware serverless apps workers my-app --status ready
+
+  # page through results
+  runware serverless apps workers my-app --limit 20 --cursor <nextCursor>
 ```
 
 ### Options
 
 ```
+      --cursor string   Pagination cursor from a previous nextCursor
   -h, --help            help for workers
       --limit int       Maximum number of workers to return (1-100)
       --status string   Filter by status (ready, busy, pending, …)
