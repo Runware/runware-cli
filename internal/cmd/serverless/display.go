@@ -2,7 +2,7 @@ package serverless
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"time"
 
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -124,8 +124,9 @@ func formatOptionalTime(t *time.Time) string {
 }
 
 // printPage prints a cursor-paginated list. JSON/YAML use the API page shape
-// (data + nextCursor). Table format renders rows, then hints at --cursor on stderr.
-func printPage[T any](format output.Format, page serverlessapi.Page[T], table output.Tabular) error {
+// (data + nextCursor). Table format renders rows, then hints at --cursor on errOut
+// (typically cmd.ErrOrStderr()).
+func printPage[T any](format output.Format, page serverlessapi.Page[T], table output.Tabular, errOut io.Writer) error {
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
 		return output.Print(format, page)
@@ -133,14 +134,14 @@ func printPage[T any](format output.Format, page serverlessapi.Page[T], table ou
 		if err := output.Print(format, table); err != nil {
 			return err
 		}
-		printNextCursor(page.NextCursor)
-		return nil
+		return printNextCursor(errOut, page.NextCursor)
 	}
 }
 
-func printNextCursor(next *string) {
+func printNextCursor(errOut io.Writer, next *string) error {
 	if next == nil || *next == "" {
-		return
+		return nil
 	}
-	fmt.Fprintf(os.Stderr, "\nNext page: --cursor %s\n", *next)
+	_, err := fmt.Fprintf(errOut, "\nNext page: --cursor %s\n", *next)
+	return err
 }

@@ -265,7 +265,7 @@ func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsPar
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return Page[Deployment]{Data: []Deployment{}}, nil
+			return pageOf[Deployment](nil, nil), nil
 		}
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
@@ -335,7 +335,7 @@ func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params 
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return Page[Endpoint]{Data: []Endpoint{}}, nil
+			return pageOf[Endpoint](nil, nil), nil
 		}
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
@@ -371,7 +371,7 @@ func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return Page[Version]{Data: []Version{}}, nil
+			return pageOf[Version](nil, nil), nil
 		}
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
@@ -407,7 +407,7 @@ func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *L
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return Page[Worker]{Data: []Worker{}}, nil
+			return pageOf[Worker](nil, nil), nil
 		}
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
