@@ -54,6 +54,9 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
   runware serverless apps list --limit 20 --cursor <nextCursor>`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			var params *serverlessapi.ListDeploymentsParams
 			if limit > 0 || cursor != "" || status != "" {
 				params = &serverlessapi.ListDeploymentsParams{}
@@ -131,6 +134,9 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
   runware serverless apps endpoints my-app --limit 20 --cursor <nextCursor>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			id := args[0]
 			params := listEndpointsParams(limit, cursor)
 
@@ -170,6 +176,9 @@ func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
   runware serverless apps versions my-app --limit 20 --cursor <nextCursor>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			id := args[0]
 			var params *serverlessapi.ListVersionsParams
 			if limit > 0 || cursor != "" {
@@ -227,6 +236,9 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
   runware serverless apps workers my-app --limit 20 --cursor <nextCursor>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			id := args[0]
 			var params *serverlessapi.ListWorkersParams
 			if limit > 0 || cursor != "" || status != "" {
@@ -262,7 +274,18 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 	return cmd
 }
 
-// listPageParams builds shared limit/cursor query values for list endpoints.
+// validateListLimit checks --limit when set. Zero means unset (API default).
+func validateListLimit(limit int) error {
+	if limit == 0 {
+		return nil
+	}
+	if limit < 1 || limit > 100 {
+		return fmt.Errorf("--limit must be between 1 and 100")
+	}
+	return nil
+}
+
+// listPageParams builds shared limit/cursor query values for cursor-paginated list commands.
 func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverlessapi.Cursor) {
 	var (
 		limitOut  *serverlessapi.Limit

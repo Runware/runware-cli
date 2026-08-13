@@ -26,6 +26,24 @@ func TestListPageParams(t *testing.T) {
 	}
 }
 
+func TestValidateListLimit(t *testing.T) {
+	if err := validateListLimit(0); err != nil {
+		t.Fatalf("unset limit: %v", err)
+	}
+	if err := validateListLimit(1); err != nil {
+		t.Fatalf("limit 1: %v", err)
+	}
+	if err := validateListLimit(100); err != nil {
+		t.Fatalf("limit 100: %v", err)
+	}
+	if err := validateListLimit(-1); err == nil {
+		t.Fatal("expected error for limit -1")
+	}
+	if err := validateListLimit(101); err == nil {
+		t.Fatal("expected error for limit 101")
+	}
+}
+
 func TestPrintPage_TableWritesNextCursorToStderr(t *testing.T) {
 	next := "page-2"
 	page := serverlessapi.Page[serverlessapi.Deployment]{
@@ -52,9 +70,12 @@ func captureStderr(t *testing.T, fn func()) string {
 	}
 	os.Stderr = w
 	defer func() { os.Stderr = orig }()
+	defer func() { _ = r.Close() }()
 
-	fn()
-	_ = w.Close()
+	func() {
+		defer func() { _ = w.Close() }()
+		fn()
+	}()
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, r); err != nil {

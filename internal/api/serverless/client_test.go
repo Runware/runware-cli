@@ -11,7 +11,11 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-const testDeploymentID = "my-app"
+const (
+	testDeploymentID = "my-app"
+	testCursorPage2  = "page-2"
+	testCursorPage3  = "page-3"
+)
 
 func TestListGpuTypes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +206,46 @@ func TestCreateDeployment_NoAPIKey(t *testing.T) {
 	}
 }
 
+func TestPageOf_PreservesNextCursorWhenDataNil(t *testing.T) {
+	next := testCursorPage2
+	page := pageOf[Deployment](nil, &next)
+	if len(page.Data) != 0 {
+		t.Fatalf("expected empty data, got %+v", page.Data)
+	}
+	if page.NextCursor == nil || *page.NextCursor != testCursorPage2 {
+		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
+	}
+
+	var nilSlice []Deployment
+	page = pageOf(&nilSlice, &next)
+	if page.Data == nil {
+		t.Fatal("expected non-nil empty data slice")
+	}
+	if page.NextCursor == nil || *page.NextCursor != testCursorPage2 {
+		t.Fatalf("unexpected nextCursor for nil slice: %+v", page.NextCursor)
+	}
+}
+
+func TestListDeployments_EmptyDataKeepsNextCursor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"nextCursor":"` + testCursorPage2 + `"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	page, err := c.ListDeployments(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListDeployments: %v", err)
+	}
+	if len(page.Data) != 0 {
+		t.Fatalf("expected empty data, got %+v", page.Data)
+	}
+	if page.NextCursor == nil || *page.NextCursor != testCursorPage2 {
+		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
+	}
+}
+
 func TestListDeployments(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/deployments" {
@@ -213,8 +257,8 @@ func TestListDeployments(t *testing.T) {
 		if got := r.URL.Query().Get("limit"); got != "10" {
 			t.Errorf("limit query = %q, want 10", got)
 		}
-		if got := r.URL.Query().Get("cursor"); got != "page-2" {
-			t.Errorf("cursor query = %q, want page-2", got)
+		if got := r.URL.Query().Get("cursor"); got != testCursorPage2 {
+			t.Errorf("cursor query = %q, want %s", got, testCursorPage2)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
@@ -226,12 +270,12 @@ func TestListDeployments(t *testing.T) {
 			"secrets":[],
 			"createdAt":"2026-07-30T12:00:00Z",
 			"updatedAt":"2026-07-30T12:00:00Z"
-		}],"nextCursor":"page-3"}`))
+		}],"nextCursor":"` + testCursorPage3 + `"}`))
 	}))
 	defer srv.Close()
 
 	limit := Limit(10)
-	cursor := Cursor("page-2")
+	cursor := Cursor(testCursorPage2)
 	status := DeploymentStatus("active")
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
 	page, err := c.ListDeployments(context.Background(), &ListDeploymentsParams{
@@ -245,7 +289,7 @@ func TestListDeployments(t *testing.T) {
 	if len(page.Data) != 1 || page.Data[0].DeploymentId != testDeploymentID {
 		t.Fatalf("unexpected deployments: %+v", page.Data)
 	}
-	if page.NextCursor == nil || *page.NextCursor != "page-3" {
+	if page.NextCursor == nil || *page.NextCursor != testCursorPage3 {
 		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
 	}
 }

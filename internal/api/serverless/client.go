@@ -91,8 +91,11 @@ type Page[T any] struct {
 const DeploymentSourceTypeCode = gen.Code
 
 func pageOf[T any](data *[]T, nextCursor *string) Page[T] {
-	if data == nil {
-		return Page[T]{Data: []T{}}
+	if data == nil || *data == nil {
+		return Page[T]{
+			Data:       []T{},
+			NextCursor: nextCursor,
+		}
 	}
 	return Page[T]{
 		Data:       *data,
