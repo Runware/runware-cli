@@ -81,7 +81,7 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data))
+			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data), cmd.ErrOrStderr())
 		},
 	}
 
@@ -138,7 +138,11 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 			id := args[0]
-			params := listEndpointsParams(limit, cursor)
+			var params *serverlessapi.ListEndpointsParams
+			if limit > 0 || cursor != "" {
+				params = &serverlessapi.ListEndpointsParams{}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
+			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching endpoints for %s...", id))
 			spin.Start()
@@ -151,7 +155,7 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data))
+			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data), cmd.ErrOrStderr())
 		},
 	}
 
@@ -197,7 +201,7 @@ func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data))
+			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data), cmd.ErrOrStderr())
 		},
 	}
 
@@ -264,7 +268,7 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data))
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr())
 		},
 	}
 
@@ -300,16 +304,6 @@ func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverless
 		cursorOut = &c
 	}
 	return limitOut, cursorOut
-}
-
-// listEndpointsParams builds ListEndpointsParams when --limit or --cursor is set.
-func listEndpointsParams(limit int, cursor string) *serverlessapi.ListEndpointsParams {
-	if limit <= 0 && cursor == "" {
-		return nil
-	}
-	params := &serverlessapi.ListEndpointsParams{}
-	params.Limit, params.Cursor = listPageParams(limit, cursor)
-	return params
 }
 
 func newAppsScaleCmd() *cobra.Command {
