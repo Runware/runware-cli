@@ -11,13 +11,17 @@ runware serverless apps endpoints <deploymentId> [flags]
 ```
   # list endpoints for an application
   runware serverless apps endpoints my-app
+
+  # page through results
+  runware serverless apps endpoints my-app --limit 20 --cursor <nextCursor>
 ```
 
 ### Options
 
 ```
-  -h, --help        help for endpoints
-      --limit int   Maximum number of endpoints to return (1-100)
+      --cursor string   Pagination cursor from a previous nextCursor
+  -h, --help            help for endpoints
+      --limit int       Maximum number of endpoints to return (1-100)
 ```
 
 ### Options inherited from parent commands

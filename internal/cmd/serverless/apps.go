@@ -37,6 +37,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 func newAppsListCmd(logger *log.Logger) *cobra.Command {
 	var (
 		limit  int
+		cursor string
 		status string
 	)
 
@@ -47,16 +48,19 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
   runware serverless apps list
 
   # filter by status
-  runware serverless apps list --status active`,
+  runware serverless apps list --status active
+
+  # page through results
+  runware serverless apps list --limit 20 --cursor <nextCursor>`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			var params *serverlessapi.ListDeploymentsParams
-			if limit > 0 || status != "" {
+			if limit > 0 || cursor != "" || status != "" {
 				params = &serverlessapi.ListDeploymentsParams{}
-				if limit > 0 {
-					l := serverlessapi.Limit(limit)
-					params.Limit = &l
-				}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
 				if status != "" {
 					s := serverlessapi.DeploymentStatus(status)
 					if !s.Valid() {
@@ -70,18 +74,19 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			deps, err := client.ListDeployments(cmd.Context(), params)
+			page, err := client.ListDeployments(cmd.Context(), params)
 			if err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), deploymentsResult(deps))
+			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of applications to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, initializing, stopped, …)")
 
 	return cmd
@@ -114,70 +119,90 @@ func newAppsShowCmd(logger *log.Logger) *cobra.Command {
 }
 
 func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
-	var limit int
+	var (
+		limit  int
+		cursor string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "endpoints <deploymentId>",
 		Short: "List endpoints for a serverless application",
 		Example: `  # list endpoints for an application
-  runware serverless apps endpoints my-app`,
+  runware serverless apps endpoints my-app
+
+  # page through results
+  runware serverless apps endpoints my-app --limit 20 --cursor <nextCursor>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			id := args[0]
-			params := listLimitParams(limit)
+			params := listEndpointsParams(limit, cursor)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching endpoints for %s...", id))
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			items, err := client.ListEndpoints(cmd.Context(), id, params)
+			page, err := client.ListEndpoints(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), endpointsResult(items))
+			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of endpoints to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	return cmd
 }
 
 func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
-	var limit int
+	var (
+		limit  int
+		cursor string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "versions <deploymentId>",
 		Short: "List versions of a serverless application",
 		Example: `  # list deployed versions
-  runware serverless apps versions my-app`,
+  runware serverless apps versions my-app
+
+  # page through results
+  runware serverless apps versions my-app --limit 20 --cursor <nextCursor>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			id := args[0]
 			var params *serverlessapi.ListVersionsParams
-			if limit > 0 {
-				l := serverlessapi.Limit(limit)
-				params = &serverlessapi.ListVersionsParams{Limit: &l}
+			if limit > 0 || cursor != "" {
+				params = &serverlessapi.ListVersionsParams{}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
 			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching versions for %s...", id))
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			items, err := client.ListVersions(cmd.Context(), id, params)
+			page, err := client.ListVersions(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), versionsResult(items))
+			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of versions to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	return cmd
 }
 
@@ -194,6 +219,7 @@ func newAppsLogsCmd() *cobra.Command {
 func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 	var (
 		limit  int
+		cursor string
 		status string
 	)
 
@@ -204,17 +230,20 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
   runware serverless apps workers my-app
 
   # filter by status
-  runware serverless apps workers my-app --status ready`,
+  runware serverless apps workers my-app --status ready
+
+  # page through results
+  runware serverless apps workers my-app --limit 20 --cursor <nextCursor>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
 			id := args[0]
 			var params *serverlessapi.ListWorkersParams
-			if limit > 0 || status != "" {
+			if limit > 0 || cursor != "" || status != "" {
 				params = &serverlessapi.ListWorkersParams{}
-				if limit > 0 {
-					l := serverlessapi.Limit(limit)
-					params.Limit = &l
-				}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
 				if status != "" {
 					s := serverlessapi.WorkerStatus(status)
 					if !s.Valid() {
@@ -228,29 +257,59 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			items, err := client.ListWorkers(cmd.Context(), id, params)
+			page, err := client.ListWorkers(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), workersResult(items))
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of workers to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (ready, busy, pending, …)")
 	return cmd
 }
 
-// listLimitParams builds ListEndpointsParams when --limit is set.
-func listLimitParams(limit int) *serverlessapi.ListEndpointsParams {
-	if limit <= 0 {
+// validateListLimit checks --limit when set. Zero means unset (API default).
+func validateListLimit(limit int) error {
+	if limit == 0 {
 		return nil
 	}
-	l := serverlessapi.Limit(limit)
-	return &serverlessapi.ListEndpointsParams{Limit: &l}
+	if limit < 1 || limit > 100 {
+		return fmt.Errorf("--limit must be between 1 and 100")
+	}
+	return nil
+}
+
+// listPageParams builds shared limit/cursor query values for cursor-paginated list commands.
+func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverlessapi.Cursor) {
+	var (
+		limitOut  *serverlessapi.Limit
+		cursorOut *serverlessapi.Cursor
+	)
+	if limit > 0 {
+		l := serverlessapi.Limit(limit)
+		limitOut = &l
+	}
+	if cursor != "" {
+		c := cursor
+		cursorOut = &c
+	}
+	return limitOut, cursorOut
+}
+
+// listEndpointsParams builds ListEndpointsParams when --limit or --cursor is set.
+func listEndpointsParams(limit int, cursor string) *serverlessapi.ListEndpointsParams {
+	if limit <= 0 && cursor == "" {
+		return nil
+	}
+	params := &serverlessapi.ListEndpointsParams{}
+	params.Limit, params.Cursor = listPageParams(limit, cursor)
+	return params
 }
 
 func newAppsScaleCmd() *cobra.Command {

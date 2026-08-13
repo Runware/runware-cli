@@ -81,8 +81,27 @@ type Limit = gen.Limit
 // Cursor is an opaque pagination cursor.
 type Cursor = gen.Cursor
 
+// Page is one page of results from a cursor-paginated list endpoint.
+type Page[T any] struct {
+	Data       []T     `json:"data"`
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // DeploymentSourceTypeCode is deploymentSource.type = "code".
 const DeploymentSourceTypeCode = gen.Code
+
+func pageOf[T any](data *[]T, nextCursor *string) Page[T] {
+	if data == nil || *data == nil {
+		return Page[T]{
+			Data:       []T{},
+			NextCursor: nextCursor,
+		}
+	}
+	return Page[T]{
+		Data:       *data,
+		NextCursor: nextCursor,
+	}
+}
 
 // Client talks to the Serverless control-plane REST API.
 type Client struct {
@@ -225,14 +244,14 @@ func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreate) (*
 }
 
 // ListDeployments returns a page of deployments for the authenticated organisation.
-func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsParams) ([]Deployment, error) {
+func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsParams) (Page[Deployment], error) {
 	if c.apiKey == "" {
-		return nil, transport.ErrNoAPIKey
+		return Page[Deployment]{}, transport.ErrNoAPIKey
 	}
 
 	resp, err := c.inner.ListDeploymentsWithResponse(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("list deployments: %w", err)
+		return Page[Deployment]{}, fmt.Errorf("list deployments: %w", err)
 	}
 
 	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
@@ -245,16 +264,16 @@ func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsPar
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
-		if resp.JSON200 == nil || resp.JSON200.Data == nil {
-			return []Deployment{}, nil
+		if resp.JSON200 == nil {
+			return Page[Deployment]{Data: []Deployment{}}, nil
 		}
-		return *resp.JSON200.Data, nil
+		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
-		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	default:
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
+		return Page[Deployment]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
@@ -294,15 +313,15 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentID string) (*Deplo
 	}
 }
 
-// ListEndpoints returns endpoints for a deployment.
-func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params *ListEndpointsParams) ([]Endpoint, error) {
+// ListEndpoints returns a page of endpoints for a deployment.
+func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params *ListEndpointsParams) (Page[Endpoint], error) {
 	if c.apiKey == "" {
-		return nil, transport.ErrNoAPIKey
+		return Page[Endpoint]{}, transport.ErrNoAPIKey
 	}
 
 	resp, err := c.inner.ListEndpointsWithResponse(ctx, deploymentID, params)
 	if err != nil {
-		return nil, fmt.Errorf("list endpoints: %w", err)
+		return Page[Endpoint]{}, fmt.Errorf("list endpoints: %w", err)
 	}
 
 	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
@@ -315,30 +334,30 @@ func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params 
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
-		if resp.JSON200 == nil || resp.JSON200.Data == nil {
-			return []Endpoint{}, nil
+		if resp.JSON200 == nil {
+			return Page[Endpoint]{Data: []Endpoint{}}, nil
 		}
-		return *resp.JSON200.Data, nil
+		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
-		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+		return Page[Endpoint]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+		return Page[Endpoint]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
-		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+		return Page[Endpoint]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
+		return Page[Endpoint]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
-// ListVersions returns versions for a deployment.
-func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *ListVersionsParams) ([]Version, error) {
+// ListVersions returns a page of versions for a deployment.
+func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *ListVersionsParams) (Page[Version], error) {
 	if c.apiKey == "" {
-		return nil, transport.ErrNoAPIKey
+		return Page[Version]{}, transport.ErrNoAPIKey
 	}
 
 	resp, err := c.inner.ListVersionsWithResponse(ctx, deploymentID, params)
 	if err != nil {
-		return nil, fmt.Errorf("list versions: %w", err)
+		return Page[Version]{}, fmt.Errorf("list versions: %w", err)
 	}
 
 	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
@@ -351,30 +370,30 @@ func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
-		if resp.JSON200 == nil || resp.JSON200.Data == nil {
-			return []Version{}, nil
+		if resp.JSON200 == nil {
+			return Page[Version]{Data: []Version{}}, nil
 		}
-		return *resp.JSON200.Data, nil
+		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
-		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
-		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
+		return Page[Version]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
-// ListWorkers returns workers for a deployment.
-func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *ListWorkersParams) ([]Worker, error) {
+// ListWorkers returns a page of workers for a deployment.
+func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *ListWorkersParams) (Page[Worker], error) {
 	if c.apiKey == "" {
-		return nil, transport.ErrNoAPIKey
+		return Page[Worker]{}, transport.ErrNoAPIKey
 	}
 
 	resp, err := c.inner.ListWorkersWithResponse(ctx, deploymentID, params)
 	if err != nil {
-		return nil, fmt.Errorf("list workers: %w", err)
+		return Page[Worker]{}, fmt.Errorf("list workers: %w", err)
 	}
 
 	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
@@ -387,18 +406,18 @@ func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *L
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
-		if resp.JSON200 == nil || resp.JSON200.Data == nil {
-			return []Worker{}, nil
+		if resp.JSON200 == nil {
+			return Page[Worker]{Data: []Worker{}}, nil
 		}
-		return *resp.JSON200.Data, nil
+		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
-		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
-		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
+		return Page[Worker]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
