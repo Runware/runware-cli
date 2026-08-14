@@ -5,8 +5,8 @@ import "github.com/spf13/cobra"
 // newRegistryCmd returns the "serverless registry" command group for managing
 // container registry credentials (API: secrets with type=registry).
 func newRegistryCmd() *cobra.Command {
-	cmd := stubGroup("registry", "Manage container registries for serverless deployments")
-	cmd.Long = "Manage container registry credentials used to pull private images for serverless deployments."
+	cmd := stubGroup("registry", "Manage container registries for serverless applications")
+	cmd.Long = "Manage container registry credentials used to pull private images for serverless applications."
 	cmd.AddCommand(
 		newRegistryAddCmd(),
 		newRegistryListCmd(),

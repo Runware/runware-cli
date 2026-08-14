@@ -13,26 +13,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// openResult reports the deployment and dashboard URL that was opened.
+// openResult reports the application and dashboard URL that was opened.
 type openResult struct {
 	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
 	URL          string `json:"url"          yaml:"url"`
 }
 
 func (r openResult) Headers() []string {
-	return []string{"Field", "Value"}
+	return []string{colField, colValue}
 }
 
 func (r openResult) Rows() [][]any {
 	return [][]any{
-		{"Deployment", r.DeploymentID},
+		{colApp, r.DeploymentID},
 		{"URL", r.URL},
 	}
 }
 
 func newOpenCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "open <deploymentId>",
+		Use:   "open <app>",
 		Short: "Open an application in the Runware dashboard",
 		Example: `  # open an application's dashboard page in your browser
   runware serverless open my-model-abc`,

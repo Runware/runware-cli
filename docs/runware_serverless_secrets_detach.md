@@ -1,22 +1,27 @@
-## runware serverless apps secret remove
+## runware serverless secrets detach
 
-Remove a secret from a serverless application
+Detach a secret from an application
+
+### Synopsis
+
+Remove the control-plane attachment from an application. Does not remove the
+organisation secret.
 
 ```
-runware serverless apps secret remove <deploymentId> [flags]
+runware serverless secrets detach <app> <name> [flags]
 ```
 
 ### Examples
 
 ```
   # detach a secret from an application
-  runware serverless apps secret remove my-app
+  runware serverless secrets detach my-app FOO
 ```
 
 ### Options
 
 ```
-  -h, --help   help for remove
+  -h, --help   help for detach
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +35,5 @@ runware serverless apps secret remove <deploymentId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless apps secret](runware_serverless_apps_secret.md)	 - Manage secrets for a serverless application
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organisation secrets for serverless applications
 

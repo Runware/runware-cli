@@ -1,10 +1,10 @@
 ## runware serverless registry
 
-Manage container registries for serverless deployments
+Manage container registries for serverless applications
 
 ### Synopsis
 
-Manage container registry credentials used to pull private images for serverless deployments.
+Manage container registry credentials used to pull private images for serverless applications.
 
 ```
 runware serverless registry [flags]

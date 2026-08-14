@@ -30,5 +30,5 @@ runware serverless registry add <name> [flags]
 
 ### SEE ALSO
 
-* [runware serverless registry](runware_serverless_registry.md)	 - Manage container registries for serverless deployments
+* [runware serverless registry](runware_serverless_registry.md)	 - Manage container registries for serverless applications
 

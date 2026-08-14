@@ -23,6 +23,7 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		newOpenCmd(),
 		newUseCmd(),
 		newRegistryCmd(),
+		newSecretsCmd(logger),
 		newAppsCmd(logger),
 	)
 	return cmd

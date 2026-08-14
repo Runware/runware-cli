@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/output"
 )
@@ -14,6 +15,11 @@ const (
 	colName    = "Name"
 	colStatus  = "Status"
 	colCreated = "Created"
+	colType    = "Type"
+	colField   = "Field"
+	colValue   = "Value"
+	colApp     = "App"
+	colEnvVar  = "Env var"
 )
 
 // deploymentResult wraps a single deployment for table/json/yaml display.
@@ -87,7 +93,7 @@ func (r versionsResult) Rows() [][]any {
 		rows[i] = []any{
 			v.VersionNumber,
 			v.Id.String(),
-			v.BuildId.String(),
+			formatOptionalUUID(v.BuildId),
 			v.CreatedAt.Format(time.RFC3339),
 		}
 	}
@@ -109,7 +115,7 @@ func (r workersResult) Rows() [][]any {
 			w.Id.String(),
 			string(w.Status),
 			w.PodName,
-			w.NodeName,
+			formatOptionalString(w.NodeName),
 			formatOptionalTime(w.LastSeenAt),
 		}
 	}
@@ -123,10 +129,123 @@ func formatOptionalTime(t *time.Time) string {
 	return t.Format(time.RFC3339)
 }
 
+func formatOptionalString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func formatOptionalUUID(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
+// secretResult wraps a single organisation secret for table/json/yaml display.
+// JSON/YAML serialise the API Secret (metadata only; no value).
+type secretResult serverlessapi.Secret
+
+func (r secretResult) Headers() []string {
+	return []string{colName, colType, colCreated}
+}
+
+func (r secretResult) Rows() [][]any {
+	return [][]any{{
+		r.Name,
+		string(r.Type),
+		formatOptionalTime(r.CreatedAt),
+	}}
+}
+
+// secretsResult wraps an organisation secret list for table display.
+type secretsResult []serverlessapi.Secret
+
+func (r secretsResult) Headers() []string {
+	return []string{colName, colType, colCreated}
+}
+
+func (r secretsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		s := &r[i]
+		rows[i] = []any{
+			s.Name,
+			string(s.Type),
+			formatOptionalTime(s.CreatedAt),
+		}
+	}
+	return rows
+}
+
+// secretAttachmentsResult wraps deployment secret attachments for table display.
+type secretAttachmentsResult []serverlessapi.SecretAttachment
+
+func (r secretAttachmentsResult) Headers() []string {
+	return []string{colName, colEnvVar, colType, colCreated}
+}
+
+func (r secretAttachmentsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		s := &r[i]
+		rows[i] = []any{
+			s.Name,
+			formatOptionalString(s.EnvVarName),
+			string(s.Type),
+			formatOptionalTime(s.CreatedAt),
+		}
+	}
+	return rows
+}
+
+// secretRemovedResult is the success payload for removing an organisation secret.
+type secretRemovedResult struct {
+	Name string `json:"name" yaml:"name"`
+}
+
+func (r secretRemovedResult) Headers() []string {
+	return []string{colName}
+}
+
+func (r secretRemovedResult) Rows() [][]any {
+	return [][]any{{r.Name}}
+}
+
+// secretAttachResult is the success payload for attaching a secret to an application.
+type secretAttachResult struct {
+	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
+	Name         string `json:"name"         yaml:"name"`
+	EnvVarName   string `json:"envVarName,omitempty" yaml:"envVarName,omitempty"`
+}
+
+func (r secretAttachResult) Headers() []string {
+	return []string{colApp, colName, colEnvVar}
+}
+
+func (r secretAttachResult) Rows() [][]any {
+	return [][]any{{r.DeploymentID, r.Name, r.EnvVarName}}
+}
+
+// secretDetachResult is the success payload for detaching a secret from an application.
+type secretDetachResult struct {
+	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
+	Name         string `json:"name"         yaml:"name"`
+}
+
+func (r secretDetachResult) Headers() []string {
+	return []string{colApp, colName}
+}
+
+func (r secretDetachResult) Rows() [][]any {
+	return [][]any{{r.DeploymentID, r.Name}}
+}
+
 // printPage prints a cursor-paginated list. JSON/YAML use the API page shape
 // (data + nextCursor). Table format renders rows, then hints at --cursor on errOut
 // (typically cmd.ErrOrStderr()).
-func printPage[T any](format output.Format, page serverlessapi.Page[T], table output.Tabular, errOut io.Writer) error {
+func printPage[T any](format output.Format, page serverlessapi.Page[T], table output.Tabular, errOut io.Writer, extraCursorFlags string) error {
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
 		return output.Print(format, page)
@@ -134,14 +253,18 @@ func printPage[T any](format output.Format, page serverlessapi.Page[T], table ou
 		if err := output.Print(format, table); err != nil {
 			return err
 		}
-		return printNextCursor(errOut, page.NextCursor)
+		return printNextCursor(errOut, page.NextCursor, extraCursorFlags)
 	}
 }
 
-func printNextCursor(errOut io.Writer, next *string) error {
+func printNextCursor(errOut io.Writer, next *string, extraFlags string) error {
 	if next == nil || *next == "" {
 		return nil
 	}
-	_, err := fmt.Fprintf(errOut, "\nNext page: --cursor %s\n", *next)
+	hint := "--cursor " + *next
+	if extraFlags != "" {
+		hint = extraFlags + " " + hint
+	}
+	_, err := fmt.Fprintf(errOut, "\nNext page: %s\n", hint)
 	return err
 }

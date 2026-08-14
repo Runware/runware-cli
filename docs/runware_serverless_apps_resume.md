@@ -3,7 +3,7 @@
 Resume a stopped serverless application
 
 ```
-runware serverless apps resume <deploymentId> [flags]
+runware serverless apps resume <app> [flags]
 ```
 
 ### Examples

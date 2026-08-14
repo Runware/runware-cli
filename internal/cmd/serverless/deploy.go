@@ -31,7 +31,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		Short: "Deploy a new serverless application",
 		Long: `Create a new serverless application from a Python entry file.
 
-The file is zipped and submitted as a code deployment source. Worker settings
+The file is zipped and submitted as the application source. Worker settings
 are supplied via flags (a local project config via 'runware serverless init'
 is planned). Endpoints are derived server-side from the SDK.`,
 		Example: `  # deploy a Python entry file
@@ -62,7 +62,7 @@ is planned). Endpoints are derived server-side from the SDK.`,
 				Requirements: optionalStringSlice(requirements),
 			})
 			if err != nil {
-				return fmt.Errorf("build deployment source: %w", err)
+				return fmt.Errorf("build application source: %w", err)
 			}
 
 			body := serverlessapi.DeploymentCreate{
@@ -79,7 +79,7 @@ is planned). Endpoints are derived server-side from the SDK.`,
 				},
 			}
 
-			spin := cmdutil.NewSpinner(fmt.Sprintf("Creating deployment %s...", id))
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Creating application %s...", id))
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
@@ -94,7 +94,7 @@ is planned). Endpoints are derived server-side from the SDK.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&id, "id", "", "Deployment ID (immutable, lowercase slug)")
+	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")
 	cmd.Flags().Int32Var(&idleTTL, "idle-ttl", 60, "Idle TTL in seconds before scaling down")

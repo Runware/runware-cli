@@ -6,7 +6,7 @@ Deploy a new serverless application
 
 Create a new serverless application from a Python entry file.
 
-The file is zipped and submitted as a code deployment source. Worker settings
+The file is zipped and submitted as the application source. Worker settings
 are supplied via flags (a local project config via 'runware serverless init'
 is planned). Endpoints are derived server-side from the SDK.
 
@@ -33,7 +33,7 @@ runware serverless deploy <file> [flags]
       --gpu-type string           Preferred GPU type ID (see 'serverless gpus')
       --gpus-per-worker int32     GPUs allocated per worker (default 1)
   -h, --help                      help for deploy
-      --id string                 Deployment ID (immutable, lowercase slug)
+      --id string                 Application ID (immutable, lowercase slug)
       --idle-ttl int32            Idle TTL in seconds before scaling down (default 60)
       --max-workers int32         Maximum number of workers (default 1)
       --min-workers int32         Minimum number of workers

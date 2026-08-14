@@ -102,6 +102,30 @@ func (e DeploymentEventType) Valid() bool {
 	}
 }
 
+// Defines values for DeploymentSort.
+const (
+	Activity  DeploymentSort = "activity"
+	CreatedAt DeploymentSort = "createdAt"
+	ErrorRate DeploymentSort = "errorRate"
+	Name      DeploymentSort = "name"
+)
+
+// Valid indicates whether the value is a known member of the DeploymentSort enum.
+func (e DeploymentSort) Valid() bool {
+	switch e {
+	case Activity:
+		return true
+	case CreatedAt:
+		return true
+	case ErrorRate:
+		return true
+	case Name:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeploymentSourceUpsertType.
 const (
 	Code      DeploymentSourceUpsertType = "code"
@@ -176,16 +200,13 @@ func (e GpuAvailability) Valid() bool {
 
 // Defines values for SecretType.
 const (
-	Generic  SecretType = "generic"
-	Registry SecretType = "registry"
+	Generic SecretType = "generic"
 )
 
 // Valid indicates whether the value is a known member of the SecretType enum.
 func (e SecretType) Valid() bool {
 	switch e {
 	case Generic:
-		return true
-	case Registry:
 		return true
 	default:
 		return false
@@ -215,14 +236,15 @@ func (e TaskStatus) Valid() bool {
 
 // Defines values for WorkerStatus.
 const (
-	WorkerStatusBusy     WorkerStatus = "busy"
-	WorkerStatusDraining WorkerStatus = "draining"
-	WorkerStatusLoading  WorkerStatus = "loading"
-	WorkerStatusPending  WorkerStatus = "pending"
-	WorkerStatusPulling  WorkerStatus = "pulling"
-	WorkerStatusReady    WorkerStatus = "ready"
-	WorkerStatusStopped  WorkerStatus = "stopped"
-	WorkerStatusStopping WorkerStatus = "stopping"
+	WorkerStatusBusy      WorkerStatus = "busy"
+	WorkerStatusDraining  WorkerStatus = "draining"
+	WorkerStatusLoading   WorkerStatus = "loading"
+	WorkerStatusPending   WorkerStatus = "pending"
+	WorkerStatusPulling   WorkerStatus = "pulling"
+	WorkerStatusReady     WorkerStatus = "ready"
+	WorkerStatusStopped   WorkerStatus = "stopped"
+	WorkerStatusStopping  WorkerStatus = "stopping"
+	WorkerStatusUnhealthy WorkerStatus = "unhealthy"
 )
 
 // Valid indicates whether the value is a known member of the WorkerStatus enum.
@@ -244,9 +266,17 @@ func (e WorkerStatus) Valid() bool {
 		return true
 	case WorkerStatusStopping:
 		return true
+	case WorkerStatusUnhealthy:
+		return true
 	default:
 		return false
 	}
+}
+
+// AppVolume defines model for AppVolume.
+type AppVolume struct {
+	// MountPath Absolute path exposed inside the sandboxed application. The path is the volume's stable identity and is mirrored below the deployment's node-local data directory. Root, duplicate, and overlapping paths are rejected.
+	MountPath string `json:"mountPath"`
 }
 
 // Build Details of a code build or container validation.
@@ -295,7 +325,8 @@ type ContainerSource struct {
 	// ImageRef Registry URI of a pre-built image, e.g. `ghcr.io/acme/model:v2`.
 	ImageRef string `json:"imageRef"`
 
-	// RegistrySecretName Name of a `registry`-type secret used to pull the image.
+	// RegistrySecretName Pull-credential name for a private image registry. Omit for a public registry. Parked on the version until image-pull custody has its own ADR — it is not a `secrets` row (ADR-019 covers only env-var secrets unsealed in-pod; the kubelet needs the credential before any container starts).
+	// When wired, the name becomes a Kubernetes Secret name, so it must be a DNS-1123 subdomain: lower-case alphanumerics, `-` and `.`, starting and ending alphanumeric, at most 253 characters. That is a hard requirement of what the name is used for, not a Runware naming policy.
 	RegistrySecretName *string `json:"registrySecretName,omitempty"`
 }
 
@@ -318,12 +349,21 @@ type Deployment struct {
 	CreatedAt     time.Time    `json:"createdAt"`
 
 	// DeploymentId Immutable deployment identifier, unique within the authenticated organisation.
-	DeploymentId         DeploymentId          `json:"deploymentId"`
-	DeploymentName       string                `json:"deploymentName"`
+	DeploymentId DeploymentId `json:"deploymentId"`
+
+	// DeploymentName Mutable display name. Must contain at least one non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Unlike `deploymentId` the pattern is unanchored, so interior spaces are allowed — only an entirely blank name is rejected.
+	DeploymentName DeploymentName `json:"deploymentName"`
+
+	// EnvironmentVariables Plain-text environment variables for this deployment. Populated on single-deployment responses (get, update, stop, resume, delete, deploy, favourite). List of deployments returns an empty array to avoid an N+1 per page row — use the `/environment-variables` endpoints to page the set.
 	EnvironmentVariables []EnvironmentVariable `json:"environmentVariables"`
-	Secrets              []Secret              `json:"secrets"`
-	Status               DeploymentStatus      `json:"status"`
-	UpdatedAt            time.Time             `json:"updatedAt"`
+
+	// IsFavourite Whether the authenticated organisation has favourited this deployment. Drives the console Favourites section; toggled via `PUT`/`DELETE` `/v1/deployments/{deploymentId}/favourite`.
+	IsFavourite bool `json:"isFavourite"`
+
+	// Secrets Secrets attached to this deployment, including any env-var name override. Populated on single-deployment responses; list of deployments returns an empty array to avoid an N+1 — use `/deployments/{deploymentId}/secrets` to page the set.
+	Secrets   []SecretAttachment `json:"secrets"`
+	Status    DeploymentStatus   `json:"status"`
+	UpdatedAt time.Time          `json:"updatedAt"`
 }
 
 // DeploymentCreate defines model for DeploymentCreate.
@@ -331,25 +371,33 @@ type DeploymentCreate struct {
 	Configuration WorkerConfigCreate `json:"configuration"`
 
 	// DeploymentId Immutable deployment identifier, unique within the authenticated organisation.
-	DeploymentId   DeploymentId `json:"deploymentId"`
-	DeploymentName string       `json:"deploymentName"`
+	DeploymentId DeploymentId `json:"deploymentId"`
+
+	// DeploymentName Mutable display name. Must contain at least one non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Unlike `deploymentId` the pattern is unanchored, so interior spaces are allowed — only an entirely blank name is rejected.
+	DeploymentName DeploymentName `json:"deploymentName"`
 
 	// DeploymentSource Write-only. Source for the initial deployment; not returned in the Deployment response. Use the `/builds` endpoints to inspect build status.
 	// - `code`: the codebase is submitted to the build pipeline; a new image is built and
 	//   deployed once ready.
 	//
-	// - `container`: a new version is created from the provided image reference and deployed
-	//   directly, with no build step.
+	// - `container`: no build step — the version names the image reference supplied here.
+	//   No worker runs from a container source yet, so the deployment stays `initializing`.
 	//
-	// The deployment transitions to `active` once the first version is ready, or to `failed` if the build, validation, or rollout fails.
+	// Either way the version is recorded with the deployment. A code deployment transitions to `active` once its first version is ready, or to `failed` if the build, validation, or rollout fails.
 	DeploymentSource DeploymentSourceUpsert `json:"deploymentSource"`
-	Endpoints        *[]EndpointCreate      `json:"endpoints,omitempty"`
 
-	// EnvironmentVariables Map with environment variables. Keys are the environment variable names, values are the environment variable values
+	// Endpoints Invocable routes to expose on the deployment. Paths are unique within a deployment: repeating one in this array is rejected rather than collapsed, since there would be no answer to which entry a request meant.
+	Endpoints *[]EndpointCreate `json:"endpoints,omitempty"`
+
+	// EnvironmentVariables Map with environment variables. Keys are the environment variable names, values are the environment variable values. Use the dedicated `/environment-variables` endpoints to change them after the deployment exists.
+	// Each key must satisfy `EnvironmentVariableName` — POSIX-style, at most 128 characters. OpenAPI 3.0 cannot constrain map keys, so a bad one is rejected by the server rather than by the schema. Keys must also not collide with a secret's injected env var name on the same deployment (see `attachDeploymentSecret`).
 	EnvironmentVariables *map[string]string `json:"environmentVariables,omitempty"`
 
-	// Secrets Names of existing secrets to attach to this deployment.
-	Secrets *[]string `json:"secrets,omitempty"`
+	// Secrets Existing organisation secrets to attach to this deployment, with an optional env-var name override per entry. Not persisted yet — supplying this field returns `422`, rather than accepting a set nothing attaches to the workload. Shape matches `POST /deployments/{deploymentId}/secrets` so create and attach share one contract. When wired, each injected name must not collide with a key in `environmentVariables` (or an existing `deployment_configs` row) — see `SecretAttach`.
+	Secrets *[]SecretAttach `json:"secrets,omitempty"`
+
+	// Volumes Persistent node-local directories bind-mounted through the checkpointer into the sandboxed application. Use these for downloaded weights and caches that must stay outside the checkpointed root filesystem. Paths must be unique and non-overlapping. The set is frozen into each immutable deployment version.
+	Volumes *[]AppVolume `json:"volumes,omitempty"`
 }
 
 // DeploymentEvent defines model for DeploymentEvent.
@@ -373,6 +421,19 @@ type DeploymentEventType string
 // DeploymentId Immutable deployment identifier, unique within the authenticated organisation.
 type DeploymentId = string
 
+// DeploymentName Mutable display name. Must contain at least one non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Unlike `deploymentId` the pattern is unanchored, so interior spaces are allowed — only an entirely blank name is rejected.
+type DeploymentName = string
+
+// DeploymentSort Ordering for `listDeployments`. Every ordering is total (ties broken by `deploymentId`), so a page is reproducible and its cursor stable.
+//
+// - `createdAt`: newest first. The default.
+// - `name`: `deploymentName` A–Z, case-insensitive.
+// - `activity`: most recently active first.
+// - `errorRate`: highest error rate first.
+//
+// `activity` and `errorRate` rank on per-deployment traffic metrics, which are not collected yet; requesting either returns `422` until they are.
+type DeploymentSort string
+
 // DeploymentSourceUpsert defines model for DeploymentSourceUpsert.
 type DeploymentSourceUpsert struct {
 	Source DeploymentSourceUpsert_Source `json:"source"`
@@ -392,13 +453,13 @@ type DeploymentSourceUpsertType string
 // DeploymentStatus defines model for DeploymentStatus.
 type DeploymentStatus string
 
-// DeploymentSummary Aggregate dashboard metrics for every deployment in the authenticated organisation. Metrics whose backing system is not yet available are omitted (rendered as "no data" by the frontend) rather than reported as zero.
+// DeploymentSummary Aggregate dashboard metrics for every deployment in the authenticated organisation. Deployment and worker tallies are always present (zero when empty). Traffic and spend metrics whose backing system is not yet available are omitted (rendered as "no data" by the frontend) rather than reported as zero.
 type DeploymentSummary struct {
 	// ActiveDeployments Deployments currently in the `active` status.
 	ActiveDeployments int64 `json:"activeDeployments"`
 
-	// ActiveWorkers Running workers across all deployments. Omitted until worker state is tracked.
-	ActiveWorkers *int64 `json:"activeWorkers,omitempty"`
+	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) across every deployment in the organisation.
+	ActiveWorkers int64 `json:"activeWorkers"`
 
 	// CalculatedAt When these metrics were computed.
 	CalculatedAt time.Time `json:"calculatedAt"`
@@ -406,8 +467,8 @@ type DeploymentSummary struct {
 	// ErrorRate24h Error ratio (0–1) over the last 24h. Omitted until request metrics are available.
 	ErrorRate24h *float64 `json:"errorRate24h,omitempty"`
 
-	// ProvisionedGpuCount GPUs currently provisioned across all workers. Omitted until worker state is tracked.
-	ProvisionedGpuCount *int64 `json:"provisionedGpuCount,omitempty"`
+	// ProvisionedGpuCount Sum of `gpuCount` across those same non-terminal workers.
+	ProvisionedGpuCount int64 `json:"provisionedGpuCount"`
 
 	// Requests24h Requests served in the last 24h. Omitted until request metrics are available.
 	Requests24h *int64 `json:"requests24h,omitempty"`
@@ -420,13 +481,14 @@ type DeploymentSummary struct {
 }
 
 // DeploymentUpdate Updates one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Lifecycle transitions (stop/resume/delete/deploy) use their dedicated operations.
-// **Currently applied:** `deploymentName` and `configuration`. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land. When wired, configuration/env/secret changes take effect on the next Scaler cycle; `deploymentSource` triggers a new build and rollout.
+// A successful update records a new version carrying the updated configuration and the same image, so what to deploy is always a version rather than the current state of a mutable row. `activeVersionId` does not move: the running workload is unchanged until that version is deployed.
+// **Currently applied:** `deploymentName` and `configuration`. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys). When wired, configuration/secret/endpoint changes take effect on the next Scaler cycle; `deploymentSource` triggers a new build and rollout.
 type DeploymentUpdate struct {
 	// Configuration Partial worker configuration. Any field present overwrites the live value; omitted fields are left unchanged. Clearing a nullable live field (setting it to null) is not supported — omit the field to leave it unchanged. `computeType` is create-time only and cannot be patched. Changing `gpuType` or `gpusPerWorker` affects only newly created workers.
 	Configuration *WorkerConfigPatch `json:"configuration,omitempty"`
 
-	// DeploymentName Mutable display name; does not affect deployment identity or routing.
-	DeploymentName *string `json:"deploymentName,omitempty"`
+	// DeploymentName Mutable display name; does not affect deployment identity or routing. Omit to leave unchanged — an explicit blank value is rejected, not treated as a clear.
+	DeploymentName *DeploymentName `json:"deploymentName,omitempty"`
 
 	// DeploymentSource Write-only. New source to build and deploy; not returned in the Deployment response. Use the `/builds` endpoints to inspect build status. Triggers a build (for `code` sources) or image validation (for `container` sources); on success the resulting version is deployed automatically. On failure the deployment remains on the previous version. Not persisted yet — supplying this field returns `422`.
 	DeploymentSource *DeploymentSourceUpsert `json:"deploymentSource,omitempty"`
@@ -437,8 +499,8 @@ type DeploymentUpdate struct {
 	// EnvironmentVariables Map with environment variables. Keys are the environment variable names, values are the environment variable values. Setting the value of an environment variable to null deletes the environment variable from the deployment. Not persisted yet — supplying this field returns `422`.
 	EnvironmentVariables *map[string]*string `json:"environmentVariables,omitempty"`
 
-	// Secrets Names of existing secrets to attach to this deployment. Not persisted yet — supplying this field returns `422`.
-	Secrets *[]string `json:"secrets,omitempty"`
+	// Secrets Replaces the deployment's secret attachments. Same `SecretAttach` shape as create and `POST /deployments/{deploymentId}/secrets`. Not persisted yet — supplying this field returns `422`. When wired, injected names must not collide with plain environment variables on the deployment.
+	Secrets *[]SecretAttach `json:"secrets,omitempty"`
 }
 
 // Endpoint defines model for Endpoint.
@@ -449,14 +511,14 @@ type Endpoint struct {
 	DeploymentId DeploymentId       `json:"deploymentId"`
 	Id           openapi_types.UUID `json:"id"`
 
-	// Path HTTP path the endpoint is served under, e.g. `/infer`. Inferred from the deployed code and unique within the deployment, so it identifies the endpoint on its own.
+	// Path The endpoint's identity within the deployment: a bare lowercase URL segment, e.g. `generate`, with no leading slash. Unique within the deployment, so it identifies the endpoint on its own.
 	Path      string     `json:"path"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
 // EndpointCreate defines model for EndpointCreate.
 type EndpointCreate struct {
-	// Path HTTP path the endpoint is served under, e.g. `/infer`. Unique within the deployment. Carries no whitespace, since it lands in a URL path segment, and fits within a URI, hence the 255 character ceiling.
+	// Path The endpoint's identity within the deployment: a bare lowercase URL segment, e.g. `generate` — a letter first, then letters, digits and hyphens, ending with a letter or digit, max 64 characters. No leading slash: documentation may display `/generate`, but the stored and addressed form is `generate`, so it drops into the invocation URL with no encoding. Unique within the deployment. All invocations are POST; the HTTP method is not part of endpoint identity.
 	Path string `json:"path"`
 }
 
@@ -467,13 +529,19 @@ type EnvironmentVariable struct {
 	// DeploymentId Immutable deployment identifier, unique within the authenticated organisation.
 	DeploymentId *DeploymentId       `json:"deploymentId,omitempty"`
 	Id           *openapi_types.UUID `json:"id,omitempty"`
-	Key          string              `json:"key"`
-	UpdatedAt    *time.Time          `json:"updatedAt,omitempty"`
-	Value        string              `json:"value"`
+
+	// Key POSIX-style environment variable name. Letters, digits, and underscore; must start with a letter or underscore. Matched by the `deployment_configs` column CHECK so a valid-by-contract request cannot 500 at INSERT.
+	Key       EnvironmentVariableName `json:"key"`
+	UpdatedAt *time.Time              `json:"updatedAt,omitempty"`
+	Value     string                  `json:"value"`
 }
 
-// EnvironmentVariableUpsert defines model for EnvironmentVariableUpsert.
-type EnvironmentVariableUpsert struct {
+// EnvironmentVariableName POSIX-style environment variable name. Letters, digits, and underscore; must start with a letter or underscore. Matched by the `deployment_configs` column CHECK so a valid-by-contract request cannot 500 at INSERT.
+type EnvironmentVariableName = string
+
+// EnvironmentVariableUpdate defines model for EnvironmentVariableUpdate.
+type EnvironmentVariableUpdate struct {
+	// Value Value delivered to the workload as this variable's value. Bounded because every variable ends up in the pod template, which as a whole has to fit what the Kubernetes API server accepts — the same `maxLength` create applies, so one path cannot be used to exceed the other.
 	Value string `json:"value"`
 }
 
@@ -482,11 +550,46 @@ type GpuAvailability string
 
 // GpuPricing defines model for GpuPricing.
 type GpuPricing struct {
+	// EffectiveFrom From when this price is effective.
+	EffectiveFrom time.Time          `json:"effectiveFrom"`
+	Id            openapi_types.UUID `json:"id"`
+
 	// PerSecond Price per GPU per second in USD major units as an exact decimal string (e.g. "0.000767"). Stored and billed from nanodollars internally; the platform bills in USD only.
 	//
 	//
 	// Example: 0.000767
 	PerSecond string `json:"perSecond"`
+}
+
+// GpuPricingCreate defines model for GpuPricingCreate.
+type GpuPricingCreate struct {
+	// EffectiveFrom From when this price is effective.
+	EffectiveFrom time.Time `json:"effectiveFrom"`
+
+	// PerSecond Price per GPU per second in USD major units as an exact decimal string (e.g. "0.000767"). Stored and billed from nanodollars internally; the platform bills in USD only.
+	//
+	//
+	// Example: 0.000767
+	PerSecond string `json:"perSecond"`
+}
+
+// GpuPricingListItem defines model for GpuPricingListItem.
+type GpuPricingListItem struct {
+	// ImmutableFrom The instant this price locks (effectiveFrom minus the 7-day minimum notice window), while that instant is still in the future — the price can still be updated or deleted until then. `null` once that instant has passed: the price is permanently locked and can no longer be modified or deleted.
+	ImmutableFrom *time.Time `json:"immutableFrom"`
+	Pricing       GpuPricing `json:"pricing"`
+}
+
+// GpuPricingUpdate Partial update of a scheduled price. Omitted fields are left unchanged. Only a price whose current effectiveFrom is still more than 7 days away can be edited. At least one field must be supplied.
+type GpuPricingUpdate struct {
+	// EffectiveFrom From when this price is effective.
+	EffectiveFrom *time.Time `json:"effectiveFrom,omitempty"`
+
+	// PerSecond Price per GPU per second in USD major units as an exact decimal string (e.g. "0.000767"). Stored and billed from nanodollars internally; the platform bills in USD only.
+	//
+	//
+	// Example: 0.000767
+	PerSecond *string `json:"perSecond,omitempty"`
 }
 
 // GpuType defines model for GpuType.
@@ -503,16 +606,57 @@ type GpuType struct {
 	Memory string `json:"memory"`
 
 	// Name Example: H100
-	Name    string     `json:"name"`
+	Name string `json:"name"`
+
+	// Pricing The price currently in effect — the most recent price whose effectiveFrom is not in the future. The Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
 	Pricing GpuPricing `json:"pricing"`
 }
 
-// GpuTypeId Public catalogue code for a supported GPU type (e.g. `h100`, `rtx_6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalogue). This is not the internal database row UUID.
+// GpuTypeCreate defines model for GpuTypeCreate.
+type GpuTypeCreate struct {
+	// Availability Scheduler provisioning availability for this GPU type.
+	Availability GpuAvailability `json:"availability"`
+
+	// Id Immutable public catalogue code. Must be unique across the catalogue.
+	Id GpuTypeId `json:"id"`
+
+	// Memory Human-readable memory capacity.
+	//
+	// Example: 80 GB HBM
+	Memory string `json:"memory"`
+
+	// Name Example: H100
+	Name    string               `json:"name"`
+	Pricing GpuTypeCreatePricing `json:"pricing"`
+
+	// SortOrder Display / catalogue ordering. Lower values sort first in `GET /v1/gpu-types`.
+	SortOrder int32 `json:"sortOrder"`
+}
+
+// GpuTypeCreatePricing defines model for GpuTypeCreatePricing.
+type GpuTypeCreatePricing struct {
+	// PerSecond Price per GPU per second in USD major units as an exact decimal string (e.g. "0.000767"). Stored and billed from nanodollars internally; the platform bills in USD only.
+	//
+	//
+	// Example: 0.000767
+	PerSecond string `json:"perSecond"`
+}
+
+// GpuTypeId Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalogue). This is not the internal database row UUID.
 type GpuTypeId = string
 
 // GpuTypeList defines model for GpuTypeList.
 type GpuTypeList struct {
 	Data []GpuType `json:"data"`
+}
+
+// GpuTypeUpdate Partial update of a catalogue entry. Omitted fields are left unchanged. The catalogue code itself is immutable and addressed via the path parameter. At least one field must be supplied.
+type GpuTypeUpdate struct {
+	// Availability Scheduler provisioning availability for this GPU type.
+	Availability *GpuAvailability `json:"availability,omitempty"`
+	Memory       *string          `json:"memory,omitempty"`
+	Name         *string          `json:"name,omitempty"`
+	SortOrder    *int32           `json:"sortOrder,omitempty"`
 }
 
 // MoneyAmount A monetary amount as an exact decimal string in the currency's major unit. Money is never represented as a float (see `GpuPricing.perSecond`).
@@ -539,6 +683,12 @@ type ProblemDetails struct {
 	// Example: No deployment 'img-gen' exists for the authenticated organisation.
 	Detail *string `json:"detail,omitempty"`
 
+	// EndpointPath Extension member. Present on a `404` from task invocation when the deployment exists but does not declare the requested endpoint path; its presence distinguishes an unknown endpoint from an unknown deployment. Carries the rejected path.
+	//
+	//
+	// Example: generate
+	EndpointPath *string `json:"endpointPath,omitempty"`
+
 	// Errors Extension member. Present on validation failures (`422`); one entry per offending request field.
 	Errors *[]ProblemError `json:"errors,omitempty"`
 
@@ -554,6 +704,9 @@ type ProblemDetails struct {
 	//
 	// Example: 404
 	Status int32 `json:"status"`
+
+	// TaskId Extension member. Present on synchronous inference timeouts when the accepted task can be polled for its eventual result.
+	TaskId *string `json:"taskId,omitempty"`
 
 	// Title Short, human-readable summary of the problem type (the standard HTTP status text). Stable for a given `type`; does not change from occurrence to occurrence.
 	//
@@ -587,36 +740,78 @@ type Secret struct {
 	CreatedAt *time.Time         `json:"createdAt,omitempty"`
 	Id        openapi_types.UUID `json:"id"`
 
-	// Metadata For `registry` secrets: `{"registry_host": "ghcr.io", "username": "acme-bot"}`.
-	Metadata  *map[string]interface{} `json:"metadata,omitempty"`
-	Name      string                  `json:"name"`
-	Type      SecretType              `json:"type"`
-	UpdatedAt *time.Time              `json:"updatedAt,omitempty"`
+	// Metadata Optional opaque metadata associated with the secret.
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+
+	// Name Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
+	Name SecretName `json:"name"`
+
+	// Type Kind of secret. Only the environment-variable variant (`generic`) is supported. Image-pull (`registry`) credentials are consumed by the kubelet before any container starts, so they cannot use the in-pod unseal path (ADR-019) and await their own decision.
+	Type      SecretType `json:"type"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
-// SecretAttach defines model for SecretAttach.
+// SecretAttach Attach an organisation secret to a deployment (control-plane record only in this release). The resolved name (`envVarName`, or `secretName` when omitted) is stored as one NOT NULL column. It must be unique among this deployment's secret attaches and must not collide with a plain environment variable key on the same deployment — both names are reserved for the same future pod env namespace. Reserved platform names are rejected as on `SecretName`.
 type SecretAttach struct {
-	// SecretName Name of the secret to attach.
-	SecretName string `json:"secretName"`
+	// EnvVarName Environment variable name to use when the secret is eventually injected. Omit or null to use `secretName`; the server resolves and stores the final name. Same reserved-name rules as `SecretName` (`422` if reserved). The resolved name must also not collide with `deployment_configs.key` on this deployment (`422`).
+	EnvVarName *EnvironmentVariableName `json:"envVarName,omitempty"`
+
+	// SecretName Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
+	SecretName SecretName `json:"secretName"`
+}
+
+// SecretAttachment A secret attached to a deployment. The encrypted value is never returned. The database always stores the injected env var name; this response omits `envVarName` when it equals the secret `name` (no override).
+type SecretAttachment struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// EnvVarName Resolved environment variable name when it differs from `name`. Omitted when the secret name is used. Same reserved-name rules as `SecretName` when set.
+	EnvVarName *EnvironmentVariableName `json:"envVarName,omitempty"`
+	Id         openapi_types.UUID       `json:"id"`
+
+	// Metadata Optional opaque metadata associated with the secret.
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+
+	// Name Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
+	Name SecretName `json:"name"`
+
+	// Type Kind of secret. Only the environment-variable variant (`generic`) is supported. Image-pull (`registry`) credentials are consumed by the kubelet before any container starts, so they cannot use the in-pod unseal path (ADR-019) and await their own decision.
+	Type      SecretType `json:"type"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
 // SecretCreate defines model for SecretCreate.
 type SecretCreate struct {
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
-	Name     string                  `json:"name"`
-	Type     SecretType              `json:"type"`
 
-	// Value Plain-text value; encrypted at rest by the platform.
+	// Name Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
+	Name SecretName `json:"name"`
+
+	// Type Kind of secret. Only the environment-variable variant (`generic`) is supported. Image-pull (`registry`) credentials are consumed by the kubelet before any container starts, so they cannot use the in-pod unseal path (ADR-019) and await their own decision.
+	Type SecretType `json:"type"`
+
+	// Value Plain-text value; encrypted at rest by the platform. Capped at 64 KiB — Cloud KMS Encrypt's plaintext ceiling, and the reason the design needs no envelope encryption (ADR-019).
+	// `maxLength` is OpenAPI's string-length bound (character count), not a byte limit. Cloud KMS measures UTF-8 bytes, so the server also rejects a value whose UTF-8 encoding exceeds 65536 bytes with `422` — a rule this schema cannot express alone (multi-byte characters can pass `maxLength` and still overrun the KMS limit).
 	Value string `json:"value"`
 }
 
-// SecretType defines model for SecretType.
+// SecretName Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
+type SecretName = string
+
+// SecretType Kind of secret. Only the environment-variable variant (`generic`) is supported. Image-pull (`registry`) credentials are consumed by the kubelet before any container starts, so they cannot use the in-pod unseal path (ADR-019) and await their own decision.
 type SecretType string
 
 // SecretUpdate defines model for SecretUpdate.
 type SecretUpdate struct {
+	// Metadata Omit to leave the stored metadata unchanged. Send an object (including `{}`) to replace it.
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
-	Value    string                  `json:"value"`
+
+	// Value Plain-text value; encrypted at rest by the platform. Same 64 KiB Cloud KMS plaintext ceiling and UTF-8 byte check as `SecretCreate.value`.
+	Value string `json:"value"`
 }
 
 // Task defines model for Task.
@@ -649,7 +844,7 @@ type UsageEvent struct {
 	// DeploymentId Immutable deployment identifier, unique within the authenticated organisation.
 	DeploymentId DeploymentId `json:"deploymentId"`
 
-	// EventType Worker lifecycle status. Also the event type of a `UsageEvent`, which records a transition into one of these states.
+	// EventType Status the worker transitioned into. The ledger emits a subset of `WorkerStatus` — `busy` never appears (queue occupancy, not a pod lifecycle transition).
 	EventType WorkerStatus       `json:"eventType"`
 	GpuCount  int32              `json:"gpuCount"`
 	Id        openapi_types.UUID `json:"id"`
@@ -659,36 +854,52 @@ type UsageEvent struct {
 	WorkerId   openapi_types.UUID `json:"workerId"`
 }
 
-// Version defines model for Version.
+// Version An immutable record of what to deploy. One is created with the deployment and one on every update, so a rollout always names a version rather than reading configuration that may since have changed.
 type Version struct {
-	BuildId   openapi_types.UUID `json:"buildId"`
-	CreatedAt time.Time          `json:"createdAt"`
+	// BuildId The build that produced this version's image. Null for a `container` source, which names an image the customer already built and so has no build. A version created by an update carries the image, and therefore this build, forward.
+	BuildId   *openapi_types.UUID `json:"buildId,omitempty"`
+	CreatedAt time.Time           `json:"createdAt"`
 
 	// DeploymentId Immutable deployment identifier, unique within the authenticated organisation.
 	DeploymentId DeploymentId       `json:"deploymentId"`
 	Id           openapi_types.UUID `json:"id"`
 
-	// VersionNumber Monotonically increasing per deployment; a failed build does not generate a version.
+	// VersionNumber Monotonically increasing per deployment.
 	VersionNumber int32 `json:"versionNumber"`
 }
 
-// Worker defines model for Worker.
+// Worker A worker instance observed from Kubernetes. Read-only runtime state written by the reconciler; `id` is the pod UID.
 type Worker struct {
+	// CreatedAt Pod creation time (`metadata.creationTimestamp`), not insert time.
 	CreatedAt *time.Time `json:"createdAt,omitempty"`
 
 	// DeploymentId Immutable deployment identifier, unique within the authenticated organisation.
-	DeploymentId DeploymentId       `json:"deploymentId"`
-	Id           openapi_types.UUID `json:"id"`
+	DeploymentId DeploymentId `json:"deploymentId"`
 
-	// LastSeenAt Heartbeat from the shim.
+	// GpuCount GPUs attached to this worker at observation time.
+	GpuCount int32 `json:"gpuCount"`
+
+	// GpuType GPU catalogue code snapshotted at observation time; omitted for CPU workers.
+	GpuType *GpuTypeId         `json:"gpuType,omitempty"`
+	Id      openapi_types.UUID `json:"id"`
+
+	// LastSeenAt Worker-reported liveness. Omitted until the worker reports; stays absent until a heartbeat path exists (phase 2).
 	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
-	NodeName   string     `json:"nodeName"`
-	PodName    string     `json:"podName"`
 
-	// Status Worker lifecycle status. Also the event type of a `UsageEvent`, which records a transition into one of these states.
-	Status    WorkerStatus       `json:"status"`
-	UpdatedAt *time.Time         `json:"updatedAt,omitempty"`
-	VersionId openapi_types.UUID `json:"versionId"`
+	// NodeName Kubernetes node the pod is scheduled on. Omitted while still pending.
+	NodeName *string `json:"nodeName,omitempty"`
+	PodName  string  `json:"podName"`
+
+	// Status Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field — `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop.
+	Status WorkerStatus `json:"status"`
+
+	// StatusOccurredAt When the worker entered its current status.
+	StatusOccurredAt time.Time `json:"statusOccurredAt"`
+
+	// StatusReason Kubernetes-facing reason for the current status when unhealthy or otherwise notable (e.g. `ImagePullBackOff`, `CrashLoopBackOff`).
+	StatusReason *string            `json:"statusReason,omitempty"`
+	UpdatedAt    *time.Time         `json:"updatedAt,omitempty"`
+	VersionId    openapi_types.UUID `json:"versionId"`
 }
 
 // WorkerConfig defines model for WorkerConfig.
@@ -708,12 +919,9 @@ type WorkerConfig struct {
 	FallbackGpuType *GpuTypeId `json:"fallbackGpuType,omitempty"`
 
 	// GpuType Preferred GPU type; null when computeType is `cpu`.
-	GpuType       *GpuTypeId `json:"gpuType,omitempty"`
-	GpusPerWorker int32      `json:"gpusPerWorker"`
-
-	// GracefulStopTtlSecs Seconds a draining worker is given to finish in-flight tasks before force termination.
-	GracefulStopTtlSecs int32              `json:"gracefulStopTtlSecs"`
-	Id                  openapi_types.UUID `json:"id"`
+	GpuType       *GpuTypeId         `json:"gpuType,omitempty"`
+	GpusPerWorker int32              `json:"gpusPerWorker"`
+	Id            openapi_types.UUID `json:"id"`
 
 	// IdleTtlSecs Seconds a worker can sit idle before the Scaler removes it.
 	IdleTtlSecs int32 `json:"idleTtlSecs"`
@@ -736,14 +944,15 @@ type WorkerConfigCreate struct {
 	ComputeType         *ComputeType `json:"computeType,omitempty"`
 	Concurrency         *int32       `json:"concurrency,omitempty"`
 	FallbackGpuType     *GpuTypeId   `json:"fallbackGpuType,omitempty"`
-	GpuType             *GpuTypeId   `json:"gpuType,omitempty"`
-	GpusPerWorker       *int32       `json:"gpusPerWorker,omitempty"`
-	GracefulStopTtlSecs *int32       `json:"gracefulStopTtlSecs,omitempty"`
-	IdleTtlSecs         int32        `json:"idleTtlSecs"`
-	MaxWorkers          int32        `json:"maxWorkers"`
-	MinAvailableWorkers *int32       `json:"minAvailableWorkers,omitempty"`
-	MinWorkers          *int32       `json:"minWorkers,omitempty"`
-	ScalingDelaySecs    int32        `json:"scalingDelaySecs"`
+
+	// GpuType Preferred GPU type. Rejected with a 422 when no capacity is currently offered for the type (it does not appear in `GET /v1/gpu-types`).
+	GpuType             *GpuTypeId `json:"gpuType,omitempty"`
+	GpusPerWorker       *int32     `json:"gpusPerWorker,omitempty"`
+	IdleTtlSecs         int32      `json:"idleTtlSecs"`
+	MaxWorkers          int32      `json:"maxWorkers"`
+	MinAvailableWorkers *int32     `json:"minAvailableWorkers,omitempty"`
+	MinWorkers          *int32     `json:"minWorkers,omitempty"`
+	ScalingDelaySecs    int32      `json:"scalingDelaySecs"`
 }
 
 // WorkerConfigPatch Partial worker configuration. Any field present overwrites the live value; omitted fields are left unchanged. Clearing a nullable live field (setting it to null) is not supported — omit the field to leave it unchanged. `computeType` is create-time only and cannot be patched. Changing `gpuType` or `gpusPerWorker` affects only newly created workers.
@@ -755,12 +964,11 @@ type WorkerConfigPatch struct {
 	// FallbackGpuType Secondary GPU type. Omit to leave unchanged.
 	FallbackGpuType *GpuTypeId `json:"fallbackGpuType,omitempty"`
 
-	// GpuType Preferred GPU type. Omit to leave unchanged.
-	GpuType             *GpuTypeId `json:"gpuType,omitempty"`
-	GpusPerWorker       *int32     `json:"gpusPerWorker,omitempty"`
-	GracefulStopTtlSecs *int32     `json:"gracefulStopTtlSecs,omitempty"`
-	IdleTtlSecs         *int32     `json:"idleTtlSecs,omitempty"`
-	MaxWorkers          *int32     `json:"maxWorkers,omitempty"`
+	// GpuType Preferred GPU type. Omit to leave unchanged. Rejected with a 422 when no capacity is currently offered for the type (it does not appear in `GET /v1/gpu-types`).
+	GpuType       *GpuTypeId `json:"gpuType,omitempty"`
+	GpusPerWorker *int32     `json:"gpusPerWorker,omitempty"`
+	IdleTtlSecs   *int32     `json:"idleTtlSecs,omitempty"`
+	MaxWorkers    *int32     `json:"maxWorkers,omitempty"`
 
 	// MinAvailableWorkers Pre-emptive idle-worker buffer. Omit to leave unchanged.
 	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
@@ -768,7 +976,7 @@ type WorkerConfigPatch struct {
 	ScalingDelaySecs    *int32 `json:"scalingDelaySecs,omitempty"`
 }
 
-// WorkerStatus Worker lifecycle status. Also the event type of a `UsageEvent`, which records a transition into one of these states.
+// WorkerStatus Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field — `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop.
 type WorkerStatus string
 
 // Cursor defines model for Cursor.
@@ -780,8 +988,8 @@ type EndpointPath = string
 // Limit defines model for Limit.
 type Limit = int32
 
-// SecretName defines model for SecretName.
-type SecretName = string
+// WorkerId defines model for WorkerId.
+type WorkerId = openapi_types.UUID
 
 // BadRequest RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type BadRequest = ProblemDetails
@@ -794,6 +1002,9 @@ type Forbidden = ProblemDetails
 
 // NotFound RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type NotFound = ProblemDetails
+
+// ServiceUnavailable RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type ServiceUnavailable = ProblemDetails
 
 // TaskAccepted defines model for TaskAccepted.
 type TaskAccepted = Task
@@ -816,8 +1027,17 @@ type ListDeploymentsParams struct {
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
-	Cursor *Cursor           `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Status Return only deployments in this status.
 	Status *DeploymentStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Case-insensitive substring match against `deploymentName` and `deploymentId`. A deployment matching either is returned.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// GpuType Return only deployments whose worker configuration requests this GPU type. Matched against `configuration.gpuType` only, not `fallbackGpuType`. Must be a code from `GET /v1/gpu-types`; an unknown code returns `422`.
+	GpuType *GpuTypeId      `form:"gpuType,omitempty" json:"gpuType,omitempty"`
+	Sort    *DeploymentSort `form:"sort,omitempty" json:"sort,omitempty"`
 }
 
 // ListBuildsParams defines parameters for ListBuilds.
@@ -901,6 +1121,15 @@ type ListWorkersParams struct {
 	Status *WorkerStatus `form:"status,omitempty" json:"status,omitempty"`
 }
 
+// ListGpuTypePricesParams defines parameters for ListGpuTypePrices.
+type ListGpuTypePricesParams struct {
+	// Limit Maximum number of items to return.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListSecretsParams defines parameters for ListSecrets.
 type ListSecretsParams struct {
 	// Limit Maximum number of items to return.
@@ -935,8 +1164,8 @@ type UpdateDeploymentJSONRequestBody = DeploymentUpdate
 // DeployVersionJSONRequestBody defines body for DeployVersion for application/json ContentType.
 type DeployVersionJSONRequestBody = DeployRequest
 
-// UpsertDeploymentEnvironmentVariableJSONRequestBody defines body for UpsertDeploymentEnvironmentVariable for application/json ContentType.
-type UpsertDeploymentEnvironmentVariableJSONRequestBody = EnvironmentVariableUpsert
+// UpdateDeploymentEnvironmentVariableJSONRequestBody defines body for UpdateDeploymentEnvironmentVariable for application/json ContentType.
+type UpdateDeploymentEnvironmentVariableJSONRequestBody = EnvironmentVariableUpdate
 
 // StartAsyncTaskJSONRequestBody defines body for StartAsyncTask for application/json ContentType.
 type StartAsyncTaskJSONRequestBody StartAsyncTaskJSONBody
@@ -946,6 +1175,18 @@ type StartSyncTaskJSONRequestBody StartSyncTaskJSONBody
 
 // AttachDeploymentSecretJSONRequestBody defines body for AttachDeploymentSecret for application/json ContentType.
 type AttachDeploymentSecretJSONRequestBody = SecretAttach
+
+// CreateGpuTypeJSONRequestBody defines body for CreateGpuType for application/json ContentType.
+type CreateGpuTypeJSONRequestBody = GpuTypeCreate
+
+// UpdateGpuTypeJSONRequestBody defines body for UpdateGpuType for application/json ContentType.
+type UpdateGpuTypeJSONRequestBody = GpuTypeUpdate
+
+// CreateGpuTypePriceJSONRequestBody defines body for CreateGpuTypePrice for application/json ContentType.
+type CreateGpuTypePriceJSONRequestBody = GpuPricingCreate
+
+// UpdateGpuTypePriceJSONRequestBody defines body for UpdateGpuTypePrice for application/json ContentType.
+type UpdateGpuTypePriceJSONRequestBody = GpuPricingUpdate
 
 // CreateSecretJSONRequestBody defines body for CreateSecret for application/json ContentType.
 type CreateSecretJSONRequestBody = SecretCreate
@@ -1098,19 +1339,30 @@ type ClientInterface interface {
 
 	// ListDeployments List deployments
 	//
+	// Returns a page of the organisation's deployments. Filters combine with AND; soft-deleted deployments are excluded unless `status=deleted` is requested explicitly.
+	//
+	// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
+	//
 	// Corresponds with GET /v1/deployments (the `ListDeployments` operationId).
 	ListDeployments(ctx context.Context, params *ListDeploymentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateDeploymentWithBody Create a deployment
 	//
-	// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+	// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
+	//
 	// - `code` source: the codebase is submitted to the build pipeline; once the image is built
-	//   and workers become healthy the deployment transitions to `active`.
+	//   and workers become healthy the deployment transitions to `active` and `activeVersionId`
+	//   points at that version. If the build, validation, or rollout fails the deployment is
+	//   marked `failed`.
 	//
-	// - `container` source: the pre-built image is deployed directly with no build step; once
-	//   workers become healthy the deployment transitions to `active`.
+	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
+	//   from a container source yet, so the deployment stays `initializing` and does not serve
+	//   inference — poll `active` only for a `code` source.
 	//
-	// If the build, validation, or rollout fails the deployment is marked `failed`.
+	//
+	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+	//
+	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1119,14 +1371,21 @@ type ClientInterface interface {
 
 	// CreateDeployment Create a deployment
 	//
-	// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+	// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
+	//
 	// - `code` source: the codebase is submitted to the build pipeline; once the image is built
-	//   and workers become healthy the deployment transitions to `active`.
+	//   and workers become healthy the deployment transitions to `active` and `activeVersionId`
+	//   points at that version. If the build, validation, or rollout fails the deployment is
+	//   marked `failed`.
 	//
-	// - `container` source: the pre-built image is deployed directly with no build step; once
-	//   workers become healthy the deployment transitions to `active`.
+	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
+	//   from a container source yet, so the deployment stays `initializing` and does not serve
+	//   inference — poll `active` only for a `code` source.
 	//
-	// If the build, validation, or rollout fails the deployment is marked `failed`.
+	//
+	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+	//
+	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1148,7 +1407,9 @@ type ClientInterface interface {
 	// UpdateDeploymentWithBody Update a deployment
 	//
 	// Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
+	//
+	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+	//
 	// Target behaviour (once fully wired):
 	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
 	//   restart with the new configuration. If the rollout fails, the deployment remains on
@@ -1171,7 +1432,9 @@ type ClientInterface interface {
 	// UpdateDeployment Update a deployment
 	//
 	// Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
+	//
+	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+	//
 	// Target behaviour (once fully wired):
 	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
 	//   restart with the new configuration. If the rollout fails, the deployment remains on
@@ -1204,9 +1467,11 @@ type ClientInterface interface {
 	// DeployVersionWithBody Deploy a version
 	//
 	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+	// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+	// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1216,9 +1481,11 @@ type ClientInterface interface {
 	// DeployVersion Deploy a version
 	//
 	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+	// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+	// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1230,6 +1497,11 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/deployments/{deploymentId}/endpoints (the `ListEndpoints` operationId).
 	ListEndpoints(ctx context.Context, deploymentId DeploymentId, params *ListEndpointsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetEndpoint Get an endpoint
+	//
+	// Corresponds with GET /v1/deployments/{deploymentId}/endpoints/{endpointId} (the `GetEndpoint` operationId).
+	GetEndpoint(ctx context.Context, deploymentId DeploymentId, endpointId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListDeploymentEnvironmentVariables List deployment environment variables
 	//
 	// Corresponds with GET /v1/deployments/{deploymentId}/environment-variables (the `ListDeploymentEnvironmentVariables` operationId).
@@ -1238,30 +1510,56 @@ type ClientInterface interface {
 	// DeleteDeploymentEnvironmentVariable Delete a deployment environment variable
 	//
 	// Corresponds with DELETE /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `DeleteDeploymentEnvironmentVariable` operationId).
-	DeleteDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	DeleteDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpsertDeploymentEnvironmentVariableWithBody Upsert a deployment environment variable
+	// UpdateDeploymentEnvironmentVariableWithBody Update a deployment environment variable
+	//
+	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+	//
+	// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 	//
 	// Takes any type of body and a specified content type.
 	//
-	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-	UpsertDeploymentEnvironmentVariableWithBody(ctx context.Context, deploymentId DeploymentId, variableName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+	UpdateDeploymentEnvironmentVariableWithBody(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpsertDeploymentEnvironmentVariable Upsert a deployment environment variable
+	// UpdateDeploymentEnvironmentVariable Update a deployment environment variable
+	//
+	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+	//
+	// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 	//
 	// Takes a body of the `application/json` content type.
 	//
-	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-	UpsertDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName string, body UpsertDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+	UpdateDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, body UpdateDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDeploymentEvents List deployment events
 	//
 	// Corresponds with GET /v1/deployments/{deploymentId}/events (the `ListDeploymentEvents` operationId).
 	ListDeploymentEvents(ctx context.Context, deploymentId DeploymentId, params *ListDeploymentEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UnfavouriteDeployment Unfavourite a deployment
+	//
+	// Removes the organisation favourite pin from the deployment. Idempotent: unfavouriting a deployment that is not favourited succeeds and returns the deployment with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not a deployment lifecycle mutation. Missing deployments return `404`.
+	//
+	// Corresponds with DELETE /v1/deployments/{deploymentId}/favourite (the `UnfavouriteDeployment` operationId).
+	UnfavouriteDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// FavouriteDeployment Favourite a deployment
+	//
+	// Pins the deployment as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited deployment succeeds and returns the deployment with `isFavourite: true`. Deployments in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+	//
+	// Corresponds with PUT /v1/deployments/{deploymentId}/favourite (the `FavouriteDeployment` operationId).
+	FavouriteDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// StartAsyncTaskWithBody Start a new async task
 	//
-	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1270,7 +1568,7 @@ type ClientInterface interface {
 
 	// StartAsyncTask Start a new async task
 	//
-	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1279,7 +1577,7 @@ type ClientInterface interface {
 
 	// StartSyncTaskWithBody Start a new sync task
 	//
-	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1288,7 +1586,7 @@ type ClientInterface interface {
 
 	// StartSyncTask Start a new sync task
 	//
-	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1297,7 +1595,7 @@ type ClientInterface interface {
 
 	// ResumeDeployment Resume a deployment
 	//
-	// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks queued during the stopped period are consumed as workers come online. Precondition: `status = stopped`.
+	// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks that remained queued when the deployment stopped are consumed as workers come online. Precondition: `status = stopped`.
 	//
 	// Corresponds with POST /v1/deployments/{deploymentId}/resume (the `ResumeDeployment` operationId).
 	ResumeDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1309,7 +1607,9 @@ type ClientInterface interface {
 
 	// AttachDeploymentSecretWithBody Attach a secret to a deployment
 	//
-	// Returns 409 if the secret is already attached to this deployment.
+	// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1318,7 +1618,9 @@ type ClientInterface interface {
 
 	// AttachDeploymentSecret Attach a secret to a deployment
 	//
-	// Returns 409 if the secret is already attached to this deployment.
+	// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1327,24 +1629,28 @@ type ClientInterface interface {
 
 	// DetachDeploymentSecret Detach a secret from a deployment
 	//
+	// Removes the control-plane attachment. Does not roll workers in this release.
+	//
 	// Corresponds with DELETE /v1/deployments/{deploymentId}/secrets/{secretName} (the `DetachDeploymentSecret` operationId).
 	DetachDeploymentSecret(ctx context.Context, deploymentId DeploymentId, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StopDeployment Stop a deployment
 	//
-	// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a grace period (`gracefulStopTtlSecs`) to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions are still accepted and queued while stopped, but not consumed. Precondition: `status = active`.
+	// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the deployment reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
 	//
 	// Corresponds with POST /v1/deployments/{deploymentId}/stop (the `StopDeployment` operationId).
 	StopDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTasks List tasks for a deployment
 	//
+	// Lists TTL-bounded asynchronous task metadata for this deployment so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the deployment is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted deployments return `404 Not Found`.
+	//
 	// Corresponds with GET /v1/deployments/{deploymentId}/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, deploymentId DeploymentId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTask Get a task
 	//
-	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set.
+	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set. If the deployment is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this deployment. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`; retry it within the normal polling window. Unknown or deleted deployments also return `404 Not Found`.
 	//
 	// Corresponds with GET /v1/deployments/{deploymentId}/tasks/{taskId} (the `GetTask` operationId).
 	GetTask(ctx context.Context, deploymentId DeploymentId, taskId string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1361,15 +1667,124 @@ type ClientInterface interface {
 
 	// ListWorkers List workers
 	//
+	// Returns a newest-first page of workers observed for the deployment (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+	//
 	// Corresponds with GET /v1/deployments/{deploymentId}/workers (the `ListWorkers` operationId).
 	ListWorkers(ctx context.Context, deploymentId DeploymentId, params *ListWorkersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetWorker Get a worker
+	//
+	// Returns one worker by id within the deployment. The id is the Kubernetes pod UID recorded by the reconciler. A worker that belongs to another deployment (or tenant) is not found.
+	//
+	// Corresponds with GET /v1/deployments/{deploymentId}/workers/{workerId} (the `GetWorker` operationId).
+	GetWorker(ctx context.Context, deploymentId DeploymentId, workerId WorkerId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListGpuTypes List supported GPU types and their pricing
 	//
-	// Returns the global GPU type catalogue and pricing. The result is not organisation-specific, but the request still requires authentication.
+	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including types not yet offered. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
 	//
 	// Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 	ListGpuTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGpuTypeWithBody Add a GPU type to the catalogue
+	//
+	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+	CreateGpuTypeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGpuType Add a GPU type to the catalogue
+	//
+	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+	CreateGpuType(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteGpuType Remove a GPU type from the catalogue
+	//
+	// Deletes a GPU type from the global catalogue. Restricted to the Runware platform organization. Returns `409` if any live worker configuration still references the code.
+	//
+	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
+	DeleteGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetGpuType Get a GPU type from the catalogue
+	//
+	// Returns a single entry from the global GPU type catalogue. The result is not organisation-specific, but the request still requires authentication.
+	//
+	// Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
+	GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGpuTypeWithBody Update a GPU type in the catalogue
+	//
+	// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+	UpdateGpuTypeWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGpuType Update a GPU type in the catalogue
+	//
+	// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+	UpdateGpuType(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListGpuTypePrices List historical and future prices of a GPU type
+	//
+	// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
+	//
+	// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
+	ListGpuTypePrices(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGpuTypePriceWithBody Schedule a new price for a GPU type
+	//
+	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+	CreateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGpuTypePrice Schedule a new price for a GPU type
+	//
+	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+	CreateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteGpuTypePrice Remove a scheduled price for a GPU type
+	//
+	// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`.
+	//
+	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
+	DeleteGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGpuTypePriceWithBody Update a scheduled price for a GPU type
+	//
+	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+	UpdateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGpuTypePrice Update a scheduled price for a GPU type
+	//
+	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+	UpdateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSecrets List secrets
 	//
@@ -1380,6 +1795,8 @@ type ClientInterface interface {
 
 	// CreateSecretWithBody Create a secret
 	//
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
@@ -1387,12 +1804,16 @@ type ClientInterface interface {
 
 	// CreateSecret Create a secret
 	//
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
 	CreateSecret(ctx context.Context, body CreateSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteSecret Delete a secret
+	//
+	// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any deployment still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../deployments/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 	//
 	// Corresponds with DELETE /v1/secrets/{secretName} (the `DeleteSecret` operationId).
 	DeleteSecret(ctx context.Context, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1438,6 +1859,10 @@ func (c *Client) GetDeploymentSummary(ctx context.Context, reqEditors ...Request
 
 // ListDeployments List deployments
 //
+// Returns a page of the organisation's deployments. Filters combine with AND; soft-deleted deployments are excluded unless `status=deleted` is requested explicitly.
+//
+// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
+//
 // Corresponds with GET /v1/deployments (the `ListDeployments` operationId).
 func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListDeploymentsRequest(c.Server, params)
@@ -1453,15 +1878,20 @@ func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsPar
 
 // CreateDeploymentWithBody Create a deployment
 //
-// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
 //
 //   - `code` source: the codebase is submitted to the build pipeline; once the image is built
-//     and workers become healthy the deployment transitions to `active`.
+//     and workers become healthy the deployment transitions to `active` and `activeVersionId`
+//     points at that version. If the build, validation, or rollout fails the deployment is
+//     marked `failed`.
 //
-//   - `container` source: the pre-built image is deployed directly with no build step; once
-//     workers become healthy the deployment transitions to `active`.
+//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
+//     from a container source yet, so the deployment stays `initializing` and does not serve
+//     inference — poll `active` only for a `code` source.
 //
-// If the build, validation, or rollout fails the deployment is marked `failed`.
+// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+//
+// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1480,15 +1910,20 @@ func (c *Client) CreateDeploymentWithBody(ctx context.Context, contentType strin
 
 // CreateDeployment Create a deployment
 //
-// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
 //
 //   - `code` source: the codebase is submitted to the build pipeline; once the image is built
-//     and workers become healthy the deployment transitions to `active`.
+//     and workers become healthy the deployment transitions to `active` and `activeVersionId`
+//     points at that version. If the build, validation, or rollout fails the deployment is
+//     marked `failed`.
 //
-//   - `container` source: the pre-built image is deployed directly with no build step; once
-//     workers become healthy the deployment transitions to `active`.
+//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
+//     from a container source yet, so the deployment stays `initializing` and does not serve
+//     inference — poll `active` only for a `code` source.
 //
-// If the build, validation, or rollout fails the deployment is marked `failed`.
+// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+//
+// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1540,9 +1975,10 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentId DeploymentId, r
 // UpdateDeploymentWithBody Update a deployment
 //
 // Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
-// Target behaviour (once fully wired):
 //
+// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+//
+// Target behaviour (once fully wired):
 //   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
 //     restart with the new configuration. If the rollout fails, the deployment remains on
 //     the previous configuration.
@@ -1574,7 +2010,9 @@ func (c *Client) UpdateDeploymentWithBody(ctx context.Context, deploymentId Depl
 // UpdateDeployment Update a deployment
 //
 // Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
+//
+// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+//
 // Target behaviour (once fully wired):
 //
 //   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
@@ -1638,9 +2076,11 @@ func (c *Client) GetBuild(ctx context.Context, deploymentId DeploymentId, buildI
 // DeployVersionWithBody Deploy a version
 //
 // Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 //
 // Takes any type of body and a specified content type.
 //
@@ -1660,9 +2100,11 @@ func (c *Client) DeployVersionWithBody(ctx context.Context, deploymentId Deploym
 // DeployVersion Deploy a version
 //
 // Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1694,6 +2136,21 @@ func (c *Client) ListEndpoints(ctx context.Context, deploymentId DeploymentId, p
 	return c.Client.Do(req)
 }
 
+// GetEndpoint Get an endpoint
+//
+// Corresponds with GET /v1/deployments/{deploymentId}/endpoints/{endpointId} (the `GetEndpoint` operationId).
+func (c *Client) GetEndpoint(ctx context.Context, deploymentId DeploymentId, endpointId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEndpointRequest(c.Server, deploymentId, endpointId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListDeploymentEnvironmentVariables List deployment environment variables
 //
 // Corresponds with GET /v1/deployments/{deploymentId}/environment-variables (the `ListDeploymentEnvironmentVariables` operationId).
@@ -1712,7 +2169,7 @@ func (c *Client) ListDeploymentEnvironmentVariables(ctx context.Context, deploym
 // DeleteDeploymentEnvironmentVariable Delete a deployment environment variable
 //
 // Corresponds with DELETE /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `DeleteDeploymentEnvironmentVariable` operationId).
-func (c *Client) DeleteDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) DeleteDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteDeploymentEnvironmentVariableRequest(c.Server, deploymentId, variableName)
 	if err != nil {
 		return nil, err
@@ -1724,13 +2181,19 @@ func (c *Client) DeleteDeploymentEnvironmentVariable(ctx context.Context, deploy
 	return c.Client.Do(req)
 }
 
-// UpsertDeploymentEnvironmentVariableWithBody Upsert a deployment environment variable
+// UpdateDeploymentEnvironmentVariableWithBody Update a deployment environment variable
+//
+// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+//
+// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 //
 // Takes any type of body and a specified content type.
 //
-// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-func (c *Client) UpsertDeploymentEnvironmentVariableWithBody(ctx context.Context, deploymentId DeploymentId, variableName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpsertDeploymentEnvironmentVariableRequestWithBody(c.Server, deploymentId, variableName, contentType, body)
+// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+func (c *Client) UpdateDeploymentEnvironmentVariableWithBody(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDeploymentEnvironmentVariableRequestWithBody(c.Server, deploymentId, variableName, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1741,13 +2204,19 @@ func (c *Client) UpsertDeploymentEnvironmentVariableWithBody(ctx context.Context
 	return c.Client.Do(req)
 }
 
-// UpsertDeploymentEnvironmentVariable Upsert a deployment environment variable
+// UpdateDeploymentEnvironmentVariable Update a deployment environment variable
+//
+// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+//
+// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 //
 // Takes a body of the `application/json` content type.
 //
-// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-func (c *Client) UpsertDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName string, body UpsertDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpsertDeploymentEnvironmentVariableRequest(c.Server, deploymentId, variableName, body)
+// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+func (c *Client) UpdateDeploymentEnvironmentVariable(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, body UpdateDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDeploymentEnvironmentVariableRequest(c.Server, deploymentId, variableName, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1773,9 +2242,43 @@ func (c *Client) ListDeploymentEvents(ctx context.Context, deploymentId Deployme
 	return c.Client.Do(req)
 }
 
+// UnfavouriteDeployment Unfavourite a deployment
+//
+// Removes the organisation favourite pin from the deployment. Idempotent: unfavouriting a deployment that is not favourited succeeds and returns the deployment with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not a deployment lifecycle mutation. Missing deployments return `404`.
+//
+// Corresponds with DELETE /v1/deployments/{deploymentId}/favourite (the `UnfavouriteDeployment` operationId).
+func (c *Client) UnfavouriteDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnfavouriteDeploymentRequest(c.Server, deploymentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// FavouriteDeployment Favourite a deployment
+//
+// Pins the deployment as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited deployment succeeds and returns the deployment with `isFavourite: true`. Deployments in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+//
+// Corresponds with PUT /v1/deployments/{deploymentId}/favourite (the `FavouriteDeployment` operationId).
+func (c *Client) FavouriteDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFavouriteDeploymentRequest(c.Server, deploymentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // StartAsyncTaskWithBody Start a new async task
 //
-// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1794,7 +2297,7 @@ func (c *Client) StartAsyncTaskWithBody(ctx context.Context, deploymentId Deploy
 
 // StartAsyncTask Start a new async task
 //
-// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1813,7 +2316,7 @@ func (c *Client) StartAsyncTask(ctx context.Context, deploymentId DeploymentId, 
 
 // StartSyncTaskWithBody Start a new sync task
 //
-// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1832,7 +2335,7 @@ func (c *Client) StartSyncTaskWithBody(ctx context.Context, deploymentId Deploym
 
 // StartSyncTask Start a new sync task
 //
-// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1851,7 +2354,7 @@ func (c *Client) StartSyncTask(ctx context.Context, deploymentId DeploymentId, e
 
 // ResumeDeployment Resume a deployment
 //
-// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks queued during the stopped period are consumed as workers come online. Precondition: `status = stopped`.
+// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks that remained queued when the deployment stopped are consumed as workers come online. Precondition: `status = stopped`.
 //
 // Corresponds with POST /v1/deployments/{deploymentId}/resume (the `ResumeDeployment` operationId).
 func (c *Client) ResumeDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1883,7 +2386,9 @@ func (c *Client) ListDeploymentSecrets(ctx context.Context, deploymentId Deploym
 
 // AttachDeploymentSecretWithBody Attach a secret to a deployment
 //
-// Returns 409 if the secret is already attached to this deployment.
+// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1902,7 +2407,9 @@ func (c *Client) AttachDeploymentSecretWithBody(ctx context.Context, deploymentI
 
 // AttachDeploymentSecret Attach a secret to a deployment
 //
-// Returns 409 if the secret is already attached to this deployment.
+// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1921,6 +2428,8 @@ func (c *Client) AttachDeploymentSecret(ctx context.Context, deploymentId Deploy
 
 // DetachDeploymentSecret Detach a secret from a deployment
 //
+// Removes the control-plane attachment. Does not roll workers in this release.
+//
 // Corresponds with DELETE /v1/deployments/{deploymentId}/secrets/{secretName} (the `DetachDeploymentSecret` operationId).
 func (c *Client) DetachDeploymentSecret(ctx context.Context, deploymentId DeploymentId, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDetachDeploymentSecretRequest(c.Server, deploymentId, secretName)
@@ -1936,7 +2445,7 @@ func (c *Client) DetachDeploymentSecret(ctx context.Context, deploymentId Deploy
 
 // StopDeployment Stop a deployment
 //
-// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a grace period (`gracefulStopTtlSecs`) to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions are still accepted and queued while stopped, but not consumed. Precondition: `status = active`.
+// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the deployment reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
 //
 // Corresponds with POST /v1/deployments/{deploymentId}/stop (the `StopDeployment` operationId).
 func (c *Client) StopDeployment(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1953,6 +2462,8 @@ func (c *Client) StopDeployment(ctx context.Context, deploymentId DeploymentId, 
 
 // ListTasks List tasks for a deployment
 //
+// Lists TTL-bounded asynchronous task metadata for this deployment so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the deployment is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted deployments return `404 Not Found`.
+//
 // Corresponds with GET /v1/deployments/{deploymentId}/tasks (the `ListTasks` operationId).
 func (c *Client) ListTasks(ctx context.Context, deploymentId DeploymentId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTasksRequest(c.Server, deploymentId, params)
@@ -1968,7 +2479,7 @@ func (c *Client) ListTasks(ctx context.Context, deploymentId DeploymentId, param
 
 // GetTask Get a task
 //
-// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set.
+// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set. If the deployment is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this deployment. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`; retry it within the normal polling window. Unknown or deleted deployments also return `404 Not Found`.
 //
 // Corresponds with GET /v1/deployments/{deploymentId}/tasks/{taskId} (the `GetTask` operationId).
 func (c *Client) GetTask(ctx context.Context, deploymentId DeploymentId, taskId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2015,6 +2526,8 @@ func (c *Client) GetVersion(ctx context.Context, deploymentId DeploymentId, vers
 
 // ListWorkers List workers
 //
+// Returns a newest-first page of workers observed for the deployment (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+//
 // Corresponds with GET /v1/deployments/{deploymentId}/workers (the `ListWorkers` operationId).
 func (c *Client) ListWorkers(ctx context.Context, deploymentId DeploymentId, params *ListWorkersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListWorkersRequest(c.Server, deploymentId, params)
@@ -2028,13 +2541,250 @@ func (c *Client) ListWorkers(ctx context.Context, deploymentId DeploymentId, par
 	return c.Client.Do(req)
 }
 
+// GetWorker Get a worker
+//
+// Returns one worker by id within the deployment. The id is the Kubernetes pod UID recorded by the reconciler. A worker that belongs to another deployment (or tenant) is not found.
+//
+// Corresponds with GET /v1/deployments/{deploymentId}/workers/{workerId} (the `GetWorker` operationId).
+func (c *Client) GetWorker(ctx context.Context, deploymentId DeploymentId, workerId WorkerId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetWorkerRequest(c.Server, deploymentId, workerId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListGpuTypes List supported GPU types and their pricing
 //
-// Returns the global GPU type catalogue and pricing. The result is not organisation-specific, but the request still requires authentication.
+// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including types not yet offered. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
 //
 // Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 func (c *Client) ListGpuTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListGpuTypesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGpuTypeWithBody Add a GPU type to the catalogue
+//
+// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+func (c *Client) CreateGpuTypeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGpuTypeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGpuType Add a GPU type to the catalogue
+//
+// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+func (c *Client) CreateGpuType(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGpuTypeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteGpuType Remove a GPU type from the catalogue
+//
+// Deletes a GPU type from the global catalogue. Restricted to the Runware platform organization. Returns `409` if any live worker configuration still references the code.
+//
+// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
+func (c *Client) DeleteGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteGpuTypeRequest(c.Server, gpuTypeId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetGpuType Get a GPU type from the catalogue
+//
+// Returns a single entry from the global GPU type catalogue. The result is not organisation-specific, but the request still requires authentication.
+//
+// Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
+func (c *Client) GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGpuTypeRequest(c.Server, gpuTypeId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGpuTypeWithBody Update a GPU type in the catalogue
+//
+// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+func (c *Client) UpdateGpuTypeWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGpuTypeRequestWithBody(c.Server, gpuTypeId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGpuType Update a GPU type in the catalogue
+//
+// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+func (c *Client) UpdateGpuType(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGpuTypeRequest(c.Server, gpuTypeId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListGpuTypePrices List historical and future prices of a GPU type
+//
+// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
+//
+// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
+func (c *Client) ListGpuTypePrices(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListGpuTypePricesRequest(c.Server, gpuTypeId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGpuTypePriceWithBody Schedule a new price for a GPU type
+//
+// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+func (c *Client) CreateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGpuTypePriceRequestWithBody(c.Server, gpuTypeId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGpuTypePrice Schedule a new price for a GPU type
+//
+// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+func (c *Client) CreateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGpuTypePriceRequest(c.Server, gpuTypeId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteGpuTypePrice Remove a scheduled price for a GPU type
+//
+// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`.
+//
+// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
+func (c *Client) DeleteGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteGpuTypePriceRequest(c.Server, gpuTypeId, priceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGpuTypePriceWithBody Update a scheduled price for a GPU type
+//
+// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+func (c *Client) UpdateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGpuTypePriceRequestWithBody(c.Server, gpuTypeId, priceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGpuTypePrice Update a scheduled price for a GPU type
+//
+// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+func (c *Client) UpdateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGpuTypePriceRequest(c.Server, gpuTypeId, priceId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2064,6 +2814,8 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams, req
 
 // CreateSecretWithBody Create a secret
 //
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
@@ -2081,6 +2833,8 @@ func (c *Client) CreateSecretWithBody(ctx context.Context, contentType string, b
 
 // CreateSecret Create a secret
 //
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+//
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
@@ -2097,6 +2851,8 @@ func (c *Client) CreateSecret(ctx context.Context, body CreateSecretJSONRequestB
 }
 
 // DeleteSecret Delete a secret
+//
+// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any deployment still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../deployments/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 //
 // Corresponds with DELETE /v1/secrets/{secretName} (the `DeleteSecret` operationId).
 func (c *Client) DeleteSecret(ctx context.Context, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2244,6 +3000,42 @@ func NewListDeploymentsRequest(server string, params *ListDeploymentsParams) (*h
 		if params.Status != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.GpuType != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "gpuType", *params.GpuType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -2656,6 +3448,47 @@ func NewListEndpointsRequest(server string, deploymentId DeploymentId, params *L
 	return req, nil
 }
 
+// NewGetEndpointRequest constructs an http.Request for the GetEndpoint method
+func NewGetEndpointRequest(server string, deploymentId DeploymentId, endpointId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "deploymentId", deploymentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "endpointId", endpointId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/deployments/%s/endpoints/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListDeploymentEnvironmentVariablesRequest constructs an http.Request for the ListDeploymentEnvironmentVariables method
 func NewListDeploymentEnvironmentVariablesRequest(server string, deploymentId DeploymentId, params *ListDeploymentEnvironmentVariablesParams) (*http.Request, error) {
 	var err error
@@ -2730,7 +3563,7 @@ func NewListDeploymentEnvironmentVariablesRequest(server string, deploymentId De
 }
 
 // NewDeleteDeploymentEnvironmentVariableRequest constructs an http.Request for the DeleteDeploymentEnvironmentVariable method
-func NewDeleteDeploymentEnvironmentVariableRequest(server string, deploymentId DeploymentId, variableName string) (*http.Request, error) {
+func NewDeleteDeploymentEnvironmentVariableRequest(server string, deploymentId DeploymentId, variableName EnvironmentVariableName) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2770,19 +3603,19 @@ func NewDeleteDeploymentEnvironmentVariableRequest(server string, deploymentId D
 	return req, nil
 }
 
-// NewUpsertDeploymentEnvironmentVariableRequest calls the generic UpsertDeploymentEnvironmentVariable builder with application/json body
-func NewUpsertDeploymentEnvironmentVariableRequest(server string, deploymentId DeploymentId, variableName string, body UpsertDeploymentEnvironmentVariableJSONRequestBody) (*http.Request, error) {
+// NewUpdateDeploymentEnvironmentVariableRequest calls the generic UpdateDeploymentEnvironmentVariable builder with application/json body
+func NewUpdateDeploymentEnvironmentVariableRequest(server string, deploymentId DeploymentId, variableName EnvironmentVariableName, body UpdateDeploymentEnvironmentVariableJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewUpsertDeploymentEnvironmentVariableRequestWithBody(server, deploymentId, variableName, "application/json", bodyReader)
+	return NewUpdateDeploymentEnvironmentVariableRequestWithBody(server, deploymentId, variableName, "application/json", bodyReader)
 }
 
-// NewUpsertDeploymentEnvironmentVariableRequestWithBody constructs an http.Request for the UpsertDeploymentEnvironmentVariable method, with any body, and a specified content type
-func NewUpsertDeploymentEnvironmentVariableRequestWithBody(server string, deploymentId DeploymentId, variableName string, contentType string, body io.Reader) (*http.Request, error) {
+// NewUpdateDeploymentEnvironmentVariableRequestWithBody constructs an http.Request for the UpdateDeploymentEnvironmentVariable method, with any body, and a specified content type
+func NewUpdateDeploymentEnvironmentVariableRequestWithBody(server string, deploymentId DeploymentId, variableName EnvironmentVariableName, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2902,6 +3735,74 @@ func NewListDeploymentEventsRequest(server string, deploymentId DeploymentId, pa
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUnfavouriteDeploymentRequest constructs an http.Request for the UnfavouriteDeployment method
+func NewUnfavouriteDeploymentRequest(server string, deploymentId DeploymentId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "deploymentId", deploymentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/deployments/%s/favourite", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewFavouriteDeploymentRequest constructs an http.Request for the FavouriteDeployment method
+func NewFavouriteDeploymentRequest(server string, deploymentId DeploymentId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "deploymentId", deploymentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/deployments/%s/favourite", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3571,6 +4472,47 @@ func NewListWorkersRequest(server string, deploymentId DeploymentId, params *Lis
 	return req, nil
 }
 
+// NewGetWorkerRequest constructs an http.Request for the GetWorker method
+func NewGetWorkerRequest(server string, deploymentId DeploymentId, workerId WorkerId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "deploymentId", deploymentId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "workerId", workerId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/deployments/%s/workers/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListGpuTypesRequest constructs an http.Request for the ListGpuTypes method
 func NewListGpuTypesRequest(server string) (*http.Request, error) {
 	var err error
@@ -3594,6 +4536,376 @@ func NewListGpuTypesRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewCreateGpuTypeRequest calls the generic CreateGpuType builder with application/json body
+func NewCreateGpuTypeRequest(server string, body CreateGpuTypeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateGpuTypeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateGpuTypeRequestWithBody constructs an http.Request for the CreateGpuType method, with any body, and a specified content type
+func NewCreateGpuTypeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteGpuTypeRequest constructs an http.Request for the DeleteGpuType method
+func NewDeleteGpuTypeRequest(server string, gpuTypeId GpuTypeId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetGpuTypeRequest constructs an http.Request for the GetGpuType method
+func NewGetGpuTypeRequest(server string, gpuTypeId GpuTypeId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateGpuTypeRequest calls the generic UpdateGpuType builder with application/json body
+func NewUpdateGpuTypeRequest(server string, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateGpuTypeRequestWithBody(server, gpuTypeId, "application/json", bodyReader)
+}
+
+// NewUpdateGpuTypeRequestWithBody constructs an http.Request for the UpdateGpuType method, with any body, and a specified content type
+func NewUpdateGpuTypeRequestWithBody(server string, gpuTypeId GpuTypeId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListGpuTypePricesRequest constructs an http.Request for the ListGpuTypePrices method
+func NewListGpuTypePricesRequest(server string, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateGpuTypePriceRequest calls the generic CreateGpuTypePrice builder with application/json body
+func NewCreateGpuTypePriceRequest(server string, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateGpuTypePriceRequestWithBody(server, gpuTypeId, "application/json", bodyReader)
+}
+
+// NewCreateGpuTypePriceRequestWithBody constructs an http.Request for the CreateGpuTypePrice method, with any body, and a specified content type
+func NewCreateGpuTypePriceRequestWithBody(server string, gpuTypeId GpuTypeId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteGpuTypePriceRequest constructs an http.Request for the DeleteGpuTypePrice method
+func NewDeleteGpuTypePriceRequest(server string, gpuTypeId GpuTypeId, priceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "priceId", priceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateGpuTypePriceRequest calls the generic UpdateGpuTypePrice builder with application/json body
+func NewUpdateGpuTypePriceRequest(server string, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateGpuTypePriceRequestWithBody(server, gpuTypeId, priceId, "application/json", bodyReader)
+}
+
+// NewUpdateGpuTypePriceRequestWithBody constructs an http.Request for the UpdateGpuTypePrice method, with any body, and a specified content type
+func NewUpdateGpuTypePriceRequestWithBody(server string, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "priceId", priceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -3942,6 +5254,10 @@ type ClientWithResponsesInterface interface {
 
 	// ListDeploymentsWithResponse List deployments
 	//
+	// Returns a page of the organisation's deployments. Filters combine with AND; soft-deleted deployments are excluded unless `status=deleted` is requested explicitly.
+	//
+	// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/deployments (the `ListDeployments` operationId).
@@ -3949,14 +5265,21 @@ type ClientWithResponsesInterface interface {
 
 	// CreateDeploymentWithBodyWithResponse Create a deployment
 	//
-	// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+	// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
+	//
 	// - `code` source: the codebase is submitted to the build pipeline; once the image is built
-	//   and workers become healthy the deployment transitions to `active`.
+	//   and workers become healthy the deployment transitions to `active` and `activeVersionId`
+	//   points at that version. If the build, validation, or rollout fails the deployment is
+	//   marked `failed`.
 	//
-	// - `container` source: the pre-built image is deployed directly with no build step; once
-	//   workers become healthy the deployment transitions to `active`.
+	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
+	//   from a container source yet, so the deployment stays `initializing` and does not serve
+	//   inference — poll `active` only for a `code` source.
 	//
-	// If the build, validation, or rollout fails the deployment is marked `failed`.
+	//
+	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+	//
+	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -3965,14 +5288,21 @@ type ClientWithResponsesInterface interface {
 
 	// CreateDeploymentWithResponse Create a deployment
 	//
-	// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+	// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
+	//
 	// - `code` source: the codebase is submitted to the build pipeline; once the image is built
-	//   and workers become healthy the deployment transitions to `active`.
+	//   and workers become healthy the deployment transitions to `active` and `activeVersionId`
+	//   points at that version. If the build, validation, or rollout fails the deployment is
+	//   marked `failed`.
 	//
-	// - `container` source: the pre-built image is deployed directly with no build step; once
-	//   workers become healthy the deployment transitions to `active`.
+	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
+	//   from a container source yet, so the deployment stays `initializing` and does not serve
+	//   inference — poll `active` only for a `code` source.
 	//
-	// If the build, validation, or rollout fails the deployment is marked `failed`.
+	//
+	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+	//
+	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -3998,7 +5328,9 @@ type ClientWithResponsesInterface interface {
 	// UpdateDeploymentWithBodyWithResponse Update a deployment
 	//
 	// Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
+	//
+	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+	//
 	// Target behaviour (once fully wired):
 	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
 	//   restart with the new configuration. If the rollout fails, the deployment remains on
@@ -4021,7 +5353,9 @@ type ClientWithResponsesInterface interface {
 	// UpdateDeploymentWithResponse Update a deployment
 	//
 	// Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
+	//
+	// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+	//
 	// Target behaviour (once fully wired):
 	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
 	//   restart with the new configuration. If the rollout fails, the deployment remains on
@@ -4058,9 +5392,11 @@ type ClientWithResponsesInterface interface {
 	// DeployVersionWithBodyWithResponse Deploy a version
 	//
 	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+	// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+	// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4070,9 +5406,11 @@ type ClientWithResponsesInterface interface {
 	// DeployVersionWithResponse Deploy a version
 	//
 	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+	// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+	// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+	// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4086,6 +5424,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/deployments/{deploymentId}/endpoints (the `ListEndpoints` operationId).
 	ListEndpointsWithResponse(ctx context.Context, deploymentId DeploymentId, params *ListEndpointsParams, reqEditors ...RequestEditorFn) (*ListEndpointsResponse, error)
 
+	// GetEndpointWithResponse Get an endpoint
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/deployments/{deploymentId}/endpoints/{endpointId} (the `GetEndpoint` operationId).
+	GetEndpointWithResponse(ctx context.Context, deploymentId DeploymentId, endpointId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetEndpointResponse, error)
+
 	// ListDeploymentEnvironmentVariablesWithResponse List deployment environment variables
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4098,21 +5443,33 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `DeleteDeploymentEnvironmentVariable` operationId).
-	DeleteDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName string, reqEditors ...RequestEditorFn) (*DeleteDeploymentEnvironmentVariableResponse, error)
+	DeleteDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, reqEditors ...RequestEditorFn) (*DeleteDeploymentEnvironmentVariableResponse, error)
 
-	// UpsertDeploymentEnvironmentVariableWithBodyWithResponse Upsert a deployment environment variable
+	// UpdateDeploymentEnvironmentVariableWithBodyWithResponse Update a deployment environment variable
+	//
+	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+	//
+	// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-	UpsertDeploymentEnvironmentVariableWithBodyWithResponse(ctx context.Context, deploymentId DeploymentId, variableName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpsertDeploymentEnvironmentVariableResponse, error)
+	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+	UpdateDeploymentEnvironmentVariableWithBodyWithResponse(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDeploymentEnvironmentVariableResponse, error)
 
-	// UpsertDeploymentEnvironmentVariableWithResponse Upsert a deployment environment variable
+	// UpdateDeploymentEnvironmentVariableWithResponse Update a deployment environment variable
+	//
+	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+	//
+	// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-	UpsertDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName string, body UpsertDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertDeploymentEnvironmentVariableResponse, error)
+	// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+	UpdateDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, body UpdateDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDeploymentEnvironmentVariableResponse, error)
 
 	// ListDeploymentEventsWithResponse List deployment events
 	//
@@ -4121,9 +5478,27 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/deployments/{deploymentId}/events (the `ListDeploymentEvents` operationId).
 	ListDeploymentEventsWithResponse(ctx context.Context, deploymentId DeploymentId, params *ListDeploymentEventsParams, reqEditors ...RequestEditorFn) (*ListDeploymentEventsResponse, error)
 
+	// UnfavouriteDeploymentWithResponse Unfavourite a deployment
+	//
+	// Removes the organisation favourite pin from the deployment. Idempotent: unfavouriting a deployment that is not favourited succeeds and returns the deployment with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not a deployment lifecycle mutation. Missing deployments return `404`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/deployments/{deploymentId}/favourite (the `UnfavouriteDeployment` operationId).
+	UnfavouriteDeploymentWithResponse(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*UnfavouriteDeploymentResponse, error)
+
+	// FavouriteDeploymentWithResponse Favourite a deployment
+	//
+	// Pins the deployment as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited deployment succeeds and returns the deployment with `isFavourite: true`. Deployments in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/deployments/{deploymentId}/favourite (the `FavouriteDeployment` operationId).
+	FavouriteDeploymentWithResponse(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*FavouriteDeploymentResponse, error)
+
 	// StartAsyncTaskWithBodyWithResponse Start a new async task
 	//
-	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4132,7 +5507,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithResponse Start a new async task
 	//
-	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+	// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4141,7 +5516,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithBodyWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4150,7 +5525,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+	// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4159,7 +5534,7 @@ type ClientWithResponsesInterface interface {
 
 	// ResumeDeploymentWithResponse Resume a deployment
 	//
-	// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks queued during the stopped period are consumed as workers come online. Precondition: `status = stopped`.
+	// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks that remained queued when the deployment stopped are consumed as workers come online. Precondition: `status = stopped`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -4175,7 +5550,9 @@ type ClientWithResponsesInterface interface {
 
 	// AttachDeploymentSecretWithBodyWithResponse Attach a secret to a deployment
 	//
-	// Returns 409 if the secret is already attached to this deployment.
+	// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4184,7 +5561,9 @@ type ClientWithResponsesInterface interface {
 
 	// AttachDeploymentSecretWithResponse Attach a secret to a deployment
 	//
-	// Returns 409 if the secret is already attached to this deployment.
+	// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -4193,6 +5572,8 @@ type ClientWithResponsesInterface interface {
 
 	// DetachDeploymentSecretWithResponse Detach a secret from a deployment
 	//
+	// Removes the control-plane attachment. Does not roll workers in this release.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /v1/deployments/{deploymentId}/secrets/{secretName} (the `DetachDeploymentSecret` operationId).
@@ -4200,7 +5581,7 @@ type ClientWithResponsesInterface interface {
 
 	// StopDeploymentWithResponse Stop a deployment
 	//
-	// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a grace period (`gracefulStopTtlSecs`) to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions are still accepted and queued while stopped, but not consumed. Precondition: `status = active`.
+	// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the deployment reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -4209,6 +5590,8 @@ type ClientWithResponsesInterface interface {
 
 	// ListTasksWithResponse List tasks for a deployment
 	//
+	// Lists TTL-bounded asynchronous task metadata for this deployment so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the deployment is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted deployments return `404 Not Found`.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/deployments/{deploymentId}/tasks (the `ListTasks` operationId).
@@ -4216,7 +5599,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetTaskWithResponse Get a task
 	//
-	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set.
+	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set. If the deployment is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this deployment. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`; retry it within the normal polling window. Unknown or deleted deployments also return `404 Not Found`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -4239,19 +5622,138 @@ type ClientWithResponsesInterface interface {
 
 	// ListWorkersWithResponse List workers
 	//
+	// Returns a newest-first page of workers observed for the deployment (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/deployments/{deploymentId}/workers (the `ListWorkers` operationId).
 	ListWorkersWithResponse(ctx context.Context, deploymentId DeploymentId, params *ListWorkersParams, reqEditors ...RequestEditorFn) (*ListWorkersResponse, error)
 
+	// GetWorkerWithResponse Get a worker
+	//
+	// Returns one worker by id within the deployment. The id is the Kubernetes pod UID recorded by the reconciler. A worker that belongs to another deployment (or tenant) is not found.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/deployments/{deploymentId}/workers/{workerId} (the `GetWorker` operationId).
+	GetWorkerWithResponse(ctx context.Context, deploymentId DeploymentId, workerId WorkerId, reqEditors ...RequestEditorFn) (*GetWorkerResponse, error)
+
 	// ListGpuTypesWithResponse List supported GPU types and their pricing
 	//
-	// Returns the global GPU type catalogue and pricing. The result is not organisation-specific, but the request still requires authentication.
+	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including types not yet offered. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 	ListGpuTypesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListGpuTypesResponse, error)
+
+	// CreateGpuTypeWithBodyWithResponse Add a GPU type to the catalogue
+	//
+	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+	CreateGpuTypeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error)
+
+	// CreateGpuTypeWithResponse Add a GPU type to the catalogue
+	//
+	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+	CreateGpuTypeWithResponse(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error)
+
+	// DeleteGpuTypeWithResponse Remove a GPU type from the catalogue
+	//
+	// Deletes a GPU type from the global catalogue. Restricted to the Runware platform organization. Returns `409` if any live worker configuration still references the code.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
+	DeleteGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*DeleteGpuTypeResponse, error)
+
+	// GetGpuTypeWithResponse Get a GPU type from the catalogue
+	//
+	// Returns a single entry from the global GPU type catalogue. The result is not organisation-specific, but the request still requires authentication.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
+	GetGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*GetGpuTypeResponse, error)
+
+	// UpdateGpuTypeWithBodyWithResponse Update a GPU type in the catalogue
+	//
+	// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+	UpdateGpuTypeWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error)
+
+	// UpdateGpuTypeWithResponse Update a GPU type in the catalogue
+	//
+	// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+	UpdateGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error)
+
+	// ListGpuTypePricesWithResponse List historical and future prices of a GPU type
+	//
+	// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
+	ListGpuTypePricesWithResponse(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*ListGpuTypePricesResponse, error)
+
+	// CreateGpuTypePriceWithBodyWithResponse Schedule a new price for a GPU type
+	//
+	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+	CreateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error)
+
+	// CreateGpuTypePriceWithResponse Schedule a new price for a GPU type
+	//
+	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+	CreateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error)
+
+	// DeleteGpuTypePriceWithResponse Remove a scheduled price for a GPU type
+	//
+	// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
+	DeleteGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteGpuTypePriceResponse, error)
+
+	// UpdateGpuTypePriceWithBodyWithResponse Update a scheduled price for a GPU type
+	//
+	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+	UpdateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error)
+
+	// UpdateGpuTypePriceWithResponse Update a scheduled price for a GPU type
+	//
+	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+	UpdateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error)
 
 	// ListSecretsWithResponse List secrets
 	//
@@ -4264,6 +5766,8 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithBodyWithResponse Create a secret
 	//
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
@@ -4271,12 +5775,16 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithResponse Create a secret
 	//
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
 	CreateSecretWithResponse(ctx context.Context, body CreateSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSecretResponse, error)
 
 	// DeleteSecretWithResponse Delete a secret
+	//
+	// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any deployment still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../deployments/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -4316,6 +5824,8 @@ type GetDeploymentSummaryResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4331,6 +5841,11 @@ func (r GetDeploymentSummaryResponse) GetApplicationproblemJSON401() *Unauthoriz
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r GetDeploymentSummaryResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetDeploymentSummaryResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4372,10 +5887,16 @@ type ListDeploymentsResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4388,6 +5909,11 @@ func (r ListDeploymentsResponse) GetJSON200() *struct {
 	return r.JSON200
 }
 
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListDeploymentsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ListDeploymentsResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
@@ -4396,6 +5922,16 @@ func (r ListDeploymentsResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r ListDeploymentsResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListDeploymentsResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListDeploymentsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4442,6 +5978,8 @@ type CreateDeploymentResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -4472,6 +6010,11 @@ func (r CreateDeploymentResponse) GetApplicationproblemJSON409() *Conflict {
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r CreateDeploymentResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4514,6 +6057,8 @@ type DeleteDeploymentResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON202 returns the response for an HTTP 202 `application/json` response
@@ -4534,6 +6079,11 @@ func (r DeleteDeploymentResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r DeleteDeploymentResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4576,6 +6126,8 @@ type GetDeploymentResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4596,6 +6148,11 @@ func (r GetDeploymentResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetDeploymentResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4644,6 +6201,8 @@ type UpdateDeploymentResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4679,6 +6238,11 @@ func (r UpdateDeploymentResponse) GetApplicationproblemJSON409() *Conflict {
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r UpdateDeploymentResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpdateDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4726,6 +6290,8 @@ type ListBuildsResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4751,6 +6317,11 @@ func (r ListBuildsResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListBuildsResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListBuildsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4793,6 +6364,8 @@ type GetBuildResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4813,6 +6386,11 @@ func (r GetBuildResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetBuildResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetBuildResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4861,6 +6439,8 @@ type DeployVersionResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON202 returns the response for an HTTP 202 `application/json` response
@@ -4896,6 +6476,11 @@ func (r DeployVersionResponse) GetApplicationproblemJSON409() *Conflict {
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r DeployVersionResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeployVersionResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4937,12 +6522,18 @@ type ListEndpointsResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -4953,6 +6544,11 @@ func (r ListEndpointsResponse) GetJSON200() *struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListEndpointsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -4968,6 +6564,16 @@ func (r ListEndpointsResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListEndpointsResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListEndpointsResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListEndpointsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -4999,6 +6605,89 @@ func (r ListEndpointsResponse) ContentType() string {
 	return ""
 }
 
+type GetEndpointResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Endpoint
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetEndpointResponse) GetJSON200() *Endpoint {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetEndpointResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetEndpointResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetEndpointResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetEndpointResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetEndpointResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetEndpointResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetEndpointResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetEndpointResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetEndpointResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetEndpointResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListDeploymentEnvironmentVariablesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5015,6 +6704,8 @@ type ListDeploymentEnvironmentVariablesResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5040,6 +6731,11 @@ func (r ListDeploymentEnvironmentVariablesResponse) GetApplicationproblemJSON403
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListDeploymentEnvironmentVariablesResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListDeploymentEnvironmentVariablesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5080,6 +6776,8 @@ type DeleteDeploymentEnvironmentVariableResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -5095,6 +6793,11 @@ func (r DeleteDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON40
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r DeleteDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5126,7 +6829,7 @@ func (r DeleteDeploymentEnvironmentVariableResponse) ContentType() string {
 	return ""
 }
 
-type UpsertDeploymentEnvironmentVariableResponse struct {
+type UpdateDeploymentEnvironmentVariableResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
@@ -5141,45 +6844,52 @@ type UpsertDeploymentEnvironmentVariableResponse struct {
 	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r UpsertDeploymentEnvironmentVariableResponse) GetJSON200() *EnvironmentVariable {
+func (r UpdateDeploymentEnvironmentVariableResponse) GetJSON200() *EnvironmentVariable {
 	return r.JSON200
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r UpsertDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON400() *BadRequest {
+func (r UpdateDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON400() *BadRequest {
 	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r UpsertDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON401() *Unauthorized {
+func (r UpdateDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r UpsertDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON403() *Forbidden {
+func (r UpdateDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r UpsertDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON404() *NotFound {
+func (r UpdateDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r UpsertDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON422() *ValidationError {
+func (r UpdateDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
 }
 
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpdateDeploymentEnvironmentVariableResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
 // GetBody returns the raw response body bytes
-func (r UpsertDeploymentEnvironmentVariableResponse) GetBody() []byte {
+func (r UpdateDeploymentEnvironmentVariableResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r UpsertDeploymentEnvironmentVariableResponse) Status() string {
+func (r UpdateDeploymentEnvironmentVariableResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -5187,7 +6897,7 @@ func (r UpsertDeploymentEnvironmentVariableResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r UpsertDeploymentEnvironmentVariableResponse) StatusCode() int {
+func (r UpdateDeploymentEnvironmentVariableResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -5195,7 +6905,7 @@ func (r UpsertDeploymentEnvironmentVariableResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r UpsertDeploymentEnvironmentVariableResponse) ContentType() string {
+func (r UpdateDeploymentEnvironmentVariableResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5218,6 +6928,8 @@ type ListDeploymentEventsResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5243,6 +6955,11 @@ func (r ListDeploymentEventsResponse) GetApplicationproblemJSON403() *Forbidden 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListDeploymentEventsResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListDeploymentEventsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5274,6 +6991,144 @@ func (r ListDeploymentEventsResponse) ContentType() string {
 	return ""
 }
 
+type UnfavouriteDeploymentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Deployment
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UnfavouriteDeploymentResponse) GetJSON200() *Deployment {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UnfavouriteDeploymentResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UnfavouriteDeploymentResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UnfavouriteDeploymentResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UnfavouriteDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r UnfavouriteDeploymentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnfavouriteDeploymentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnfavouriteDeploymentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnfavouriteDeploymentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type FavouriteDeploymentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Deployment
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r FavouriteDeploymentResponse) GetJSON200() *Deployment {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r FavouriteDeploymentResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r FavouriteDeploymentResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r FavouriteDeploymentResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r FavouriteDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r FavouriteDeploymentResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r FavouriteDeploymentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r FavouriteDeploymentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r FavouriteDeploymentResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type StartAsyncTaskResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5287,8 +7142,12 @@ type StartAsyncTaskResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON202 returns the response for an HTTP 202 `application/json` response
@@ -5316,9 +7175,19 @@ func (r StartAsyncTaskResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
 }
 
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r StartAsyncTaskResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r StartAsyncTaskResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r StartAsyncTaskResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5363,8 +7232,12 @@ type StartSyncTaskResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 	// ApplicationproblemJSON504 the response for an HTTP 504 `application/problem+json` response
 	ApplicationproblemJSON504 *Timeout
 }
@@ -5394,9 +7267,19 @@ func (r StartSyncTaskResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
 }
 
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r StartSyncTaskResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r StartSyncTaskResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r StartSyncTaskResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetApplicationproblemJSON504 returns the response for an HTTP 504 `application/problem+json` response
@@ -5446,6 +7329,8 @@ type ResumeDeploymentResponse struct {
 	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
 	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON202 returns the response for an HTTP 202 `application/json` response
@@ -5471,6 +7356,11 @@ func (r ResumeDeploymentResponse) GetApplicationproblemJSON404() *NotFound {
 // GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
 func (r ResumeDeploymentResponse) GetApplicationproblemJSON409() *Conflict {
 	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ResumeDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5507,27 +7397,38 @@ type ListDeploymentSecretsResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *struct {
-		Data *[]Secret `json:"data,omitempty"`
+		Data *[]SecretAttachment `json:"data,omitempty"`
 
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ListDeploymentSecretsResponse) GetJSON200() *struct {
-	Data *[]Secret `json:"data,omitempty"`
+	Data *[]SecretAttachment `json:"data,omitempty"`
 
 	// NextCursor Cursor for the next page; null when there are no more items.
 	NextCursor *string `json:"nextCursor,omitempty"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListDeploymentSecretsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -5543,6 +7444,16 @@ func (r ListDeploymentSecretsResponse) GetApplicationproblemJSON403() *Forbidden
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListDeploymentSecretsResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListDeploymentSecretsResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListDeploymentSecretsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5589,6 +7500,8 @@ type AttachDeploymentSecretResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
@@ -5619,6 +7532,11 @@ func (r AttachDeploymentSecretResponse) GetApplicationproblemJSON409() *Conflict
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r AttachDeploymentSecretResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r AttachDeploymentSecretResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5659,6 +7577,10 @@ type DetachDeploymentSecretResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -5674,6 +7596,16 @@ func (r DetachDeploymentSecretResponse) GetApplicationproblemJSON403() *Forbidde
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r DetachDeploymentSecretResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DetachDeploymentSecretResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DetachDeploymentSecretResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5718,6 +7650,8 @@ type StopDeploymentResponse struct {
 	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
 	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON202 returns the response for an HTTP 202 `application/json` response
@@ -5743,6 +7677,11 @@ func (r StopDeploymentResponse) GetApplicationproblemJSON404() *NotFound {
 // GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
 func (r StopDeploymentResponse) GetApplicationproblemJSON409() *Conflict {
 	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r StopDeploymentResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5784,12 +7723,18 @@ type ListTasksResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5800,6 +7745,11 @@ func (r ListTasksResponse) GetJSON200() *struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListTasksResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -5815,6 +7765,16 @@ func (r ListTasksResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListTasksResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListTasksResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListTasksResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5857,6 +7817,8 @@ type GetTaskResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5877,6 +7839,11 @@ func (r GetTaskResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetTaskResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetTaskResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5924,6 +7891,8 @@ type ListVersionsResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5949,6 +7918,11 @@ func (r ListVersionsResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListVersionsResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListVersionsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5991,6 +7965,8 @@ type GetVersionResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -6011,6 +7987,11 @@ func (r GetVersionResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetVersionResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetVersionResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6052,12 +8033,18 @@ type ListWorkersResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -6068,6 +8055,11 @@ func (r ListWorkersResponse) GetJSON200() *struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListWorkersResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -6083,6 +8075,16 @@ func (r ListWorkersResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r ListWorkersResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListWorkersResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListWorkersResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6114,6 +8116,89 @@ func (r ListWorkersResponse) ContentType() string {
 	return ""
 }
 
+type GetWorkerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Worker
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetWorkerResponse) GetJSON200() *Worker {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetWorkerResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetWorkerResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetWorkerResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetWorkerResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetWorkerResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetWorkerResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetWorkerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetWorkerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetWorkerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetWorkerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListGpuTypesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6123,6 +8208,8 @@ type ListGpuTypesResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -6138,6 +8225,11 @@ func (r ListGpuTypesResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r ListGpuTypesResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListGpuTypesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6169,6 +8261,652 @@ func (r ListGpuTypesResponse) ContentType() string {
 	return ""
 }
 
+type CreateGpuTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *GpuType
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateGpuTypeResponse) GetJSON201() *GpuType {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateGpuTypeResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateGpuTypeResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateGpuTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateGpuTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateGpuTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateGpuTypeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteGpuTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteGpuTypeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteGpuTypeResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteGpuTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteGpuTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteGpuTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteGpuTypeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetGpuTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GpuType
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetGpuTypeResponse) GetJSON200() *GpuType {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetGpuTypeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetGpuTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetGpuTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetGpuTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetGpuTypeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateGpuTypeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GpuType
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateGpuTypeResponse) GetJSON200() *GpuType {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateGpuTypeResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateGpuTypeResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpdateGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateGpuTypeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateGpuTypeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateGpuTypeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateGpuTypeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListGpuTypePricesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data *[]GpuPricingListItem `json:"data,omitempty"`
+
+		// NextCursor Cursor for the next page; null when there are no more items.
+		NextCursor *string `json:"nextCursor,omitempty"`
+	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListGpuTypePricesResponse) GetJSON200() *struct {
+	Data *[]GpuPricingListItem `json:"data,omitempty"`
+
+	// NextCursor Cursor for the next page; null when there are no more items.
+	NextCursor *string `json:"nextCursor,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListGpuTypePricesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListGpuTypePricesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListGpuTypePricesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListGpuTypePricesResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListGpuTypePricesResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r ListGpuTypePricesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListGpuTypePricesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListGpuTypePricesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListGpuTypePricesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateGpuTypePriceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *GpuPricing
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateGpuTypePriceResponse) GetJSON201() *GpuPricing {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateGpuTypePriceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateGpuTypePriceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateGpuTypePriceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateGpuTypePriceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteGpuTypePriceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteGpuTypePriceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteGpuTypePriceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteGpuTypePriceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteGpuTypePriceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateGpuTypePriceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GpuPricing
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateGpuTypePriceResponse) GetJSON200() *GpuPricing {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateGpuTypePriceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateGpuTypePriceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateGpuTypePriceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateGpuTypePriceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSecretsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -6179,10 +8917,16 @@ type ListSecretsResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -6195,6 +8939,11 @@ func (r ListSecretsResponse) GetJSON200() *struct {
 	return r.JSON200
 }
 
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListSecretsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ListSecretsResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
@@ -6203,6 +8952,16 @@ func (r ListSecretsResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r ListSecretsResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListSecretsResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListSecretsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6249,6 +9008,8 @@ type CreateSecretResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -6279,6 +9040,11 @@ func (r CreateSecretResponse) GetApplicationproblemJSON409() *Conflict {
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r CreateSecretResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateSecretResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6319,6 +9085,12 @@ type DeleteSecretResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -6334,6 +9106,21 @@ func (r DeleteSecretResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r DeleteSecretResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteSecretResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteSecretResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteSecretResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6380,6 +9167,8 @@ type UpdateSecretResponse struct {
 	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -6410,6 +9199,11 @@ func (r UpdateSecretResponse) GetApplicationproblemJSON404() *NotFound {
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r UpdateSecretResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpdateSecretResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6451,10 +9245,14 @@ type ListUsageEventsResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -6467,6 +9265,11 @@ func (r ListUsageEventsResponse) GetJSON200() *struct {
 	return r.JSON200
 }
 
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListUsageEventsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ListUsageEventsResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
@@ -6475,6 +9278,11 @@ func (r ListUsageEventsResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r ListUsageEventsResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListUsageEventsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6523,6 +9331,10 @@ func (c *ClientWithResponses) GetDeploymentSummaryWithResponse(ctx context.Conte
 
 // ListDeploymentsWithResponse List deployments
 //
+// Returns a page of the organisation's deployments. Filters combine with AND; soft-deleted deployments are excluded unless `status=deleted` is requested explicitly.
+//
+// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/deployments (the `ListDeployments` operationId).
@@ -6536,15 +9348,20 @@ func (c *ClientWithResponses) ListDeploymentsWithResponse(ctx context.Context, p
 
 // CreateDeploymentWithBodyWithResponse Create a deployment
 //
-// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
 //
 //   - `code` source: the codebase is submitted to the build pipeline; once the image is built
-//     and workers become healthy the deployment transitions to `active`.
+//     and workers become healthy the deployment transitions to `active` and `activeVersionId`
+//     points at that version. If the build, validation, or rollout fails the deployment is
+//     marked `failed`.
 //
-//   - `container` source: the pre-built image is deployed directly with no build step; once
-//     workers become healthy the deployment transitions to `active`.
+//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
+//     from a container source yet, so the deployment stays `initializing` and does not serve
+//     inference — poll `active` only for a `code` source.
 //
-// If the build, validation, or rollout fails the deployment is marked `failed`.
+// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+//
+// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6559,15 +9376,20 @@ func (c *ClientWithResponses) CreateDeploymentWithBodyWithResponse(ctx context.C
 
 // CreateDeploymentWithResponse Create a deployment
 //
-// Creates a deployment together with its worker configuration and endpoints, as declared in the submitted IaC config. The deployment starts in `initializing` and an initial rollout begins immediately based on the deployment source type:
+// Creates a deployment together with its worker configuration, environment variables and endpoints, and records version `1` — the immutable description of what to deploy. The deployment starts in `initializing`, and what happens next depends on the deployment source type:
 //
 //   - `code` source: the codebase is submitted to the build pipeline; once the image is built
-//     and workers become healthy the deployment transitions to `active`.
+//     and workers become healthy the deployment transitions to `active` and `activeVersionId`
+//     points at that version. If the build, validation, or rollout fails the deployment is
+//     marked `failed`.
 //
-//   - `container` source: the pre-built image is deployed directly with no build step; once
-//     workers become healthy the deployment transitions to `active`.
+//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
+//     from a container source yet, so the deployment stays `initializing` and does not serve
+//     inference — poll `active` only for a `code` source.
 //
-// If the build, validation, or rollout fails the deployment is marked `failed`.
+// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
+//
+// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6611,9 +9433,10 @@ func (c *ClientWithResponses) GetDeploymentWithResponse(ctx context.Context, dep
 // UpdateDeploymentWithBodyWithResponse Update a deployment
 //
 // Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
-// Target behaviour (once fully wired):
 //
+// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+//
+// Target behaviour (once fully wired):
 //   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
 //     restart with the new configuration. If the rollout fails, the deployment remains on
 //     the previous configuration.
@@ -6641,7 +9464,9 @@ func (c *ClientWithResponses) UpdateDeploymentWithBodyWithResponse(ctx context.C
 // UpdateDeploymentWithResponse Update a deployment
 //
 // Patches one or more aspects of a deployment in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` until those stores land.
+//
+// **Currently persisted:** `deploymentName` and `configuration` only. Supplying `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
+//
 // Target behaviour (once fully wired):
 //
 //   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
@@ -6697,9 +9522,11 @@ func (c *ClientWithResponses) GetBuildWithResponse(ctx context.Context, deployme
 // DeployVersionWithBodyWithResponse Deploy a version
 //
 // Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6715,9 +9542,11 @@ func (c *ClientWithResponses) DeployVersionWithBodyWithResponse(ctx context.Cont
 // DeployVersionWithResponse Deploy a version
 //
 // Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
-// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy.
-// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
-// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+// A deploy to a `stopped` or `stopping` deployment records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the deployment resumes.
+// If the roll of a live deployment fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
+// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the deployment continues on the previous version.
+// Errors: - Deploy to a `deleting` deployment returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container deployments are supported - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6743,6 +9572,19 @@ func (c *ClientWithResponses) ListEndpointsWithResponse(ctx context.Context, dep
 	return ParseListEndpointsResponse(rsp)
 }
 
+// GetEndpointWithResponse Get an endpoint
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/deployments/{deploymentId}/endpoints/{endpointId} (the `GetEndpoint` operationId).
+func (c *ClientWithResponses) GetEndpointWithResponse(ctx context.Context, deploymentId DeploymentId, endpointId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetEndpointResponse, error) {
+	rsp, err := c.GetEndpoint(ctx, deploymentId, endpointId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetEndpointResponse(rsp)
+}
+
 // ListDeploymentEnvironmentVariablesWithResponse List deployment environment variables
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6761,7 +9603,7 @@ func (c *ClientWithResponses) ListDeploymentEnvironmentVariablesWithResponse(ctx
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `DeleteDeploymentEnvironmentVariable` operationId).
-func (c *ClientWithResponses) DeleteDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName string, reqEditors ...RequestEditorFn) (*DeleteDeploymentEnvironmentVariableResponse, error) {
+func (c *ClientWithResponses) DeleteDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, reqEditors ...RequestEditorFn) (*DeleteDeploymentEnvironmentVariableResponse, error) {
 	rsp, err := c.DeleteDeploymentEnvironmentVariable(ctx, deploymentId, variableName, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -6769,30 +9611,42 @@ func (c *ClientWithResponses) DeleteDeploymentEnvironmentVariableWithResponse(ct
 	return ParseDeleteDeploymentEnvironmentVariableResponse(rsp)
 }
 
-// UpsertDeploymentEnvironmentVariableWithBodyWithResponse Upsert a deployment environment variable
+// UpdateDeploymentEnvironmentVariableWithBodyWithResponse Update a deployment environment variable
+//
+// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+//
+// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-func (c *ClientWithResponses) UpsertDeploymentEnvironmentVariableWithBodyWithResponse(ctx context.Context, deploymentId DeploymentId, variableName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpsertDeploymentEnvironmentVariableResponse, error) {
-	rsp, err := c.UpsertDeploymentEnvironmentVariableWithBody(ctx, deploymentId, variableName, contentType, body, reqEditors...)
+// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+func (c *ClientWithResponses) UpdateDeploymentEnvironmentVariableWithBodyWithResponse(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDeploymentEnvironmentVariableResponse, error) {
+	rsp, err := c.UpdateDeploymentEnvironmentVariableWithBody(ctx, deploymentId, variableName, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUpsertDeploymentEnvironmentVariableResponse(rsp)
+	return ParseUpdateDeploymentEnvironmentVariableResponse(rsp)
 }
 
-// UpsertDeploymentEnvironmentVariableWithResponse Upsert a deployment environment variable
+// UpdateDeploymentEnvironmentVariableWithResponse Update a deployment environment variable
+//
+// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A deployment holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `DeploymentCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
+//
+// The name must not collide with a secret already attached to this deployment (the secret's injected env var name). Secrets and plain env vars share the pod environment; a duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`. The reverse check applies on attach.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpsertDeploymentEnvironmentVariable` operationId).
-func (c *ClientWithResponses) UpsertDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName string, body UpsertDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertDeploymentEnvironmentVariableResponse, error) {
-	rsp, err := c.UpsertDeploymentEnvironmentVariable(ctx, deploymentId, variableName, body, reqEditors...)
+// Corresponds with PUT /v1/deployments/{deploymentId}/environment-variables/{variableName} (the `UpdateDeploymentEnvironmentVariable` operationId).
+func (c *ClientWithResponses) UpdateDeploymentEnvironmentVariableWithResponse(ctx context.Context, deploymentId DeploymentId, variableName EnvironmentVariableName, body UpdateDeploymentEnvironmentVariableJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDeploymentEnvironmentVariableResponse, error) {
+	rsp, err := c.UpdateDeploymentEnvironmentVariable(ctx, deploymentId, variableName, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUpsertDeploymentEnvironmentVariableResponse(rsp)
+	return ParseUpdateDeploymentEnvironmentVariableResponse(rsp)
 }
 
 // ListDeploymentEventsWithResponse List deployment events
@@ -6808,9 +9662,39 @@ func (c *ClientWithResponses) ListDeploymentEventsWithResponse(ctx context.Conte
 	return ParseListDeploymentEventsResponse(rsp)
 }
 
+// UnfavouriteDeploymentWithResponse Unfavourite a deployment
+//
+// Removes the organisation favourite pin from the deployment. Idempotent: unfavouriting a deployment that is not favourited succeeds and returns the deployment with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not a deployment lifecycle mutation. Missing deployments return `404`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/deployments/{deploymentId}/favourite (the `UnfavouriteDeployment` operationId).
+func (c *ClientWithResponses) UnfavouriteDeploymentWithResponse(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*UnfavouriteDeploymentResponse, error) {
+	rsp, err := c.UnfavouriteDeployment(ctx, deploymentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnfavouriteDeploymentResponse(rsp)
+}
+
+// FavouriteDeploymentWithResponse Favourite a deployment
+//
+// Pins the deployment as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited deployment succeeds and returns the deployment with `isFavourite: true`. Deployments in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/deployments/{deploymentId}/favourite (the `FavouriteDeployment` operationId).
+func (c *ClientWithResponses) FavouriteDeploymentWithResponse(ctx context.Context, deploymentId DeploymentId, reqEditors ...RequestEditorFn) (*FavouriteDeploymentResponse, error) {
+	rsp, err := c.FavouriteDeployment(ctx, deploymentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFavouriteDeploymentResponse(rsp)
+}
+
 // StartAsyncTaskWithBodyWithResponse Start a new async task
 //
-// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6825,7 +9709,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithBodyWithResponse(ctx context.Con
 
 // StartAsyncTaskWithResponse Start a new async task
 //
-// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+// Starts a new async task on `deploymentId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6840,7 +9724,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithResponse(ctx context.Context, de
 
 // StartSyncTaskWithBodyWithResponse Start a new sync task
 //
-// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6855,7 +9739,7 @@ func (c *ClientWithResponses) StartSyncTaskWithBodyWithResponse(ctx context.Cont
 
 // StartSyncTaskWithResponse Start a new sync task
 //
-// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window.
+// Starts a new sync task on `deploymentId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Deployments in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6870,7 +9754,7 @@ func (c *ClientWithResponses) StartSyncTaskWithResponse(ctx context.Context, dep
 
 // ResumeDeploymentWithResponse Resume a deployment
 //
-// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks queued during the stopped period are consumed as workers come online. Precondition: `status = stopped`.
+// Moves the deployment to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the deployment to `active`; tasks that remained queued when the deployment stopped are consumed as workers come online. Precondition: `status = stopped`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -6898,7 +9782,9 @@ func (c *ClientWithResponses) ListDeploymentSecretsWithResponse(ctx context.Cont
 
 // AttachDeploymentSecretWithBodyWithResponse Attach a secret to a deployment
 //
-// Returns 409 if the secret is already attached to this deployment.
+// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6913,7 +9799,9 @@ func (c *ClientWithResponses) AttachDeploymentSecretWithBodyWithResponse(ctx con
 
 // AttachDeploymentSecretWithResponse Attach a secret to a deployment
 //
-// Returns 409 if the secret is already attached to this deployment.
+// Records that an organisation secret is attached to a deployment under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this deployment (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// A deployment holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the deployment is already at that limit returns `422`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -6928,6 +9816,8 @@ func (c *ClientWithResponses) AttachDeploymentSecretWithResponse(ctx context.Con
 
 // DetachDeploymentSecretWithResponse Detach a secret from a deployment
 //
+// Removes the control-plane attachment. Does not roll workers in this release.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /v1/deployments/{deploymentId}/secrets/{secretName} (the `DetachDeploymentSecret` operationId).
@@ -6941,7 +9831,7 @@ func (c *ClientWithResponses) DetachDeploymentSecretWithResponse(ctx context.Con
 
 // StopDeploymentWithResponse Stop a deployment
 //
-// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a grace period (`gracefulStopTtlSecs`) to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions are still accepted and queued while stopped, but not consumed. Precondition: `status = active`.
+// Moves the deployment to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the deployment reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -6956,6 +9846,8 @@ func (c *ClientWithResponses) StopDeploymentWithResponse(ctx context.Context, de
 
 // ListTasksWithResponse List tasks for a deployment
 //
+// Lists TTL-bounded asynchronous task metadata for this deployment so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the deployment is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted deployments return `404 Not Found`.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/deployments/{deploymentId}/tasks (the `ListTasks` operationId).
@@ -6969,7 +9861,7 @@ func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, deploym
 
 // GetTaskWithResponse Get a task
 //
-// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set.
+// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set. If the deployment is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this deployment. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`; retry it within the normal polling window. Unknown or deleted deployments also return `404 Not Found`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -7010,6 +9902,8 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, deploy
 
 // ListWorkersWithResponse List workers
 //
+// Returns a newest-first page of workers observed for the deployment (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/deployments/{deploymentId}/workers (the `ListWorkers` operationId).
@@ -7021,9 +9915,24 @@ func (c *ClientWithResponses) ListWorkersWithResponse(ctx context.Context, deplo
 	return ParseListWorkersResponse(rsp)
 }
 
+// GetWorkerWithResponse Get a worker
+//
+// Returns one worker by id within the deployment. The id is the Kubernetes pod UID recorded by the reconciler. A worker that belongs to another deployment (or tenant) is not found.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/deployments/{deploymentId}/workers/{workerId} (the `GetWorker` operationId).
+func (c *ClientWithResponses) GetWorkerWithResponse(ctx context.Context, deploymentId DeploymentId, workerId WorkerId, reqEditors ...RequestEditorFn) (*GetWorkerResponse, error) {
+	rsp, err := c.GetWorker(ctx, deploymentId, workerId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetWorkerResponse(rsp)
+}
+
 // ListGpuTypesWithResponse List supported GPU types and their pricing
 //
-// Returns the global GPU type catalogue and pricing. The result is not organisation-specific, but the request still requires authentication.
+// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including types not yet offered. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -7034,6 +9943,186 @@ func (c *ClientWithResponses) ListGpuTypesWithResponse(ctx context.Context, reqE
 		return nil, err
 	}
 	return ParseListGpuTypesResponse(rsp)
+}
+
+// CreateGpuTypeWithBodyWithResponse Add a GPU type to the catalogue
+//
+// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+func (c *ClientWithResponses) CreateGpuTypeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error) {
+	rsp, err := c.CreateGpuTypeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGpuTypeResponse(rsp)
+}
+
+// CreateGpuTypeWithResponse Add a GPU type to the catalogue
+//
+// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable after create.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
+func (c *ClientWithResponses) CreateGpuTypeWithResponse(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error) {
+	rsp, err := c.CreateGpuType(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGpuTypeResponse(rsp)
+}
+
+// DeleteGpuTypeWithResponse Remove a GPU type from the catalogue
+//
+// Deletes a GPU type from the global catalogue. Restricted to the Runware platform organization. Returns `409` if any live worker configuration still references the code.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
+func (c *ClientWithResponses) DeleteGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*DeleteGpuTypeResponse, error) {
+	rsp, err := c.DeleteGpuType(ctx, gpuTypeId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteGpuTypeResponse(rsp)
+}
+
+// GetGpuTypeWithResponse Get a GPU type from the catalogue
+//
+// Returns a single entry from the global GPU type catalogue. The result is not organisation-specific, but the request still requires authentication.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
+func (c *ClientWithResponses) GetGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*GetGpuTypeResponse, error) {
+	rsp, err := c.GetGpuType(ctx, gpuTypeId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetGpuTypeResponse(rsp)
+}
+
+// UpdateGpuTypeWithBodyWithResponse Update a GPU type in the catalogue
+//
+// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+func (c *ClientWithResponses) UpdateGpuTypeWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error) {
+	rsp, err := c.UpdateGpuTypeWithBody(ctx, gpuTypeId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGpuTypeResponse(rsp)
+}
+
+// UpdateGpuTypeWithResponse Update a GPU type in the catalogue
+//
+// Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
+func (c *ClientWithResponses) UpdateGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error) {
+	rsp, err := c.UpdateGpuType(ctx, gpuTypeId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGpuTypeResponse(rsp)
+}
+
+// ListGpuTypePricesWithResponse List historical and future prices of a GPU type
+//
+// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
+func (c *ClientWithResponses) ListGpuTypePricesWithResponse(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*ListGpuTypePricesResponse, error) {
+	rsp, err := c.ListGpuTypePrices(ctx, gpuTypeId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListGpuTypePricesResponse(rsp)
+}
+
+// CreateGpuTypePriceWithBodyWithResponse Schedule a new price for a GPU type
+//
+// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+func (c *ClientWithResponses) CreateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error) {
+	rsp, err := c.CreateGpuTypePriceWithBody(ctx, gpuTypeId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGpuTypePriceResponse(rsp)
+}
+
+// CreateGpuTypePriceWithResponse Schedule a new price for a GPU type
+//
+// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems and customers get advance notice of the change; a value inside that window returns `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
+func (c *ClientWithResponses) CreateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error) {
+	rsp, err := c.CreateGpuTypePrice(ctx, gpuTypeId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGpuTypePriceResponse(rsp)
+}
+
+// DeleteGpuTypePriceWithResponse Remove a scheduled price for a GPU type
+//
+// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
+func (c *ClientWithResponses) DeleteGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteGpuTypePriceResponse, error) {
+	rsp, err := c.DeleteGpuTypePrice(ctx, gpuTypeId, priceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteGpuTypePriceResponse(rsp)
+}
+
+// UpdateGpuTypePriceWithBodyWithResponse Update a scheduled price for a GPU type
+//
+// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+func (c *ClientWithResponses) UpdateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error) {
+	rsp, err := c.UpdateGpuTypePriceWithBody(ctx, gpuTypeId, priceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGpuTypePriceResponse(rsp)
+}
+
+// UpdateGpuTypePriceWithResponse Update a scheduled price for a GPU type
+//
+// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Returns `409` if it collides with another price already scheduled at that exact instant.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
+func (c *ClientWithResponses) UpdateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error) {
+	rsp, err := c.UpdateGpuTypePrice(ctx, gpuTypeId, priceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGpuTypePriceResponse(rsp)
 }
 
 // ListSecretsWithResponse List secrets
@@ -7053,6 +10142,8 @@ func (c *ClientWithResponses) ListSecretsWithResponse(ctx context.Context, param
 
 // CreateSecretWithBodyWithResponse Create a secret
 //
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
@@ -7066,6 +10157,8 @@ func (c *ClientWithResponses) CreateSecretWithBodyWithResponse(ctx context.Conte
 
 // CreateSecretWithResponse Create a secret
 //
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+//
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /v1/secrets (the `CreateSecret` operationId).
@@ -7078,6 +10171,8 @@ func (c *ClientWithResponses) CreateSecretWithResponse(ctx context.Context, body
 }
 
 // DeleteSecretWithResponse Delete a secret
+//
+// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any deployment still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../deployments/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -7166,6 +10261,13 @@ func ParseGetDeploymentSummaryResponse(rsp *http.Response) (*GetDeploymentSummar
 		}
 		response.ApplicationproblemJSON403 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -7197,6 +10299,13 @@ func ParseListDeploymentsResponse(rsp *http.Response) (*ListDeploymentsResponse,
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7210,6 +10319,20 @@ func ParseListDeploymentsResponse(rsp *http.Response) (*ListDeploymentsResponse,
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -7272,6 +10395,13 @@ func ParseCreateDeploymentResponse(rsp *http.Response) (*CreateDeploymentRespons
 		}
 		response.ApplicationproblemJSON422 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -7319,6 +10449,13 @@ func ParseDeleteDeploymentResponse(rsp *http.Response) (*DeleteDeploymentRespons
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -7365,6 +10502,13 @@ func ParseGetDeploymentResponse(rsp *http.Response) (*GetDeploymentResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -7434,6 +10578,13 @@ func ParseUpdateDeploymentResponse(rsp *http.Response) (*UpdateDeploymentRespons
 		}
 		response.ApplicationproblemJSON422 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -7486,6 +10637,13 @@ func ParseListBuildsResponse(rsp *http.Response) (*ListBuildsResponse, error) {
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -7532,6 +10690,13 @@ func ParseGetBuildResponse(rsp *http.Response) (*GetBuildResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -7601,6 +10766,13 @@ func ParseDeployVersionResponse(rsp *http.Response) (*DeployVersionResponse, err
 		}
 		response.ApplicationproblemJSON422 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -7632,6 +10804,13 @@ func ParseListEndpointsResponse(rsp *http.Response) (*ListEndpointsResponse, err
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -7652,6 +10831,88 @@ func ParseListEndpointsResponse(rsp *http.Response) (*ListEndpointsResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetEndpointResponse parses an HTTP response from a GetEndpointWithResponse call
+func ParseGetEndpointResponse(rsp *http.Response) (*GetEndpointResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetEndpointResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Endpoint
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -7705,6 +10966,13 @@ func ParseListDeploymentEnvironmentVariablesResponse(rsp *http.Response) (*ListD
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -7748,20 +11016,27 @@ func ParseDeleteDeploymentEnvironmentVariableResponse(rsp *http.Response) (*Dele
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
 }
 
-// ParseUpsertDeploymentEnvironmentVariableResponse parses an HTTP response from a UpsertDeploymentEnvironmentVariableWithResponse call
-func ParseUpsertDeploymentEnvironmentVariableResponse(rsp *http.Response) (*UpsertDeploymentEnvironmentVariableResponse, error) {
+// ParseUpdateDeploymentEnvironmentVariableResponse parses an HTTP response from a UpdateDeploymentEnvironmentVariableWithResponse call
+func ParseUpdateDeploymentEnvironmentVariableResponse(rsp *http.Response) (*UpdateDeploymentEnvironmentVariableResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &UpsertDeploymentEnvironmentVariableResponse{
+	response := &UpdateDeploymentEnvironmentVariableResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -7808,6 +11083,13 @@ func ParseUpsertDeploymentEnvironmentVariableResponse(rsp *http.Response) (*Upse
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -7860,6 +11142,121 @@ func ParseListDeploymentEventsResponse(rsp *http.Response) (*ListDeploymentEvent
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUnfavouriteDeploymentResponse parses an HTTP response from a UnfavouriteDeploymentWithResponse call
+func ParseUnfavouriteDeploymentResponse(rsp *http.Response) (*UnfavouriteDeploymentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnfavouriteDeploymentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Deployment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseFavouriteDeploymentResponse parses an HTTP response from a FavouriteDeploymentWithResponse call
+func ParseFavouriteDeploymentResponse(rsp *http.Response) (*FavouriteDeploymentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &FavouriteDeploymentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Deployment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -7915,12 +11312,26 @@ func ParseStartAsyncTaskResponse(rsp *http.Response) (*StartAsyncTaskResponse, e
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -7976,12 +11387,26 @@ func ParseStartSyncTaskResponse(rsp *http.Response) (*StartSyncTaskResponse, err
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
 		var dest Timeout
@@ -8044,6 +11469,13 @@ func ParseResumeDeploymentResponse(rsp *http.Response) (*ResumeDeploymentRespons
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -8065,7 +11497,7 @@ func ParseListDeploymentSecretsResponse(rsp *http.Response) (*ListDeploymentSecr
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest struct {
-			Data *[]Secret `json:"data,omitempty"`
+			Data *[]SecretAttachment `json:"data,omitempty"`
 
 			// NextCursor Cursor for the next page; null when there are no more items.
 			NextCursor *string `json:"nextCursor,omitempty"`
@@ -8074,6 +11506,13 @@ func ParseListDeploymentSecretsResponse(rsp *http.Response) (*ListDeploymentSecr
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -8095,6 +11534,20 @@ func ParseListDeploymentSecretsResponse(rsp *http.Response) (*ListDeploymentSecr
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -8160,6 +11613,13 @@ func ParseAttachDeploymentSecretResponse(rsp *http.Response) (*AttachDeploymentS
 		}
 		response.ApplicationproblemJSON422 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -8202,6 +11662,20 @@ func ParseDetachDeploymentSecretResponse(rsp *http.Response) (*DetachDeploymentS
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -8257,6 +11731,13 @@ func ParseStopDeploymentResponse(rsp *http.Response) (*StopDeploymentResponse, e
 		}
 		response.ApplicationproblemJSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -8288,6 +11769,13 @@ func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8308,6 +11796,20 @@ func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -8355,6 +11857,13 @@ func ParseGetTaskResponse(rsp *http.Response) (*GetTaskResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -8408,6 +11917,13 @@ func ParseListVersionsResponse(rsp *http.Response) (*ListVersionsResponse, error
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -8455,6 +11971,13 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -8486,6 +12009,13 @@ func ParseListWorkersResponse(rsp *http.Response) (*ListWorkersResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8506,6 +12036,88 @@ func ParseListWorkersResponse(rsp *http.Response) (*ListWorkersResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetWorkerResponse parses an HTTP response from a GetWorkerWithResponse call
+func ParseGetWorkerResponse(rsp *http.Response) (*GetWorkerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetWorkerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Worker
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -8547,6 +12159,540 @@ func ParseListGpuTypesResponse(rsp *http.Response) (*ListGpuTypesResponse, error
 		}
 		response.ApplicationproblemJSON403 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateGpuTypeResponse parses an HTTP response from a CreateGpuTypeWithResponse call
+func ParseCreateGpuTypeResponse(rsp *http.Response) (*CreateGpuTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateGpuTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GpuType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteGpuTypeResponse parses an HTTP response from a DeleteGpuTypeWithResponse call
+func ParseDeleteGpuTypeResponse(rsp *http.Response) (*DeleteGpuTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteGpuTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetGpuTypeResponse parses an HTTP response from a GetGpuTypeWithResponse call
+func ParseGetGpuTypeResponse(rsp *http.Response) (*GetGpuTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetGpuTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GpuType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateGpuTypeResponse parses an HTTP response from a UpdateGpuTypeWithResponse call
+func ParseUpdateGpuTypeResponse(rsp *http.Response) (*UpdateGpuTypeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateGpuTypeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GpuType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListGpuTypePricesResponse parses an HTTP response from a ListGpuTypePricesWithResponse call
+func ParseListGpuTypePricesResponse(rsp *http.Response) (*ListGpuTypePricesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListGpuTypePricesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data *[]GpuPricingListItem `json:"data,omitempty"`
+
+			// NextCursor Cursor for the next page; null when there are no more items.
+			NextCursor *string `json:"nextCursor,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateGpuTypePriceResponse parses an HTTP response from a CreateGpuTypePriceWithResponse call
+func ParseCreateGpuTypePriceResponse(rsp *http.Response) (*CreateGpuTypePriceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateGpuTypePriceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GpuPricing
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteGpuTypePriceResponse parses an HTTP response from a DeleteGpuTypePriceWithResponse call
+func ParseDeleteGpuTypePriceResponse(rsp *http.Response) (*DeleteGpuTypePriceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteGpuTypePriceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateGpuTypePriceResponse parses an HTTP response from a UpdateGpuTypePriceWithResponse call
+func ParseUpdateGpuTypePriceResponse(rsp *http.Response) (*UpdateGpuTypePriceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateGpuTypePriceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GpuPricing
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
 	}
 
 	return response, nil
@@ -8578,6 +12724,13 @@ func ParseListSecretsResponse(rsp *http.Response) (*ListSecretsResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8591,6 +12744,20 @@ func ParseListSecretsResponse(rsp *http.Response) (*ListSecretsResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -8653,6 +12820,13 @@ func ParseCreateSecretResponse(rsp *http.Response) (*CreateSecretResponse, error
 		}
 		response.ApplicationproblemJSON422 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -8695,6 +12869,27 @@ func ParseDeleteSecretResponse(rsp *http.Response) (*DeleteSecretResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
@@ -8757,6 +12952,13 @@ func ParseUpdateSecretResponse(rsp *http.Response) (*UpdateSecretResponse, error
 		}
 		response.ApplicationproblemJSON422 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
 	}
 
 	return response, nil
@@ -8788,6 +12990,13 @@ func ParseListUsageEventsResponse(rsp *http.Response) (*ListUsageEventsResponse,
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8801,6 +13010,13 @@ func ParseListUsageEventsResponse(rsp *http.Response) (*ListUsageEventsResponse,
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 

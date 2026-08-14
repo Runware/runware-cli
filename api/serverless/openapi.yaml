@@ -10,21 +10,28 @@ info:
   description: >
     Control plane and task-ingestion API for the Runware Serverless platform.
 
+
     A Runware organisation is the tenant boundary. Deployments are addressed as
     `/v1/deployments/{deploymentId}` and endpoints are invoked as
     `/v1/deployments/{deploymentId}/invoke-async/{endpointPath}` (async invocation) or
     `/v1/deployments/{deploymentId}/invoke-sync/{endpointPath}` (sync invocation).
 
-    Authentication uses a Runware API key validated against the existing Runware platform
-    (server-to-server). The key identifies the organisation; resources are always scoped to the
-    authenticated organisation.
+
+    Two authentication schemes are accepted, both as bearer tokens. A Runware API key
+    (CLI and SDK) is validated against the existing Runware platform server-to-server; the
+    key identifies the organisation. An org-scoped JWT (web app) is minted by the Runware
+    platform for one user acting in one organisation and verified locally against the
+    platform's published JWKS. Resources are always scoped to the authenticated
+    organisation, whichever scheme carried it. Task ingestion and task reads accept the
+    API key only.
 
 security:
   - ApiKeyAuth: []
+  - OrgJwtAuth: []
 
 tags:
   - name: Tasks
-    description: Task ingestion — submit work to a deployment endpoint
+    description: Submit work to deployment endpoints and inspect task status
   - name: Deployments
     description: Manage deployments and their lifecycle
   - name: Builds
@@ -42,7 +49,7 @@ tags:
   - name: EnvironmentVariables
     description: Plain-text environment variables scoped to a deployment
   - name: Observability
-    description: Tasks, usage, events and errors
+    description: Usage, events and errors
 
 paths:
   # ---------------------------------------------------------------------------
@@ -54,8 +61,13 @@ paths:
         - Compute
       summary: List supported GPU types and their pricing
       description: >
-         Returns the global GPU type catalogue and pricing. The result is not organisation-specific,
-         but the request still requires authentication.
+         Returns the global GPU type catalogue and pricing. The request requires authentication.
+         Customer principals receive only GPU types with capacity currently offered to customers;
+         a type whose hardware is not yet cleared for customer workloads is omitted. The Runware
+         principal receives the full catalogue, including types not yet offered. Each entry's
+         `pricing` is the price currently in effect; the Runware principal can read the full price
+         history, including scheduled future changes, from
+         `GET /v1/gpu-types/{gpuTypeId}/prices`.
       operationId: listGpuTypes
       responses:
         '200':
@@ -66,8 +78,288 @@ paths:
                 $ref: '#/components/schemas/GpuTypeList'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+        - Compute
+      summary: Add a GPU type to the catalogue
+      description: >
+        Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform
+        organization. The `id` (catalogue code) is immutable after create.
+      operationId: createGpuType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GpuTypeCreate'
+      responses:
+        '201':
+          description: GPU type created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/gpu-types/{gpuTypeId}:
+    get:
+      tags:
+        - Compute
+      summary: Get a GPU type from the catalogue
+      description: >
+        Returns a single entry from the global GPU type catalogue. The result is not
+        organisation-specific, but the request still requires authentication.
+      operationId: getGpuType
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+      responses:
+        '200':
+          description: The GPU type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    patch:
+      tags:
+        - Compute
+      summary: Update a GPU type in the catalogue
+      description: >
+        Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization.
+        The catalogue code (`gpuTypeId`) cannot be changed.
+      operationId: updateGpuType
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GpuTypeUpdate'
+      responses:
+        '200':
+          description: Updated GPU type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - Compute
+      summary: Remove a GPU type from the catalogue
+      description: >
+        Deletes a GPU type from the global catalogue. Restricted to the Runware platform organization.
+        Returns `409` if any live worker configuration still references the code.
+      operationId: deleteGpuType
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+      responses:
+        '204':
+          description: GPU type deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/gpu-types/{gpuTypeId}/prices:
+    get:
+      tags:
+        - Compute
+      summary: List historical and future prices of a GPU type
+      description: >
+        Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware
+        platform organization: the page includes prices that are scheduled but not yet in effect.
+        Customers read the price currently in effect from `GET /v1/gpu-types`.
+      operationId: listGpuTypePrices
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of prices for the GPU type
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GpuPricingListItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+        - Compute
+      summary: Schedule a new price for a GPU type
+      description: >
+        Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform
+        organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems
+        and customers get advance notice of the change; a value inside that window returns `422`.
+        Returns `409` if the GPU type already has a price scheduled at that exact instant.
+      operationId: createGpuTypePrice
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GpuPricingCreate'
+      responses:
+        '201':
+          description: Price scheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuPricing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/gpu-types/{gpuTypeId}/prices/{priceId}:
+    patch:
+      tags:
+        - Compute
+      summary: Update a scheduled price for a GPU type
+      description: >
+        Partially updates a scheduled price. Restricted to the Runware platform organization.
+        Only a price whose current `effectiveFrom` is still more than 7 days in the future can be
+        edited — once inside that window the price is locked in and this returns `409`. A
+        supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422`
+        otherwise. Returns `409` if it collides with another price already scheduled at that
+        exact instant.
+      operationId: updateGpuTypePrice
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+        - name: priceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GpuPricingUpdate'
+      responses:
+        '200':
+          description: Price updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuPricing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - Compute
+      summary: Remove a scheduled price for a GPU type
+      description: >
+        Deletes a scheduled price. Restricted to the Runware platform organization. Only a price
+        whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that
+        window the price is locked in (about to take effect, or already has) and this returns
+        `409`.
+      operationId: deleteGpuTypePrice
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+        - name: priceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Price deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
   # Tasks
@@ -80,8 +372,12 @@ paths:
       description: >
         Starts a new async task on `deploymentId`, routing the request body payload to an available
         worker. The task runs asynchronously and the response is `202`; poll
-        `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion.
+        `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in
+        `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
+        `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
       operationId: startAsyncTask
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
         - $ref: '#/components/parameters/EndpointPath'
@@ -92,10 +388,14 @@ paths:
           $ref: '#/components/responses/TaskAccepted'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '400':
           $ref: '#/components/responses/BadRequest'
         '422':
@@ -109,8 +409,13 @@ paths:
       description: >
         Starts a new sync task on `deploymentId`, routing the request body payload to an available
         worker. The request blocks until the task is terminal and returns the result inline (`200`),
-        or `504` if it does not complete within the wait window.
+        or `504` if it does not complete within the wait window. When the accepted task ID is
+        available, the response includes `taskId` for polling. Deployments in `initializing`,
+        `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return
+        `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
       operationId: startSyncTask
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
         - $ref: '#/components/parameters/EndpointPath'
@@ -121,10 +426,14 @@ paths:
           $ref: '#/components/responses/Task'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '400':
           $ref: '#/components/responses/BadRequest'
         '422':
@@ -140,8 +449,15 @@ paths:
       description: >
         Returns the task's current status, read through the inference transport layer from the
         shared result store. When `completed`, includes the result `output` and `completedAt`;
-        when `failed`, includes `error`; when `pending`, neither is set.
+        when `failed`, includes `error`; when `pending`, neither is set. If the deployment is
+        `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found`
+        means the task cannot currently be verified for this deployment. Because enqueue-time
+        ownership tracking is best effort, a recently returned task ID can temporarily return
+        `404`; retry it within the normal polling window. Unknown or deleted deployments also
+        return `404 Not Found`.
       operationId: getTask
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
         - name: taskId
@@ -155,10 +471,66 @@ paths:
           $ref: '#/components/responses/Task'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /v1/deployments/{deploymentId}/tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List tasks for a deployment
+      description: >
+        Lists TTL-bounded asynchronous task metadata for this deployment so a client
+        can recover task ids after an interrupted long-poll or CLI session. Pending
+        includes queued, running and retrying work. Tasks appear only within the
+        configured recovery window. A page can be empty and still have `nextCursor`;
+        continue until it is null. Pending entries are best effort and may disappear
+        if the recovery store restarts; tracked tasks reappear on completion. This is
+        not persisted task history. Each submission has a new task id, so client retries
+        can appear as separate tasks. If the deployment is `stopped`, `deleting`, or `failed`,
+        recovery stays available. Unknown or deleted deployments return `404 Not Found`.
+      operationId: listTasks
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+      responses:
+        '200':
+          description: A page of tasks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
   # Deployments
@@ -168,6 +540,13 @@ paths:
       tags:
         - Deployments
       summary: List deployments
+      description: >
+        Returns a page of the organisation's deployments. Filters combine with AND; soft-deleted
+        deployments are excluded unless `status=deleted` is requested explicitly.
+
+
+        A `cursor` is only valid for the `sort` and filters it was issued under — reusing one
+        across a different ordering or filter set returns `400`.
       operationId: listDeployments
       parameters:
         - $ref: '#/components/parameters/Limit'
@@ -175,8 +554,33 @@ paths:
         - name: status
           in: query
           required: false
+          description: Return only deployments in this status.
           schema:
             $ref: '#/components/schemas/DeploymentStatus'
+        - name: q
+          in: query
+          required: false
+          description: >
+            Case-insensitive substring match against `deploymentName` and `deploymentId`.
+            A deployment matching either is returned.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: gpuType
+          in: query
+          required: false
+          description: >
+            Return only deployments whose worker configuration requests this GPU type.
+            Matched against `configuration.gpuType` only, not `fallbackGpuType`. Must be a
+            code from `GET /v1/gpu-types`; an unknown code returns `422`.
+          schema:
+            $ref: '#/components/schemas/GpuTypeId'
+        - name: sort
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/DeploymentSort'
       responses:
         '200':
           description: A page of deployments
@@ -191,26 +595,43 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/Deployment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags:
         - Deployments
       summary: Create a deployment
       description: >
-        Creates a deployment together with its worker configuration and endpoints, as declared
-        in the submitted IaC config. The deployment starts in `initializing` and an initial rollout
-        begins immediately based on the deployment source type:
+        Creates a deployment together with its worker configuration, environment variables and
+        endpoints, and records version `1` — the immutable description of what to deploy. The
+        deployment starts in `initializing`, and what happens next depends on the deployment
+        source type:
+
 
         - `code` source: the codebase is submitted to the build pipeline; once the image is built
-          and workers become healthy the deployment transitions to `active`.
+          and workers become healthy the deployment transitions to `active` and `activeVersionId`
+          points at that version. If the build, validation, or rollout fails the deployment is
+          marked `failed`.
 
-        - `container` source: the pre-built image is deployed directly with no build step; once
-          workers become healthy the deployment transitions to `active`.
+        - `container` source: no build step, so the version carries no `buildId`. No worker runs
+          from a container source yet, so the deployment stays `initializing` and does not serve
+          inference — poll `active` only for a `code` source.
 
-        If the build, validation, or rollout fails the deployment is marked `failed`.
+
+        `activeVersionId` is null until a rollout completes: a version records what should run,
+        and only a finished deploy says what does.
+
+
+        `secrets` is accepted by the schema but not yet applied, so supplying it returns `422`
+        rather than silently dropping it.
       operationId: createDeployment
       requestBody:
         required: true
@@ -227,6 +648,8 @@ paths:
                 $ref: '#/components/schemas/Deployment'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
@@ -253,6 +676,8 @@ paths:
                 $ref: '#/components/schemas/Deployment'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -267,9 +692,12 @@ paths:
         (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`,
         `resume`, and `delete` operations.
 
+
         **Currently persisted:** `deploymentName` and `configuration` only. Supplying
         `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
-        until those stores land.
+        (bulk env-var replace is not wired — use the dedicated `/environment-variables`
+        endpoints for individual keys).
+
 
         Target behaviour (once fully wired):
 
@@ -303,6 +731,8 @@ paths:
                 $ref: '#/components/schemas/Deployment'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -336,6 +766,8 @@ paths:
                 $ref: '#/components/schemas/Deployment'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -354,18 +786,27 @@ paths:
         and `failed`.
 
         To roll back, supply an older `versionNumber` — the operation is identical to a forward
-        deploy.
+        deploy. No new version is created and no rebuild happens: the version's existing image
+        is re-applied. Re-deploying the currently active version is permitted and re-applies it.
+
+        A deploy to a `stopped` or `stopping` deployment records the version and rolls no
+        workload, because no workers are running: the `202` does not imply a rollout there.
+        The recorded version is the one applied when the deployment resumes.
+
+        If the roll of a live deployment fails, `activeVersionId` is restored to the version
+        that kept serving, so the field keeps naming the running image.
 
         **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits
         for at least one to become healthy, switches task routing to the new version, then
-        drains old-version workers gracefully. Old workers are given `gracefulStopTtlSecs` to
-        finish in-flight tasks before being force-terminated. If new workers fail to become
-        healthy, old workers are not drained and the deployment continues on the previous
-        version.
+        drains old-version workers gracefully. Old workers are given a fixed, platform-managed
+        grace period to finish in-flight tasks before being force-terminated. If new workers
+        fail to become healthy, old workers are not drained and the deployment continues on the
+        previous version.
 
         Errors:
         - Deploy to a `deleting` deployment returns `409 Conflict`
         - `versionNumber` not found or not `ready` returns `409 Conflict`
+        - A `container`-source version returns `409 Conflict` until container deployments are supported
         - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
       operationId: deployVersion
       parameters:
@@ -387,6 +828,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -404,10 +847,11 @@ paths:
       description: >
         Moves the deployment to `stopping` and returns `202` once that intent is persisted.
         Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status`
-        becomes `stopped` once all workers drain. In-flight tasks have a grace period
-        (`gracefulStopTtlSecs`) to complete; workers that exceed it are force-terminated and
-        their tasks return to the queue per delivery guarantees. New task submissions are still
-        accepted and queued while stopped, but not consumed. Precondition: `status = active`.
+        becomes `stopped` once all workers drain. In-flight tasks have a fixed,
+        platform-managed grace period to complete; workers that exceed it are force-terminated
+        and their tasks return to the queue per delivery guarantees. New task submissions remain
+        accepted while `stopping`; after the deployment reaches `stopped`, submissions return
+        `409 Conflict`. Precondition: `status = active`.
       operationId: stopDeployment
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
@@ -420,6 +864,8 @@ paths:
                 $ref: '#/components/schemas/Deployment'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -434,8 +880,9 @@ paths:
       summary: Resume a deployment
       description: >
         Moves the deployment to `initializing` and returns `202` once that intent is persisted.
-        The Scaler then starts workers and sets the deployment to `active`; tasks queued during
-        the stopped period are consumed as workers come online. Precondition: `status = stopped`.
+        The Scaler then starts workers and sets the deployment to `active`; tasks that remained
+        queued when the deployment stopped are consumed as workers come online. Precondition:
+        `status = stopped`.
       operationId: resumeDeployment
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
@@ -448,12 +895,71 @@ paths:
                 $ref: '#/components/schemas/Deployment'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+
+  /v1/deployments/{deploymentId}/favourite:
+    put:
+      tags:
+        - Deployments
+      summary: Favourite a deployment
+      description: >
+        Pins the deployment as a favourite for the authenticated organisation so the console
+        can surface it in a Favourites section. Idempotent: favouriting an already-favourited
+        deployment succeeds and returns the deployment with `isFavourite: true`. Deployments
+        in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any
+        existing pin when status becomes `deleting`.
+      operationId: favouriteDeployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Deployment is favourited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Deployments
+      summary: Unfavourite a deployment
+      description: >
+        Removes the organisation favourite pin from the deployment. Idempotent: unfavouriting
+        a deployment that is not favourited succeeds and returns the deployment with
+        `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning
+        is not a deployment lifecycle mutation. Missing deployments return `404`.
+      operationId: unfavouriteDeployment
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+      responses:
+        '200':
+          description: Deployment is not favourited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deployment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /v1/deployment-summary:
     get:
@@ -474,6 +980,8 @@ paths:
                 $ref: '#/components/schemas/DeploymentSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -506,6 +1014,8 @@ paths:
                           $ref: '#/components/schemas/Build'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -534,6 +1044,8 @@ paths:
                 $ref: '#/components/schemas/Build'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -568,6 +1080,8 @@ paths:
                           $ref: '#/components/schemas/Version'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -596,6 +1110,8 @@ paths:
                 $ref: '#/components/schemas/Version'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -628,12 +1144,52 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/Endpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/deployments/{deploymentId}/endpoints/{endpointId}:
+    get:
+      tags:
+        - Endpoints
+      summary: Get an endpoint
+      operationId: getEndpoint
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - name: endpointId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The endpoint
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Endpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
   # Workers (read-only runtime state)
@@ -643,6 +1199,10 @@ paths:
       tags:
         - Workers
       summary: List workers
+      description: >
+        Returns a newest-first page of workers observed for the deployment (including
+        terminal `stopped` rows until purged). Optional `status` narrows the page;
+        a cursor must be replayed under the same status filter it was issued with.
       operationId: listWorkers
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
@@ -667,12 +1227,51 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/deployments/{deploymentId}/workers/{workerId}:
+    get:
+      tags:
+        - Workers
+      summary: Get a worker
+      description: >
+        Returns one worker by id within the deployment. The id is the Kubernetes
+        pod UID recorded by the reconciler. A worker that belongs to another
+        deployment (or tenant) is not found.
+      operationId: getWorker
+      parameters:
+        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/WorkerId'
+      responses:
+        '200':
+          description: The worker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
   # Secrets (organisation-scoped)
@@ -701,14 +1300,28 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/Secret'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags:
         - Secrets
       summary: Create a secret
+      description: >
+        Creates an organisation-scoped secret. Returns `409` if the name is
+        already in use — including when a secret of that name is
+        `pending_destroy`. List only shows active secrets, so a name can appear
+        free while create still conflicts for as long as that row remains.
+        Hard deletion of `pending_destroy` rows (which would release the name)
+        is not performed by this API yet. Recreate-while-deleting may later
+        reuse the pending row with the new value (same name, new ciphertext).
       operationId: createSecret
       requestBody:
         required: true
@@ -725,6 +1338,8 @@ paths:
                 $ref: '#/components/schemas/Secret'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
@@ -757,6 +1372,8 @@ paths:
                 $ref: '#/components/schemas/Secret'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -769,18 +1386,39 @@ paths:
       tags:
         - Secrets
       summary: Delete a secret
+      description: >
+        Soft-deletes a secret: marks the row `pending_destroy` and bumps
+        revision. This API does not hard-delete the row; a future GC path is
+        expected to remove unattached `pending_destroy` secrets and release the
+        name, but that sweep is not implemented yet. Returns `409` while any
+        deployment still attaches it — cascade-detach is not performed here;
+        detach each holder with
+        `DELETE .../deployments/{id}/secrets/{name}` first. Attach/detach are
+        control-plane records only in this release (they do not roll workers).
+        While the row remains `pending_destroy` the name stays reserved, so
+        create may return `409` even though list no longer shows the secret.
+        Retries on an already-pending name are safe when no attachments remain
+        (`204`); they still return `409` while attached.
       operationId: deleteSecret
       parameters:
         - $ref: '#/components/parameters/SecretName'
       responses:
         '204':
-          description: Secret deleted
+          description: >
+            Delete accepted (or already pending with no attachments). The name
+            remains reserved while the row is `pending_destroy`.
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
   # Deployment <-> secret attachments
@@ -808,18 +1446,41 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Secret'
+                          $ref: '#/components/schemas/SecretAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags:
         - Secrets
       summary: Attach a secret to a deployment
-      description: Returns 409 if the secret is already attached to this deployment.
+      description: >
+        Records that an organisation secret is attached to a deployment under a
+        resolved env-var name. This is a control-plane association only in this
+        release — it does not roll workers or inject values into pods yet
+        (ADR-019 in-pod unseal is separate). Returns `409` if the secret is
+        already attached, or if another attach would use the same env-var name.
+
+        The resolved name (`envVarName`, or `secretName` when omitted) must not
+        already exist as a plain environment variable on this deployment
+        (`deployment_configs.key`). Both sources are reserved for the same
+        future pod env namespace, so the server rejects the collision with `422`
+        instead of allowing a last-wins override later. The reverse check
+        applies when setting a plain environment variable.
+
+        A deployment holds at most 100 environment bindings in total — plain
+        environment variables plus attached secrets — the same combined ceiling
+        as create and the single-key env-var route. Attaching when the
+        deployment is already at that limit returns `422`.
       operationId: attachDeploymentSecret
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
@@ -836,6 +1497,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -850,19 +1513,26 @@ paths:
       tags:
         - Secrets
       summary: Detach a secret from a deployment
+      description: >
+        Removes the control-plane attachment. Does not roll workers in this
+        release.
       operationId: detachDeploymentSecret
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
         - $ref: '#/components/parameters/SecretName'
       responses:
         '204':
-          description: Secret detached
+          description: Attachment removed
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
   # Environment Variables (plain-text env vars)
@@ -893,6 +1563,8 @@ paths:
                           $ref: '#/components/schemas/EnvironmentVariable'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -902,30 +1574,49 @@ paths:
     put:
       tags:
         - EnvironmentVariables
-      summary: Upsert a deployment environment variable
-      operationId: upsertDeploymentEnvironmentVariable
+      summary: Update a deployment environment variable
+      description: >-
+        Sets one environment variable, creating it if absent. Names the platform sets on
+        the serving container itself are rejected with `422`, as they are on create.
+
+
+        A deployment holds at most 100 environment bindings in total — plain
+        variables plus attached secrets — the same combined ceiling
+        `DeploymentCreate.environmentVariables` declares (create rejects secrets
+        in-request; attach grows the set later). Overwriting an existing variable
+        is always allowed; adding one past the ceiling returns `422`.
+
+
+        The name must not collide with a secret already attached to this deployment
+        (the secret's injected env var name). Secrets and plain env vars share the
+        pod environment; a duplicate would be resolved last-wins by kubelet with no
+        error, so the server rejects it with `422`. The reverse check applies on
+        attach.
+      operationId: updateDeploymentEnvironmentVariable
       parameters:
         - $ref: '#/components/parameters/DeploymentId'
         - name: variableName
           in: path
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/EnvironmentVariableName'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EnvironmentVariableUpsert'
+              $ref: '#/components/schemas/EnvironmentVariableUpdate'
       responses:
         '200':
-          description: Environment variable upserted
+          description: Environment variable updated
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/EnvironmentVariable'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -945,12 +1636,14 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/EnvironmentVariableName'
       responses:
         '204':
           description: Environment variable deleted
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -959,42 +1652,6 @@ paths:
   # ---------------------------------------------------------------------------
   # Observability
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/tasks:
-    get:
-      tags:
-        - Observability
-      summary: List tasks for a deployment
-      operationId: listTasks
-      parameters:
-        - $ref: '#/components/parameters/DeploymentId'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
-        - name: status
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/TaskStatus'
-      responses:
-        '200':
-          description: A page of tasks
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Page'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Task'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
   /v1/deployments/{deploymentId}/events:
     get:
       tags:
@@ -1026,6 +1683,8 @@ paths:
                           $ref: '#/components/schemas/DeploymentEvent'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -1074,8 +1733,12 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/UsageEvent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -1087,6 +1750,14 @@ components:
       description: >
         Runware API key supplied as a bearer token. Validated server-to-server against the
         existing Runware platform; the key identifies the organisation.
+    OrgJwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Org-scoped JWT supplied as a bearer token, minted by the Runware platform for one
+        user acting in one organisation and verified locally against the platform's
+        published JWKS. Serves the web app; the CLI and SDK use ApiKeyAuth.
 
   parameters:
     DeploymentId:
@@ -1096,20 +1767,41 @@ components:
       description: Immutable deployment identifier, unique within the authenticated organisation.
       schema:
         $ref: '#/components/schemas/DeploymentId'
+    GpuTypeId:
+      name: gpuTypeId
+      in: path
+      required: true
+      description: Public catalogue code for a GPU type (e.g. `h100`), not the internal row UUID.
+      schema:
+        $ref: '#/components/schemas/GpuTypeId'
+    WorkerId:
+      name: workerId
+      in: path
+      required: true
+      description: >
+        Worker identifier — the Kubernetes pod UID recorded by the reconciler.
+      schema:
+        type: string
+        format: uuid
     EndpointPath:
       name: endpointPath
       in: path
       required: true
-      description: Path of the endpoint to route the task to, as returned by `listEndpoints`.
+      description: >
+        Path of the endpoint to route the task to, as returned by `listEndpoints`:
+        a bare lowercase segment such as `generate`, with no leading slash.
       schema:
         type: string
+        minLength: 1
+        maxLength: 64
+        pattern: '^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$'
     SecretName:
       name: secretName
       in: path
       required: true
       description: Secret name, unique within the authenticated organisation.
       schema:
-        type: string
+        $ref: '#/components/schemas/SecretName'
     Limit:
       name: limit
       in: query
@@ -1161,7 +1853,13 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
     Unauthorized:
-      description: Missing or invalid API key
+      description: Missing or invalid credentials
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    ServiceUnavailable:
+      description: A required service is temporarily unavailable
       content:
         application/problem+json:
           schema:
@@ -1179,7 +1877,7 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
     Conflict:
-      description: Resource already exists or conflicts with current state
+      description: Resource already exists or the request conflicts with its current state
       content:
         application/problem+json:
           schema:
@@ -1194,7 +1892,7 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
     Timeout:
-      description: Task timed out
+      description: Task timed out; `taskId` is present when the accepted task is known.
       content:
         application/problem+json:
           schema:
@@ -1208,6 +1906,48 @@ components:
       maxLength: 30
       pattern: '^[a-z][a-z0-9-]{4,28}[a-z0-9]$'
 
+    DeploymentName:
+      type: string
+      description: >
+        Mutable display name. Must contain at least one non-whitespace character:
+        it is what the console renders and what `sort=name` orders on, and it is
+        not required to be unique. Unlike `deploymentId` the pattern is
+        unanchored, so interior spaces are allowed — only an entirely blank name
+        is rejected.
+      minLength: 1
+      pattern: '\S'
+
+    EnvironmentVariableName:
+      type: string
+      description: >
+        POSIX-style environment variable name. Letters, digits, and underscore;
+        must start with a letter or underscore. Matched by the
+        `deployment_configs` column CHECK so a valid-by-contract request cannot
+        500 at INSERT.
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z_][A-Za-z0-9_]{0,127}$'
+
+    SecretName:
+      type: string
+      description: >
+        Organisation-scoped secret name. The shape matches
+        `EnvironmentVariableName` and the `secrets.name` /
+        `deployment_secrets.env_var_name` column CHECKs — one rule for the
+        contract and the schema — because attached secrets are intended to be
+        injected as environment variables once ADR-019 in-pod unseal lands.
+
+        Names the platform sets on the serving container (`RUNTIME`,
+        `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected
+        with `422`: when injection exists, the deployer appends customer env
+        after its own and kubelet resolves duplicates last-wins, so an accepted
+        collision would silently replace a platform value. Same guard as plain
+        environment variables; enforced by the server (not expressible as a
+        pattern here).
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z_][A-Za-z0-9_]{0,127}$'
+
     # ---- Enums -------------------------------------------------------------
     DeploymentStatus:
       type: string
@@ -1219,6 +1959,30 @@ components:
         - deleting
         - deleted
         - failed
+    DeploymentSort:
+      type: string
+      description: >
+        Ordering for `listDeployments`. Every ordering is total (ties broken by
+        `deploymentId`), so a page is reproducible and its cursor stable.
+
+
+        - `createdAt`: newest first. The default.
+
+        - `name`: `deploymentName` A–Z, case-insensitive.
+
+        - `activity`: most recently active first.
+
+        - `errorRate`: highest error rate first.
+
+
+        `activity` and `errorRate` rank on per-deployment traffic metrics, which are not
+        collected yet; requesting either returns `422` until they are.
+      default: createdAt
+      enum:
+        - createdAt
+        - name
+        - activity
+        - errorRate
     BuildStatus:
       type: string
       description: Build/validation lifecycle status.
@@ -1236,14 +2000,17 @@ components:
     WorkerStatus:
       type: string
       description: >
-        Worker lifecycle status. Also the event type of a `UsageEvent`, which
-        records a transition into one of these states.
+        Worker lifecycle status. Also the type of `UsageEvent.eventType`, which
+        records a ledger subset of these states (see that field — `busy` never
+        appears there). `unhealthy` means the pod exists but failed to become
+        or stay ready, not an intentional drain or stop.
       enum:
         - pending
         - pulling
         - loading
         - ready
         - busy
+        - unhealthy
         - draining
         - stopping
         - stopped
@@ -1255,9 +2022,13 @@ components:
         - failed
     SecretType:
       type: string
+      description: >
+        Kind of secret. Only the environment-variable variant (`generic`) is
+        supported. Image-pull (`registry`) credentials are consumed by the
+        kubelet before any container starts, so they cannot use the in-pod
+        unseal path (ADR-019) and await their own decision.
       enum:
         - generic
-        - registry
     DeploymentEventType:
       type: string
       enum:
@@ -1270,12 +2041,12 @@ components:
     GpuTypeId:
       type: string
       description: >
-        Public catalogue code for a supported GPU type (e.g. `h100`, `rtx_6000`).
+        Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`).
         Must match an `id` returned by `GET /v1/gpu-types` (validated at request
         time against the catalogue). This is not the internal database row UUID.
       minLength: 1
       maxLength: 64
-      pattern: '^[a-z][a-z0-9_]{0,63}$'
+      pattern: '^[a-z][a-z0-9_-]{0,63}$'
 
     GpuAvailability:
       type: string
@@ -1287,6 +2058,75 @@ components:
 
     GpuPricing:
       type: object
+      additionalProperties: false
+      required:
+        - id
+        - perSecond
+        - effectiveFrom
+      properties:
+        id:
+          type: string
+          format: uuid
+        perSecond:
+          type: string
+          minLength: 1
+          pattern: '^\d+\.\d+$'
+          description: >
+            Price per GPU per second in USD major units as an exact decimal
+            string (e.g. "0.000767"). Stored and billed from nanodollars
+            internally; the platform bills in USD only.
+          example: "0.000767"
+        effectiveFrom:
+          type: string
+          format: date-time
+          description: From when this price is effective.
+
+    GpuPricingListItem:
+      type: object
+      additionalProperties: false
+      required:
+        - pricing
+        - immutableFrom
+      properties:
+        pricing:
+          $ref: '#/components/schemas/GpuPricing'
+        immutableFrom:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            The instant this price locks (effectiveFrom minus the 7-day minimum
+            notice window), while that instant is still in the future — the
+            price can still be updated or deleted until then. `null` once that
+            instant has passed: the price is permanently locked and can no
+            longer be modified or deleted.
+
+    GpuPricingUpdate:
+      type: object
+      minProperties: 1
+      description: >
+        Partial update of a scheduled price. Omitted fields are left unchanged. Only a price
+        whose current effectiveFrom is still more than 7 days away can be edited. At least one
+        field must be supplied.
+      additionalProperties: false
+      properties:
+        perSecond:
+          type: string
+          minLength: 1
+          pattern: '^\d+\.\d+$'
+          description: >
+            Price per GPU per second in USD major units as an exact decimal
+            string (e.g. "0.000767"). Stored and billed from nanodollars
+            internally; the platform bills in USD only.
+          example: "0.000767"
+        effectiveFrom:
+          type: string
+          format: date-time
+          description: From when this price is effective.
+
+    GpuTypeCreatePricing:
+      type: object
+      additionalProperties: false
       required:
         - perSecond
       properties:
@@ -1299,6 +2139,27 @@ components:
             string (e.g. "0.000767"). Stored and billed from nanodollars
             internally; the platform bills in USD only.
           example: "0.000767"
+
+    GpuPricingCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - perSecond
+        - effectiveFrom
+      properties:
+        perSecond:
+          type: string
+          minLength: 1
+          pattern: '^\d+\.\d+$'
+          description: >
+            Price per GPU per second in USD major units as an exact decimal
+            string (e.g. "0.000767"). Stored and billed from nanodollars
+            internally; the platform bills in USD only.
+          example: "0.000767"
+        effectiveFrom:
+          type: string
+          format: date-time
+          description: From when this price is effective.
 
     GpuType:
       type: object
@@ -1317,15 +2178,87 @@ components:
             (not the internal database row UUID).
         name:
           type: string
+          minLength: 1
+          pattern: '^\S(.*\S)?$'
           example: H100
         memory:
           type: string
+          minLength: 1
+          pattern: '^\S(.*\S)?$'
           description: Human-readable memory capacity.
           example: 80 GB HBM
         availability:
           $ref: '#/components/schemas/GpuAvailability'
         pricing:
-          $ref: '#/components/schemas/GpuPricing'
+          allOf:
+            - $ref: '#/components/schemas/GpuPricing'
+          description: >
+            The price currently in effect — the most recent price whose
+            effectiveFrom is not in the future. The Runware principal can
+            read the full price history, including scheduled future
+            changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
+
+    GpuTypeCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - memory
+        - availability
+        - pricing
+        - sortOrder
+      properties:
+        id:
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          description: >
+            Immutable public catalogue code. Must be unique across the catalogue.
+        name:
+          type: string
+          minLength: 1
+          pattern: '^\S(.*\S)?$'
+          example: H100
+        memory:
+          type: string
+          minLength: 1
+          pattern: '^\S(.*\S)?$'
+          description: Human-readable memory capacity.
+          example: 80 GB HBM
+        availability:
+          $ref: '#/components/schemas/GpuAvailability'
+        pricing:
+          $ref: '#/components/schemas/GpuTypeCreatePricing'
+        sortOrder:
+          type: integer
+          format: int32
+          minimum: 0
+          description: >
+            Display / catalogue ordering. Lower values sort first in `GET /v1/gpu-types`.
+
+    GpuTypeUpdate:
+      type: object
+      minProperties: 1
+      description: >
+        Partial update of a catalogue entry. Omitted fields are left unchanged. The catalogue
+        code itself is immutable and addressed via the path parameter. At least one field must
+        be supplied.
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          pattern: '^\S(.*\S)?$'
+        memory:
+          type: string
+          minLength: 1
+          pattern: '^\S(.*\S)?$'
+        availability:
+          $ref: '#/components/schemas/GpuAvailability'
+        sortOrder:
+          type: integer
+          format: int32
+          minimum: 0
 
     GpuTypeList:
       type: object
@@ -1374,12 +2307,16 @@ components:
     DeploymentSummary:
       type: object
       description: >
-        Aggregate dashboard metrics for every deployment in the authenticated organisation. Metrics
-        whose backing system is not yet available are omitted (rendered as "no
-        data" by the frontend) rather than reported as zero.
+        Aggregate dashboard metrics for every deployment in the authenticated
+        organisation. Deployment and worker tallies are always present (zero when
+        empty). Traffic and spend metrics whose backing system is not yet
+        available are omitted (rendered as "no data" by the frontend) rather
+        than reported as zero.
       required:
         - totalDeployments
         - activeDeployments
+        - activeWorkers
+        - provisionedGpuCount
         - calculatedAt
       properties:
         activeDeployments:
@@ -1393,11 +2330,14 @@ components:
         activeWorkers:
           type: integer
           format: int64
-          description: Running workers across all deployments. Omitted until worker state is tracked.
+          description: >
+            Non-terminal workers (`status` other than `stopped`) across every
+            deployment in the organisation.
         provisionedGpuCount:
           type: integer
           format: int64
-          description: GPUs currently provisioned across all workers. Omitted until worker state is tracked.
+          description: >
+            Sum of `gpuCount` across those same non-terminal workers.
         requests24h:
           type: integer
           format: int64
@@ -1426,27 +2366,45 @@ components:
         - secrets
         - environmentVariables
         - status
+        - isFavourite
         - createdAt
         - updatedAt
       properties:
         deploymentId:
           $ref: '#/components/schemas/DeploymentId'
         deploymentName:
-          type: string
+          $ref: '#/components/schemas/DeploymentName'
         configuration:
           allOf:
             - $ref: '#/components/schemas/WorkerConfig'
           description: Live worker configuration. Updated via `PATCH /deployments/{deploymentId}`.
         secrets:
           type: array
+          description: >
+            Secrets attached to this deployment, including any env-var name
+            override. Populated on single-deployment responses; list of
+            deployments returns an empty array to avoid an N+1 — use
+            `/deployments/{deploymentId}/secrets` to page the set.
           items:
-            $ref: '#/components/schemas/Secret'
+            $ref: '#/components/schemas/SecretAttachment'
         environmentVariables:
           type: array
+          description: >
+            Plain-text environment variables for this deployment. Populated on
+            single-deployment responses (get, update, stop, resume, delete,
+            deploy, favourite). List of deployments returns an empty array to
+            avoid an N+1 per page row — use the `/environment-variables`
+            endpoints to page the set.
           items:
             $ref: '#/components/schemas/EnvironmentVariable'
         status:
           $ref: '#/components/schemas/DeploymentStatus'
+        isFavourite:
+          type: boolean
+          description: >
+            Whether the authenticated organisation has favourited this deployment. Drives the
+            console Favourites section; toggled via `PUT`/`DELETE`
+            `/v1/deployments/{deploymentId}/favourite`.
         activeVersionId:
           type: string
           format: uuid
@@ -1458,6 +2416,22 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    AppVolume:
+      type: object
+      additionalProperties: false
+      required:
+        - mountPath
+      properties:
+        mountPath:
+          type: string
+          minLength: 2
+          maxLength: 2048
+          pattern: '^/[A-Za-z0-9._/+@-]+$'
+          description: >
+            Absolute path exposed inside the sandboxed application. The path is the
+            volume's stable identity and is mirrored below the deployment's node-local
+            data directory. Root, duplicate, and overlapping paths are rejected.
 
     DeploymentCreate:
       type: object
@@ -1474,7 +2448,7 @@ components:
         deploymentId:
           $ref: '#/components/schemas/DeploymentId'
         deploymentName:
-          type: string
+          $ref: '#/components/schemas/DeploymentName'
         configuration:
           $ref: '#/components/schemas/WorkerConfigCreate'
         deploymentSource:
@@ -1487,24 +2461,59 @@ components:
             - `code`: the codebase is submitted to the build pipeline; a new image is built and
               deployed once ready.
 
-            - `container`: a new version is created from the provided image reference and deployed
-              directly, with no build step.
+            - `container`: no build step — the version names the image reference supplied here.
+              No worker runs from a container source yet, so the deployment stays `initializing`.
 
-            The deployment transitions to `active` once the first version is ready, or to `failed`
-            if the build, validation, or rollout fails.
+            Either way the version is recorded with the deployment. A code deployment transitions
+            to `active` once its first version is ready, or to `failed` if the build, validation,
+            or rollout fails.
         secrets:
           type: array
-          description: Names of existing secrets to attach to this deployment.
+          description: >
+            Existing organisation secrets to attach to this deployment, with an
+            optional env-var name override per entry. Not persisted yet —
+            supplying this field returns `422`, rather than accepting a set
+            nothing attaches to the workload. Shape matches
+            `POST /deployments/{deploymentId}/secrets` so create and attach
+            share one contract. When wired, each injected name must not collide
+            with a key in `environmentVariables` (or an existing
+            `deployment_configs` row) — see `SecretAttach`.
           items:
-            type: string
+            $ref: '#/components/schemas/SecretAttach'
         environmentVariables:
           type: object
-          description: Map with environment variables. Keys are the environment variable names,
-            values are the environment variable values
+          description: >
+            Map with environment variables. Keys are the environment variable names,
+            values are the environment variable values. Use the dedicated
+            `/environment-variables` endpoints to change them after the deployment exists.
+
+            Each key must satisfy `EnvironmentVariableName` — POSIX-style, at most 128
+            characters. OpenAPI 3.0 cannot constrain map keys, so a bad one is rejected
+            by the server rather than by the schema. Keys must also not collide with
+            a secret's injected env var name on the same deployment (see
+            `attachDeploymentSecret`).
+          maxProperties: 100
           additionalProperties:
             type: string
+            maxLength: 4096
+        volumes:
+          type: array
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/AppVolume'
+          description: >
+            Persistent node-local directories bind-mounted through the checkpointer into
+            the sandboxed application. Use these for downloaded weights and caches that
+            must stay outside the checkpointed root filesystem. Paths must be unique and
+            non-overlapping. The set is frozen into each immutable deployment version.
         endpoints:
           type: array
+          description: >
+            Invocable routes to expose on the deployment. Paths are unique within a
+            deployment: repeating one in this array is rejected rather than collapsed,
+            since there would be no answer to which entry a request meant.
+          uniqueItems: true
+          maxItems: 20
           items:
             $ref: '#/components/schemas/EndpointCreate'
 
@@ -1515,15 +2524,26 @@ components:
         omitted fields are left unchanged. Lifecycle transitions (stop/resume/delete/deploy)
         use their dedicated operations.
 
+        A successful update records a new version carrying the updated configuration and the
+        same image, so what to deploy is always a version rather than the current state of a
+        mutable row. `activeVersionId` does not move: the running workload is unchanged until
+        that version is deployed.
+
         **Currently applied:** `deploymentName` and `configuration`. Supplying
         `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
-        until those stores land. When wired, configuration/env/secret changes take effect on
-        the next Scaler cycle; `deploymentSource` triggers a new build and rollout.
+        (bulk env-var replace is not wired — use the dedicated `/environment-variables`
+        endpoints for individual keys). When wired, configuration/secret/endpoint changes
+        take effect on the next Scaler cycle; `deploymentSource` triggers a new build and
+        rollout.
       additionalProperties: false
       properties:
         deploymentName:
-          type: string
-          description: Mutable display name; does not affect deployment identity or routing.
+          allOf:
+            - $ref: '#/components/schemas/DeploymentName'
+          description: >
+            Mutable display name; does not affect deployment identity or routing.
+            Omit to leave unchanged — an explicit blank value is rejected, not
+            treated as a clear.
         configuration:
           $ref: '#/components/schemas/WorkerConfigPatch'
         deploymentSource:
@@ -1538,10 +2558,13 @@ components:
         secrets:
           type: array
           description: >
-            Names of existing secrets to attach to this deployment. Not persisted yet —
-            supplying this field returns `422`.
+            Replaces the deployment's secret attachments. Same `SecretAttach`
+            shape as create and
+            `POST /deployments/{deploymentId}/secrets`. Not persisted yet —
+            supplying this field returns `422`. When wired, injected names must
+            not collide with plain environment variables on the deployment.
           items:
-            type: string
+            $ref: '#/components/schemas/SecretAttach'
         environmentVariables:
           type: object
           description: >
@@ -1572,7 +2595,6 @@ components:
         - idleTtlSecs
         - scalingDelaySecs
         - concurrency
-        - gracefulStopTtlSecs
       properties:
         id:
           type: string
@@ -1631,11 +2653,6 @@ components:
           format: int32
           default: 1
           description: Max tasks a single worker handles simultaneously.
-        gracefulStopTtlSecs:
-          type: integer
-          format: int32
-          default: 120
-          description: Seconds a draining worker is given to finish in-flight tasks before force termination.
         createdAt:
           type: string
           format: date-time
@@ -1660,6 +2677,10 @@ components:
           allOf:
             - $ref: '#/components/schemas/GpuTypeId'
           nullable: true
+          description: >
+            Preferred GPU type. Rejected with a 422 when no capacity is
+            currently offered for the type (it does not appear in
+            `GET /v1/gpu-types`).
         fallbackGpuType:
           type: string
           allOf:
@@ -1703,11 +2724,6 @@ components:
           format: int32
           minimum: 1
           default: 1
-        gracefulStopTtlSecs:
-          type: integer
-          format: int32
-          minimum: 1
-          default: 120
 
     WorkerConfigPatch:
       type: object
@@ -1722,7 +2738,10 @@ components:
           type: string
           allOf:
             - $ref: '#/components/schemas/GpuTypeId'
-          description: Preferred GPU type. Omit to leave unchanged.
+          description: >
+            Preferred GPU type. Omit to leave unchanged. Rejected with a 422
+            when no capacity is currently offered for the type (it does not
+            appear in `GET /v1/gpu-types`).
         fallbackGpuType:
           type: string
           allOf:
@@ -1763,18 +2782,17 @@ components:
           type: integer
           format: int32
           minimum: 1
-        gracefulStopTtlSecs:
-          type: integer
-          format: int32
-          minimum: 1
 
     Version:
       type: object
+      description: >
+        An immutable record of what to deploy. One is created with the deployment and one on
+        every update, so a rollout always names a version rather than reading configuration
+        that may since have changed.
       required:
         - id
         - deploymentId
         - versionNumber
-        - buildId
         - createdAt
       properties:
         id:
@@ -1785,10 +2803,15 @@ components:
         versionNumber:
           type: integer
           format: int32
-          description: Monotonically increasing per deployment; a failed build does not generate a version.
+          description: Monotonically increasing per deployment.
         buildId:
           type: string
           format: uuid
+          nullable: true
+          description: >
+            The build that produced this version's image. Null for a `container` source,
+            which names an image the customer already built and so has no build. A version
+            created by an update carries the image, and therefore this build, forward.
         createdAt:
           type: string
           format: date-time
@@ -1828,11 +2851,27 @@ components:
       properties:
         imageRef:
           type: string
+          minLength: 1
+          maxLength: 512
+          pattern: '^\S+$'
           description: Registry URI of a pre-built image, e.g. `ghcr.io/acme/model:v2`.
         registrySecretName:
           type: string
           nullable: true
-          description: Name of a `registry`-type secret used to pull the image.
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+          description: >
+            Pull-credential name for a private image registry. Omit for a public
+            registry. Parked on the version until image-pull custody has its own
+            ADR — it is not a `secrets` row (ADR-019 covers only env-var secrets
+            unsealed in-pod; the kubelet needs the credential before any
+            container starts).
+
+            When wired, the name becomes a Kubernetes Secret name, so it must be
+            a DNS-1123 subdomain: lower-case alphanumerics, `-` and `.`, starting
+            and ending alphanumeric, at most 253 characters. That is a hard
+            requirement of what the name is used for, not a Runware naming policy.
 
     CodebaseSource:
       type: object
@@ -1910,9 +2949,9 @@ components:
         path:
           type: string
           description: >
-            HTTP path the endpoint is served under, e.g. `/infer`. Inferred from the
-            deployed code and unique within the deployment, so it identifies the
-            endpoint on its own.
+            The endpoint's identity within the deployment: a bare lowercase URL
+            segment, e.g. `generate`, with no leading slash. Unique within the
+            deployment, so it identifies the endpoint on its own.
         createdAt:
           type: string
           format: date-time
@@ -1928,22 +2967,30 @@ components:
         path:
           type: string
           minLength: 1
-          maxLength: 255
-          pattern: '^\S+$'
+          maxLength: 64
+          pattern: '^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$'
           description: >
-            HTTP path the endpoint is served under, e.g. `/infer`. Unique within the
-            deployment. Carries no whitespace, since it lands in a URL path segment,
-            and fits within a URI, hence the 255 character ceiling.
+            The endpoint's identity within the deployment: a bare lowercase URL
+            segment, e.g. `generate` — a letter first, then letters, digits and
+            hyphens, ending with a letter or digit, max 64 characters. No leading
+            slash: documentation may display `/generate`, but the stored and
+            addressed form is `generate`, so it drops into the invocation URL with
+            no encoding. Unique within the deployment. All invocations are POST;
+            the HTTP method is not part of endpoint identity.
 
     Worker:
       type: object
+      description: >
+        A worker instance observed from Kubernetes. Read-only runtime state written
+        by the reconciler; `id` is the pod UID.
       required:
         - id
         - deploymentId
         - versionId
         - podName
-        - nodeName
         - status
+        - gpuCount
+        - statusOccurredAt
       properties:
         id:
           type: string
@@ -1957,15 +3004,42 @@ components:
           type: string
         nodeName:
           type: string
+          nullable: true
+          description: Kubernetes node the pod is scheduled on. Omitted while still pending.
         status:
           $ref: '#/components/schemas/WorkerStatus'
+        statusReason:
+          type: string
+          nullable: true
+          description: >
+            Kubernetes-facing reason for the current status when unhealthy or otherwise
+            notable (e.g. `ImagePullBackOff`, `CrashLoopBackOff`).
+        statusOccurredAt:
+          type: string
+          format: date-time
+          description: When the worker entered its current status.
+        gpuCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: GPUs attached to this worker at observation time.
+        gpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          nullable: true
+          description: GPU catalogue code snapshotted at observation time; omitted for CPU workers.
         lastSeenAt:
           type: string
           format: date-time
-          description: Heartbeat from the shim.
+          nullable: true
+          description: >
+            Worker-reported liveness. Omitted until the worker reports; stays
+            absent until a heartbeat path exists (phase 2).
         createdAt:
           type: string
           format: date-time
+          description: Pod creation time (`metadata.creationTimestamp`), not insert time.
         updatedAt:
           type: string
           format: date-time
@@ -1982,15 +3056,14 @@ components:
           type: string
           format: uuid
         name:
-          type: string
+          $ref: '#/components/schemas/SecretName'
         type:
           $ref: '#/components/schemas/SecretType'
         metadata:
           type: object
           additionalProperties: true
           nullable: true
-          description: >
-            For `registry` secrets: `{"registry_host": "ghcr.io", "username": "acme-bot"}`.
+          description: Optional opaque metadata associated with the secret.
         createdAt:
           type: string
           format: date-time
@@ -1998,14 +3071,51 @@ components:
           type: string
           format: date-time
 
+    SecretAttachment:
+      description: >
+        A secret attached to a deployment. The encrypted value is never returned.
+        The database always stores the injected env var name; this response omits
+        `envVarName` when it equals the secret `name` (no override).
+      allOf:
+        - $ref: '#/components/schemas/Secret'
+        - type: object
+          properties:
+            envVarName:
+              type: string
+              allOf:
+                - $ref: '#/components/schemas/EnvironmentVariableName'
+              nullable: true
+              description: >
+                Resolved environment variable name when it differs from `name`.
+                Omitted when the secret name is used. Same reserved-name rules
+                as `SecretName` when set.
+
     SecretAttach:
       type: object
+      description: >
+        Attach an organisation secret to a deployment (control-plane record
+        only in this release). The resolved name (`envVarName`, or `secretName`
+        when omitted) is stored as one NOT NULL column. It must be unique among
+        this deployment's secret attaches and must not collide with a plain
+        environment variable key on the same deployment — both names are
+        reserved for the same future pod env namespace. Reserved platform names
+        are rejected as on `SecretName`.
       required:
         - secretName
       properties:
         secretName:
+          $ref: '#/components/schemas/SecretName'
+        envVarName:
           type: string
-          description: Name of the secret to attach.
+          allOf:
+            - $ref: '#/components/schemas/EnvironmentVariableName'
+          nullable: true
+          description: >
+            Environment variable name to use when the secret is eventually
+            injected. Omit or null to use `secretName`; the server resolves and
+            stores the final name. Same reserved-name rules as `SecretName`
+            (`422` if reserved). The resolved name must also not collide with
+            `deployment_configs.key` on this deployment (`422`).
 
     SecretCreate:
       type: object
@@ -2015,12 +3125,22 @@ components:
         - value
       properties:
         name:
-          type: string
+          $ref: '#/components/schemas/SecretName'
         type:
           $ref: '#/components/schemas/SecretType'
         value:
           type: string
-          description: Plain-text value; encrypted at rest by the platform.
+          maxLength: 65536
+          description: >
+            Plain-text value; encrypted at rest by the platform. Capped at 64 KiB
+            — Cloud KMS Encrypt's plaintext ceiling, and the reason the design
+            needs no envelope encryption (ADR-019).
+
+            `maxLength` is OpenAPI's string-length bound (character count), not
+            a byte limit. Cloud KMS measures UTF-8 bytes, so the server also
+            rejects a value whose UTF-8 encoding exceeds 65536 bytes with
+            `422` — a rule this schema cannot express alone (multi-byte
+            characters can pass `maxLength` and still overrun the KMS limit).
         metadata:
           type: object
           additionalProperties: true
@@ -2033,10 +3153,17 @@ components:
       properties:
         value:
           type: string
+          maxLength: 65536
+          description: >
+            Plain-text value; encrypted at rest by the platform. Same 64 KiB
+            Cloud KMS plaintext ceiling and UTF-8 byte check as
+            `SecretCreate.value`.
         metadata:
           type: object
           additionalProperties: true
-          nullable: true
+          description: >
+            Omit to leave the stored metadata unchanged. Send an object
+            (including `{}`) to replace it.
 
     EnvironmentVariable:
       type: object
@@ -2050,7 +3177,7 @@ components:
         deploymentId:
           $ref: '#/components/schemas/DeploymentId'
         key:
-          type: string
+          $ref: '#/components/schemas/EnvironmentVariableName'
         value:
           type: string
         createdAt:
@@ -2060,13 +3187,19 @@ components:
           type: string
           format: date-time
 
-    EnvironmentVariableUpsert:
+    EnvironmentVariableUpdate:
       type: object
       required:
         - value
       properties:
         value:
           type: string
+          maxLength: 4096
+          description: >
+            Value delivered to the workload as this variable's value. Bounded because
+            every variable ends up in the pod template, which as a whole has to fit
+            what the Kubernetes API server accepts — the same `maxLength` create
+            applies, so one path cannot be used to exceed the other.
 
     Task:
       type: object
@@ -2119,7 +3252,13 @@ components:
           type: string
           format: uuid
         eventType:
-          $ref: '#/components/schemas/WorkerStatus'
+          # allOf so the description is not a sibling of $ref (ignored in OAS 3.0).
+          allOf:
+            - $ref: '#/components/schemas/WorkerStatus'
+          description: >
+            Status the worker transitioned into. The ledger emits a subset of
+            `WorkerStatus` — `busy` never appears (queue occupancy, not a pod
+            lifecycle transition).
         gpuCount:
           type: integer
           format: int32
@@ -2213,6 +3352,19 @@ components:
           description: >
             Extension member. Correlation id for this request, echoed in the
             `X-Request-Id` response header; quote it when reporting problems.
+        taskId:
+          type: string
+          description: >
+            Extension member. Present on synchronous inference timeouts when the
+            accepted task can be polled for its eventual result.
+        endpointPath:
+          type: string
+          description: >
+            Extension member. Present on a `404` from task invocation when the
+            deployment exists but does not declare the requested endpoint path;
+            its presence distinguishes an unknown endpoint from an unknown
+            deployment. Carries the rejected path.
+          example: generate
         errors:
           type: array
           description: >

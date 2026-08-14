@@ -3,13 +3,13 @@
 Set the default serverless application
 
 ```
-runware serverless use <deploymentId> [flags]
+runware serverless use <app> [flags]
 ```
 
 ### Examples
 
 ```
-  # set my-app as the default deployment for subsequent commands
+  # set my-app as the default application for subsequent commands
   runware serverless use my-app
 ```
 

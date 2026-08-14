@@ -34,7 +34,6 @@ runware serverless apps [flags]
 * [runware serverless apps logs](runware_serverless_apps_logs.md)	 - Show logs for a serverless application
 * [runware serverless apps resume](runware_serverless_apps_resume.md)	 - Resume a stopped serverless application
 * [runware serverless apps scale](runware_serverless_apps_scale.md)	 - Scale a serverless application
-* [runware serverless apps secret](runware_serverless_apps_secret.md)	 - Manage secrets for a serverless application
 * [runware serverless apps show](runware_serverless_apps_show.md)	 - Show details for a serverless application
 * [runware serverless apps stop](runware_serverless_apps_stop.md)	 - Stop a serverless application
 * [runware serverless apps usage](runware_serverless_apps_usage.md)	 - Show usage for a serverless application
