@@ -109,6 +109,36 @@ func TestVersionsResult_NilBuildID(t *testing.T) {
 	}
 }
 
+func TestBuildsResult_OmitsLogTailColumn(t *testing.T) {
+	tables := []output.Tabular{
+		buildsResult{},
+		buildResult{},
+	}
+	for _, table := range tables {
+		for _, h := range table.Headers() {
+			if strings.Contains(strings.ToLower(h), "log") {
+				t.Fatalf("%T table must not include a log column: %v", table, table.Headers())
+			}
+		}
+	}
+}
+
+func TestBuildResult_NilOptionalFields(t *testing.T) {
+	rows := (buildResult{
+		Id:     uuid.MustParse("33333333-3333-3333-3333-333333333333"),
+		Status: "queued",
+	}).Rows()
+	if len(rows) != 5 {
+		t.Fatalf("expected 5 rows, got %d", len(rows))
+	}
+	if rows[2][1] != "" {
+		t.Fatalf("nil Error should render empty, got %#v", rows[2][1])
+	}
+	if rows[3][1] != "" {
+		t.Fatalf("nil ExitCode should render empty, got %#v", rows[3][1])
+	}
+}
+
 func TestWorkersResult_NilNodeName(t *testing.T) {
 	rows := (workersResult{{
 		Id:      uuid.MustParse("44444444-4444-4444-4444-444444444444"),

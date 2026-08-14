@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/agents"
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -56,6 +57,15 @@ type ListEndpointsParams = gen.ListEndpointsParams
 
 // ListVersionsParams are optional filters for ListVersions.
 type ListVersionsParams = gen.ListVersionsParams
+
+// ListBuildsParams are optional filters for ListBuilds.
+type ListBuildsParams = gen.ListBuildsParams
+
+// Build is a code build or container validation for a deployment.
+type Build = gen.Build
+
+// BuildStatus is a build lifecycle status.
+type BuildStatus = gen.BuildStatus
 
 // ListWorkersParams are optional filters for ListWorkers.
 type ListWorkersParams = gen.ListWorkersParams
@@ -382,6 +392,78 @@ func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *
 		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
 		return Page[Version]{}, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// ListBuilds returns a page of builds for a deployment.
+func (c *Client) ListBuilds(ctx context.Context, deploymentID string, params *ListBuildsParams) (Page[Build], error) {
+	if c.apiKey == "" {
+		return Page[Build]{}, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.ListBuildsWithResponse(ctx, deploymentID, params)
+	if err != nil {
+		return Page[Build]{}, fmt.Errorf("list builds: %w", err)
+	}
+
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
+		c.logger.Debug("serverless response", //nolint:errcheck,gosec
+			"path", "/v1/deployments/"+deploymentID+"/builds",
+			"status", resp.StatusCode(),
+			"body", string(resp.Body),
+		)
+	}
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return pageOf[Build](nil, nil), nil
+		}
+		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
+	case http.StatusUnauthorized:
+		return Page[Build]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return Page[Build]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return Page[Build]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	default:
+		return Page[Build]{}, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// GetBuild returns a single build by ID.
+func (c *Client) GetBuild(ctx context.Context, deploymentID string, buildID uuid.UUID) (*Build, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.GetBuildWithResponse(ctx, deploymentID, buildID)
+	if err != nil {
+		return nil, fmt.Errorf("get build: %w", err)
+	}
+
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
+		c.logger.Debug("serverless response", //nolint:errcheck,gosec
+			"path", "/v1/deployments/"+deploymentID+"/builds/"+buildID.String(),
+			"status", resp.StatusCode(),
+			"body", string(resp.Body),
+		)
+	}
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return nil, fmt.Errorf("get build: empty 200 response")
+		}
+		return resp.JSON200, nil
+	case http.StatusUnauthorized:
+		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	default:
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
