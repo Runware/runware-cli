@@ -11,7 +11,7 @@ The organisation secret must already exist (see 'secrets set'). This is a
 control-plane association only in this API release — it does not roll workers.
 
 ```
-runware serverless secrets attach <app> <name> [flags]
+runware serverless secrets attach <appId> <name> [flags]
 ```
 
 ### Examples

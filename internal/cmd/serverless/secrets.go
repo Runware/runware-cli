@@ -175,7 +175,7 @@ func newSecretsAttachmentsCmd(logger *log.Logger) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "attachments <app>",
+		Use:   "attachments <appId>",
 		Short: "List secrets attached to an application",
 		Long: `List secrets attached to an application, including any env-var name override.
 Encrypted values are never returned.`,
@@ -221,7 +221,7 @@ func newSecretsAttachCmd(logger *log.Logger) *cobra.Command {
 	var envVarName string
 
 	cmd := &cobra.Command{
-		Use:   "attach <app> <name>",
+		Use:   "attach <appId> <name>",
 		Short: "Attach an organisation secret to an application",
 		Long: `Record that an organisation secret is attached to an application, optionally
 under a different environment variable name.
@@ -266,7 +266,7 @@ control-plane association only in this API release — it does not roll workers.
 
 func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "detach <app> <name>",
+		Use:   "detach <appId> <name>",
 		Short: "Detach a secret from an application",
 		Long: `Remove the control-plane attachment from an application. Does not remove the
 organisation secret.`,

@@ -8,7 +8,7 @@ Remove the control-plane attachment from an application. Does not remove the
 organisation secret.
 
 ```
-runware serverless secrets detach <app> <name> [flags]
+runware serverless secrets detach <appId> <name> [flags]
 ```
 
 ### Examples

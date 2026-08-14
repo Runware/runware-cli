@@ -3,7 +3,7 @@
 Delete a serverless application
 
 ```
-runware serverless apps delete <app> [flags]
+runware serverless apps delete <appId> [flags]
 ```
 
 ### Examples

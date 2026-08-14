@@ -8,7 +8,7 @@ List secrets attached to an application, including any env-var name override.
 Encrypted values are never returned.
 
 ```
-runware serverless secrets attachments <app> [flags]
+runware serverless secrets attachments <appId> [flags]
 ```
 
 ### Examples

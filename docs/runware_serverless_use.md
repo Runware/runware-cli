@@ -3,7 +3,7 @@
 Set the default serverless application
 
 ```
-runware serverless use <app> [flags]
+runware serverless use <appId> [flags]
 ```
 
 ### Examples

@@ -3,7 +3,7 @@
 Show logs for a serverless application
 
 ```
-runware serverless apps logs <app> [flags]
+runware serverless apps logs <appId> [flags]
 ```
 
 ### Examples

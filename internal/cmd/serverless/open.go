@@ -32,7 +32,7 @@ func (r openResult) Rows() [][]any {
 
 func newOpenCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "open <app>",
+		Use:   "open <appId>",
 		Short: "Open an application in the Runware dashboard",
 		Example: `  # open an application's dashboard page in your browser
   runware serverless open my-model-abc`,

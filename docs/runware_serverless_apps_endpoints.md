@@ -3,7 +3,7 @@
 List endpoints for a serverless application
 
 ```
-runware serverless apps endpoints <app> [flags]
+runware serverless apps endpoints <appId> [flags]
 ```
 
 ### Examples

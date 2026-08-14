@@ -3,7 +3,7 @@
 List versions of a serverless application
 
 ```
-runware serverless apps versions <app> [flags]
+runware serverless apps versions <appId> [flags]
 ```
 
 ### Examples

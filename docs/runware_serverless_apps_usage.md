@@ -3,7 +3,7 @@
 Show usage for a serverless application
 
 ```
-runware serverless apps usage <app> [flags]
+runware serverless apps usage <appId> [flags]
 ```
 
 ### Examples
