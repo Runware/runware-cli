@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
 const (
 	testDeploymentID = "my-app"
+	testBuildID      = "33333333-3333-3333-3333-333333333333"
 	testCursorPage2  = "page-2"
 	testCursorPage3  = "page-3"
 )
@@ -368,6 +370,112 @@ func TestListEndpoints(t *testing.T) {
 	}
 	if page.NextCursor != nil {
 		t.Fatalf("expected nil nextCursor, got %+v", page.NextCursor)
+	}
+}
+
+func TestListBuilds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1/deployments/" + testDeploymentID + "/builds"
+		if r.Method != http.MethodGet || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("limit"); got != "10" {
+			t.Errorf("limit query = %q, want 10", got)
+		}
+		if got := r.URL.Query().Get("cursor"); got != testCursorPage2 {
+			t.Errorf("cursor query = %q, want %s", got, testCursorPage2)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{
+			"id":"` + testBuildID + `",
+			"status":"failed",
+			"error":"pip install failed",
+			"exitCode":1,
+			"logTail":"ERROR: Could not find a version",
+			"createdAt":"2026-07-30T12:00:00Z"
+		}],"nextCursor":"` + testCursorPage3 + `"}`))
+	}))
+	defer srv.Close()
+
+	limit := Limit(10)
+	cursor := Cursor(testCursorPage2)
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	page, err := c.ListBuilds(context.Background(), testDeploymentID, &ListBuildsParams{
+		Limit:  &limit,
+		Cursor: &cursor,
+	})
+	if err != nil {
+		t.Fatalf("ListBuilds: %v", err)
+	}
+	if len(page.Data) != 1 || page.Data[0].Id.String() != testBuildID {
+		t.Fatalf("unexpected builds: %+v", page.Data)
+	}
+	if string(page.Data[0].Status) != "failed" {
+		t.Errorf("unexpected status: %s", page.Data[0].Status)
+	}
+	if page.Data[0].Error == nil || *page.Data[0].Error != "pip install failed" {
+		t.Errorf("unexpected error: %+v", page.Data[0].Error)
+	}
+	if page.NextCursor == nil || *page.NextCursor != testCursorPage3 {
+		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
+	}
+}
+
+func TestListBuilds_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.ListBuilds(context.Background(), testDeploymentID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
+	}
+}
+
+func TestGetBuild(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1/deployments/" + testDeploymentID + "/builds/" + testBuildID
+		if r.Method != http.MethodGet || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"` + testBuildID + `",
+			"status":"ready",
+			"createdAt":"2026-07-30T12:00:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	b, err := c.GetBuild(context.Background(), testDeploymentID, uuid.MustParse(testBuildID))
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if b.Id.String() != testBuildID || string(b.Status) != "ready" {
+		t.Errorf("unexpected build: %+v", b)
+	}
+}
+
+func TestGetBuild_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No build exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.GetBuild(context.Background(), testDeploymentID, uuid.MustParse(testBuildID))
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+}
+
+func TestGetBuild_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.GetBuild(context.Background(), testDeploymentID, uuid.MustParse(testBuildID)); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
