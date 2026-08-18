@@ -4,11 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -113,7 +110,7 @@ in process lists; use --value-file - to read from stdin.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			secretValue, err := readSecretValue(value, valueFile, cmd.InOrStdin())
+			secretValue, err := readValueFlag(value, valueFile, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -294,31 +291,6 @@ organisation secret.`,
 		},
 	}
 	return cmd
-}
-
-func readSecretValue(value, valueFile string, stdin io.Reader) (string, error) {
-	if valueFile == "" {
-		return value, nil
-	}
-
-	var (
-		raw []byte
-		err error
-	)
-	if valueFile == "-" {
-		raw, err = io.ReadAll(stdin)
-		if err != nil {
-			return "", fmt.Errorf("read secret from stdin: %w", err)
-		}
-	} else {
-		raw, err = os.ReadFile(valueFile)
-		if err != nil {
-			return "", fmt.Errorf("read secret from %s: %w", valueFile, err)
-		}
-	}
-
-	s := strings.TrimSuffix(string(raw), "\n")
-	return strings.TrimSuffix(s, "\r"), nil
 }
 
 func createOrUpdateSecret(ctx context.Context, client *serverlessapi.Client, name, value string) (*serverlessapi.Secret, error) {

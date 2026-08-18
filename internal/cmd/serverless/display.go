@@ -15,10 +15,12 @@ const (
 	colName    = "Name"
 	colStatus  = "Status"
 	colCreated = "Created"
+	colUpdated = "Updated"
 	colType    = "Type"
 	colField   = "Field"
 	colValue   = "Value"
 	colApp     = "App"
+	colKey     = "Key"
 	colEnvVar  = "Env var"
 )
 
@@ -303,6 +305,57 @@ func (r secretDetachResult) Headers() []string {
 
 func (r secretDetachResult) Rows() [][]any {
 	return [][]any{{r.DeploymentID, r.Name}}
+}
+
+// envVarResult wraps a single plain-text environment variable for table/json/yaml display.
+type envVarResult serverlessapi.EnvironmentVariable
+
+func (r envVarResult) Headers() []string {
+	return []string{colKey, colValue, colCreated, colUpdated}
+}
+
+func (r envVarResult) Rows() [][]any {
+	return [][]any{{
+		r.Key,
+		r.Value,
+		formatOptionalTime(r.CreatedAt),
+		formatOptionalTime(r.UpdatedAt),
+	}}
+}
+
+// envVarsResult wraps environment variable lists for table display.
+type envVarsResult []serverlessapi.EnvironmentVariable
+
+func (r envVarsResult) Headers() []string {
+	return []string{colKey, colValue, colCreated, colUpdated}
+}
+
+func (r envVarsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		e := &r[i]
+		rows[i] = []any{
+			e.Key,
+			e.Value,
+			formatOptionalTime(e.CreatedAt),
+			formatOptionalTime(e.UpdatedAt),
+		}
+	}
+	return rows
+}
+
+// envUnsetResult is the success payload for removing an environment variable.
+type envUnsetResult struct {
+	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
+	Key          string `json:"key"          yaml:"key"`
+}
+
+func (r envUnsetResult) Headers() []string {
+	return []string{colApp, colKey}
+}
+
+func (r envUnsetResult) Rows() [][]any {
+	return [][]any{{r.DeploymentID, r.Key}}
 }
 
 // printPage prints a cursor-paginated list. JSON/YAML use the API page shape
