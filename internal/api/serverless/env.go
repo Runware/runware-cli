@@ -31,7 +31,7 @@ func (c *Client) ListDeploymentEnvironmentVariables(ctx context.Context, deploym
 		return Page[EnvironmentVariable]{}, fmt.Errorf("list environment variables: %w", err)
 	}
 
-	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/environment-variables", resp.StatusCode(), resp.Body)
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -62,7 +62,7 @@ func (c *Client) UpdateDeploymentEnvironmentVariable(ctx context.Context, deploy
 		return nil, fmt.Errorf("update environment variable: %w", err)
 	}
 
-	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/environment-variables/"+key, resp.StatusCode(), resp.Body)
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -97,7 +97,7 @@ func (c *Client) DeleteDeploymentEnvironmentVariable(ctx context.Context, deploy
 		return fmt.Errorf("delete environment variable: %w", err)
 	}
 
-	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/environment-variables/"+key, resp.StatusCode(), resp.Body)
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusNoContent:
