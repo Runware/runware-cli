@@ -202,13 +202,7 @@ func (c *Client) ListGpuTypes(ctx context.Context) ([]GpuType, error) {
 		return nil, fmt.Errorf("list GPU types: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/gpu-types",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/gpu-types", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -236,13 +230,7 @@ func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreate) (*
 		return nil, fmt.Errorf("create deployment: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusCreated:
@@ -276,13 +264,7 @@ func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsPar
 		return Page[Deployment]{}, fmt.Errorf("list deployments: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -314,13 +296,7 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentID string) (*Deplo
 		return nil, fmt.Errorf("get deployment: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID,
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID, resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -351,13 +327,7 @@ func (c *Client) UpdateDeployment(ctx context.Context, deploymentID string, body
 		return nil, fmt.Errorf("update deployment: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID,
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID, resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -393,13 +363,7 @@ func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params 
 		return Page[Endpoint]{}, fmt.Errorf("list endpoints: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/endpoints",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/endpoints", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -429,13 +393,7 @@ func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *
 		return Page[Version]{}, fmt.Errorf("list versions: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/versions",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/versions", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -465,13 +423,7 @@ func (c *Client) GetVersion(ctx context.Context, deploymentID string, versionNum
 		return nil, fmt.Errorf("get version: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", fmt.Sprintf("/v1/deployments/%s/versions/%d", deploymentID, versionNumber),
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, fmt.Sprintf("/v1/deployments/%s/versions/%d", deploymentID, versionNumber), resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -501,13 +453,7 @@ func (c *Client) ListBuilds(ctx context.Context, deploymentID string, params *Li
 		return Page[Build]{}, fmt.Errorf("list builds: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/builds",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/builds", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -537,13 +483,7 @@ func (c *Client) GetBuild(ctx context.Context, deploymentID string, buildID uuid
 		return nil, fmt.Errorf("get build: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/builds/"+buildID.String(),
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/builds/"+buildID.String(), resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -573,13 +513,7 @@ func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *L
 		return Page[Worker]{}, fmt.Errorf("list workers: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/workers",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/workers", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
