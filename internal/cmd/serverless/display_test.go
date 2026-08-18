@@ -11,7 +11,11 @@ import (
 	"github.com/runware/runware-cli/internal/output"
 )
 
-const testAppID = "my-app"
+const (
+	testAppID    = "my-app"
+	testEnvKey   = "MY_KEY"
+	testEnvValue = "hello"
+)
 
 func TestListPageParams(t *testing.T) {
 	limit, cursor := listPageParams(0, "")
@@ -199,6 +203,51 @@ func TestSecretsResult_NoValueColumn(t *testing.T) {
 				t.Fatalf("%T table must not include a Value column: %v", table, headers)
 			}
 		}
+	}
+}
+
+func TestEnvVarsResult_ShowsValue(t *testing.T) {
+	created := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	ev := serverlessapi.EnvironmentVariable{
+		Key:       testEnvKey,
+		Value:     testEnvValue,
+		CreatedAt: &created,
+		UpdatedAt: &created,
+	}
+
+	tables := []output.Tabular{
+		envVarsResult{ev},
+		envVarResult(ev),
+	}
+	for _, table := range tables {
+		hasValue := false
+		for _, h := range table.Headers() {
+			if h == colValue {
+				hasValue = true
+				break
+			}
+		}
+		if !hasValue {
+			t.Fatalf("%T table must include a Value column: %v", table, table.Headers())
+		}
+		rows := table.Rows()
+		if len(rows) != 1 {
+			t.Fatalf("%T: expected 1 row, got %d", table, len(rows))
+		}
+		if rows[0][0] != testEnvKey || rows[0][1] != testEnvValue {
+			t.Fatalf("%T: unexpected row %#v", table, rows[0])
+		}
+	}
+
+	unset := envUnsetResult{DeploymentID: testAppID, Key: testEnvKey}
+	for _, h := range unset.Headers() {
+		if strings.EqualFold(h, "value") {
+			t.Fatalf("envUnsetResult must not include a Value column: %v", unset.Headers())
+		}
+	}
+	rows := unset.Rows()
+	if len(rows) != 1 || rows[0][0] != testAppID || rows[0][1] != testEnvKey {
+		t.Fatalf("envUnsetResult: unexpected row %#v", rows)
 	}
 }
 

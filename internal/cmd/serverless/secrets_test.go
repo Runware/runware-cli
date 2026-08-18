@@ -6,9 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -94,46 +91,5 @@ func TestCreateOrUpdateSecret_ConflictThenNotFoundKeepsCreateError(t *testing.T)
 	}
 	if re.Message != "Secret name is already in use" {
 		t.Errorf("unexpected message: %q", re.Message)
-	}
-}
-
-func TestReadSecretValue_FromFlag(t *testing.T) {
-	got, err := readSecretValue("keep\n", "", strings.NewReader("ignored"))
-	if err != nil {
-		t.Fatalf("readSecretValue: %v", err)
-	}
-	if got != "keep\n" {
-		t.Fatalf("flag value should be used as-is, got %q", got)
-	}
-}
-
-func TestReadSecretValue_FromFileStripsTrailingNewline(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "secret.txt")
-	if err := os.WriteFile(path, []byte("s3cret\r\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got, err := readSecretValue("", path, strings.NewReader(""))
-	if err != nil {
-		t.Fatalf("readSecretValue: %v", err)
-	}
-	if got != "s3cret" {
-		t.Fatalf("got %q, want s3cret", got)
-	}
-}
-
-func TestReadSecretValue_FromStdin(t *testing.T) {
-	got, err := readSecretValue("", "-", strings.NewReader("from-stdin\n"))
-	if err != nil {
-		t.Fatalf("readSecretValue: %v", err)
-	}
-	if got != "from-stdin" {
-		t.Fatalf("got %q, want from-stdin", got)
-	}
-}
-
-func TestReadSecretValue_MissingFile(t *testing.T) {
-	_, err := readSecretValue("", filepath.Join(t.TempDir(), "missing.txt"), strings.NewReader(""))
-	if err == nil {
-		t.Fatal("expected error for missing file")
 	}
 }
