@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -11,7 +12,8 @@ import (
 
 // problemToError converts an RFC 9457 ProblemDetails (or a bare status) into a
 // *transport.RunwareError so the CLI's shared error rendering (including the
-// auth hint on 401/403) applies uniformly.
+// auth hint on 401/403) applies uniformly. Field-level 422 entries in `errors`
+// are appended so validation failures are readable.
 func problemToError(p *gen.ProblemDetails, statusCode int) error {
 	msg := fmt.Sprintf("HTTP %d: %s", statusCode, http.StatusText(statusCode))
 	if p != nil {
@@ -24,12 +26,33 @@ func problemToError(p *gen.ProblemDetails, statusCode int) error {
 		case p.Title != "":
 			msg = p.Title
 		}
+		if extra := formatProblemErrors(p.Errors); extra != "" {
+			msg = msg + "\n" + extra
+		}
 	}
 	return transport.CreateRunwareError(
 		rawCodeForStatus(statusCode),
 		msg,
 		transport.RunwareErrorDetails{StatusCode: statusCode},
 	)
+}
+
+func formatProblemErrors(errors *[]gen.ProblemError) string {
+	if errors == nil || len(*errors) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(*errors))
+	for _, e := range *errors {
+		line := e.Detail
+		if e.Pointer != nil && *e.Pointer != "" {
+			line = *e.Pointer + ": " + e.Detail
+		}
+		if line == "" {
+			continue
+		}
+		lines = append(lines, "  "+line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // problemFromBody attempts to decode an RFC 9457 ProblemDetails from a response
@@ -46,7 +69,7 @@ func problemFromBody(body []byte, statusCode int) error {
 }
 
 func isProblemDetails(p gen.ProblemDetails) bool {
-	return p.Title != "" || p.Type != "" || p.Status != 0 || (p.Detail != nil && *p.Detail != "")
+	return p.Title != "" || p.Type != "" || p.Status != 0 || (p.Detail != nil && *p.Detail != "") || (p.Errors != nil && len(*p.Errors) > 0)
 }
 
 // rawCodeForStatus maps an HTTP status to a raw error code string that

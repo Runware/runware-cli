@@ -26,7 +26,6 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(),
 		newAppsUsageCmd(),
-		newAppsSecretCmd(),
 		newAppsStopCmd(),
 		newAppsResumeCmd(),
 		newAppsDeleteCmd(),
@@ -81,7 +80,7 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data), cmd.ErrOrStderr())
+			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data), cmd.ErrOrStderr(), "")
 		},
 	}
 
@@ -94,7 +93,7 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 
 func newAppsShowCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <deploymentId>",
+		Use:   "show <appId>",
 		Short: "Show details for a serverless application",
 		Example: `  # show details for an application
   runware serverless apps show my-app`,
@@ -125,7 +124,7 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "endpoints <deploymentId>",
+		Use:   "endpoints <appId>",
 		Short: "List endpoints for a serverless application",
 		Example: `  # list endpoints for an application
   runware serverless apps endpoints my-app
@@ -155,7 +154,7 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data), cmd.ErrOrStderr())
+			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data), cmd.ErrOrStderr(), "")
 		},
 	}
 
@@ -171,7 +170,7 @@ func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "versions <deploymentId>",
+		Use:   "versions <appId>",
 		Short: "List versions of a serverless application",
 		Example: `  # list deployed versions
   runware serverless apps versions my-app
@@ -201,7 +200,7 @@ func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data), cmd.ErrOrStderr())
+			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data), cmd.ErrOrStderr(), "")
 		},
 	}
 
@@ -212,7 +211,7 @@ func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
 
 func newAppsLogsCmd() *cobra.Command {
 	return stubLeaf(
-		"logs <deploymentId>",
+		"logs <appId>",
 		"Show logs for a serverless application",
 		`  # fetch or stream logs for an application
   runware serverless apps logs my-app`,
@@ -228,7 +227,7 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "workers <deploymentId>",
+		Use:   "workers <appId>",
 		Short: "List workers for a serverless application",
 		Example: `  # list workers for an application
   runware serverless apps workers my-app
@@ -268,7 +267,7 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr())
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), "")
 		},
 	}
 
@@ -308,7 +307,7 @@ func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverless
 
 func newAppsScaleCmd() *cobra.Command {
 	return stubLeaf(
-		"scale <deploymentId>",
+		"scale <appId>",
 		"Scale a serverless application",
 		`  # update scaling configuration for an application
   runware serverless apps scale my-app`,
@@ -318,7 +317,7 @@ func newAppsScaleCmd() *cobra.Command {
 
 func newAppsUsageCmd() *cobra.Command {
 	return stubLeaf(
-		"usage <deploymentId>",
+		"usage <appId>",
 		"Show usage for a serverless application",
 		`  # show usage events for an application
   runware serverless apps usage my-app`,
@@ -328,7 +327,7 @@ func newAppsUsageCmd() *cobra.Command {
 
 func newAppsStopCmd() *cobra.Command {
 	return stubLeaf(
-		"stop <deploymentId>",
+		"stop <appId>",
 		"Stop a serverless application",
 		`  # stop a running application
   runware serverless apps stop my-app`,
@@ -338,7 +337,7 @@ func newAppsStopCmd() *cobra.Command {
 
 func newAppsResumeCmd() *cobra.Command {
 	return stubLeaf(
-		"resume <deploymentId>",
+		"resume <appId>",
 		"Resume a stopped serverless application",
 		`  # resume a stopped application
   runware serverless apps resume my-app`,
@@ -348,7 +347,7 @@ func newAppsResumeCmd() *cobra.Command {
 
 func newAppsDeleteCmd() *cobra.Command {
 	return stubLeaf(
-		"delete <deploymentId>",
+		"delete <appId>",
 		"Delete a serverless application",
 		`  # delete an application
   runware serverless apps delete my-app`,

@@ -16,7 +16,7 @@ import (
 type gpuTypesResult []serverlessapi.GpuType
 
 func (r gpuTypesResult) Headers() []string {
-	return []string{"ID", "Name", "Memory", "Availability", "Price ($/GPU/s)"}
+	return []string{colID, colName, "Memory", "Availability", "Price ($/GPU/s)"}
 }
 
 func (r gpuTypesResult) Rows() [][]any {

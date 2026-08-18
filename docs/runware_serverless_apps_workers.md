@@ -3,7 +3,7 @@
 List workers for a serverless application
 
 ```
-runware serverless apps workers <deploymentId> [flags]
+runware serverless apps workers <appId> [flags]
 ```
 
 ### Examples

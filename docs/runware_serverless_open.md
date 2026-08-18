@@ -3,7 +3,7 @@
 Open an application in the Runware dashboard
 
 ```
-runware serverless open <deploymentId> [flags]
+runware serverless open <appId> [flags]
 ```
 
 ### Examples
