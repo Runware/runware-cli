@@ -23,6 +23,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsListCmd(logger),
 		newAppsShowCmd(logger),
 		newAppsEndpointsCmd(logger),
+		newAppsEnvCmd(logger),
 		newAppsVersionsCmd(logger),
 		newAppsBuildsCmd(logger),
 		newAppsLogsCmd(),
