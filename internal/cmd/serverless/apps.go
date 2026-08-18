@@ -28,7 +28,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsBuildsCmd(logger),
 		newAppsLogsCmd(),
 		newAppsWorkersCmd(logger),
-		newAppsScaleCmd(),
+		newAppsScaleCmd(logger),
 		newAppsUsageCmd(),
 		newAppsStopCmd(),
 		newAppsResumeCmd(),
@@ -344,16 +344,6 @@ func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverless
 		cursorOut = &c
 	}
 	return limitOut, cursorOut
-}
-
-func newAppsScaleCmd() *cobra.Command {
-	return stubLeaf(
-		"scale <appId>",
-		"Scale a serverless application",
-		`  # update scaling configuration for an application
-  runware serverless apps scale my-app`,
-		cobra.ExactArgs(1),
-	)
 }
 
 func newAppsUsageCmd() *cobra.Command {
