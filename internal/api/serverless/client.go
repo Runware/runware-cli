@@ -327,13 +327,7 @@ func (c *Client) UpdateDeployment(ctx context.Context, deploymentID string, body
 		return nil, fmt.Errorf("update deployment: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID,
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID, resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
