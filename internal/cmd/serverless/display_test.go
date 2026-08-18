@@ -11,6 +11,8 @@ import (
 	"github.com/runware/runware-cli/internal/output"
 )
 
+const testAppID = "my-app"
+
 func TestListPageParams(t *testing.T) {
 	limit, cursor := listPageParams(0, "")
 	if limit != nil || cursor != nil {
@@ -187,8 +189,8 @@ func TestSecretsResult_NoValueColumn(t *testing.T) {
 		secretAttachmentsResult{},
 		secretResult{},
 		secretRemovedResult{Name: testSecretName},
-		secretAttachResult{DeploymentID: "my-app", Name: testSecretName, EnvVarName: "BAR"},
-		secretDetachResult{DeploymentID: "my-app", Name: testSecretName},
+		secretAttachResult{DeploymentID: testAppID, Name: testSecretName, EnvVarName: "BAR"},
+		secretDetachResult{DeploymentID: testAppID, Name: testSecretName},
 	}
 	for _, table := range tables {
 		headers := table.Headers()
@@ -211,6 +213,44 @@ func TestVersionsResult_NilBuildID(t *testing.T) {
 	}
 	if rows[0][2] != "" {
 		t.Fatalf("nil BuildId should render empty, got %#v", rows[0][2])
+	}
+}
+
+func TestVersionResult_NilBuildID(t *testing.T) {
+	rows := (versionResult{
+		Id:            uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+		DeploymentId:  testAppID,
+		VersionNumber: 1,
+		CreatedAt:     time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+	}).Rows()
+	if len(rows) != 5 {
+		t.Fatalf("expected 5 rows, got %d", len(rows))
+	}
+	if rows[3][1] != "" {
+		t.Fatalf("nil BuildId should render empty, got %#v", rows[3][1])
+	}
+	if rows[0][1] != int32(1) {
+		t.Fatalf("version number: got %#v", rows[0][1])
+	}
+	if rows[2][1] != testAppID {
+		t.Fatalf("deploymentId: got %#v", rows[2][1])
+	}
+}
+
+func TestParseVersionNumber(t *testing.T) {
+	got, err := parseVersionNumber("1")
+	if err != nil || got != 1 {
+		t.Fatalf("1: got=%d err=%v", got, err)
+	}
+
+	for _, in := range []string{"foo", "1.5", "0", "-1"} {
+		_, err = parseVersionNumber(in)
+		if err == nil {
+			t.Fatalf("expected error for %q", in)
+		}
+		if !strings.Contains(err.Error(), "invalid versionNumber") {
+			t.Fatalf("%q: error %q should mention invalid versionNumber", in, err)
+		}
 	}
 }
 

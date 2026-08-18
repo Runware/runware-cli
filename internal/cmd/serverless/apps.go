@@ -184,52 +184,6 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 	return cmd
 }
 
-func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
-	var (
-		limit  int
-		cursor string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "versions <appId>",
-		Short: "List versions of a serverless application",
-		Example: `  # list deployed versions
-  runware serverless apps versions my-app
-
-  # page through results
-  runware serverless apps versions my-app --limit 20 --cursor <nextCursor>`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateListLimit(limit); err != nil {
-				return err
-			}
-			id := args[0]
-			var params *serverlessapi.ListVersionsParams
-			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListVersionsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-			}
-
-			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching versions for %s...", id))
-			spin.Start()
-
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			page, err := client.ListVersions(cmd.Context(), id, params)
-			if err != nil {
-				spin.Stop()
-				return err
-			}
-			spin.Stop()
-
-			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data), cmd.ErrOrStderr(), "")
-		},
-	}
-
-	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of versions to return (1-100)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
-	return cmd
-}
-
 func newAppsLogsCmd() *cobra.Command {
 	return stubLeaf(
 		"logs <appId>",

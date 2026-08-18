@@ -100,6 +100,23 @@ func (r versionsResult) Rows() [][]any {
 	return rows
 }
 
+// versionResult wraps a single version for table/json/yaml display.
+type versionResult serverlessapi.Version
+
+func (r versionResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r versionResult) Rows() [][]any {
+	return [][]any{
+		{"Version", r.VersionNumber},
+		{colID, r.Id.String()},
+		{colApp, r.DeploymentId},
+		{"Build", formatOptionalUUID(r.BuildId)},
+		{colCreated, r.CreatedAt.Format(time.RFC3339)},
+	}
+}
+
 // workersResult wraps worker lists for table display.
 type workersResult []serverlessapi.Worker
 
