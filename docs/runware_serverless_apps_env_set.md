@@ -28,7 +28,7 @@ runware serverless apps env set <appId> <key> [flags]
   runware serverless apps env set my-app MY_KEY --value-file ./value.txt
 
   # read the value from stdin
-  printf '%s' "$MY_KEY" | runware serverless apps env set my-app MY_KEY --value-file -
+  printf '%s' "$MY_VALUE" | runware serverless apps env set my-app MY_KEY --value-file -
 ```
 
 ### Options
