@@ -3,7 +3,6 @@ package serverless
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
@@ -48,13 +47,7 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Pa
 		return Page[Secret]{}, fmt.Errorf("list secrets: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/secrets",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/secrets", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -87,13 +80,7 @@ func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, 
 		return nil, fmt.Errorf("create secret: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/secrets",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/secrets", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusCreated:
@@ -127,13 +114,7 @@ func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdat
 		return nil, fmt.Errorf("update secret: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/secrets/"+name,
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/secrets/"+name, resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -168,13 +149,7 @@ func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 		return fmt.Errorf("delete secret: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/secrets/"+name,
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/secrets/"+name, resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusNoContent:
@@ -205,13 +180,7 @@ func (c *Client) ListDeploymentSecrets(ctx context.Context, deploymentID string,
 		return Page[SecretAttachment]{}, fmt.Errorf("list deployment secrets: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/secrets",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/secrets", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusOK:
@@ -246,13 +215,7 @@ func (c *Client) AttachDeploymentSecret(ctx context.Context, deploymentID string
 		return fmt.Errorf("attach secret: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/secrets",
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/secrets", resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusNoContent:
@@ -286,13 +249,7 @@ func (c *Client) DetachDeploymentSecret(ctx context.Context, deploymentID, secre
 		return fmt.Errorf("detach secret: %w", err)
 	}
 
-	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
-		c.logger.Debug("serverless response", //nolint:errcheck,gosec
-			"path", "/v1/deployments/"+deploymentID+"/secrets/"+secretName,
-			"status", resp.StatusCode(),
-			"body", string(resp.Body),
-		)
-	}
+	c.logResponse(ctx, "/v1/deployments/"+deploymentID+"/secrets/"+secretName, resp.StatusCode(), resp.Body)
 
 	switch resp.StatusCode() {
 	case http.StatusNoContent:
