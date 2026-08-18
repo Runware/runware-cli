@@ -3,6 +3,8 @@ package serverless
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -36,9 +38,12 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 
 func newAppsListCmd(logger *log.Logger) *cobra.Command {
 	var (
-		limit  int
-		cursor string
-		status string
+		limit   int
+		cursor  string
+		status  string
+		query   string
+		gpuType string
+		sort    string
 	)
 
 	cmd := &cobra.Command{
@@ -50,6 +55,12 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
   # filter by status
   runware serverless apps list --status active
 
+  # filter by name or ID substring
+  runware serverless apps list --query demo --sort name
+
+  # filter by GPU type
+  runware serverless apps list --gpu-type h100 --status active
+
   # page through results
   runware serverless apps list --limit 20 --cursor <nextCursor>`,
 		Args: cobra.NoArgs,
@@ -57,17 +68,23 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			if err := validateListLimit(limit); err != nil {
 				return err
 			}
+			sortVal, err := parseDeploymentSort(sort)
+			if err != nil {
+				return err
+			}
+			statusVal, err := parseDeploymentStatus(status)
+			if err != nil {
+				return err
+			}
+
 			var params *serverlessapi.ListDeploymentsParams
-			if limit > 0 || cursor != "" || status != "" {
+			if limit > 0 || cursor != "" || status != "" || query != "" || gpuType != "" || sort != "" {
 				params = &serverlessapi.ListDeploymentsParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
-				if status != "" {
-					s := serverlessapi.DeploymentStatus(status)
-					if !s.Valid() {
-						return fmt.Errorf("invalid --status %q (want active, initializing, stopping, stopped, deleting, deleted, or failed)", status)
-					}
-					params.Status = &s
-				}
+				params.Status = statusVal
+				params.Sort = sortVal
+				params.Q = optionalStringPtr(query)
+				params.GpuType = optionalStringPtr(gpuType)
 			}
 
 			spin := cmdutil.NewSpinner("Fetching applications...")
@@ -81,13 +98,16 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data), cmd.ErrOrStderr(), extraListCursorFlags(query, gpuType, sort, status))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of applications to return (1-100)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --query/--gpu-type/--sort/--status)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, initializing, stopped, …)")
+	cmd.Flags().StringVar(&query, "query", "", "Filter by substring on name or ID")
+	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "Filter by GPU type (see 'serverless gpus')")
+	cmd.Flags().StringVar(&sort, "sort", "", "Sort order (createdAt (default), name, activity, or errorRate)")
 
 	return cmd
 }
@@ -244,17 +264,15 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 			id := args[0]
+			statusVal, err := parseWorkerStatus(status)
+			if err != nil {
+				return err
+			}
 			var params *serverlessapi.ListWorkersParams
 			if limit > 0 || cursor != "" || status != "" {
 				params = &serverlessapi.ListWorkersParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
-				if status != "" {
-					s := serverlessapi.WorkerStatus(status)
-					if !s.Valid() {
-						return fmt.Errorf("invalid --status %q (want pending, pulling, loading, ready, busy, draining, stopping, or stopped)", status)
-					}
-					params.Status = &s
-				}
+				params.Status = statusVal
 			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching workers for %s...", id))
@@ -268,12 +286,12 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraCursorFlag("--status", status))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of workers to return (1-100)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --status)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (ready, busy, pending, …)")
 	return cmd
 }
@@ -287,6 +305,73 @@ func validateListLimit(limit int) error {
 		return fmt.Errorf("--limit must be between 1 and 100")
 	}
 	return nil
+}
+
+// validListFlag is a generated enum used as a list-command filter.
+type validListFlag interface {
+	~string
+	Valid() bool
+}
+
+func parseValidFlag[T validListFlag](flag, value, want string) (*T, error) {
+	if value == "" {
+		return nil, nil
+	}
+	v := T(value)
+	if !v.Valid() {
+		return nil, fmt.Errorf("invalid %s %q (want %s)", flag, value, want)
+	}
+	return &v, nil
+}
+
+func parseDeploymentSort(sort string) (*serverlessapi.DeploymentSort, error) {
+	return parseValidFlag[serverlessapi.DeploymentSort]("--sort", sort, "createdAt, name, activity, or errorRate")
+}
+
+func parseDeploymentStatus(status string) (*serverlessapi.DeploymentStatus, error) {
+	return parseValidFlag[serverlessapi.DeploymentStatus]("--status", status, "active, initializing, stopping, stopped, deleting, deleted, or failed")
+}
+
+func parseWorkerStatus(status string) (*serverlessapi.WorkerStatus, error) {
+	return parseValidFlag[serverlessapi.WorkerStatus]("--status", status, "pending, pulling, loading, ready, busy, draining, stopping, or stopped")
+}
+
+// extraListCursorFlags repeats the apps-list filter flags a next-page --cursor is bound to.
+func extraListCursorFlags(query, gpuType, sort, status string) string {
+	parts := make([]string, 0, 4)
+	parts = appendFlag(parts, "--query", query)
+	parts = appendFlag(parts, "--gpu-type", gpuType)
+	parts = appendFlag(parts, "--sort", sort)
+	parts = appendFlag(parts, "--status", status)
+	return strings.Join(parts, " ")
+}
+
+// extraCursorFlag formats a single filter flag for a next-page --cursor hint.
+func extraCursorFlag(name, value string) string {
+	return strings.Join(appendFlag(nil, name, value), " ")
+}
+
+func appendFlag(parts []string, name, value string) []string {
+	if value == "" {
+		return parts
+	}
+	if !isBareFlagValue(value) {
+		return append(parts, name+" "+strconv.Quote(value))
+	}
+	return append(parts, name+" "+value)
+}
+
+func isBareFlagValue(value string) bool {
+	for i := range len(value) {
+		c := value[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-' || c == '_' || c == '.' || c == ':' || c == '/':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // listPageParams builds shared limit/cursor query values for cursor-paginated list commands.

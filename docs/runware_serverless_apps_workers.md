@@ -22,7 +22,7 @@ runware serverless apps workers <appId> [flags]
 ### Options
 
 ```
-      --cursor string   Pagination cursor from a previous nextCursor
+      --cursor string   Pagination cursor from a previous nextCursor (reuse the same --status)
   -h, --help            help for workers
       --limit int       Maximum number of workers to return (1-100)
       --status string   Filter by status (ready, busy, pending, …)

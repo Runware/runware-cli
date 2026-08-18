@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -262,6 +263,15 @@ func TestListDeployments(t *testing.T) {
 		if got := r.URL.Query().Get("cursor"); got != testCursorPage2 {
 			t.Errorf("cursor query = %q, want %s", got, testCursorPage2)
 		}
+		if got := r.URL.Query().Get("q"); got != "demo" {
+			t.Errorf("q query = %q, want demo", got)
+		}
+		if got := r.URL.Query().Get("gpuType"); got != "h100" {
+			t.Errorf("gpuType query = %q, want h100", got)
+		}
+		if got := r.URL.Query().Get("sort"); got != "name" {
+			t.Errorf("sort query = %q, want name", got)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
 			"deploymentId":"my-app",
@@ -279,11 +289,17 @@ func TestListDeployments(t *testing.T) {
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
 	status := DeploymentStatus("active")
+	q := "demo"
+	gpuType := "h100"
+	sort := DeploymentSort("name")
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
 	page, err := c.ListDeployments(context.Background(), &ListDeploymentsParams{
-		Limit:  &limit,
-		Cursor: &cursor,
-		Status: &status,
+		Limit:   &limit,
+		Cursor:  &cursor,
+		Status:  &status,
+		Q:       &q,
+		GpuType: &gpuType,
+		Sort:    &sort,
 	})
 	if err != nil {
 		t.Fatalf("ListDeployments: %v", err)
@@ -293,6 +309,59 @@ func TestListDeployments(t *testing.T) {
 	}
 	if page.NextCursor == nil || *page.NextCursor != testCursorPage3 {
 		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
+	}
+}
+
+func TestListDeployments_BadCursor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Bad Request","status":400,"detail":"cursor does not match the current sort and filters"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.ListDeployments(context.Background(), nil)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", re.StatusCode)
+	}
+	if re.Message != "cursor does not match the current sort and filters" {
+		t.Errorf("unexpected message: %q", re.Message)
+	}
+}
+
+func TestListDeployments_UnimplementedSort(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{
+			"type":"about:blank",
+			"title":"Unprocessable Entity",
+			"status":422,
+			"detail":"sort activity is not available yet",
+			"errors":[{"detail":"traffic metrics are not collected yet","pointer":"/sort"}]
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.ListDeployments(context.Background(), nil)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("expected status 422, got %d", re.StatusCode)
+	}
+	if !strings.Contains(re.Message, "sort activity is not available yet") {
+		t.Errorf("missing detail: %q", re.Message)
+	}
+	if !strings.Contains(re.Message, "/sort: traffic metrics are not collected yet") {
+		t.Errorf("missing field error: %q", re.Message)
 	}
 }
 
