@@ -100,7 +100,7 @@ allowed.`,
   runware serverless apps env set my-app MY_KEY --value-file ./value.txt
 
   # read the value from stdin
-  printf '%s' "$MY_KEY" | runware serverless apps env set my-app MY_KEY --value-file -`,
+  printf '%s' "$MY_VALUE" | runware serverless apps env set my-app MY_KEY --value-file -`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := args[0]
