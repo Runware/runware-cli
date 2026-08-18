@@ -291,7 +291,7 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of workers to return (1-100)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --status)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (ready, busy, pending, …)")
 	return cmd
 }
