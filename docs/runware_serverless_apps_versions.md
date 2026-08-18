@@ -1,27 +1,19 @@
 ## runware serverless apps versions
 
-List versions of a serverless application
+Inspect application versions
+
+### Synopsis
+
+List and inspect immutable versions of a serverless application.
 
 ```
-runware serverless apps versions <appId> [flags]
-```
-
-### Examples
-
-```
-  # list deployed versions
-  runware serverless apps versions my-app
-
-  # page through results
-  runware serverless apps versions my-app --limit 20 --cursor <nextCursor>
+runware serverless apps versions [flags]
 ```
 
 ### Options
 
 ```
-      --cursor string   Pagination cursor from a previous nextCursor
-  -h, --help            help for versions
-      --limit int       Maximum number of versions to return (1-100)
+  -h, --help   help for versions
 ```
 
 ### Options inherited from parent commands
@@ -36,4 +28,6 @@ runware serverless apps versions <appId> [flags]
 ### SEE ALSO
 
 * [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
+* [runware serverless apps versions list](runware_serverless_apps_versions_list.md)	 - List versions of a serverless application
+* [runware serverless apps versions show](runware_serverless_apps_versions_show.md)	 - Show a version of a serverless application
 

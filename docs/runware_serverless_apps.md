@@ -38,6 +38,6 @@ runware serverless apps [flags]
 * [runware serverless apps show](runware_serverless_apps_show.md)	 - Show details for a serverless application
 * [runware serverless apps stop](runware_serverless_apps_stop.md)	 - Stop a serverless application
 * [runware serverless apps usage](runware_serverless_apps_usage.md)	 - Show usage for a serverless application
-* [runware serverless apps versions](runware_serverless_apps_versions.md)	 - List versions of a serverless application
+* [runware serverless apps versions](runware_serverless_apps_versions.md)	 - Inspect application versions
 * [runware serverless apps workers](runware_serverless_apps_workers.md)	 - List workers for a serverless application
 

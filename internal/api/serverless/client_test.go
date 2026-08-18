@@ -3,6 +3,7 @@ package serverless
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +15,12 @@ import (
 )
 
 const (
-	testDeploymentID = "my-app"
-	testBuildID      = "33333333-3333-3333-3333-333333333333"
-	testCursorPage2  = "page-2"
-	testCursorPage3  = "page-3"
+	testDeploymentID  = "my-app"
+	testBuildID       = "33333333-3333-3333-3333-333333333333"
+	testVersionID     = "22222222-2222-2222-2222-222222222222"
+	testVersionNumber = int32(1)
+	testCursorPage2   = "page-2"
+	testCursorPage3   = "page-3"
 )
 
 func TestListGpuTypes(t *testing.T) {
@@ -556,9 +559,9 @@ func TestListVersions(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
-			"id":"22222222-2222-2222-2222-222222222222",
+			"id":"` + testVersionID + `",
 			"deploymentId":"my-app",
-			"buildId":"33333333-3333-3333-3333-333333333333",
+			"buildId":"` + testBuildID + `",
 			"versionNumber":1,
 			"createdAt":"2026-07-30T12:00:00Z"
 		}]}`))
@@ -572,6 +575,62 @@ func TestListVersions(t *testing.T) {
 	}
 	if len(page.Data) != 1 || page.Data[0].VersionNumber != 1 {
 		t.Fatalf("unexpected versions: %+v", page.Data)
+	}
+}
+
+func TestGetVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := fmt.Sprintf("/v1/deployments/%s/versions/%d", testDeploymentID, testVersionNumber)
+		if r.Method != http.MethodGet || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"` + testVersionID + `",
+			"deploymentId":"` + testDeploymentID + `",
+			"buildId":"` + testBuildID + `",
+			"versionNumber":1,
+			"createdAt":"2026-07-30T12:00:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	v, err := c.GetVersion(context.Background(), testDeploymentID, testVersionNumber)
+	if err != nil {
+		t.Fatalf("GetVersion: %v", err)
+	}
+	if v.Id.String() != testVersionID || v.VersionNumber != testVersionNumber {
+		t.Errorf("unexpected version: %+v", v)
+	}
+	if v.BuildId == nil || v.BuildId.String() != testBuildID {
+		t.Errorf("unexpected buildId: %+v", v.BuildId)
+	}
+}
+
+func TestGetVersion_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No version exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.GetVersion(context.Background(), testDeploymentID, 99999)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+}
+
+func TestGetVersion_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.GetVersion(context.Background(), testDeploymentID, testVersionNumber); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
