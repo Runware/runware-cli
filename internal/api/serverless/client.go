@@ -402,6 +402,42 @@ func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *
 	}
 }
 
+// GetVersion returns a single version by number.
+func (c *Client) GetVersion(ctx context.Context, deploymentID string, versionNumber int32) (*Version, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.GetVersionWithResponse(ctx, deploymentID, versionNumber)
+	if err != nil {
+		return nil, fmt.Errorf("get version: %w", err)
+	}
+
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
+		c.logger.Debug("serverless response", //nolint:errcheck,gosec
+			"path", fmt.Sprintf("/v1/deployments/%s/versions/%d", deploymentID, versionNumber),
+			"status", resp.StatusCode(),
+			"body", string(resp.Body),
+		)
+	}
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return nil, fmt.Errorf("get version: empty 200 response")
+		}
+		return resp.JSON200, nil
+	case http.StatusUnauthorized:
+		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	default:
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
 // ListBuilds returns a page of builds for a deployment.
 func (c *Client) ListBuilds(ctx context.Context, deploymentID string, params *ListBuildsParams) (Page[Build], error) {
 	if c.apiKey == "" {
