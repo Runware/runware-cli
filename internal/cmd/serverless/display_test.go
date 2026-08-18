@@ -44,6 +44,111 @@ func TestValidateListLimit(t *testing.T) {
 	}
 }
 
+func TestParseDeploymentSort(t *testing.T) {
+	got, err := parseDeploymentSort("")
+	if err != nil || got != nil {
+		t.Fatalf("unset sort: got=%v err=%v", got, err)
+	}
+
+	got, err = parseDeploymentSort("activity")
+	if err != nil {
+		t.Fatalf("activity: %v", err)
+	}
+	if got == nil || *got != "activity" {
+		t.Fatalf("activity: got %+v", got)
+	}
+
+	got, err = parseDeploymentSort("createdAt")
+	if err != nil || got == nil || *got != "createdAt" {
+		t.Fatalf("createdAt: got=%v err=%v", got, err)
+	}
+
+	_, err = parseDeploymentSort("nope")
+	if err == nil {
+		t.Fatal("expected error for sort nope")
+	}
+	if !strings.Contains(err.Error(), "invalid --sort") {
+		t.Fatalf("error %q should mention invalid --sort", err)
+	}
+}
+
+func TestParseDeploymentStatus(t *testing.T) {
+	got, err := parseDeploymentStatus("")
+	if err != nil || got != nil {
+		t.Fatalf("unset status: got=%v err=%v", got, err)
+	}
+
+	got, err = parseDeploymentStatus("active")
+	if err != nil || got == nil || *got != "active" {
+		t.Fatalf("active: got=%v err=%v", got, err)
+	}
+
+	_, err = parseDeploymentStatus("nope")
+	if err == nil {
+		t.Fatal("expected error for status nope")
+	}
+	if !strings.Contains(err.Error(), "invalid --status") {
+		t.Fatalf("error %q should mention invalid --status", err)
+	}
+}
+
+func TestParseWorkerStatus(t *testing.T) {
+	got, err := parseWorkerStatus("")
+	if err != nil || got != nil {
+		t.Fatalf("unset status: got=%v err=%v", got, err)
+	}
+
+	got, err = parseWorkerStatus("ready")
+	if err != nil || got == nil || *got != "ready" {
+		t.Fatalf("ready: got=%v err=%v", got, err)
+	}
+
+	_, err = parseWorkerStatus("nope")
+	if err == nil {
+		t.Fatal("expected error for status nope")
+	}
+	if !strings.Contains(err.Error(), "invalid --status") {
+		t.Fatalf("error %q should mention invalid --status", err)
+	}
+}
+
+func TestExtraListCursorFlags(t *testing.T) {
+	got := extraListCursorFlags("demo", "h100", "name", "active")
+	want := "--query demo --gpu-type h100 --sort name --status active"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+
+	got = extraListCursorFlags("", "", "", "active")
+	if got != "--status active" {
+		t.Fatalf("status only: got %q", got)
+	}
+
+	got = extraListCursorFlags("", "", "", "")
+	if got != "" {
+		t.Fatalf("empty: got %q", got)
+	}
+
+	got = extraListCursorFlags("my app", "", "", "")
+	if got != `--query "my app"` {
+		t.Fatalf("quoted query: got %q", got)
+	}
+
+	got = extraListCursorFlags("foo;bar", "", "", "")
+	if got != `--query "foo;bar"` {
+		t.Fatalf("quoted metacharacters: got %q", got)
+	}
+}
+
+func TestExtraCursorFlag(t *testing.T) {
+	if got := extraCursorFlag("--status", "ready"); got != "--status ready" {
+		t.Fatalf("got %q", got)
+	}
+	if got := extraCursorFlag("--status", ""); got != "" {
+		t.Fatalf("empty: got %q", got)
+	}
+}
+
 func TestPrintPage_TableWritesNextCursorToErrOut(t *testing.T) {
 	next := "page-2"
 	page := serverlessapi.Page[serverlessapi.Deployment]{

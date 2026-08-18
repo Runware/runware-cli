@@ -82,6 +82,9 @@ type Worker = gen.Worker
 // DeploymentStatus is a deployment lifecycle status.
 type DeploymentStatus = gen.DeploymentStatus
 
+// DeploymentSort is a listDeployments ordering.
+type DeploymentSort = gen.DeploymentSort
+
 // WorkerStatus is a worker lifecycle status.
 type WorkerStatus = gen.WorkerStatus
 
@@ -278,10 +281,14 @@ func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsPar
 			return pageOf[Deployment](nil, nil), nil
 		}
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
+	case http.StatusBadRequest:
+		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
 		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusUnprocessableEntity:
+		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
 		return Page[Deployment]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
