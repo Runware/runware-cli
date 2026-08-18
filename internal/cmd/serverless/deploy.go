@@ -127,10 +127,17 @@ func optionalStringPtr(v string) *string {
 }
 
 // optionalInt32Ptr returns a pointer when the flag was explicitly changed from
-// its default, so omitted API fields keep server defaults where applicable.
-// For create-required sibling fields we always send the flag value via the
-// non-pointer fields; this helper is only for optional WorkerConfigCreate keys.
+// its default, so omitted API fields keep existing or server-default values.
 func optionalInt32Ptr(cmd *cobra.Command, name string, v int32) *int32 {
+	if !cmd.Flags().Changed(name) {
+		return nil
+	}
+	return &v
+}
+
+// optionalFlagStringPtr returns a pointer when the flag was explicitly set,
+// including an empty string, so omitted flags stay omitted.
+func optionalFlagStringPtr(cmd *cobra.Command, name, v string) *string {
 	if !cmd.Flags().Changed(name) {
 		return nil
 	}

@@ -15,6 +15,7 @@ const (
 	testAppID    = "my-app"
 	testEnvKey   = "MY_KEY"
 	testEnvValue = "hello"
+	testGPUType  = "h100"
 )
 
 func TestListPageParams(t *testing.T) {
@@ -119,7 +120,7 @@ func TestParseWorkerStatus(t *testing.T) {
 }
 
 func TestExtraListCursorFlags(t *testing.T) {
-	got := extraListCursorFlags("demo", "h100", "name", "active")
+	got := extraListCursorFlags("demo", testGPUType, "name", "active")
 	want := "--query demo --gpu-type h100 --sort name --status active"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
@@ -152,6 +153,63 @@ func TestExtraCursorFlag(t *testing.T) {
 	}
 	if got := extraCursorFlag("--status", ""); got != "" {
 		t.Fatalf("empty: got %q", got)
+	}
+}
+
+func TestDeploymentResult_IncludesConfiguration(t *testing.T) {
+	gpu := testGPUType
+	created := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	r := deploymentResult{
+		DeploymentId:   testAppID,
+		DeploymentName: "My App",
+		Status:         "active",
+		CreatedAt:      created,
+		UpdatedAt:      created,
+		Configuration: serverlessapi.WorkerConfig{
+			ComputeType:      "gpu",
+			GpuType:          &gpu,
+			GpusPerWorker:    1,
+			MinWorkers:       0,
+			MaxWorkers:       2,
+			IdleTtlSecs:      60,
+			ScalingDelaySecs: 10,
+			Concurrency:      1,
+		},
+	}
+	if got := r.Headers(); len(got) != 2 || got[0] != colField || got[1] != colValue {
+		t.Fatalf("headers: %v", got)
+	}
+	rows := r.Rows()
+	createdAt := created.Format(time.RFC3339)
+	want := map[string]any{
+		colID:                  testAppID,
+		colName:                "My App",
+		colStatus:              "active",
+		colCreated:             createdAt,
+		colUpdated:             createdAt,
+		colComputeType:         "gpu",
+		colGPUType:             testGPUType,
+		colFallbackGPUType:     "",
+		colGPUsPerWorker:       int32(1),
+		colMinWorkers:          int32(0),
+		colMaxWorkers:          int32(2),
+		colMinAvailableWorkers: "",
+		colAvailableWorkersPct: "",
+		colIdleTTL:             int32(60),
+		colScalingDelay:        int32(10),
+		colConcurrency:         int32(1),
+	}
+	got := make(map[string]any, len(rows))
+	for _, row := range rows {
+		got[row[0].(string)] = row[1]
+	}
+	if len(got) != len(want) {
+		t.Fatalf("row count %d, want %d: %v", len(got), len(want), got)
+	}
+	for field, value := range want {
+		if got[field] != value {
+			t.Errorf("%s: got %#v, want %#v", field, got[field], value)
+		}
 	}
 }
 
