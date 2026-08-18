@@ -52,7 +52,6 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Pa
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", "/v1/secrets",
 			"status", resp.StatusCode(),
-			"body", string(resp.Body),
 		)
 	}
 
@@ -91,7 +90,6 @@ func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, 
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", "/v1/secrets",
 			"status", resp.StatusCode(),
-			"body", string(resp.Body),
 		)
 	}
 
@@ -131,7 +129,6 @@ func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdat
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", "/v1/secrets/"+name,
 			"status", resp.StatusCode(),
-			"body", string(resp.Body),
 		)
 	}
 
@@ -172,7 +169,6 @@ func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", "/v1/secrets/"+name,
 			"status", resp.StatusCode(),
-			"body", string(resp.Body),
 		)
 	}
 
@@ -209,7 +205,6 @@ func (c *Client) ListDeploymentSecrets(ctx context.Context, deploymentID string,
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", "/v1/deployments/"+deploymentID+"/secrets",
 			"status", resp.StatusCode(),
-			"body", string(resp.Body),
 		)
 	}
 
@@ -250,7 +245,6 @@ func (c *Client) AttachDeploymentSecret(ctx context.Context, deploymentID string
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", "/v1/deployments/"+deploymentID+"/secrets",
 			"status", resp.StatusCode(),
-			"body", string(resp.Body),
 		)
 	}
 
@@ -290,7 +284,6 @@ func (c *Client) DetachDeploymentSecret(ctx context.Context, deploymentID, secre
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", "/v1/deployments/"+deploymentID+"/secrets/"+secretName,
 			"status", resp.StatusCode(),
-			"body", string(resp.Body),
 		)
 	}
 
