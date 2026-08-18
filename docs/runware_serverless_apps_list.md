@@ -15,6 +15,12 @@ runware serverless apps list [flags]
   # filter by status
   runware serverless apps list --status active
 
+  # filter by name or ID substring
+  runware serverless apps list --query demo --sort name
+
+  # filter by GPU type
+  runware serverless apps list --gpu-type h100 --status active
+
   # page through results
   runware serverless apps list --limit 20 --cursor <nextCursor>
 ```
@@ -22,10 +28,13 @@ runware serverless apps list [flags]
 ### Options
 
 ```
-      --cursor string   Pagination cursor from a previous nextCursor
-  -h, --help            help for list
-      --limit int       Maximum number of applications to return (1-100)
-      --status string   Filter by status (active, initializing, stopped, …)
+      --cursor string     Pagination cursor from a previous nextCursor (reuse the same --query/--gpu-type/--sort/--status)
+      --gpu-type string   Filter by GPU type (see 'serverless gpus')
+  -h, --help              help for list
+      --limit int         Maximum number of applications to return (1-100)
+      --query string      Filter by substring on name or ID
+      --sort string       Sort order (createdAt (default), name, activity, or errorRate)
+      --status string     Filter by status (active, initializing, stopped, …)
 ```
 
 ### Options inherited from parent commands
