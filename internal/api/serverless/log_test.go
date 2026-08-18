@@ -69,7 +69,9 @@ func TestLogResponse_NilBodyOmitsBody(t *testing.T) {
 	c := &Client{
 		logger: slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	}
-	c.logResponse(context.Background(), "/v1/secrets", http.StatusOK, nil)
+	httpResp := testHTTPResponse(t, "/v1/secrets", http.StatusOK)
+	defer func() { _ = httpResp.Body.Close() }()
+	c.logResponse(context.Background(), httpResp, nil)
 	out := buf.String()
 	if !strings.Contains(out, `"/v1/secrets"`) {
 		t.Fatalf("path missing: %s", out)
@@ -77,6 +79,39 @@ func TestLogResponse_NilBodyOmitsBody(t *testing.T) {
 	if strings.Contains(out, `"body"`) || strings.Contains(out, "bodyBytes") {
 		t.Fatalf("nil body should omit body attrs: %s", out)
 	}
+}
+
+func TestResponsePathStatus_FromRequestURL(t *testing.T) {
+	httpResp := testHTTPResponse(t, "/v1/apps/my-app/builds", http.StatusOK)
+	defer func() { _ = httpResp.Body.Close() }()
+	path, status := responsePathStatus(httpResp)
+	if path != "/v1/apps/my-app/builds" {
+		t.Fatalf("path = %q", path)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("status = %d", status)
+	}
+}
+
+func TestResponsePathStatus_NilResponse(t *testing.T) {
+	path, status := responsePathStatus(nil)
+	if path != "" || status != 0 {
+		t.Fatalf("got path=%q status=%d", path, status)
+	}
+}
+
+func testHTTPResponse(t *testing.T, path string, status int) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.example"+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := &http.Response{
+		StatusCode: status,
+		Body:       http.NoBody,
+		Request:    req,
+	}
+	return resp
 }
 
 func TestDebugLogBody_CreatedRedacts(t *testing.T) {

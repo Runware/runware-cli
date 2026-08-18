@@ -9,14 +9,17 @@ import (
 
 const redactedValue = "[redacted]"
 
-// logResponse writes a debug line for a control-plane response. Success bodies
-// have JSON "value" fields redacted so plaintext env vars are not persisted in
-// debug logs. Error bodies (problem details) are logged as returned. A nil body
-// logs path and status only (used for secrets endpoints whose metadata is opaque).
-func (c *Client) logResponse(ctx context.Context, path string, status int, body []byte) {
+// logResponse writes a debug line for a control-plane response. Path and
+// status come from the generated client's HTTPResponse so they track OpenAPI
+// regen (no duplicated path literals). Success bodies have JSON "value"
+// fields redacted so plaintext env vars are not persisted in debug logs.
+// Error bodies (problem details) are logged as returned. A nil body logs path
+// and status only (used for secrets endpoints whose metadata is opaque).
+func (c *Client) logResponse(ctx context.Context, httpResp *http.Response, body []byte) {
 	if c.logger == nil || !c.logger.Enabled(ctx, slog.LevelDebug) {
 		return
 	}
+	path, status := responsePathStatus(httpResp)
 	if body == nil {
 		c.logger.Debug("serverless response", //nolint:errcheck,gosec
 			"path", path,
@@ -30,6 +33,17 @@ func (c *Client) logResponse(ctx context.Context, path string, status int, body 
 		"bodyBytes", len(body),
 		"body", debugLogBody(status, body),
 	)
+}
+
+func responsePathStatus(httpResp *http.Response) (path string, status int) {
+	if httpResp == nil {
+		return "", 0
+	}
+	status = httpResp.StatusCode
+	if httpResp.Request != nil && httpResp.Request.URL != nil {
+		path = httpResp.Request.URL.Path
+	}
+	return path, status
 }
 
 func debugLogBody(status int, body []byte) string {
