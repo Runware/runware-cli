@@ -122,6 +122,52 @@ func (r workersResult) Rows() [][]any {
 	return rows
 }
 
+func formatOptionalInt32(v *int32) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *v)
+}
+
+// buildsResult wraps build lists for table display. Log tail is omitted.
+type buildsResult []serverlessapi.Build
+
+func (r buildsResult) Headers() []string {
+	return []string{colID, colStatus, "Error", colCreated}
+}
+
+func (r buildsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		b := &r[i]
+		rows[i] = []any{
+			b.Id.String(),
+			string(b.Status),
+			formatOptionalString(b.Error),
+			formatOptionalTime(b.CreatedAt),
+		}
+	}
+	return rows
+}
+
+// buildResult wraps a single build for table/json/yaml display.
+// Table omits logTail; printBuild appends it as a block in table format.
+type buildResult serverlessapi.Build
+
+func (r buildResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r buildResult) Rows() [][]any {
+	return [][]any{
+		{colID, r.Id.String()},
+		{colStatus, string(r.Status)},
+		{"Error", formatOptionalString(r.Error)},
+		{"Exit code", formatOptionalInt32(r.ExitCode)},
+		{colCreated, formatOptionalTime(r.CreatedAt)},
+	}
+}
+
 func formatOptionalTime(t *time.Time) string {
 	if t == nil {
 		return ""

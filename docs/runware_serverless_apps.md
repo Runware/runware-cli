@@ -28,6 +28,7 @@ runware serverless apps [flags]
 ### SEE ALSO
 
 * [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless apps builds](runware_serverless_apps_builds.md)	 - Inspect application builds
 * [runware serverless apps delete](runware_serverless_apps_delete.md)	 - Delete a serverless application
 * [runware serverless apps endpoints](runware_serverless_apps_endpoints.md)	 - List endpoints for a serverless application
 * [runware serverless apps list](runware_serverless_apps_list.md)	 - List serverless applications
