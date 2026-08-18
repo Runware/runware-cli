@@ -2,7 +2,9 @@ package serverless
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -59,6 +61,21 @@ func TestDebugLogBody_RedactsSuccessKeepsError(t *testing.T) {
 	got = debugLogBody(http.StatusUnprocessableEntity, problem)
 	if got != string(problem) {
 		t.Fatalf("422 body should be unchanged, got %s", got)
+	}
+}
+
+func TestLogResponse_NilBodyOmitsBody(t *testing.T) {
+	var buf bytes.Buffer
+	c := &Client{
+		logger: slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	c.logResponse(context.Background(), "/v1/secrets", http.StatusOK, nil)
+	out := buf.String()
+	if !strings.Contains(out, `"/v1/secrets"`) {
+		t.Fatalf("path missing: %s", out)
+	}
+	if strings.Contains(out, `"body"`) || strings.Contains(out, "bodyBytes") {
+		t.Fatalf("nil body should omit body attrs: %s", out)
 	}
 }
 

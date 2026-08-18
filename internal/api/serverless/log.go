@@ -11,9 +11,17 @@ const redactedValue = "[redacted]"
 
 // logResponse writes a debug line for a control-plane response. Success bodies
 // have JSON "value" fields redacted so plaintext env vars are not persisted in
-// debug logs. Error bodies (problem details) are logged as returned.
+// debug logs. Error bodies (problem details) are logged as returned. A nil body
+// logs path and status only (used for secrets endpoints whose metadata is opaque).
 func (c *Client) logResponse(ctx context.Context, path string, status int, body []byte) {
 	if c.logger == nil || !c.logger.Enabled(ctx, slog.LevelDebug) {
+		return
+	}
+	if body == nil {
+		c.logger.Debug("serverless response", //nolint:errcheck,gosec
+			"path", path,
+			"status", status,
+		)
 		return
 	}
 	c.logger.Debug("serverless response", //nolint:errcheck,gosec
