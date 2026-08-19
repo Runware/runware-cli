@@ -160,7 +160,7 @@ func TestCreateApp(t *testing.T) {
 	}
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	dep, err := c.CreateApp(context.Background(), AppCreate{
+	app, err := c.CreateApp(context.Background(), AppCreate{
 		AppId:     testAppID,
 		AppName:   "My App",
 		AppSource: source,
@@ -174,8 +174,8 @@ func TestCreateApp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateApp: %v", err)
 	}
-	if dep.AppId != testAppID || string(dep.Status) != "initializing" {
-		t.Errorf("unexpected app: %+v", dep)
+	if app.AppId != testAppID || string(app.Status) != "initializing" {
+		t.Errorf("unexpected app: %+v", app)
 	}
 }
 
@@ -393,12 +393,12 @@ func TestGetApp(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	dep, err := c.GetApp(context.Background(), testAppID)
+	app, err := c.GetApp(context.Background(), testAppID)
 	if err != nil {
 		t.Fatalf("GetApp: %v", err)
 	}
-	if dep.AppId != testAppID || string(dep.Status) != "initializing" {
-		t.Errorf("unexpected app: %+v", dep)
+	if app.AppId != testAppID || string(app.Status) != "initializing" {
+		t.Errorf("unexpected app: %+v", app)
 	}
 }
 
@@ -470,7 +470,7 @@ func TestUpdateApp(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	dep, err := c.UpdateApp(context.Background(), testAppID, AppUpdate{
+	app, err := c.UpdateApp(context.Background(), testAppID, AppUpdate{
 		Configuration: &WorkerConfigPatch{
 			MaxWorkers: &maxWorkers,
 		},
@@ -478,8 +478,8 @@ func TestUpdateApp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateApp: %v", err)
 	}
-	if dep.AppId != testAppID || dep.Configuration.MaxWorkers != maxWorkers {
-		t.Errorf("unexpected app: %+v", dep)
+	if app.AppId != testAppID || app.Configuration.MaxWorkers != maxWorkers {
+		t.Errorf("unexpected app: %+v", app)
 	}
 }
 
@@ -580,12 +580,12 @@ func TestLifecycleApps(t *testing.T) {
 			defer srv.Close()
 
 			c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-			dep, err := op.call(c, context.Background(), testAppID)
+			app, err := op.call(c, context.Background(), testAppID)
 			if err != nil {
 				t.Fatalf("%s: %v", op.name, err)
 			}
-			if dep.AppId != testAppID || string(dep.Status) != op.status {
-				t.Errorf("unexpected app: %+v", dep)
+			if app.AppId != testAppID || string(app.Status) != op.status {
+				t.Errorf("unexpected app: %+v", app)
 			}
 		})
 	}
