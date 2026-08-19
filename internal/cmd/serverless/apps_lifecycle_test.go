@@ -77,26 +77,39 @@ func TestStdinIsTerminal_NonFile(t *testing.T) {
 }
 
 func TestDeleteCmd_SkipFlags(t *testing.T) {
-	cases := [][]string{
-		{"--yes"},
-		{"-y"},
-		{"--force"},
+	cases := []struct {
+		args  []string
+		yes   bool
+		force bool
+	}{
+		{
+			args: []string{"--yes"},
+			yes:  true,
+		},
+		{
+			args: []string{"-y"},
+			yes:  true,
+		},
+		{
+			args:  []string{"--force"},
+			force: true,
+		},
 	}
-	for _, args := range cases {
+	for _, tc := range cases {
 		cmd := newAppsDeleteCmd(nil)
-		if err := cmd.ParseFlags(args); err != nil {
-			t.Fatalf("%v: ParseFlags: %v", args, err)
+		if err := cmd.ParseFlags(tc.args); err != nil {
+			t.Fatalf("%v: ParseFlags: %v", tc.args, err)
 		}
 		yes, err := cmd.Flags().GetBool("yes")
 		if err != nil {
-			t.Fatalf("%v: yes: %v", args, err)
+			t.Fatalf("%v: yes: %v", tc.args, err)
 		}
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {
-			t.Fatalf("%v: force: %v", args, err)
+			t.Fatalf("%v: force: %v", tc.args, err)
 		}
-		if !yes && !force {
-			t.Fatalf("%v: expected a skip flag to be set", args)
+		if yes != tc.yes || force != tc.force {
+			t.Fatalf("%v: yes=%v force=%v, want yes=%v force=%v", tc.args, yes, force, tc.yes, tc.force)
 		}
 	}
 }
