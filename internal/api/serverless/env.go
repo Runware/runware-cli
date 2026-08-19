@@ -9,24 +9,24 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-// EnvironmentVariable is a plain-text deployment environment variable.
+// EnvironmentVariable is a plain-text app environment variable.
 type EnvironmentVariable = gen.EnvironmentVariable
 
-// EnvironmentVariableUpdate is the request body for updateDeploymentEnvironmentVariable.
+// EnvironmentVariableUpdate is the request body for updateAppEnvironmentVariable.
 type EnvironmentVariableUpdate = gen.EnvironmentVariableUpdate
 
-// ListDeploymentEnvironmentVariablesParams are optional filters for
-// ListDeploymentEnvironmentVariables.
-type ListDeploymentEnvironmentVariablesParams = gen.ListDeploymentEnvironmentVariablesParams
+// ListAppEnvironmentVariablesParams are optional filters for
+// ListAppEnvironmentVariables.
+type ListAppEnvironmentVariablesParams = gen.ListAppEnvironmentVariablesParams
 
-// ListDeploymentEnvironmentVariables returns a page of plain-text environment
-// variables for a deployment. Values are included in the response.
-func (c *Client) ListDeploymentEnvironmentVariables(ctx context.Context, deploymentID string, params *ListDeploymentEnvironmentVariablesParams) (Page[EnvironmentVariable], error) {
+// ListAppEnvironmentVariables returns a page of plain-text environment
+// variables for an app. Values are included in the response.
+func (c *Client) ListAppEnvironmentVariables(ctx context.Context, appID string, params *ListAppEnvironmentVariablesParams) (Page[EnvironmentVariable], error) {
 	if c.apiKey == "" {
 		return Page[EnvironmentVariable]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListDeploymentEnvironmentVariablesWithResponse(ctx, deploymentID, params)
+	resp, err := c.inner.ListAppEnvironmentVariablesWithResponse(ctx, appID, params)
 	if err != nil {
 		return Page[EnvironmentVariable]{}, fmt.Errorf("list environment variables: %w", err)
 	}
@@ -50,14 +50,14 @@ func (c *Client) ListDeploymentEnvironmentVariables(ctx context.Context, deploym
 	}
 }
 
-// UpdateDeploymentEnvironmentVariable creates or replaces one plain-text
-// environment variable on a deployment.
-func (c *Client) UpdateDeploymentEnvironmentVariable(ctx context.Context, deploymentID, key string, body EnvironmentVariableUpdate) (*EnvironmentVariable, error) {
+// UpdateAppEnvironmentVariable creates or replaces one plain-text environment
+// variable on an app.
+func (c *Client) UpdateAppEnvironmentVariable(ctx context.Context, appID, key string, body EnvironmentVariableUpdate) (*EnvironmentVariable, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.UpdateDeploymentEnvironmentVariableWithResponse(ctx, deploymentID, key, body)
+	resp, err := c.inner.UpdateAppEnvironmentVariableWithResponse(ctx, appID, key, body)
 	if err != nil {
 		return nil, fmt.Errorf("update environment variable: %w", err)
 	}
@@ -85,14 +85,14 @@ func (c *Client) UpdateDeploymentEnvironmentVariable(ctx context.Context, deploy
 	}
 }
 
-// DeleteDeploymentEnvironmentVariable removes one plain-text environment
-// variable from a deployment.
-func (c *Client) DeleteDeploymentEnvironmentVariable(ctx context.Context, deploymentID, key string) error {
+// DeleteAppEnvironmentVariable removes one plain-text environment variable
+// from an app.
+func (c *Client) DeleteAppEnvironmentVariable(ctx context.Context, appID, key string) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteDeploymentEnvironmentVariableWithResponse(ctx, deploymentID, key)
+	resp, err := c.inner.DeleteAppEnvironmentVariableWithResponse(ctx, appID, key)
 	if err != nil {
 		return fmt.Errorf("delete environment variable: %w", err)
 	}

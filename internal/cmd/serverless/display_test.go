@@ -51,13 +51,13 @@ func TestValidateListLimit(t *testing.T) {
 	}
 }
 
-func TestParseDeploymentSort(t *testing.T) {
-	got, err := parseDeploymentSort("")
+func TestParseAppSort(t *testing.T) {
+	got, err := parseAppSort("")
 	if err != nil || got != nil {
 		t.Fatalf("unset sort: got=%v err=%v", got, err)
 	}
 
-	got, err = parseDeploymentSort("activity")
+	got, err = parseAppSort("activity")
 	if err != nil {
 		t.Fatalf("activity: %v", err)
 	}
@@ -65,12 +65,12 @@ func TestParseDeploymentSort(t *testing.T) {
 		t.Fatalf("activity: got %+v", got)
 	}
 
-	got, err = parseDeploymentSort("createdAt")
+	got, err = parseAppSort("createdAt")
 	if err != nil || got == nil || *got != "createdAt" {
 		t.Fatalf("createdAt: got=%v err=%v", got, err)
 	}
 
-	_, err = parseDeploymentSort("nope")
+	_, err = parseAppSort("nope")
 	if err == nil {
 		t.Fatal("expected error for sort nope")
 	}
@@ -79,18 +79,18 @@ func TestParseDeploymentSort(t *testing.T) {
 	}
 }
 
-func TestParseDeploymentStatus(t *testing.T) {
-	got, err := parseDeploymentStatus("")
+func TestParseAppStatus(t *testing.T) {
+	got, err := parseAppStatus("")
 	if err != nil || got != nil {
 		t.Fatalf("unset status: got=%v err=%v", got, err)
 	}
 
-	got, err = parseDeploymentStatus("active")
+	got, err = parseAppStatus("active")
 	if err != nil || got == nil || *got != "active" {
 		t.Fatalf("active: got=%v err=%v", got, err)
 	}
 
-	_, err = parseDeploymentStatus("nope")
+	_, err = parseAppStatus("nope")
 	if err == nil {
 		t.Fatal("expected error for status nope")
 	}
@@ -156,15 +156,15 @@ func TestExtraCursorFlag(t *testing.T) {
 	}
 }
 
-func TestDeploymentResult_IncludesConfiguration(t *testing.T) {
+func TestAppResult_IncludesConfiguration(t *testing.T) {
 	gpu := testGPUType
 	created := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
-	r := deploymentResult{
-		DeploymentId:   testAppID,
-		DeploymentName: "My App",
-		Status:         "active",
-		CreatedAt:      created,
-		UpdatedAt:      created,
+	r := appResult{
+		AppId:     testAppID,
+		AppName:   "My App",
+		Status:    "active",
+		CreatedAt: created,
+		UpdatedAt: created,
 		Configuration: serverlessapi.WorkerConfig{
 			ComputeType:      "gpu",
 			GpuType:          &gpu,
@@ -215,13 +215,13 @@ func TestDeploymentResult_IncludesConfiguration(t *testing.T) {
 
 func TestPrintPage_TableWritesNextCursorToErrOut(t *testing.T) {
 	next := "page-2"
-	page := serverlessapi.Page[serverlessapi.Deployment]{
+	page := serverlessapi.Page[serverlessapi.App]{
 		Data:       nil,
 		NextCursor: &next,
 	}
 
 	var errOut bytes.Buffer
-	if err := printPage(output.FormatTable, page, deploymentsResult(page.Data), &errOut, ""); err != nil {
+	if err := printPage(output.FormatTable, page, appsResult(page.Data), &errOut, ""); err != nil {
 		t.Fatalf("printPage: %v", err)
 	}
 	if !strings.Contains(errOut.String(), "--cursor page-2") {
@@ -251,8 +251,8 @@ func TestSecretsResult_NoValueColumn(t *testing.T) {
 		secretAttachmentsResult{},
 		secretResult{},
 		secretRemovedResult{Name: testSecretName},
-		secretAttachResult{DeploymentID: testAppID, Name: testSecretName, EnvVarName: "BAR"},
-		secretDetachResult{DeploymentID: testAppID, Name: testSecretName},
+		secretAttachResult{AppID: testAppID, Name: testSecretName, EnvVarName: "BAR"},
+		secretDetachResult{AppID: testAppID, Name: testSecretName},
 	}
 	for _, table := range tables {
 		headers := table.Headers()
@@ -297,7 +297,7 @@ func TestEnvVarsResult_ShowsValue(t *testing.T) {
 		}
 	}
 
-	unset := envUnsetResult{DeploymentID: testAppID, Key: testEnvKey}
+	unset := envUnsetResult{AppID: testAppID, Key: testEnvKey}
 	for _, h := range unset.Headers() {
 		if strings.EqualFold(h, "value") {
 			t.Fatalf("envUnsetResult must not include a Value column: %v", unset.Headers())
@@ -326,7 +326,7 @@ func TestVersionsResult_NilBuildID(t *testing.T) {
 func TestVersionResult_NilBuildID(t *testing.T) {
 	rows := (versionResult{
 		Id:            uuid.MustParse("22222222-2222-2222-2222-222222222222"),
-		DeploymentId:  testAppID,
+		AppId:         testAppID,
 		VersionNumber: 1,
 		CreatedAt:     time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 	}).Rows()
@@ -340,7 +340,7 @@ func TestVersionResult_NilBuildID(t *testing.T) {
 		t.Fatalf("version number: got %#v", rows[0][1])
 	}
 	if rows[2][1] != testAppID {
-		t.Fatalf("deploymentId: got %#v", rows[2][1])
+		t.Fatalf("appId: got %#v", rows[2][1])
 	}
 }
 

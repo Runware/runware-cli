@@ -4,17 +4,17 @@ servers:
 
 info:
   title: Serverless API
-  version: 0.3.0
+  version: 0.4.0
   license:
     name: Proprietary
   description: >
     Control plane and task-ingestion API for the Runware Serverless platform.
 
 
-    A Runware organisation is the tenant boundary. Deployments are addressed as
-    `/v1/deployments/{deploymentId}` and endpoints are invoked as
-    `/v1/deployments/{deploymentId}/invoke-async/{endpointPath}` (async invocation) or
-    `/v1/deployments/{deploymentId}/invoke-sync/{endpointPath}` (sync invocation).
+    A Runware organisation is the tenant boundary. Apps are addressed as
+    `/v1/apps/{appId}` and endpoints are invoked as
+    `/v1/apps/{appId}/invoke-async/{endpointPath}` (async invocation) or
+    `/v1/apps/{appId}/invoke-sync/{endpointPath}` (sync invocation).
 
 
     Two authentication schemes are accepted, both as bearer tokens. A Runware API key
@@ -31,15 +31,15 @@ security:
 
 tags:
   - name: Tasks
-    description: Submit work to deployment endpoints and inspect task status
-  - name: Deployments
-    description: Manage deployments and their lifecycle
+    description: Submit work to app endpoints and inspect task status
+  - name: Apps
+    description: Manage apps and their lifecycle
   - name: Builds
     description: Immutable builds
   - name: Versions
-    description: Deployment versions produced by successful builds
+    description: App versions produced by successful builds
   - name: Endpoints
-    description: Named endpoints exposed by a deployment
+    description: Named endpoints exposed by an app
   - name: Compute
     description: Compute hardware catalogues (GPU types) and pricing
   - name: Workers
@@ -47,7 +47,7 @@ tags:
   - name: Secrets
     description: Organisation-scoped encrypted secrets
   - name: EnvironmentVariables
-    description: Plain-text environment variables scoped to a deployment
+    description: Plain-text environment variables scoped to an app
   - name: Observability
     description: Usage, events and errors
 
@@ -64,8 +64,9 @@ paths:
          Returns the global GPU type catalogue and pricing. The request requires authentication.
          Customer principals receive only GPU types with capacity currently offered to customers;
          a type whose hardware is not yet cleared for customer workloads is omitted. The Runware
-         principal receives the full catalogue, including types not yet offered. Each entry's
-         `pricing` is the price currently in effect; the Runware principal can read the full price
+         principal receives the full catalogue, including retired types and types not yet offered.
+         Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect;
+         the Runware principal can read the full price
          history, including scheduled future changes, from
          `GET /v1/gpu-types/{gpuTypeId}/prices`.
       operationId: listGpuTypes
@@ -88,7 +89,7 @@ paths:
       summary: Add a GPU type to the catalogue
       description: >
         Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform
-        organization. The `id` (catalogue code) is immutable after create.
+        organization. The `id` (catalogue code) is immutable and remains reserved after retirement.
       operationId: createGpuType
       requestBody:
         required: true
@@ -122,8 +123,8 @@ paths:
         - Compute
       summary: Get a GPU type from the catalogue
       description: >
-        Returns a single entry from the global GPU type catalogue. The result is not
-        organisation-specific, but the request still requires authentication.
+        Returns an active entry from the global GPU type catalogue. Retired entries return `404`.
+        The result is not organisation-specific, but the request still requires authentication.
       operationId: getGpuType
       parameters:
         - $ref: '#/components/parameters/GpuTypeId'
@@ -149,8 +150,8 @@ paths:
         - Compute
       summary: Update a GPU type in the catalogue
       description: >
-        Updates mutable fields of an existing GPU type. Restricted to the Runware platform organization.
-        The catalogue code (`gpuTypeId`) cannot be changed.
+        Updates mutable fields of an active GPU type. Restricted to the Runware platform organization.
+        The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
       operationId: updateGpuType
       parameters:
         - $ref: '#/components/parameters/GpuTypeId'
@@ -182,16 +183,17 @@ paths:
     delete:
       tags:
         - Compute
-      summary: Remove a GPU type from the catalogue
+      summary: Retire a GPU type from the catalogue
       description: >
-        Deletes a GPU type from the global catalogue. Restricted to the Runware platform organization.
-        Returns `409` if any live worker configuration still references the code.
+        Soft-deletes a GPU type while preserving its code and price history. Restricted to the
+        Runware platform organization. Returns `409` if a worker configuration or GPU pool still
+        references the code. Retiring an already retired code returns `404`.
       operationId: deleteGpuType
       parameters:
         - $ref: '#/components/parameters/GpuTypeId'
       responses:
         '204':
-          description: GPU type deleted
+          description: GPU type retired
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -212,7 +214,7 @@ paths:
       summary: List historical and future prices of a GPU type
       description: >
         Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware
-        platform organization: the page includes prices that are scheduled but not yet in effect.
+        platform organization: the page includes retired types and prices that are scheduled but not yet in effect.
         Customers read the price currently in effect from `GET /v1/gpu-types`.
       operationId: listGpuTypePrices
       parameters:
@@ -249,8 +251,10 @@ paths:
       summary: Schedule a new price for a GPU type
       description: >
         Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform
-        organization. `effectiveFrom` must be more than 7 days in the future, so downstream systems
-        and customers get advance notice of the change; a value inside that window returns `422`.
+        organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU
+        type is admitted or used, a later price can be added inside that window to correct its initial
+        price. This preserves the original row and records the correction as a superseding price.
+        Retired types return `404`; other values inside the notice window return `422`.
         Returns `409` if the GPU type already has a price scheduled at that exact instant.
       operationId: createGpuTypePrice
       parameters:
@@ -291,8 +295,8 @@ paths:
         Only a price whose current `effectiveFrom` is still more than 7 days in the future can be
         edited — once inside that window the price is locked in and this returns `409`. A
         supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422`
-        otherwise. Returns `409` if it collides with another price already scheduled at that
-        exact instant.
+        otherwise. Retired GPU types return `404`. Returns `409` if the update collides with
+        another price already scheduled at that exact instant.
       operationId: updateGpuTypePrice
       parameters:
         - $ref: '#/components/parameters/GpuTypeId'
@@ -335,7 +339,7 @@ paths:
         Deletes a scheduled price. Restricted to the Runware platform organization. Only a price
         whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that
         window the price is locked in (about to take effect, or already has) and this returns
-        `409`.
+        `409`. Retired GPU types return `404`.
       operationId: deleteGpuTypePrice
       parameters:
         - $ref: '#/components/parameters/GpuTypeId'
@@ -364,22 +368,22 @@ paths:
   # ---------------------------------------------------------------------------
   # Tasks
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/invoke-async/{endpointPath}:
+  /v1/apps/{appId}/invoke-async/{endpointPath}:
     post:
       tags:
         - Tasks
       summary: Start a new async task
       description: >
-        Starts a new async task on `deploymentId`, routing the request body payload to an available
+        Starts a new async task on `appId`, routing the request body payload to an available
         worker. The task runs asynchronously and the response is `202`; poll
-        `GET /v1/deployments/{deploymentId}/tasks/{taskId}` for completion. Deployments in
+        `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in
         `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
-        `failed` return `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
+        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
       operationId: startAsyncTask
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/EndpointPath'
       requestBody:
         $ref: '#/components/requestBodies/TaskPayload'
@@ -401,23 +405,23 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
-  /v1/deployments/{deploymentId}/invoke-sync/{endpointPath}:
+  /v1/apps/{appId}/invoke-sync/{endpointPath}:
     post:
       tags:
         - Tasks
       summary: Start a new sync task
       description: >
-        Starts a new sync task on `deploymentId`, routing the request body payload to an available
+        Starts a new sync task on `appId`, routing the request body payload to an available
         worker. The request blocks until the task is terminal and returns the result inline (`200`),
         or `504` if it does not complete within the wait window. When the accepted task ID is
-        available, the response includes `taskId` for polling. Deployments in `initializing`,
+        available, the response includes `taskId` for polling. Apps in `initializing`,
         `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return
-        `409 Conflict`; unknown or deleted deployments return `404 Not Found`.
+        `409 Conflict`; unknown or deleted apps return `404 Not Found`.
       operationId: startSyncTask
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/EndpointPath'
       requestBody:
         $ref: '#/components/requestBodies/TaskPayload'
@@ -441,7 +445,7 @@ paths:
         '504':
           $ref: '#/components/responses/Timeout'
 
-  /v1/deployments/{deploymentId}/tasks/{taskId}:
+  /v1/apps/{appId}/tasks/{taskId}:
     get:
       tags:
         - Tasks
@@ -449,17 +453,17 @@ paths:
       description: >
         Returns the task's current status, read through the inference transport layer from the
         shared result store. When `completed`, includes the result `output` and `completedAt`;
-        when `failed`, includes `error`; when `pending`, neither is set. If the deployment is
+        when `failed`, includes `error`; when `pending`, neither is set. If the app is
         `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found`
-        means the task cannot currently be verified for this deployment. Because enqueue-time
+        means the task cannot currently be verified for this app. Because enqueue-time
         ownership tracking is best effort, a recently returned task ID can temporarily return
-        `404`; retry it within the normal polling window. Unknown or deleted deployments also
+        `404`; retry it within the normal polling window. Unknown or deleted apps also
         return `404 Not Found`.
       operationId: getTask
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - name: taskId
           in: path
           required: true
@@ -478,26 +482,26 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /v1/deployments/{deploymentId}/tasks:
+  /v1/apps/{appId}/tasks:
     get:
       tags:
         - Tasks
-      summary: List tasks for a deployment
+      summary: List tasks for an app
       description: >
-        Lists TTL-bounded asynchronous task metadata for this deployment so a client
+        Lists TTL-bounded asynchronous task metadata for this app so a client
         can recover task ids after an interrupted long-poll or CLI session. Pending
         includes queued, running and retrying work. Tasks appear only within the
         configured recovery window. A page can be empty and still have `nextCursor`;
         continue until it is null. Pending entries are best effort and may disappear
         if the recovery store restarts; tracked tasks reappear on completion. This is
         not persisted task history. Each submission has a new task id, so client retries
-        can appear as separate tasks. If the deployment is `stopped`, `deleting`, or `failed`,
-        recovery stays available. Unknown or deleted deployments return `404 Not Found`.
+        can appear as separate tasks. If the app is `stopped`, `deleting`, or `failed`,
+        recovery stays available. Unknown or deleted apps return `404 Not Found`.
       operationId: listTasks
       security:
         - ApiKeyAuth: []
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
         - name: status
@@ -533,36 +537,36 @@ paths:
           $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
-  # Deployments
+  # Apps
   # ---------------------------------------------------------------------------
-  /v1/deployments:
+  /v1/apps:
     get:
       tags:
-        - Deployments
-      summary: List deployments
+        - Apps
+      summary: List apps
       description: >
-        Returns a page of the organisation's deployments. Filters combine with AND; soft-deleted
-        deployments are excluded unless `status=deleted` is requested explicitly.
+        Returns a page of the organisation's apps. Filters combine with AND; soft-deleted
+        apps are excluded unless `status=deleted` is requested explicitly.
 
 
         A `cursor` is only valid for the `sort` and filters it was issued under — reusing one
         across a different ordering or filter set returns `400`.
-      operationId: listDeployments
+      operationId: listApps
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
         - name: status
           in: query
           required: false
-          description: Return only deployments in this status.
+          description: Return only apps in this status.
           schema:
-            $ref: '#/components/schemas/DeploymentStatus'
+            $ref: '#/components/schemas/AppStatus'
         - name: q
           in: query
           required: false
           description: >
-            Case-insensitive substring match against `deploymentName` and `deploymentId`.
-            A deployment matching either is returned.
+            Case-insensitive substring match against `appName` and `appId`.
+            An app matching either is returned.
           schema:
             type: string
             minLength: 1
@@ -571,7 +575,7 @@ paths:
           in: query
           required: false
           description: >
-            Return only deployments whose worker configuration requests this GPU type.
+            Return only apps whose worker configuration requests this GPU type.
             Matched against `configuration.gpuType` only, not `fallbackGpuType`. Must be a
             code from `GET /v1/gpu-types`; an unknown code returns `422`.
           schema:
@@ -580,10 +584,10 @@ paths:
           in: query
           required: false
           schema:
-            $ref: '#/components/schemas/DeploymentSort'
+            $ref: '#/components/schemas/AppSort'
       responses:
         '200':
-          description: A page of deployments
+          description: A page of apps
           content:
             application/json:
               schema:
@@ -594,7 +598,7 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/Deployment'
+                          $ref: '#/components/schemas/App'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -607,22 +611,22 @@ paths:
           $ref: '#/components/responses/ValidationError'
     post:
       tags:
-        - Deployments
-      summary: Create a deployment
+        - Apps
+      summary: Create an app
       description: >
-        Creates a deployment together with its worker configuration, environment variables and
+        Creates an app together with its worker configuration, environment variables and
         endpoints, and records version `1` — the immutable description of what to deploy. The
-        deployment starts in `initializing`, and what happens next depends on the deployment
+        app starts in `initializing`, and what happens next depends on the app
         source type:
 
 
         - `code` source: the codebase is submitted to the build pipeline; once the image is built
-          and workers become healthy the deployment transitions to `active` and `activeVersionId`
-          points at that version. If the build, validation, or rollout fails the deployment is
+          and workers become healthy the app transitions to `active` and `activeVersionId`
+          points at that version. If the build, validation, or rollout fails the app is
           marked `failed`.
 
         - `container` source: no build step, so the version carries no `buildId`. No worker runs
-          from a container source yet, so the deployment stays `initializing` and does not serve
+          from a container source yet, so the app stays `initializing` and does not serve
           inference — poll `active` only for a `code` source.
 
 
@@ -632,20 +636,20 @@ paths:
 
         `secrets` is accepted by the schema but not yet applied, so supplying it returns `422`
         rather than silently dropping it.
-      operationId: createDeployment
+      operationId: createApp
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeploymentCreate'
+              $ref: '#/components/schemas/AppCreate'
       responses:
         '201':
-          description: Deployment created
+          description: App created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -659,21 +663,21 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
-  /v1/deployments/{deploymentId}:
+  /v1/apps/{appId}:
     get:
       tags:
-        - Deployments
-      summary: Get a deployment
-      operationId: getDeployment
+        - Apps
+      summary: Get an app
+      operationId: getApp
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       responses:
         '200':
-          description: The deployment
+          description: The app
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -684,17 +688,17 @@ paths:
           $ref: '#/components/responses/NotFound'
     patch:
       tags:
-        - Deployments
-      summary: Update a deployment
+        - Apps
+      summary: Update an app
       description: >
-        Patches one or more aspects of a deployment in place. All fields are optional; omitted
+        Patches one or more aspects of an app in place. All fields are optional; omitted
         fields are left unchanged. Valid in any non-`deleted` status, including `stopped`
         (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`,
         `resume`, and `delete` operations.
 
 
-        **Currently persisted:** `deploymentName` and `configuration` only. Supplying
-        `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
+        **Currently persisted:** `appName` and `configuration` only. Supplying
+        `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
         (bulk env-var replace is not wired — use the dedicated `/environment-variables`
         endpoints for individual keys).
 
@@ -702,33 +706,33 @@ paths:
         Target behaviour (once fully wired):
 
         - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-          restart with the new configuration. If the rollout fails, the deployment remains on
+          restart with the new configuration. If the rollout fails, the app remains on
           the previous configuration.
 
-        - `deploymentSource`: triggers a build (for `code` sources) or image validation (for `container`
+        - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
           sources); on success the new version is deployed automatically. If the build or
-          validation fails, the deployment remains on the previous version.
+          validation fails, the app remains on the previous version.
 
         - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
           current set — any item absent from the request is deleted. Endpoints take effect
           immediately. Changes to secrets or environment variables trigger a rollout so workers
           restart and pick up the new values.
-      operationId: updateDeployment
+      operationId: updateApp
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeploymentUpdate'
+              $ref: '#/components/schemas/AppUpdate'
       responses:
         '200':
-          description: Updated deployment
+          description: Updated app
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -745,25 +749,25 @@ paths:
           $ref: '#/components/responses/ValidationError'
     delete:
       tags:
-        - Deployments
-      summary: Delete a deployment
+        - Apps
+      summary: Delete an app
       description: >
         Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted.
         Router removal, cancelling in-progress builds, and worker drain
         (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler;
         `status` becomes `deleted` once all workers stop. All rows are retained for billing
-        finalisation, audit, and usage history. Idempotent if the deployment is already
+        finalisation, audit, and usage history. Idempotent if the app is already
         `deleting`.
-      operationId: deleteDeployment
+      operationId: deleteApp
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       responses:
         '202':
           description: Delete accepted; status is deleting
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -773,10 +777,10 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /v1/deployments/{deploymentId}/deploy:
+  /v1/apps/{appId}/deploy:
     post:
       tags:
-        - Deployments
+        - Apps
       summary: Deploy a version
       description: >
         Activates a `ready` version by number, setting `activeVersionId` and returning `202`
@@ -789,28 +793,28 @@ paths:
         deploy. No new version is created and no rebuild happens: the version's existing image
         is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 
-        A deploy to a `stopped` or `stopping` deployment records the version and rolls no
+        A deploy to a `stopped` or `stopping` app records the version and rolls no
         workload, because no workers are running: the `202` does not imply a rollout there.
-        The recorded version is the one applied when the deployment resumes.
+        The recorded version is the one applied when the app resumes.
 
-        If the roll of a live deployment fails, `activeVersionId` is restored to the version
+        If the roll of a live app fails, `activeVersionId` is restored to the version
         that kept serving, so the field keeps naming the running image.
 
         **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits
         for at least one to become healthy, switches task routing to the new version, then
         drains old-version workers gracefully. Old workers are given a fixed, platform-managed
         grace period to finish in-flight tasks before being force-terminated. If new workers
-        fail to become healthy, old workers are not drained and the deployment continues on the
+        fail to become healthy, old workers are not drained and the app continues on the
         previous version.
 
         Errors:
-        - Deploy to a `deleting` deployment returns `409 Conflict`
+        - Deploy to a `deleting` app returns `409 Conflict`
         - `versionNumber` not found or not `ready` returns `409 Conflict`
-        - A `container`-source version returns `409 Conflict` until container deployments are supported
-        - Deploy to a non-existent or `deleted` deployment returns `404 Not Found`
+        - A `container`-source version returns `409 Conflict` until container apps are supported
+        - Deploy to a non-existent or `deleted` app returns `404 Not Found`
       operationId: deployVersion
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       requestBody:
         required: true
         content:
@@ -823,7 +827,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -839,29 +843,29 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
-  /v1/deployments/{deploymentId}/stop:
+  /v1/apps/{appId}/stop:
     post:
       tags:
-        - Deployments
-      summary: Stop a deployment
+        - Apps
+      summary: Stop an app
       description: >
-        Moves the deployment to `stopping` and returns `202` once that intent is persisted.
+        Moves the app to `stopping` and returns `202` once that intent is persisted.
         Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status`
         becomes `stopped` once all workers drain. In-flight tasks have a fixed,
         platform-managed grace period to complete; workers that exceed it are force-terminated
         and their tasks return to the queue per delivery guarantees. New task submissions remain
-        accepted while `stopping`; after the deployment reaches `stopped`, submissions return
+        accepted while `stopping`; after the app reaches `stopped`, submissions return
         `409 Conflict`. Precondition: `status = active`.
-      operationId: stopDeployment
+      operationId: stopApp
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       responses:
         '202':
           description: Stop accepted; status is stopping
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -873,26 +877,26 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
-  /v1/deployments/{deploymentId}/resume:
+  /v1/apps/{appId}/resume:
     post:
       tags:
-        - Deployments
-      summary: Resume a deployment
+        - Apps
+      summary: Resume an app
       description: >
-        Moves the deployment to `initializing` and returns `202` once that intent is persisted.
-        The Scaler then starts workers and sets the deployment to `active`; tasks that remained
-        queued when the deployment stopped are consumed as workers come online. Precondition:
+        Moves the app to `initializing` and returns `202` once that intent is persisted.
+        The Scaler then starts workers and sets the app to `active`; tasks that remained
+        queued when the app stopped are consumed as workers come online. Precondition:
         `status = stopped`.
-      operationId: resumeDeployment
+      operationId: resumeApp
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       responses:
         '202':
-          description: Resume accepted; deployment is initializing
+          description: Resume accepted; app is initializing
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -904,27 +908,27 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
-  /v1/deployments/{deploymentId}/favourite:
+  /v1/apps/{appId}/favourite:
     put:
       tags:
-        - Deployments
-      summary: Favourite a deployment
+        - Apps
+      summary: Favourite an app
       description: >
-        Pins the deployment as a favourite for the authenticated organisation so the console
+        Pins the app as a favourite for the authenticated organisation so the console
         can surface it in a Favourites section. Idempotent: favouriting an already-favourited
-        deployment succeeds and returns the deployment with `isFavourite: true`. Deployments
+        app succeeds and returns the app with `isFavourite: true`. Apps
         in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any
         existing pin when status becomes `deleting`.
-      operationId: favouriteDeployment
+      operationId: favouriteApp
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       responses:
         '200':
-          description: Deployment is favourited
+          description: App is favourited
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -935,23 +939,23 @@ paths:
           $ref: '#/components/responses/NotFound'
     delete:
       tags:
-        - Deployments
-      summary: Unfavourite a deployment
+        - Apps
+      summary: Unfavourite an app
       description: >
-        Removes the organisation favourite pin from the deployment. Idempotent: unfavouriting
-        a deployment that is not favourited succeeds and returns the deployment with
+        Removes the organisation favourite pin from the app. Idempotent: unfavouriting
+        an app that is not favourited succeeds and returns the app with
         `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning
-        is not a deployment lifecycle mutation. Missing deployments return `404`.
-      operationId: unfavouriteDeployment
+        is not an app lifecycle mutation. Missing apps return `404`.
+      operationId: unfavouriteApp
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       responses:
         '200':
-          description: Deployment is not favourited
+          description: App is not favourited
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Deployment'
+                $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -961,23 +965,23 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /v1/deployment-summary:
+  /v1/app-summary:
     get:
       tags:
-        - Deployments
-      summary: Deployment summary metrics for the authenticated organisation
+        - Apps
+      summary: App summary metrics for the authenticated organisation
       description: >
-        Aggregate dashboard metrics across all deployments owned by the authenticated organisation.
+        Aggregate dashboard metrics across all apps owned by the authenticated organisation.
         Metrics whose backing system is not yet available are omitted from the
         response rather than reported as zero.
-      operationId: getDeploymentSummary
+      operationId: getAppSummary
       responses:
         '200':
-          description: Deployment summary
+          description: App summary
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DeploymentSummary'
+                $ref: '#/components/schemas/AppSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -988,14 +992,14 @@ paths:
   # ---------------------------------------------------------------------------
   # Builds
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/builds:
+  /v1/apps/{appId}/builds:
     get:
       tags:
         - Builds
       summary: List builds
       operationId: listBuilds
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -1021,14 +1025,14 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /v1/deployments/{deploymentId}/builds/{buildId}:
+  /v1/apps/{appId}/builds/{buildId}:
     get:
       tags:
         - Builds
       summary: Get a build
       operationId: getBuild
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - name: buildId
           in: path
           required: true
@@ -1054,14 +1058,14 @@ paths:
   # ---------------------------------------------------------------------------
   # Versions
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/versions:
+  /v1/apps/{appId}/versions:
     get:
       tags:
         - Versions
       summary: List versions
       operationId: listVersions
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -1087,14 +1091,14 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /v1/deployments/{deploymentId}/versions/{versionNumber}:
+  /v1/apps/{appId}/versions/{versionNumber}:
     get:
       tags:
         - Versions
       summary: Get a version
       operationId: getVersion
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - name: versionNumber
           in: path
           required: true
@@ -1120,19 +1124,19 @@ paths:
   # ---------------------------------------------------------------------------
   # Endpoints
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/endpoints:
+  /v1/apps/{appId}/endpoints:
     get:
       tags:
         - Endpoints
       summary: List endpoints
       operationId: listEndpoints
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: A page of deployment's endpoints
+          description: A page of the app's endpoints
           content:
             application/json:
               schema:
@@ -1157,14 +1161,14 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
-  /v1/deployments/{deploymentId}/endpoints/{endpointId}:
+  /v1/apps/{appId}/endpoints/{endpointId}:
     get:
       tags:
         - Endpoints
       summary: Get an endpoint
       operationId: getEndpoint
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - name: endpointId
           in: path
           required: true
@@ -1194,18 +1198,18 @@ paths:
   # ---------------------------------------------------------------------------
   # Workers (read-only runtime state)
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/workers:
+  /v1/apps/{appId}/workers:
     get:
       tags:
         - Workers
       summary: List workers
       description: >
-        Returns a newest-first page of workers observed for the deployment (including
+        Returns a newest-first page of workers observed for the app (including
         terminal `stopped` rows until purged). Optional `status` narrows the page;
         a cursor must be replayed under the same status filter it was issued with.
       operationId: listWorkers
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
         - name: status
@@ -1240,18 +1244,18 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
-  /v1/deployments/{deploymentId}/workers/{workerId}:
+  /v1/apps/{appId}/workers/{workerId}:
     get:
       tags:
         - Workers
       summary: Get a worker
       description: >
-        Returns one worker by id within the deployment. The id is the Kubernetes
+        Returns one worker by id within the app. The id is the Kubernetes
         pod UID recorded by the reconciler. A worker that belongs to another
-        deployment (or tenant) is not found.
+        app (or tenant) is not found.
       operationId: getWorker
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/WorkerId'
       responses:
         '200':
@@ -1391,9 +1395,9 @@ paths:
         revision. This API does not hard-delete the row; a future GC path is
         expected to remove unattached `pending_destroy` secrets and release the
         name, but that sweep is not implemented yet. Returns `409` while any
-        deployment still attaches it — cascade-detach is not performed here;
+        app still attaches it — cascade-detach is not performed here;
         detach each holder with
-        `DELETE .../deployments/{id}/secrets/{name}` first. Attach/detach are
+        `DELETE .../apps/{id}/secrets/{name}` first. Attach/detach are
         control-plane records only in this release (they do not roll workers).
         While the row remains `pending_destroy` the name stays reserved, so
         create may return `409` even though list no longer shows the secret.
@@ -1421,16 +1425,16 @@ paths:
           $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
-  # Deployment <-> secret attachments
+  # App <-> secret attachments
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/secrets:
+  /v1/apps/{appId}/secrets:
     get:
       tags:
         - Secrets
-      summary: List secrets attached to a deployment
-      operationId: listDeploymentSecrets
+      summary: List secrets attached to an app
+      operationId: listAppSecrets
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -1462,28 +1466,28 @@ paths:
     post:
       tags:
         - Secrets
-      summary: Attach a secret to a deployment
+      summary: Attach a secret to an app
       description: >
-        Records that an organisation secret is attached to a deployment under a
+        Records that an organisation secret is attached to an app under a
         resolved env-var name. This is a control-plane association only in this
         release — it does not roll workers or inject values into pods yet
         (ADR-019 in-pod unseal is separate). Returns `409` if the secret is
         already attached, or if another attach would use the same env-var name.
 
         The resolved name (`envVarName`, or `secretName` when omitted) must not
-        already exist as a plain environment variable on this deployment
+        already exist as a plain environment variable on this app
         (`deployment_configs.key`). Both sources are reserved for the same
         future pod env namespace, so the server rejects the collision with `422`
         instead of allowing a last-wins override later. The reverse check
         applies when setting a plain environment variable.
 
-        A deployment holds at most 100 environment bindings in total — plain
+        An app holds at most 100 environment bindings in total — plain
         environment variables plus attached secrets — the same combined ceiling
         as create and the single-key env-var route. Attaching when the
-        deployment is already at that limit returns `422`.
-      operationId: attachDeploymentSecret
+        app is already at that limit returns `422`.
+      operationId: attachAppSecret
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
       requestBody:
         required: true
         content:
@@ -1508,17 +1512,17 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
-  /v1/deployments/{deploymentId}/secrets/{secretName}:
+  /v1/apps/{appId}/secrets/{secretName}:
     delete:
       tags:
         - Secrets
-      summary: Detach a secret from a deployment
+      summary: Detach a secret from an app
       description: >
         Removes the control-plane attachment. Does not roll workers in this
         release.
-      operationId: detachDeploymentSecret
+      operationId: detachAppSecret
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/SecretName'
       responses:
         '204':
@@ -1537,14 +1541,14 @@ paths:
   # ---------------------------------------------------------------------------
   # Environment Variables (plain-text env vars)
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/environment-variables:
+  /v1/apps/{appId}/environment-variables:
     get:
       tags:
         - EnvironmentVariables
-      summary: List deployment environment variables
-      operationId: listDeploymentEnvironmentVariables
+      summary: List app environment variables
+      operationId: listAppEnvironmentVariables
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -1570,31 +1574,31 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /v1/deployments/{deploymentId}/environment-variables/{variableName}:
+  /v1/apps/{appId}/environment-variables/{variableName}:
     put:
       tags:
         - EnvironmentVariables
-      summary: Update a deployment environment variable
+      summary: Update an app environment variable
       description: >-
         Sets one environment variable, creating it if absent. Names the platform sets on
         the serving container itself are rejected with `422`, as they are on create.
 
 
-        A deployment holds at most 100 environment bindings in total — plain
+        An app holds at most 100 environment bindings in total — plain
         variables plus attached secrets — the same combined ceiling
-        `DeploymentCreate.environmentVariables` declares (create rejects secrets
+        `AppCreate.environmentVariables` declares (create rejects secrets
         in-request; attach grows the set later). Overwriting an existing variable
         is always allowed; adding one past the ceiling returns `422`.
 
 
-        The name must not collide with a secret already attached to this deployment
+        The name must not collide with a secret already attached to this app
         (the secret's injected env var name). Secrets and plain env vars share the
         pod environment; a duplicate would be resolved last-wins by kubelet with no
         error, so the server rejects it with `422`. The reverse check applies on
         attach.
-      operationId: updateDeploymentEnvironmentVariable
+      operationId: updateAppEnvironmentVariable
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - name: variableName
           in: path
           required: true
@@ -1628,10 +1632,10 @@ paths:
     delete:
       tags:
         - EnvironmentVariables
-      summary: Delete a deployment environment variable
-      operationId: deleteDeploymentEnvironmentVariable
+      summary: Delete an app environment variable
+      operationId: deleteAppEnvironmentVariable
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - name: variableName
           in: path
           required: true
@@ -1652,21 +1656,21 @@ paths:
   # ---------------------------------------------------------------------------
   # Observability
   # ---------------------------------------------------------------------------
-  /v1/deployments/{deploymentId}/events:
+  /v1/apps/{appId}/events:
     get:
       tags:
         - Observability
-      summary: List deployment events
-      operationId: listDeploymentEvents
+      summary: List app events
+      operationId: listAppEvents
       parameters:
-        - $ref: '#/components/parameters/DeploymentId'
+        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
         - name: type
           in: query
           required: false
           schema:
-            $ref: '#/components/schemas/DeploymentEventType'
+            $ref: '#/components/schemas/AppEventType'
       responses:
         '200':
           description: A page of events
@@ -1680,7 +1684,7 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/DeploymentEvent'
+                          $ref: '#/components/schemas/AppEvent'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -1700,11 +1704,11 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
-        - name: deploymentId
+        - name: appId
           in: query
           required: false
           schema:
-            $ref: '#/components/schemas/DeploymentId'
+            $ref: '#/components/schemas/AppId'
         - name: from
           in: query
           required: false
@@ -1760,13 +1764,13 @@ components:
         published JWKS. Serves the web app; the CLI and SDK use ApiKeyAuth.
 
   parameters:
-    DeploymentId:
-      name: deploymentId
+    AppId:
+      name: appId
       in: path
       required: true
-      description: Immutable deployment identifier, unique within the authenticated organisation.
+      description: Immutable app identifier, unique within the authenticated organisation.
       schema:
-        $ref: '#/components/schemas/DeploymentId'
+        $ref: '#/components/schemas/AppId'
     GpuTypeId:
       name: gpuTypeId
       in: path
@@ -1899,19 +1903,19 @@ components:
             $ref: '#/components/schemas/ProblemDetails'
 
   schemas:
-    DeploymentId:
+    AppId:
       type: string
-      description: Immutable deployment identifier, unique within the authenticated organisation.
+      description: Immutable app identifier, unique within the authenticated organisation.
       minLength: 6
       maxLength: 30
       pattern: '^[a-z][a-z0-9-]{4,28}[a-z0-9]$'
 
-    DeploymentName:
+    AppName:
       type: string
       description: >
         Mutable display name. Must contain at least one non-whitespace character:
         it is what the console renders and what `sort=name` orders on, and it is
-        not required to be unique. Unlike `deploymentId` the pattern is
+        not required to be unique. Unlike `appId` the pattern is
         unanchored, so interior spaces are allowed — only an entirely blank name
         is rejected.
       minLength: 1
@@ -1949,7 +1953,7 @@ components:
       pattern: '^[A-Za-z_][A-Za-z0-9_]{0,127}$'
 
     # ---- Enums -------------------------------------------------------------
-    DeploymentStatus:
+    AppStatus:
       type: string
       enum:
         - initializing
@@ -1959,23 +1963,23 @@ components:
         - deleting
         - deleted
         - failed
-    DeploymentSort:
+    AppSort:
       type: string
       description: >
-        Ordering for `listDeployments`. Every ordering is total (ties broken by
-        `deploymentId`), so a page is reproducible and its cursor stable.
+        Ordering for `listApps`. Every ordering is total (ties broken by
+        `appId`), so a page is reproducible and its cursor stable.
 
 
         - `createdAt`: newest first. The default.
 
-        - `name`: `deploymentName` A–Z, case-insensitive.
+        - `name`: `appName` A–Z, case-insensitive.
 
         - `activity`: most recently active first.
 
         - `errorRate`: highest error rate first.
 
 
-        `activity` and `errorRate` rank on per-deployment traffic metrics, which are not
+        `activity` and `errorRate` rank on per-app traffic metrics, which are not
         collected yet; requesting either returns `422` until they are.
       default: createdAt
       enum:
@@ -1994,9 +1998,11 @@ components:
         - superseded
     ComputeType:
       type: string
+      description: >
+        Worker compute class. GPU is the only supported value. CPU workloads
+        are not supported.
       enum:
         - gpu
-        - cpu
     WorkerStatus:
       type: string
       description: >
@@ -2029,7 +2035,7 @@ components:
         unseal path (ADR-019) and await their own decision.
       enum:
         - generic
-    DeploymentEventType:
+    AppEventType:
       type: string
       enum:
         - deploy
@@ -2189,6 +2195,11 @@ components:
           example: 80 GB HBM
         availability:
           $ref: '#/components/schemas/GpuAvailability'
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Retirement time, returned only in the Runware catalogue view.
         pricing:
           allOf:
             - $ref: '#/components/schemas/GpuPricing'
@@ -2304,35 +2315,35 @@ components:
           $ref: '#/components/schemas/Currency'
 
     # ---- Core resources ----------------------------------------------------
-    DeploymentSummary:
+    AppSummary:
       type: object
       description: >
-        Aggregate dashboard metrics for every deployment in the authenticated
-        organisation. Deployment and worker tallies are always present (zero when
+        Aggregate dashboard metrics for every app in the authenticated
+        organisation. App and worker tallies are always present (zero when
         empty). Traffic and spend metrics whose backing system is not yet
         available are omitted (rendered as "no data" by the frontend) rather
         than reported as zero.
       required:
-        - totalDeployments
-        - activeDeployments
+        - totalApps
+        - activeApps
         - activeWorkers
         - provisionedGpuCount
         - calculatedAt
       properties:
-        activeDeployments:
+        activeApps:
           type: integer
           format: int64
-          description: Deployments currently in the `active` status.
-        totalDeployments:
+          description: Apps currently in the `active` status.
+        totalApps:
           type: integer
           format: int64
-          description: All deployments in the organisation excluding soft-deleted ones.
+          description: All apps in the organisation excluding soft-deleted ones.
         activeWorkers:
           type: integer
           format: int64
           description: >
             Non-terminal workers (`status` other than `stopped`) across every
-            deployment in the organisation.
+            app in the organisation.
         provisionedGpuCount:
           type: integer
           format: int64
@@ -2357,11 +2368,11 @@ components:
           format: date-time
           description: When these metrics were computed.
 
-    Deployment:
+    App:
       type: object
       required:
-        - deploymentId
-        - deploymentName
+        - appId
+        - appName
         - configuration
         - secrets
         - environmentVariables
@@ -2370,41 +2381,41 @@ components:
         - createdAt
         - updatedAt
       properties:
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
-        deploymentName:
-          $ref: '#/components/schemas/DeploymentName'
+        appId:
+          $ref: '#/components/schemas/AppId'
+        appName:
+          $ref: '#/components/schemas/AppName'
         configuration:
           allOf:
             - $ref: '#/components/schemas/WorkerConfig'
-          description: Live worker configuration. Updated via `PATCH /deployments/{deploymentId}`.
+          description: Live worker configuration. Updated via `PATCH /apps/{appId}`.
         secrets:
           type: array
           description: >
-            Secrets attached to this deployment, including any env-var name
-            override. Populated on single-deployment responses; list of
-            deployments returns an empty array to avoid an N+1 — use
-            `/deployments/{deploymentId}/secrets` to page the set.
+            Secrets attached to this app, including any env-var name
+            override. Populated on single-app responses; list of
+            apps returns an empty array to avoid an N+1 — use
+            `/apps/{appId}/secrets` to page the set.
           items:
             $ref: '#/components/schemas/SecretAttachment'
         environmentVariables:
           type: array
           description: >
-            Plain-text environment variables for this deployment. Populated on
-            single-deployment responses (get, update, stop, resume, delete,
-            deploy, favourite). List of deployments returns an empty array to
+            Plain-text environment variables for this app. Populated on
+            single-app responses (get, update, stop, resume, delete,
+            deploy, favourite). List of apps returns an empty array to
             avoid an N+1 per page row — use the `/environment-variables`
             endpoints to page the set.
           items:
             $ref: '#/components/schemas/EnvironmentVariable'
         status:
-          $ref: '#/components/schemas/DeploymentStatus'
+          $ref: '#/components/schemas/AppStatus'
         isFavourite:
           type: boolean
           description: >
-            Whether the authenticated organisation has favourited this deployment. Drives the
+            Whether the authenticated organisation has favourited this app. Drives the
             console Favourites section; toggled via `PUT`/`DELETE`
-            `/v1/deployments/{deploymentId}/favourite`.
+            `/v1/apps/{appId}/favourite`.
         activeVersionId:
           type: string
           format: uuid
@@ -2430,51 +2441,51 @@ components:
           pattern: '^/[A-Za-z0-9._/+@-]+$'
           description: >
             Absolute path exposed inside the sandboxed application. The path is the
-            volume's stable identity and is mirrored below the deployment's node-local
+            volume's stable identity and is mirrored below the app's node-local
             data directory. Root, duplicate, and overlapping paths are rejected.
 
-    DeploymentCreate:
+    AppCreate:
       type: object
       # Unknown fields are rejected rather than ignored: a stale client sending a
       # field that has moved (e.g. the top-level `computeType`, now inside
       # `configuration`) must fail loudly instead of silently getting the default.
       additionalProperties: false
       required:
-        - deploymentId
-        - deploymentName
+        - appId
+        - appName
         - configuration
-        - deploymentSource
+        - appSource
       properties:
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
-        deploymentName:
-          $ref: '#/components/schemas/DeploymentName'
+        appId:
+          $ref: '#/components/schemas/AppId'
+        appName:
+          $ref: '#/components/schemas/AppName'
         configuration:
           $ref: '#/components/schemas/WorkerConfigCreate'
-        deploymentSource:
+        appSource:
           allOf:
-            - $ref: '#/components/schemas/DeploymentSourceUpsert'
+            - $ref: '#/components/schemas/AppSourceUpsert'
           description: >
-            Write-only. Source for the initial deployment; not returned in the Deployment response.
+            Write-only. Source for the app's first version; not returned in the App response.
             Use the `/builds` endpoints to inspect build status.
 
             - `code`: the codebase is submitted to the build pipeline; a new image is built and
               deployed once ready.
 
             - `container`: no build step — the version names the image reference supplied here.
-              No worker runs from a container source yet, so the deployment stays `initializing`.
+              No worker runs from a container source yet, so the app stays `initializing`.
 
-            Either way the version is recorded with the deployment. A code deployment transitions
+            Either way the version is recorded with the app. A code-source app transitions
             to `active` once its first version is ready, or to `failed` if the build, validation,
             or rollout fails.
         secrets:
           type: array
           description: >
-            Existing organisation secrets to attach to this deployment, with an
+            Existing organisation secrets to attach to this app, with an
             optional env-var name override per entry. Not persisted yet —
             supplying this field returns `422`, rather than accepting a set
             nothing attaches to the workload. Shape matches
-            `POST /deployments/{deploymentId}/secrets` so create and attach
+            `POST /apps/{appId}/secrets` so create and attach
             share one contract. When wired, each injected name must not collide
             with a key in `environmentVariables` (or an existing
             `deployment_configs` row) — see `SecretAttach`.
@@ -2485,13 +2496,13 @@ components:
           description: >
             Map with environment variables. Keys are the environment variable names,
             values are the environment variable values. Use the dedicated
-            `/environment-variables` endpoints to change them after the deployment exists.
+            `/environment-variables` endpoints to change them after the app exists.
 
             Each key must satisfy `EnvironmentVariableName` — POSIX-style, at most 128
             characters. OpenAPI 3.0 cannot constrain map keys, so a bad one is rejected
             by the server rather than by the schema. Keys must also not collide with
-            a secret's injected env var name on the same deployment (see
-            `attachDeploymentSecret`).
+            a secret's injected env var name on the same app (see
+            `attachAppSecret`).
           maxProperties: 100
           additionalProperties:
             type: string
@@ -2505,22 +2516,22 @@ components:
             Persistent node-local directories bind-mounted through the checkpointer into
             the sandboxed application. Use these for downloaded weights and caches that
             must stay outside the checkpointed root filesystem. Paths must be unique and
-            non-overlapping. The set is frozen into each immutable deployment version.
+            non-overlapping. The set is frozen into each immutable app version.
         endpoints:
           type: array
           description: >
-            Invocable routes to expose on the deployment. Paths are unique within a
-            deployment: repeating one in this array is rejected rather than collapsed,
+            Invocable routes to expose on the app. Paths are unique within an
+            app: repeating one in this array is rejected rather than collapsed,
             since there would be no answer to which entry a request meant.
           uniqueItems: true
           maxItems: 20
           items:
             $ref: '#/components/schemas/EndpointCreate'
 
-    DeploymentUpdate:
+    AppUpdate:
       type: object
       description: >
-        Updates one or more aspects of a deployment in place. All fields are optional;
+        Updates one or more aspects of an app in place. All fields are optional;
         omitted fields are left unchanged. Lifecycle transitions (stop/resume/delete/deploy)
         use their dedicated operations.
 
@@ -2529,40 +2540,40 @@ components:
         mutable row. `activeVersionId` does not move: the running workload is unchanged until
         that version is deployed.
 
-        **Currently applied:** `deploymentName` and `configuration`. Supplying
-        `deploymentSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
+        **Currently applied:** `appName` and `configuration`. Supplying
+        `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
         (bulk env-var replace is not wired — use the dedicated `/environment-variables`
         endpoints for individual keys). When wired, configuration/secret/endpoint changes
-        take effect on the next Scaler cycle; `deploymentSource` triggers a new build and
+        take effect on the next Scaler cycle; `appSource` triggers a new build and
         rollout.
       additionalProperties: false
       properties:
-        deploymentName:
+        appName:
           allOf:
-            - $ref: '#/components/schemas/DeploymentName'
+            - $ref: '#/components/schemas/AppName'
           description: >
-            Mutable display name; does not affect deployment identity or routing.
+            Mutable display name; does not affect app identity or routing.
             Omit to leave unchanged — an explicit blank value is rejected, not
             treated as a clear.
         configuration:
           $ref: '#/components/schemas/WorkerConfigPatch'
-        deploymentSource:
+        appSource:
           allOf:
-            - $ref: '#/components/schemas/DeploymentSourceUpsert'
+            - $ref: '#/components/schemas/AppSourceUpsert'
           description: >
-            Write-only. New source to build and deploy; not returned in the Deployment response.
+            Write-only. New source to build and deploy; not returned in the App response.
             Use the `/builds` endpoints to inspect build status. Triggers a build (for `code`
             sources) or image validation (for `container` sources); on success the resulting
-            version is deployed automatically. On failure the deployment remains on the previous
+            version is deployed automatically. On failure the app remains on the previous
             version. Not persisted yet — supplying this field returns `422`.
         secrets:
           type: array
           description: >
-            Replaces the deployment's secret attachments. Same `SecretAttach`
+            Replaces the app's secret attachments. Same `SecretAttach`
             shape as create and
-            `POST /deployments/{deploymentId}/secrets`. Not persisted yet —
+            `POST /apps/{appId}/secrets`. Not persisted yet —
             supplying this field returns `422`. When wired, injected names must
-            not collide with plain environment variables on the deployment.
+            not collide with plain environment variables on the app.
           items:
             $ref: '#/components/schemas/SecretAttach'
         environmentVariables:
@@ -2570,7 +2581,7 @@ components:
           description: >
             Map with environment variables. Keys are the environment variable names, values
             are the environment variable values. Setting the value of an environment variable
-            to null deletes the environment variable from the deployment. Not persisted yet —
+            to null deletes the environment variable from the app. Not persisted yet —
             supplying this field returns `422`.
           additionalProperties:
             type: string
@@ -2578,7 +2589,7 @@ components:
         endpoints:
           type: array
           description: >
-            Replaces the deployment's endpoints. Not persisted yet — supplying this field
+            Replaces the app's endpoints. Not persisted yet — supplying this field
             returns `422`.
           items:
             $ref: '#/components/schemas/EndpointCreate'
@@ -2587,7 +2598,7 @@ components:
       type: object
       required:
         - id
-        - deploymentId
+        - appId
         - computeType
         - gpusPerWorker
         - minWorkers
@@ -2599,8 +2610,8 @@ components:
         id:
           type: string
           format: uuid
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         computeType:
           $ref: '#/components/schemas/ComputeType'
         gpuType:
@@ -2608,7 +2619,9 @@ components:
           allOf:
             - $ref: '#/components/schemas/GpuTypeId'
           nullable: true
-          description: Preferred GPU type; null when computeType is `cpu`.
+          description: >
+            Preferred GPU type. Absent (or null) only on historical
+            apps created before a GPU type was required.
         fallbackGpuType:
           type: string
           allOf:
@@ -2664,6 +2677,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - gpuType
         - maxWorkers
         - idleTtlSecs
         - scalingDelaySecs
@@ -2672,15 +2686,20 @@ components:
           allOf:
             - $ref: '#/components/schemas/ComputeType'
           default: 'gpu'
+          description: >
+            GPU is the only supported compute type. Omitting the field selects
+            GPU. CPU workloads are not supported; a request that names `cpu` is
+            rejected with 422 before a build or deploy starts.
         gpuType:
           type: string
           allOf:
             - $ref: '#/components/schemas/GpuTypeId'
-          nullable: true
           description: >
-            Preferred GPU type. Rejected with a 422 when no capacity is
-            currently offered for the type (it does not appear in
-            `GET /v1/gpu-types`).
+            GPU type the workers run on. Required: omitting it (or sending
+            null) is a 422 before a build or deploy starts, because a GPU
+            app with no type is unpinned and the deployer would render
+            NVIDIA defaults. Must match an `id` returned by `GET /v1/gpu-types`
+            that currently has admitted capacity.
         fallbackGpuType:
           type: string
           allOf:
@@ -2786,24 +2805,24 @@ components:
     Version:
       type: object
       description: >
-        An immutable record of what to deploy. One is created with the deployment and one on
+        An immutable record of what to deploy. One is created with the app and one on
         every update, so a rollout always names a version rather than reading configuration
         that may since have changed.
       required:
         - id
-        - deploymentId
+        - appId
         - versionNumber
         - createdAt
       properties:
         id:
           type: string
           format: uuid
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         versionNumber:
           type: integer
           format: int32
-          description: Monotonically increasing per deployment.
+          description: Monotonically increasing per app.
         buildId:
           type: string
           format: uuid
@@ -2888,7 +2907,7 @@ components:
           type: string
           description: Path within the zip to the MLflow model entry point (e.g. `model.py`).
 
-    DeploymentSourceUpsert:
+    AppSourceUpsert:
       type: object
       required:
         - type
@@ -2931,27 +2950,27 @@ components:
           type: integer
           format: int32
           description: >
-            Version number to deploy. Must reference a `ready` version on this deployment.
+            Version number to deploy. Must reference a `ready` version on this app.
             Any in-progress or queued builds are cancelled. Use an older version number to roll back.
 
     Endpoint:
       type: object
       required:
         - id
-        - deploymentId
+        - appId
         - path
       properties:
         id:
           type: string
           format: uuid
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         path:
           type: string
           description: >
-            The endpoint's identity within the deployment: a bare lowercase URL
+            The endpoint's identity within the app: a bare lowercase URL
             segment, e.g. `generate`, with no leading slash. Unique within the
-            deployment, so it identifies the endpoint on its own.
+            app, so it identifies the endpoint on its own.
         createdAt:
           type: string
           format: date-time
@@ -2970,12 +2989,12 @@ components:
           maxLength: 64
           pattern: '^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$'
           description: >
-            The endpoint's identity within the deployment: a bare lowercase URL
+            The endpoint's identity within the app: a bare lowercase URL
             segment, e.g. `generate` — a letter first, then letters, digits and
             hyphens, ending with a letter or digit, max 64 characters. No leading
             slash: documentation may display `/generate`, but the stored and
             addressed form is `generate`, so it drops into the invocation URL with
-            no encoding. Unique within the deployment. All invocations are POST;
+            no encoding. Unique within the app. All invocations are POST;
             the HTTP method is not part of endpoint identity.
 
     Worker:
@@ -2985,7 +3004,7 @@ components:
         by the reconciler; `id` is the pod UID.
       required:
         - id
-        - deploymentId
+        - appId
         - versionId
         - podName
         - status
@@ -2995,8 +3014,8 @@ components:
         id:
           type: string
           format: uuid
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         versionId:
           type: string
           format: uuid
@@ -3073,7 +3092,7 @@ components:
 
     SecretAttachment:
       description: >
-        A secret attached to a deployment. The encrypted value is never returned.
+        A secret attached to an app. The encrypted value is never returned.
         The database always stores the injected env var name; this response omits
         `envVarName` when it equals the secret `name` (no override).
       allOf:
@@ -3093,11 +3112,11 @@ components:
     SecretAttach:
       type: object
       description: >
-        Attach an organisation secret to a deployment (control-plane record
+        Attach an organisation secret to an app (control-plane record
         only in this release). The resolved name (`envVarName`, or `secretName`
         when omitted) is stored as one NOT NULL column. It must be unique among
-        this deployment's secret attaches and must not collide with a plain
-        environment variable key on the same deployment — both names are
+        this app's secret attaches and must not collide with a plain
+        environment variable key on the same app — both names are
         reserved for the same future pod env namespace. Reserved platform names
         are rejected as on `SecretName`.
       required:
@@ -3115,7 +3134,7 @@ components:
             injected. Omit or null to use `secretName`; the server resolves and
             stores the final name. Same reserved-name rules as `SecretName`
             (`422` if reserved). The resolved name must also not collide with
-            `deployment_configs.key` on this deployment (`422`).
+            `deployment_configs.key` on this app (`422`).
 
     SecretCreate:
       type: object
@@ -3174,8 +3193,8 @@ components:
         id:
           type: string
           format: uuid
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         key:
           $ref: '#/components/schemas/EnvironmentVariableName'
         value:
@@ -3206,7 +3225,7 @@ components:
       required:
         - id
         - status
-        - deploymentId
+        - appId
         - createdAt
       properties:
         id:
@@ -3214,8 +3233,8 @@ components:
           description: Opaque task identifier returned by the execution backend.
         status:
           $ref: '#/components/schemas/TaskStatus'
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         output:
           type: object
           additionalProperties: true
@@ -3237,7 +3256,7 @@ components:
       type: object
       required:
         - id
-        - deploymentId
+        - appId
         - workerId
         - eventType
         - gpuCount
@@ -3246,8 +3265,8 @@ components:
         id:
           type: string
           format: uuid
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         workerId:
           type: string
           format: uuid
@@ -3273,19 +3292,19 @@ components:
           format: date-time
           description: When the event was recorded. Audit only — may lag `occurredAt`.
 
-    DeploymentEvent:
+    AppEvent:
       type: object
       required:
         - id
-        - deploymentId
+        - appId
         - type
         - message
       properties:
         id:
           type: string
           format: uuid
-        deploymentId:
-          $ref: '#/components/schemas/DeploymentId'
+        appId:
+          $ref: '#/components/schemas/AppId'
         workerId:
           type: string
           format: uuid
@@ -3295,7 +3314,7 @@ components:
           format: uuid
           nullable: true
         type:
-          $ref: '#/components/schemas/DeploymentEventType'
+          $ref: '#/components/schemas/AppEventType'
         message:
           type: string
           pattern: '\S'
@@ -3341,12 +3360,12 @@ components:
         detail:
           type: string
           description: Human-readable explanation specific to this occurrence.
-          example: No deployment 'img-gen' exists for the authenticated organisation.
+          example: No app 'img-gen' exists for the authenticated organisation.
         instance:
           type: string
           format: uri-reference
           description: URI reference identifying the specific occurrence (the request path).
-          example: /v1/deployments/img-gen
+          example: /v1/apps/img-gen
         requestId:
           type: string
           description: >
@@ -3361,9 +3380,9 @@ components:
           type: string
           description: >
             Extension member. Present on a `404` from task invocation when the
-            deployment exists but does not declare the requested endpoint path;
+            app exists but does not declare the requested endpoint path;
             its presence distinguishes an unknown endpoint from an unknown
-            deployment. Carries the rejected path.
+            app. Carries the rejected path.
           example: generate
         errors:
           type: array

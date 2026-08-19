@@ -188,9 +188,9 @@ Encrypted values are never returned.`,
 			}
 			app := args[0]
 
-			var params *serverlessapi.ListDeploymentSecretsParams
+			var params *serverlessapi.ListAppSecretsParams
 			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListDeploymentSecretsParams{}
+				params = &serverlessapi.ListAppSecretsParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
 			}
 
@@ -198,7 +198,7 @@ Encrypted values are never returned.`,
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			page, err := client.ListDeploymentSecrets(cmd.Context(), app, params)
+			page, err := client.ListAppSecrets(cmd.Context(), app, params)
 			if err != nil {
 				spin.Stop()
 				return err
@@ -243,16 +243,16 @@ control-plane association only in this API release — it does not roll workers.
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			if err := client.AttachDeploymentSecret(cmd.Context(), app, body); err != nil {
+			if err := client.AttachAppSecret(cmd.Context(), app, body); err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
 			return output.Print(cmdutil.FormatFor(cmd), secretAttachResult{
-				DeploymentID: app,
-				Name:         name,
-				EnvVarName:   envVarName,
+				AppID:      app,
+				Name:       name,
+				EnvVarName: envVarName,
 			})
 		},
 	}
@@ -278,15 +278,15 @@ organisation secret.`,
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			if err := client.DetachDeploymentSecret(cmd.Context(), app, name); err != nil {
+			if err := client.DetachAppSecret(cmd.Context(), app, name); err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
 			return output.Print(cmdutil.FormatFor(cmd), secretDetachResult{
-				DeploymentID: app,
-				Name:         name,
+				AppID: app,
+				Name:  name,
 			})
 		},
 	}

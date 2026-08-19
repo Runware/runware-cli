@@ -49,9 +49,9 @@ To list encrypted secrets attached to an application, use 'serverless secrets at
 				return err
 			}
 			id := args[0]
-			var params *serverlessapi.ListDeploymentEnvironmentVariablesParams
+			var params *serverlessapi.ListAppEnvironmentVariablesParams
 			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListDeploymentEnvironmentVariablesParams{}
+				params = &serverlessapi.ListAppEnvironmentVariablesParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
 			}
 
@@ -59,7 +59,7 @@ To list encrypted secrets attached to an application, use 'serverless secrets at
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			page, err := client.ListDeploymentEnvironmentVariables(cmd.Context(), id, params)
+			page, err := client.ListAppEnvironmentVariables(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
 				return err
@@ -114,7 +114,7 @@ allowed.`,
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			ev, err := client.UpdateDeploymentEnvironmentVariable(cmd.Context(), app, key, serverlessapi.EnvironmentVariableUpdate{
+			ev, err := client.UpdateAppEnvironmentVariable(cmd.Context(), app, key, serverlessapi.EnvironmentVariableUpdate{
 				Value: v,
 			})
 			if err != nil {
@@ -150,15 +150,15 @@ func newAppsEnvUnsetCmd(logger *log.Logger) *cobra.Command {
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			if err := client.DeleteDeploymentEnvironmentVariable(cmd.Context(), app, key); err != nil {
+			if err := client.DeleteAppEnvironmentVariable(cmd.Context(), app, key); err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
 			return output.Print(cmdutil.FormatFor(cmd), envUnsetResult{
-				DeploymentID: app,
-				Key:          key,
+				AppID: app,
+				Key:   key,
 			})
 		},
 	}

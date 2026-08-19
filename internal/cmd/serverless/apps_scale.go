@@ -59,7 +59,7 @@ The server rejects unsupported or invalid fields with HTTP 422.`,
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			dep, err := client.UpdateDeployment(cmd.Context(), id, serverlessapi.DeploymentUpdate{
+			app, err := client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
 				Configuration: patch,
 			})
 			if err != nil {
@@ -68,7 +68,7 @@ The server rejects unsupported or invalid fields with HTTP 422.`,
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), deploymentResult(*dep))
+			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
 		},
 	}
 

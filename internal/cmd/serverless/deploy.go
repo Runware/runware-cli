@@ -35,7 +35,7 @@ The file is zipped and submitted as the application source. Worker settings
 are supplied via flags (a local project config via 'runware serverless init'
 is planned). Endpoints are derived server-side from the SDK.`,
 		Example: `  # deploy a Python entry file
-  runware serverless deploy ./app.py --id my-app
+  runware serverless deploy ./app.py --id my-app --gpu-type h100
 
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
@@ -53,7 +53,7 @@ is planned). Endpoints are derived server-side from the SDK.`,
 				return err
 			}
 
-			source, err := serverlessapi.NewCodeDeploymentSource(serverlessapi.CodeSourceUpsert{
+			source, err := serverlessapi.NewCodeAppSource(serverlessapi.CodeSourceUpsert{
 				BaseImage: baseImage,
 				Codebase: serverlessapi.CodebaseSource{
 					ModelFile: modelFile,
@@ -65,15 +65,15 @@ is planned). Endpoints are derived server-side from the SDK.`,
 				return fmt.Errorf("build application source: %w", err)
 			}
 
-			body := serverlessapi.DeploymentCreate{
-				DeploymentId:     id,
-				DeploymentName:   name,
-				DeploymentSource: source,
+			body := serverlessapi.AppCreate{
+				AppId:     id,
+				AppName:   name,
+				AppSource: source,
 				Configuration: serverlessapi.WorkerConfigCreate{
 					MaxWorkers:       maxWorkers,
 					IdleTtlSecs:      idleTTL,
 					ScalingDelaySecs: scalingDelay,
-					GpuType:          optionalStringPtr(gpuType),
+					GpuType:          gpuType,
 					MinWorkers:       optionalInt32Ptr(cmd, "min-workers", minWorkers),
 					GpusPerWorker:    optionalInt32Ptr(cmd, "gpus-per-worker", gpusPerWorker),
 				},
@@ -83,14 +83,14 @@ is planned). Endpoints are derived server-side from the SDK.`,
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			dep, err := client.CreateDeployment(cmd.Context(), body)
+			app, err := client.CreateApp(cmd.Context(), body)
 			if err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), deploymentResult(*dep))
+			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
 		},
 	}
 
@@ -100,12 +100,15 @@ is planned). Endpoints are derived server-side from the SDK.`,
 	cmd.Flags().Int32Var(&idleTTL, "idle-ttl", 60, "Idle TTL in seconds before scaling down")
 	cmd.Flags().Int32Var(&scalingDelay, "scaling-delay", 10, "Scaling delay in seconds")
 	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.11-slim", "Builder base image")
-	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "Preferred GPU type ID (see 'serverless gpus')")
+	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus')")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
 	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker")
 
 	if err := cmd.MarkFlagRequired("id"); err != nil {
+		panic(err)
+	}
+	if err := cmd.MarkFlagRequired("gpu-type"); err != nil {
 		panic(err)
 	}
 

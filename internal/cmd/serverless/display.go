@@ -36,18 +36,18 @@ const (
 	colConcurrency         = "Concurrency"
 )
 
-// deploymentResult wraps a single deployment for table/json/yaml display.
-type deploymentResult serverlessapi.Deployment
+// appResult wraps a single app for table/json/yaml display.
+type appResult serverlessapi.App
 
-func (r deploymentResult) Headers() []string {
+func (r appResult) Headers() []string {
 	return []string{colField, colValue}
 }
 
-func (r deploymentResult) Rows() [][]any {
+func (r appResult) Rows() [][]any {
 	cfg := r.Configuration
 	return [][]any{
-		{colID, r.DeploymentId},
-		{colName, r.DeploymentName},
+		{colID, r.AppId},
+		{colName, r.AppName},
 		{colStatus, string(r.Status)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 		{colUpdated, r.UpdatedAt.Format(time.RFC3339)},
@@ -65,20 +65,20 @@ func (r deploymentResult) Rows() [][]any {
 	}
 }
 
-// deploymentsResult wraps a deployment list for table display.
-type deploymentsResult []serverlessapi.Deployment
+// appsResult wraps an app list for table display.
+type appsResult []serverlessapi.App
 
-func (r deploymentsResult) Headers() []string {
+func (r appsResult) Headers() []string {
 	return []string{colID, colName, colStatus, colCreated}
 }
 
-func (r deploymentsResult) Rows() [][]any {
+func (r appsResult) Rows() [][]any {
 	rows := make([][]any, len(r))
 	for i := range r {
 		d := &r[i]
 		rows[i] = []any{
-			d.DeploymentId,
-			d.DeploymentName,
+			d.AppId,
+			d.AppName,
 			string(d.Status),
 			d.CreatedAt.Format(time.RFC3339),
 		}
@@ -138,7 +138,7 @@ func (r versionResult) Rows() [][]any {
 	return [][]any{
 		{"Version", r.VersionNumber},
 		{colID, r.Id.String()},
-		{colApp, r.DeploymentId},
+		{colApp, r.AppId},
 		{"Build", formatOptionalUUID(r.BuildId)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 	}
@@ -269,7 +269,7 @@ func (r secretsResult) Rows() [][]any {
 	return rows
 }
 
-// secretAttachmentsResult wraps deployment secret attachments for table display.
+// secretAttachmentsResult wraps app secret attachments for table display.
 type secretAttachmentsResult []serverlessapi.SecretAttachment
 
 func (r secretAttachmentsResult) Headers() []string {
@@ -305,9 +305,9 @@ func (r secretRemovedResult) Rows() [][]any {
 
 // secretAttachResult is the success payload for attaching a secret to an application.
 type secretAttachResult struct {
-	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
-	Name         string `json:"name"         yaml:"name"`
-	EnvVarName   string `json:"envVarName,omitempty" yaml:"envVarName,omitempty"`
+	AppID      string `json:"appId" yaml:"appId"`
+	Name       string `json:"name"         yaml:"name"`
+	EnvVarName string `json:"envVarName,omitempty" yaml:"envVarName,omitempty"`
 }
 
 func (r secretAttachResult) Headers() []string {
@@ -315,13 +315,13 @@ func (r secretAttachResult) Headers() []string {
 }
 
 func (r secretAttachResult) Rows() [][]any {
-	return [][]any{{r.DeploymentID, r.Name, r.EnvVarName}}
+	return [][]any{{r.AppID, r.Name, r.EnvVarName}}
 }
 
 // secretDetachResult is the success payload for detaching a secret from an application.
 type secretDetachResult struct {
-	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
-	Name         string `json:"name"         yaml:"name"`
+	AppID string `json:"appId" yaml:"appId"`
+	Name  string `json:"name"  yaml:"name"`
 }
 
 func (r secretDetachResult) Headers() []string {
@@ -329,7 +329,7 @@ func (r secretDetachResult) Headers() []string {
 }
 
 func (r secretDetachResult) Rows() [][]any {
-	return [][]any{{r.DeploymentID, r.Name}}
+	return [][]any{{r.AppID, r.Name}}
 }
 
 // envVarResult wraps a single plain-text environment variable for table/json/yaml display.
@@ -371,8 +371,8 @@ func (r envVarsResult) Rows() [][]any {
 
 // envUnsetResult is the success payload for removing an environment variable.
 type envUnsetResult struct {
-	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
-	Key          string `json:"key"          yaml:"key"`
+	AppID string `json:"appId" yaml:"appId"`
+	Key   string `json:"key"   yaml:"key"`
 }
 
 func (r envUnsetResult) Headers() []string {
@@ -380,7 +380,7 @@ func (r envUnsetResult) Headers() []string {
 }
 
 func (r envUnsetResult) Rows() [][]any {
-	return [][]any{{r.DeploymentID, r.Key}}
+	return [][]any{{r.AppID, r.Key}}
 }
 
 // printPage prints a cursor-paginated list. JSON/YAML use the API page shape

@@ -19,9 +19,9 @@ const (
 	testEnvVarValue = "hello"
 )
 
-func TestListDeploymentEnvironmentVariables(t *testing.T) {
+func TestListAppEnvironmentVariables(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/environment-variables"
+		want := "/v1/apps/" + testAppID + "/environment-variables"
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -34,7 +34,7 @@ func TestListDeploymentEnvironmentVariables(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
 			"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-			"deploymentId":"my-app",
+			"appId":"my-app",
 			"key":"` + testEnvVarName + `",
 			"value":"` + testEnvVarValue + `",
 			"createdAt":"2026-07-30T12:00:00Z",
@@ -46,12 +46,12 @@ func TestListDeploymentEnvironmentVariables(t *testing.T) {
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListDeploymentEnvironmentVariables(context.Background(), testDeploymentID, &ListDeploymentEnvironmentVariablesParams{
+	page, err := c.ListAppEnvironmentVariables(context.Background(), testAppID, &ListAppEnvironmentVariablesParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 	})
 	if err != nil {
-		t.Fatalf("ListDeploymentEnvironmentVariables: %v", err)
+		t.Fatalf("ListAppEnvironmentVariables: %v", err)
 	}
 	if len(page.Data) != 1 || page.Data[0].Key != testEnvVarName {
 		t.Fatalf("unexpected env vars: %+v", page.Data)
@@ -64,16 +64,16 @@ func TestListDeploymentEnvironmentVariables(t *testing.T) {
 	}
 }
 
-func TestListDeploymentEnvironmentVariables_NoAPIKey(t *testing.T) {
+func TestListAppEnvironmentVariables_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListDeploymentEnvironmentVariables(context.Background(), testDeploymentID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListAppEnvironmentVariables(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
-func TestUpdateDeploymentEnvironmentVariable(t *testing.T) {
+func TestUpdateAppEnvironmentVariable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/environment-variables/" + testEnvVarName
+		want := "/v1/apps/" + testAppID + "/environment-variables/" + testEnvVarName
 		if r.Method != http.MethodPut || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -91,7 +91,7 @@ func TestUpdateDeploymentEnvironmentVariable(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-			"deploymentId":"my-app",
+			"appId":"my-app",
 			"key":"` + testEnvVarName + `",
 			"value":"` + testEnvVarValue + `",
 			"createdAt":"2026-07-30T12:00:00Z",
@@ -101,18 +101,18 @@ func TestUpdateDeploymentEnvironmentVariable(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	ev, err := c.UpdateDeploymentEnvironmentVariable(context.Background(), testDeploymentID, testEnvVarName, EnvironmentVariableUpdate{
+	ev, err := c.UpdateAppEnvironmentVariable(context.Background(), testAppID, testEnvVarName, EnvironmentVariableUpdate{
 		Value: testEnvVarValue,
 	})
 	if err != nil {
-		t.Fatalf("UpdateDeploymentEnvironmentVariable: %v", err)
+		t.Fatalf("UpdateAppEnvironmentVariable: %v", err)
 	}
 	if ev.Key != testEnvVarName || ev.Value != testEnvVarValue {
 		t.Errorf("unexpected env var: %+v", ev)
 	}
 }
 
-func TestUpdateDeploymentEnvironmentVariable_Unprocessable(t *testing.T) {
+func TestUpdateAppEnvironmentVariable_Unprocessable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -127,7 +127,7 @@ func TestUpdateDeploymentEnvironmentVariable_Unprocessable(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.UpdateDeploymentEnvironmentVariable(context.Background(), testDeploymentID, "RUNTIME", EnvironmentVariableUpdate{
+	_, err := c.UpdateAppEnvironmentVariable(context.Background(), testAppID, "RUNTIME", EnvironmentVariableUpdate{
 		Value: "x",
 	})
 	var re *transport.RunwareError
@@ -148,16 +148,16 @@ func TestUpdateDeploymentEnvironmentVariable_Unprocessable(t *testing.T) {
 	}
 }
 
-func TestUpdateDeploymentEnvironmentVariable_NoAPIKey(t *testing.T) {
+func TestUpdateAppEnvironmentVariable_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.UpdateDeploymentEnvironmentVariable(context.Background(), testDeploymentID, testEnvVarName, EnvironmentVariableUpdate{}); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.UpdateAppEnvironmentVariable(context.Background(), testAppID, testEnvVarName, EnvironmentVariableUpdate{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
-func TestDeleteDeploymentEnvironmentVariable(t *testing.T) {
+func TestDeleteAppEnvironmentVariable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/environment-variables/" + testEnvVarName
+		want := "/v1/apps/" + testAppID + "/environment-variables/" + testEnvVarName
 		if r.Method != http.MethodDelete || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -166,12 +166,12 @@ func TestDeleteDeploymentEnvironmentVariable(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	if err := c.DeleteDeploymentEnvironmentVariable(context.Background(), testDeploymentID, testEnvVarName); err != nil {
-		t.Fatalf("DeleteDeploymentEnvironmentVariable: %v", err)
+	if err := c.DeleteAppEnvironmentVariable(context.Background(), testAppID, testEnvVarName); err != nil {
+		t.Fatalf("DeleteAppEnvironmentVariable: %v", err)
 	}
 }
 
-func TestDeleteDeploymentEnvironmentVariable_NotFound(t *testing.T) {
+func TestDeleteAppEnvironmentVariable_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
@@ -180,7 +180,7 @@ func TestDeleteDeploymentEnvironmentVariable_NotFound(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	err := c.DeleteDeploymentEnvironmentVariable(context.Background(), testDeploymentID, testEnvVarName)
+	err := c.DeleteAppEnvironmentVariable(context.Background(), testAppID, testEnvVarName)
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -193,9 +193,9 @@ func TestDeleteDeploymentEnvironmentVariable_NotFound(t *testing.T) {
 	}
 }
 
-func TestDeleteDeploymentEnvironmentVariable_NoAPIKey(t *testing.T) {
+func TestDeleteAppEnvironmentVariable_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if err := c.DeleteDeploymentEnvironmentVariable(context.Background(), testDeploymentID, testEnvVarName); !errors.Is(err, transport.ErrNoAPIKey) {
+	if err := c.DeleteAppEnvironmentVariable(context.Background(), testAppID, testEnvVarName); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }

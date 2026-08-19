@@ -11,7 +11,7 @@ import (
 )
 
 // maxPackEntryBytes is the maximum size of a single entry file we will zip and
-// base64-encode for createDeployment. Keeps accidental large inputs from
+// base64-encode for createApp. Keeps accidental large inputs from
 // blowing memory (base64 expands the payload by ~4/3).
 const maxPackEntryBytes int64 = 10 << 20 // 10 MiB
 

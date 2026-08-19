@@ -38,7 +38,7 @@ is stopped. The application must be active.`,
   runware serverless apps stop my-app`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLifecycle(cmd, logger, args[0], "Stopping", (*serverlessapi.Client).StopDeployment)
+			return runLifecycle(cmd, logger, args[0], "Stopping", (*serverlessapi.Client).StopApp)
 		},
 	}
 }
@@ -56,7 +56,7 @@ is active. The application must be stopped.`,
   runware serverless apps resume my-app`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLifecycle(cmd, logger, args[0], "Resuming", (*serverlessapi.Client).ResumeDeployment)
+			return runLifecycle(cmd, logger, args[0], "Resuming", (*serverlessapi.Client).ResumeApp)
 		},
 	}
 }
@@ -88,7 +88,7 @@ Confirmation is required unless --yes or --force is passed.`,
 			if err := confirmDelete(id, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
 				return err
 			}
-			return runLifecycle(cmd, logger, id, "Deleting", (*serverlessapi.Client).DeleteDeployment)
+			return runLifecycle(cmd, logger, id, "Deleting", (*serverlessapi.Client).DeleteApp)
 		},
 	}
 
@@ -97,21 +97,21 @@ Confirmation is required unless --yes or --force is passed.`,
 	return cmd
 }
 
-type lifecycleAction func(*serverlessapi.Client, context.Context, string) (*serverlessapi.Deployment, error)
+type lifecycleAction func(*serverlessapi.Client, context.Context, string) (*serverlessapi.App, error)
 
 func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, action lifecycleAction) error {
 	spin := cmdutil.NewSpinner(fmt.Sprintf("%s application %s...", verb, id))
 	spin.Start()
 
 	client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-	dep, err := action(client, cmd.Context(), id)
+	app, err := action(client, cmd.Context(), id)
 	if err != nil {
 		spin.Stop()
 		return err
 	}
 	spin.Stop()
 
-	return output.Print(cmdutil.FormatFor(cmd), deploymentResult(*dep))
+	return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
 }
 
 // confirmDelete fails closed without an API key so a prompt cannot succeed

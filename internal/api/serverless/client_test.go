@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	testDeploymentID  = "my-app"
+	testAppID         = "my-app"
+	testGPUType       = "h100"
 	testBuildID       = "33333333-3333-3333-3333-333333333333"
 	testVersionID     = "22222222-2222-2222-2222-222222222222"
 	testVersionNumber = int32(1)
@@ -46,7 +47,7 @@ func TestListGpuTypes(t *testing.T) {
 	if len(gpus) != 1 {
 		t.Fatalf("expected 1 gpu, got %d", len(gpus))
 	}
-	if gpus[0].Id != "h100" || gpus[0].Pricing.PerSecond != "0.000767" {
+	if gpus[0].Id != testGPUType || gpus[0].Pricing.PerSecond != "0.000767" {
 		t.Errorf("unexpected gpu: %+v", gpus[0])
 	}
 	if gpus[0].Memory != "80 GB HBM" {
@@ -127,16 +128,16 @@ func TestListGpuTypes_UnhandledStatusKeepsProblemDetails(t *testing.T) {
 	}
 }
 
-func TestCreateDeployment(t *testing.T) {
+func TestCreateApp(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/deployments" {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/apps" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{
-			"deploymentId":"my-app",
-			"deploymentName":"My App",
+			"appId":"my-app",
+			"appName":"My App",
 			"status":"initializing",
 			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10},
 			"environmentVariables":[],
@@ -147,7 +148,7 @@ func TestCreateDeployment(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source, err := NewCodeDeploymentSource(CodeSourceUpsert{
+	source, err := NewCodeAppSource(CodeSourceUpsert{
 		BaseImage: "python:3.11-slim",
 		Codebase: CodebaseSource{
 			ModelFile: "app.py",
@@ -155,41 +156,43 @@ func TestCreateDeployment(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("NewCodeDeploymentSource: %v", err)
+		t.Fatalf("NewCodeAppSource: %v", err)
 	}
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	dep, err := c.CreateDeployment(context.Background(), DeploymentCreate{
-		DeploymentId:     testDeploymentID,
-		DeploymentName:   "My App",
-		DeploymentSource: source,
+	dep, err := c.CreateApp(context.Background(), AppCreate{
+		AppId:     testAppID,
+		AppName:   "My App",
+		AppSource: source,
 		Configuration: WorkerConfigCreate{
+			GpuType:          testGPUType,
 			MaxWorkers:       1,
 			IdleTtlSecs:      60,
 			ScalingDelaySecs: 10,
 		},
 	})
 	if err != nil {
-		t.Fatalf("CreateDeployment: %v", err)
+		t.Fatalf("CreateApp: %v", err)
 	}
-	if dep.DeploymentId != testDeploymentID || string(dep.Status) != "initializing" {
-		t.Errorf("unexpected deployment: %+v", dep)
+	if dep.AppId != testAppID || string(dep.Status) != "initializing" {
+		t.Errorf("unexpected app: %+v", dep)
 	}
 }
 
-func TestCreateDeployment_Conflict(t *testing.T) {
+func TestCreateApp_Conflict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Deployment already exists"}`))
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"App already exists"}`))
 	}))
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.CreateDeployment(context.Background(), DeploymentCreate{
-		DeploymentId:   testDeploymentID,
-		DeploymentName: "My App",
+	_, err := c.CreateApp(context.Background(), AppCreate{
+		AppId:   testAppID,
+		AppName: "My App",
 		Configuration: WorkerConfigCreate{
+			GpuType:          testGPUType,
 			MaxWorkers:       1,
 			IdleTtlSecs:      60,
 			ScalingDelaySecs: 10,
@@ -202,21 +205,21 @@ func TestCreateDeployment_Conflict(t *testing.T) {
 	if re.Code != transport.CodeValidation {
 		t.Errorf("expected CodeValidation, got %v", re.Code)
 	}
-	if re.Message != "Deployment already exists" {
+	if re.Message != "App already exists" {
 		t.Errorf("unexpected message: %q", re.Message)
 	}
 }
 
-func TestCreateDeployment_NoAPIKey(t *testing.T) {
+func TestCreateApp_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.CreateDeployment(context.Background(), DeploymentCreate{}); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.CreateApp(context.Background(), AppCreate{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
 func TestPageOf_PreservesNextCursorWhenDataNil(t *testing.T) {
 	next := testCursorPage2
-	page := pageOf[Deployment](nil, &next)
+	page := pageOf[App](nil, &next)
 	if len(page.Data) != 0 {
 		t.Fatalf("expected empty data, got %+v", page.Data)
 	}
@@ -224,7 +227,7 @@ func TestPageOf_PreservesNextCursorWhenDataNil(t *testing.T) {
 		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
 	}
 
-	var nilSlice []Deployment
+	var nilSlice []App
 	page = pageOf(&nilSlice, &next)
 	if page.Data == nil {
 		t.Fatal("expected non-nil empty data slice")
@@ -234,7 +237,7 @@ func TestPageOf_PreservesNextCursorWhenDataNil(t *testing.T) {
 	}
 }
 
-func TestListDeployments_EmptyDataKeepsNextCursor(t *testing.T) {
+func TestListApps_EmptyDataKeepsNextCursor(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"nextCursor":"` + testCursorPage2 + `"}`))
@@ -242,9 +245,9 @@ func TestListDeployments_EmptyDataKeepsNextCursor(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListDeployments(context.Background(), nil)
+	page, err := c.ListApps(context.Background(), nil)
 	if err != nil {
-		t.Fatalf("ListDeployments: %v", err)
+		t.Fatalf("ListApps: %v", err)
 	}
 	if len(page.Data) != 0 {
 		t.Fatalf("expected empty data, got %+v", page.Data)
@@ -254,9 +257,9 @@ func TestListDeployments_EmptyDataKeepsNextCursor(t *testing.T) {
 	}
 }
 
-func TestListDeployments(t *testing.T) {
+func TestListApps(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/deployments" {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/apps" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		if got := r.URL.Query().Get("status"); got != "active" {
@@ -271,16 +274,16 @@ func TestListDeployments(t *testing.T) {
 		if got := r.URL.Query().Get("q"); got != "demo" {
 			t.Errorf("q query = %q, want demo", got)
 		}
-		if got := r.URL.Query().Get("gpuType"); got != "h100" {
-			t.Errorf("gpuType query = %q, want h100", got)
+		if got := r.URL.Query().Get("gpuType"); got != testGPUType {
+			t.Errorf("gpuType query = %q, want %s", got, testGPUType)
 		}
 		if got := r.URL.Query().Get("sort"); got != "name" {
 			t.Errorf("sort query = %q, want name", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
-			"deploymentId":"my-app",
-			"deploymentName":"My App",
+			"appId":"my-app",
+			"appName":"My App",
 			"status":"active",
 			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
 			"environmentVariables":[],
@@ -293,12 +296,12 @@ func TestListDeployments(t *testing.T) {
 
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
-	status := DeploymentStatus("active")
+	status := AppStatus("active")
 	q := "demo"
-	gpuType := "h100"
-	sort := DeploymentSort("name")
+	gpuType := testGPUType
+	sort := AppSort("name")
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListDeployments(context.Background(), &ListDeploymentsParams{
+	page, err := c.ListApps(context.Background(), &ListAppsParams{
 		Limit:   &limit,
 		Cursor:  &cursor,
 		Status:  &status,
@@ -307,17 +310,17 @@ func TestListDeployments(t *testing.T) {
 		Sort:    &sort,
 	})
 	if err != nil {
-		t.Fatalf("ListDeployments: %v", err)
+		t.Fatalf("ListApps: %v", err)
 	}
-	if len(page.Data) != 1 || page.Data[0].DeploymentId != testDeploymentID {
-		t.Fatalf("unexpected deployments: %+v", page.Data)
+	if len(page.Data) != 1 || page.Data[0].AppId != testAppID {
+		t.Fatalf("unexpected apps: %+v", page.Data)
 	}
 	if page.NextCursor == nil || *page.NextCursor != testCursorPage3 {
 		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
 	}
 }
 
-func TestListDeployments_BadCursor(t *testing.T) {
+func TestListApps_BadCursor(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -326,7 +329,7 @@ func TestListDeployments_BadCursor(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.ListDeployments(context.Background(), nil)
+	_, err := c.ListApps(context.Background(), nil)
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -339,7 +342,7 @@ func TestListDeployments_BadCursor(t *testing.T) {
 	}
 }
 
-func TestListDeployments_UnimplementedSort(t *testing.T) {
+func TestListApps_UnimplementedSort(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -354,7 +357,7 @@ func TestListDeployments_UnimplementedSort(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.ListDeployments(context.Background(), nil)
+	_, err := c.ListApps(context.Background(), nil)
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -370,15 +373,15 @@ func TestListDeployments_UnimplementedSort(t *testing.T) {
 	}
 }
 
-func TestGetDeployment(t *testing.T) {
+func TestGetApp(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/deployments/"+testDeploymentID {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/apps/"+testAppID {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"deploymentId":"my-app",
-			"deploymentName":"My App",
+			"appId":"my-app",
+			"appName":"My App",
 			"status":"initializing",
 			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
 			"environmentVariables":[],
@@ -390,25 +393,25 @@ func TestGetDeployment(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	dep, err := c.GetDeployment(context.Background(), testDeploymentID)
+	dep, err := c.GetApp(context.Background(), testAppID)
 	if err != nil {
-		t.Fatalf("GetDeployment: %v", err)
+		t.Fatalf("GetApp: %v", err)
 	}
-	if dep.DeploymentId != testDeploymentID || string(dep.Status) != "initializing" {
-		t.Errorf("unexpected deployment: %+v", dep)
+	if dep.AppId != testAppID || string(dep.Status) != "initializing" {
+		t.Errorf("unexpected app: %+v", dep)
 	}
 }
 
-func TestGetDeployment_NotFound(t *testing.T) {
+func TestGetApp_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No deployment 'missing' exists"}`))
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No app 'missing' exists"}`))
 	}))
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.GetDeployment(context.Background(), "missing")
+	_, err := c.GetApp(context.Background(), "missing")
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -418,24 +421,24 @@ func TestGetDeployment_NotFound(t *testing.T) {
 	}
 }
 
-func TestUpdateDeployment(t *testing.T) {
+func TestUpdateApp(t *testing.T) {
 	maxWorkers := int32(2)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch || r.URL.Path != "/v1/deployments/"+testDeploymentID {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/apps/"+testAppID {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		raw, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatalf("read body: %v", err)
 		}
-		var body DeploymentUpdate
+		var body AppUpdate
 		if err := json.Unmarshal(raw, &body); err != nil {
 			t.Fatalf("decode body: %v", err)
 		}
 		if body.Configuration == nil || body.Configuration.MaxWorkers == nil || *body.Configuration.MaxWorkers != maxWorkers {
 			t.Errorf("unexpected body: %s", raw)
 		}
-		if body.DeploymentName != nil || body.DeploymentSource != nil || body.Secrets != nil || body.EnvironmentVariables != nil || body.Endpoints != nil {
+		if body.AppName != nil || body.AppSource != nil || body.Secrets != nil || body.EnvironmentVariables != nil || body.Endpoints != nil {
 			t.Errorf("patch included out-of-scope fields: %s", raw)
 		}
 		var rawMap map[string]json.RawMessage
@@ -454,8 +457,8 @@ func TestUpdateDeployment(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"deploymentId":"my-app",
-			"deploymentName":"My App",
+			"appId":"my-app",
+			"appName":"My App",
 			"status":"active",
 			"configuration":{"maxWorkers":2,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"computeType":"gpu"},
 			"environmentVariables":[],
@@ -467,20 +470,20 @@ func TestUpdateDeployment(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	dep, err := c.UpdateDeployment(context.Background(), testDeploymentID, DeploymentUpdate{
+	dep, err := c.UpdateApp(context.Background(), testAppID, AppUpdate{
 		Configuration: &WorkerConfigPatch{
 			MaxWorkers: &maxWorkers,
 		},
 	})
 	if err != nil {
-		t.Fatalf("UpdateDeployment: %v", err)
+		t.Fatalf("UpdateApp: %v", err)
 	}
-	if dep.DeploymentId != testDeploymentID || dep.Configuration.MaxWorkers != maxWorkers {
-		t.Errorf("unexpected deployment: %+v", dep)
+	if dep.AppId != testAppID || dep.Configuration.MaxWorkers != maxWorkers {
+		t.Errorf("unexpected app: %+v", dep)
 	}
 }
 
-func TestUpdateDeployment_Unprocessable(t *testing.T) {
+func TestUpdateApp_Unprocessable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -496,7 +499,7 @@ func TestUpdateDeployment_Unprocessable(t *testing.T) {
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
 	zero := int32(0)
-	_, err := c.UpdateDeployment(context.Background(), testDeploymentID, DeploymentUpdate{
+	_, err := c.UpdateApp(context.Background(), testAppID, AppUpdate{
 		Configuration: &WorkerConfigPatch{
 			MaxWorkers: &zero,
 		},
@@ -519,9 +522,9 @@ func TestUpdateDeployment_Unprocessable(t *testing.T) {
 	}
 }
 
-func TestUpdateDeployment_NoAPIKey(t *testing.T) {
+func TestUpdateApp_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.UpdateDeployment(context.Background(), testDeploymentID, DeploymentUpdate{}); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.UpdateApp(context.Background(), testAppID, AppUpdate{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
@@ -531,39 +534,39 @@ type lifecycleOp struct {
 	method string
 	path   string
 	status string
-	call   func(*Client, context.Context, string) (*Deployment, error)
+	call   func(*Client, context.Context, string) (*App, error)
 	has409 bool
 }
 
 func lifecycleOps() []lifecycleOp {
 	return []lifecycleOp{
 		{
-			name:   "StopDeployment",
+			name:   "StopApp",
 			method: http.MethodPost,
-			path:   "/v1/deployments/" + testDeploymentID + "/stop",
+			path:   "/v1/apps/" + testAppID + "/stop",
 			status: "stopping",
-			call:   (*Client).StopDeployment,
+			call:   (*Client).StopApp,
 			has409: true,
 		},
 		{
-			name:   "ResumeDeployment",
+			name:   "ResumeApp",
 			method: http.MethodPost,
-			path:   "/v1/deployments/" + testDeploymentID + "/resume",
+			path:   "/v1/apps/" + testAppID + "/resume",
 			status: "initializing",
-			call:   (*Client).ResumeDeployment,
+			call:   (*Client).ResumeApp,
 			has409: true,
 		},
 		{
-			name:   "DeleteDeployment",
+			name:   "DeleteApp",
 			method: http.MethodDelete,
-			path:   "/v1/deployments/" + testDeploymentID,
+			path:   "/v1/apps/" + testAppID,
 			status: "deleting",
-			call:   (*Client).DeleteDeployment,
+			call:   (*Client).DeleteApp,
 		},
 	}
 }
 
-func TestLifecycleDeployments(t *testing.T) {
+func TestLifecycleApps(t *testing.T) {
 	for _, op := range lifecycleOps() {
 		t.Run(op.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -572,27 +575,27 @@ func TestLifecycleDeployments(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusAccepted)
-				_, _ = w.Write([]byte(lifecycleDeploymentJSON(op.status)))
+				_, _ = w.Write([]byte(lifecycleAppJSON(op.status)))
 			}))
 			defer srv.Close()
 
 			c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-			dep, err := op.call(c, context.Background(), testDeploymentID)
+			dep, err := op.call(c, context.Background(), testAppID)
 			if err != nil {
 				t.Fatalf("%s: %v", op.name, err)
 			}
-			if dep.DeploymentId != testDeploymentID || string(dep.Status) != op.status {
-				t.Errorf("unexpected deployment: %+v", dep)
+			if dep.AppId != testAppID || string(dep.Status) != op.status {
+				t.Errorf("unexpected app: %+v", dep)
 			}
 		})
 	}
 }
 
-func TestLifecycleDeployments_NotFound(t *testing.T) {
+func TestLifecycleApps_NotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No deployment 'missing' exists"}`))
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No app 'missing' exists"}`))
 	}))
 	defer srv.Close()
 
@@ -610,18 +613,18 @@ func TestLifecycleDeployments_NotFound(t *testing.T) {
 			if re.StatusCode != http.StatusNotFound {
 				t.Errorf("expected status 404, got %d", re.StatusCode)
 			}
-			if re.Message != "No deployment 'missing' exists" {
+			if re.Message != "No app 'missing' exists" {
 				t.Errorf("unexpected message: %q", re.Message)
 			}
 		})
 	}
 }
 
-func TestLifecycleDeployments_Conflict(t *testing.T) {
+func TestLifecycleApps_Conflict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Deployment is not in the required status"}`))
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"App is not in the required status"}`))
 	}))
 	defer srv.Close()
 
@@ -631,7 +634,7 @@ func TestLifecycleDeployments_Conflict(t *testing.T) {
 			continue
 		}
 		t.Run(op.name, func(t *testing.T) {
-			_, err := op.call(c, context.Background(), testDeploymentID)
+			_, err := op.call(c, context.Background(), testAppID)
 			var re *transport.RunwareError
 			if !errors.As(err, &re) {
 				t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -642,28 +645,28 @@ func TestLifecycleDeployments_Conflict(t *testing.T) {
 			if re.StatusCode != http.StatusConflict {
 				t.Errorf("expected status 409, got %d", re.StatusCode)
 			}
-			if re.Message != "Deployment is not in the required status" {
+			if re.Message != "App is not in the required status" {
 				t.Errorf("unexpected message: %q", re.Message)
 			}
 		})
 	}
 }
 
-func TestLifecycleDeployments_NoAPIKey(t *testing.T) {
+func TestLifecycleApps_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
 	for _, op := range lifecycleOps() {
 		t.Run(op.name, func(t *testing.T) {
-			if _, err := op.call(c, context.Background(), testDeploymentID); !errors.Is(err, transport.ErrNoAPIKey) {
+			if _, err := op.call(c, context.Background(), testAppID); !errors.Is(err, transport.ErrNoAPIKey) {
 				t.Fatalf("expected ErrNoAPIKey, got %v", err)
 			}
 		})
 	}
 }
 
-func lifecycleDeploymentJSON(status string) string {
+func lifecycleAppJSON(status string) string {
 	return `{
-			"deploymentId":"my-app",
-			"deploymentName":"My App",
+			"appId":"my-app",
+			"appName":"My App",
 			"status":"` + status + `",
 			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"computeType":"gpu"},
 			"environmentVariables":[],
@@ -675,14 +678,14 @@ func lifecycleDeploymentJSON(status string) string {
 
 func TestListEndpoints(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/endpoints"
+		want := "/v1/apps/" + testAppID + "/endpoints"
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
 			"id":"11111111-1111-1111-1111-111111111111",
-			"deploymentId":"my-app",
+			"appId":"my-app",
 			"path":"/infer",
 			"createdAt":"2026-07-30T12:00:00Z"
 		}]}`))
@@ -690,7 +693,7 @@ func TestListEndpoints(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListEndpoints(context.Background(), testDeploymentID, nil)
+	page, err := c.ListEndpoints(context.Background(), testAppID, nil)
 	if err != nil {
 		t.Fatalf("ListEndpoints: %v", err)
 	}
@@ -704,7 +707,7 @@ func TestListEndpoints(t *testing.T) {
 
 func TestListBuilds(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/builds"
+		want := "/v1/apps/" + testAppID + "/builds"
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -729,7 +732,7 @@ func TestListBuilds(t *testing.T) {
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListBuilds(context.Background(), testDeploymentID, &ListBuildsParams{
+	page, err := c.ListBuilds(context.Background(), testAppID, &ListBuildsParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 	})
@@ -752,14 +755,14 @@ func TestListBuilds(t *testing.T) {
 
 func TestListBuilds_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListBuilds(context.Background(), testDeploymentID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListBuilds(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
 func TestGetBuild(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/builds/" + testBuildID
+		want := "/v1/apps/" + testAppID + "/builds/" + testBuildID
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -773,7 +776,7 @@ func TestGetBuild(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	b, err := c.GetBuild(context.Background(), testDeploymentID, uuid.MustParse(testBuildID))
+	b, err := c.GetBuild(context.Background(), testAppID, uuid.MustParse(testBuildID))
 	if err != nil {
 		t.Fatalf("GetBuild: %v", err)
 	}
@@ -791,7 +794,7 @@ func TestGetBuild_NotFound(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.GetBuild(context.Background(), testDeploymentID, uuid.MustParse(testBuildID))
+	_, err := c.GetBuild(context.Background(), testAppID, uuid.MustParse(testBuildID))
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -803,21 +806,21 @@ func TestGetBuild_NotFound(t *testing.T) {
 
 func TestGetBuild_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.GetBuild(context.Background(), testDeploymentID, uuid.MustParse(testBuildID)); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.GetBuild(context.Background(), testAppID, uuid.MustParse(testBuildID)); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
 func TestListVersions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/versions"
+		want := "/v1/apps/" + testAppID + "/versions"
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
 			"id":"` + testVersionID + `",
-			"deploymentId":"my-app",
+			"appId":"my-app",
 			"buildId":"` + testBuildID + `",
 			"versionNumber":1,
 			"createdAt":"2026-07-30T12:00:00Z"
@@ -826,7 +829,7 @@ func TestListVersions(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListVersions(context.Background(), testDeploymentID, nil)
+	page, err := c.ListVersions(context.Background(), testAppID, nil)
 	if err != nil {
 		t.Fatalf("ListVersions: %v", err)
 	}
@@ -837,14 +840,14 @@ func TestListVersions(t *testing.T) {
 
 func TestGetVersion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := fmt.Sprintf("/v1/deployments/%s/versions/%d", testDeploymentID, testVersionNumber)
+		want := fmt.Sprintf("/v1/apps/%s/versions/%d", testAppID, testVersionNumber)
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"id":"` + testVersionID + `",
-			"deploymentId":"` + testDeploymentID + `",
+			"appId":"` + testAppID + `",
 			"buildId":"` + testBuildID + `",
 			"versionNumber":1,
 			"createdAt":"2026-07-30T12:00:00Z"
@@ -853,7 +856,7 @@ func TestGetVersion(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	v, err := c.GetVersion(context.Background(), testDeploymentID, testVersionNumber)
+	v, err := c.GetVersion(context.Background(), testAppID, testVersionNumber)
 	if err != nil {
 		t.Fatalf("GetVersion: %v", err)
 	}
@@ -874,7 +877,7 @@ func TestGetVersion_NotFound(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.GetVersion(context.Background(), testDeploymentID, 99999)
+	_, err := c.GetVersion(context.Background(), testAppID, 99999)
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -886,14 +889,14 @@ func TestGetVersion_NotFound(t *testing.T) {
 
 func TestGetVersion_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.GetVersion(context.Background(), testDeploymentID, testVersionNumber); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.GetVersion(context.Background(), testAppID, testVersionNumber); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
 func TestListWorkers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/workers"
+		want := "/v1/apps/" + testAppID + "/workers"
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -903,7 +906,7 @@ func TestListWorkers(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
 			"id":"44444444-4444-4444-4444-444444444444",
-			"deploymentId":"my-app",
+			"appId":"my-app",
 			"versionId":"22222222-2222-2222-2222-222222222222",
 			"status":"ready",
 			"podName":"worker-0",
@@ -915,7 +918,7 @@ func TestListWorkers(t *testing.T) {
 
 	status := WorkerStatus("ready")
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListWorkers(context.Background(), testDeploymentID, &ListWorkersParams{Status: &status})
+	page, err := c.ListWorkers(context.Background(), testAppID, &ListWorkersParams{Status: &status})
 	if err != nil {
 		t.Fatalf("ListWorkers: %v", err)
 	}
