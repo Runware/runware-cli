@@ -526,6 +526,153 @@ func TestUpdateDeployment_NoAPIKey(t *testing.T) {
 	}
 }
 
+type lifecycleOp struct {
+	name   string
+	method string
+	path   string
+	status string
+	call   func(*Client, context.Context, string) (*Deployment, error)
+	has409 bool
+}
+
+func lifecycleOps() []lifecycleOp {
+	return []lifecycleOp{
+		{
+			name:   "StopDeployment",
+			method: http.MethodPost,
+			path:   "/v1/deployments/" + testDeploymentID + "/stop",
+			status: "stopping",
+			call:   (*Client).StopDeployment,
+			has409: true,
+		},
+		{
+			name:   "ResumeDeployment",
+			method: http.MethodPost,
+			path:   "/v1/deployments/" + testDeploymentID + "/resume",
+			status: "initializing",
+			call:   (*Client).ResumeDeployment,
+			has409: true,
+		},
+		{
+			name:   "DeleteDeployment",
+			method: http.MethodDelete,
+			path:   "/v1/deployments/" + testDeploymentID,
+			status: "deleting",
+			call:   (*Client).DeleteDeployment,
+		},
+	}
+}
+
+func TestLifecycleDeployments(t *testing.T) {
+	for _, op := range lifecycleOps() {
+		t.Run(op.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != op.method || r.URL.Path != op.path {
+					t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = w.Write([]byte(lifecycleDeploymentJSON(op.status)))
+			}))
+			defer srv.Close()
+
+			c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+			dep, err := op.call(c, context.Background(), testDeploymentID)
+			if err != nil {
+				t.Fatalf("%s: %v", op.name, err)
+			}
+			if dep.DeploymentId != testDeploymentID || string(dep.Status) != op.status {
+				t.Errorf("unexpected deployment: %+v", dep)
+			}
+		})
+	}
+}
+
+func TestLifecycleDeployments_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No deployment 'missing' exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	for _, op := range lifecycleOps() {
+		t.Run(op.name, func(t *testing.T) {
+			_, err := op.call(c, context.Background(), "missing")
+			var re *transport.RunwareError
+			if !errors.As(err, &re) {
+				t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+			}
+			if re.Code != transport.CodeNotFound {
+				t.Errorf("expected CodeNotFound, got %v", re.Code)
+			}
+			if re.StatusCode != http.StatusNotFound {
+				t.Errorf("expected status 404, got %d", re.StatusCode)
+			}
+			if re.Message != "No deployment 'missing' exists" {
+				t.Errorf("unexpected message: %q", re.Message)
+			}
+		})
+	}
+}
+
+func TestLifecycleDeployments_Conflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Deployment is not in the required status"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	for _, op := range lifecycleOps() {
+		if !op.has409 {
+			continue
+		}
+		t.Run(op.name, func(t *testing.T) {
+			_, err := op.call(c, context.Background(), testDeploymentID)
+			var re *transport.RunwareError
+			if !errors.As(err, &re) {
+				t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+			}
+			if re.Code != transport.CodeValidation {
+				t.Errorf("expected CodeValidation, got %v", re.Code)
+			}
+			if re.StatusCode != http.StatusConflict {
+				t.Errorf("expected status 409, got %d", re.StatusCode)
+			}
+			if re.Message != "Deployment is not in the required status" {
+				t.Errorf("unexpected message: %q", re.Message)
+			}
+		})
+	}
+}
+
+func TestLifecycleDeployments_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	for _, op := range lifecycleOps() {
+		t.Run(op.name, func(t *testing.T) {
+			if _, err := op.call(c, context.Background(), testDeploymentID); !errors.Is(err, transport.ErrNoAPIKey) {
+				t.Fatalf("expected ErrNoAPIKey, got %v", err)
+			}
+		})
+	}
+}
+
+func lifecycleDeploymentJSON(status string) string {
+	return `{
+			"deploymentId":"my-app",
+			"deploymentName":"My App",
+			"status":"` + status + `",
+			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"computeType":"gpu"},
+			"environmentVariables":[],
+			"secrets":[],
+			"createdAt":"2026-07-30T12:00:00Z",
+			"updatedAt":"2026-07-30T12:00:00Z"
+		}`
+}
+
 func TestListEndpoints(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		want := "/v1/deployments/" + testDeploymentID + "/endpoints"
