@@ -2,6 +2,14 @@
 
 Stop a serverless application
 
+### Synopsis
+
+Stop a running serverless application.
+
+The server accepts the stop and returns immediately with status stopping.
+Worker drain is asynchronous; this command does not wait until the application
+is stopped. The application must be active.
+
 ```
 runware serverless apps stop <appId> [flags]
 ```

@@ -352,6 +352,102 @@ func (c *Client) UpdateDeployment(ctx context.Context, deploymentID string, body
 	}
 }
 
+// StopDeployment accepts a stop and returns the deployment with status
+// stopping. Worker drain is asynchronous.
+func (c *Client) StopDeployment(ctx context.Context, deploymentID string) (*Deployment, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.StopDeploymentWithResponse(ctx, deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("stop deployment: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	return acceptedDeployment("stop deployment", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
+		Unauthorized: resp.ApplicationproblemJSON401,
+		Forbidden:    resp.ApplicationproblemJSON403,
+		NotFound:     resp.ApplicationproblemJSON404,
+		Conflict:     resp.ApplicationproblemJSON409,
+	})
+}
+
+// ResumeDeployment accepts a resume and returns the deployment with status
+// initializing. Worker start is asynchronous.
+func (c *Client) ResumeDeployment(ctx context.Context, deploymentID string) (*Deployment, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.ResumeDeploymentWithResponse(ctx, deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("resume deployment: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	return acceptedDeployment("resume deployment", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
+		Unauthorized: resp.ApplicationproblemJSON401,
+		Forbidden:    resp.ApplicationproblemJSON403,
+		NotFound:     resp.ApplicationproblemJSON404,
+		Conflict:     resp.ApplicationproblemJSON409,
+	})
+}
+
+// DeleteDeployment accepts a soft delete and returns the deployment with
+// status deleting. Router removal and worker drain are asynchronous.
+func (c *Client) DeleteDeployment(ctx context.Context, deploymentID string) (*Deployment, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.DeleteDeploymentWithResponse(ctx, deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("delete deployment: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	return acceptedDeployment("delete deployment", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
+		Unauthorized: resp.ApplicationproblemJSON401,
+		Forbidden:    resp.ApplicationproblemJSON403,
+		NotFound:     resp.ApplicationproblemJSON404,
+	})
+}
+
+// lifecycleProblems are typed RFC 9457 bodies bound by the generated client.
+type lifecycleProblems struct {
+	Unauthorized *gen.ProblemDetails
+	Forbidden    *gen.ProblemDetails
+	NotFound     *gen.ProblemDetails
+	Conflict     *gen.ProblemDetails
+}
+
+func acceptedDeployment(op string, status int, dep *Deployment, body []byte, problems lifecycleProblems) (*Deployment, error) {
+	switch status {
+	case http.StatusAccepted:
+		if dep == nil {
+			return nil, fmt.Errorf("%s: empty 202 response", op)
+		}
+		return dep, nil
+	case http.StatusUnauthorized:
+		return nil, problemToError(problems.Unauthorized, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return nil, problemToError(problems.Forbidden, http.StatusForbidden)
+	case http.StatusNotFound:
+		return nil, problemToError(problems.NotFound, http.StatusNotFound)
+	case http.StatusConflict:
+		if problems.Conflict != nil {
+			return nil, problemToError(problems.Conflict, http.StatusConflict)
+		}
+		return nil, problemFromBody(body, status)
+	default:
+		return nil, problemFromBody(body, status)
+	}
+}
+
 // ListEndpoints returns a page of endpoints for a deployment.
 func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params *ListEndpointsParams) (Page[Endpoint], error) {
 	if c.apiKey == "" {
