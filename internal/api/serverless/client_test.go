@@ -2,8 +2,10 @@ package serverless
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -413,6 +415,114 @@ func TestGetDeployment_NotFound(t *testing.T) {
 	}
 	if re.Code != transport.CodeNotFound {
 		t.Errorf("expected CodeNotFound, got %v", re.Code)
+	}
+}
+
+func TestUpdateDeployment(t *testing.T) {
+	maxWorkers := int32(2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/deployments/"+testDeploymentID {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		var body DeploymentUpdate
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.Configuration == nil || body.Configuration.MaxWorkers == nil || *body.Configuration.MaxWorkers != maxWorkers {
+			t.Errorf("unexpected body: %s", raw)
+		}
+		if body.DeploymentName != nil || body.DeploymentSource != nil || body.Secrets != nil || body.EnvironmentVariables != nil || body.Endpoints != nil {
+			t.Errorf("patch included out-of-scope fields: %s", raw)
+		}
+		var rawMap map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &rawMap); err != nil {
+			t.Fatalf("decode raw map: %v", err)
+		}
+		if len(rawMap) != 1 {
+			t.Errorf("expected only configuration in body, got %s", raw)
+		}
+		var cfg map[string]any
+		if err := json.Unmarshal(rawMap["configuration"], &cfg); err != nil {
+			t.Fatalf("decode configuration: %v", err)
+		}
+		if len(cfg) != 1 {
+			t.Errorf("omitted flags should not appear in configuration: %s", raw)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"deploymentId":"my-app",
+			"deploymentName":"My App",
+			"status":"active",
+			"configuration":{"maxWorkers":2,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"computeType":"gpu"},
+			"environmentVariables":[],
+			"secrets":[],
+			"createdAt":"2026-07-30T12:00:00Z",
+			"updatedAt":"2026-07-30T12:00:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	dep, err := c.UpdateDeployment(context.Background(), testDeploymentID, DeploymentUpdate{
+		Configuration: &WorkerConfigPatch{
+			MaxWorkers: &maxWorkers,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateDeployment: %v", err)
+	}
+	if dep.DeploymentId != testDeploymentID || dep.Configuration.MaxWorkers != maxWorkers {
+		t.Errorf("unexpected deployment: %+v", dep)
+	}
+}
+
+func TestUpdateDeployment_Unprocessable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{
+			"type":"about:blank",
+			"title":"Unprocessable Entity",
+			"status":422,
+			"detail":"maxWorkers must be at least 1",
+			"errors":[{"detail":"must be at least 1","pointer":"/configuration/maxWorkers"}]
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	zero := int32(0)
+	_, err := c.UpdateDeployment(context.Background(), testDeploymentID, DeploymentUpdate{
+		Configuration: &WorkerConfigPatch{
+			MaxWorkers: &zero,
+		},
+	})
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeValidation {
+		t.Errorf("expected CodeValidation, got %v", re.Code)
+	}
+	if re.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("expected status 422, got %d", re.StatusCode)
+	}
+	if !strings.Contains(re.Message, "maxWorkers must be at least 1") {
+		t.Errorf("missing detail: %q", re.Message)
+	}
+	if !strings.Contains(re.Message, "/configuration/maxWorkers: must be at least 1") {
+		t.Errorf("missing field error: %q", re.Message)
+	}
+}
+
+func TestUpdateDeployment_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.UpdateDeployment(context.Background(), testDeploymentID, DeploymentUpdate{}); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 

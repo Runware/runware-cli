@@ -46,8 +46,17 @@ type CodeSourceUpsert = gen.CodeSourceUpsert
 // CodebaseSource is the zipped customer code payload.
 type CodebaseSource = gen.CodebaseSource
 
+// WorkerConfig is the live worker configuration on a deployment.
+type WorkerConfig = gen.WorkerConfig
+
 // WorkerConfigCreate is the worker configuration supplied at create time.
 type WorkerConfigCreate = gen.WorkerConfigCreate
+
+// DeploymentUpdate is the request body for updateDeployment.
+type DeploymentUpdate = gen.DeploymentUpdate
+
+// WorkerConfigPatch is a partial worker configuration for updateDeployment.
+type WorkerConfigPatch = gen.WorkerConfigPatch
 
 // ListDeploymentsParams are optional filters for ListDeployments.
 type ListDeploymentsParams = gen.ListDeploymentsParams
@@ -325,6 +334,49 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentID string) (*Deplo
 		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	default:
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// UpdateDeployment patches a deployment in place. Omitted fields are left
+// unchanged. Currently persisted: deploymentName and configuration.
+func (c *Client) UpdateDeployment(ctx context.Context, deploymentID string, body DeploymentUpdate) (*Deployment, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.UpdateDeploymentWithResponse(ctx, deploymentID, body)
+	if err != nil {
+		return nil, fmt.Errorf("update deployment: %w", err)
+	}
+
+	if c.logger != nil && c.logger.Enabled(ctx, slog.LevelDebug) {
+		c.logger.Debug("serverless response", //nolint:errcheck,gosec
+			"path", "/v1/deployments/"+deploymentID,
+			"status", resp.StatusCode(),
+			"body", string(resp.Body),
+		)
+	}
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return nil, fmt.Errorf("update deployment: empty 200 response")
+		}
+		return resp.JSON200, nil
+	case http.StatusBadRequest:
+		return nil, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
+	case http.StatusUnauthorized:
+		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusConflict:
+		return nil, problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
+	case http.StatusUnprocessableEntity:
+		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}

@@ -22,22 +22,47 @@ const (
 	colApp     = "App"
 	colKey     = "Key"
 	colEnvVar  = "Env var"
+
+	colComputeType         = "Compute type"
+	colGPUType             = "GPU type"
+	colFallbackGPUType     = "Fallback GPU type"
+	colGPUsPerWorker       = "GPUs per worker"
+	colMinWorkers          = "Min workers"
+	colMaxWorkers          = "Max workers"
+	colMinAvailableWorkers = "Min available workers"
+	colAvailableWorkersPct = "Available workers %"
+	colIdleTTL             = "Idle TTL (s)"
+	colScalingDelay        = "Scaling delay (s)"
+	colConcurrency         = "Concurrency"
 )
 
 // deploymentResult wraps a single deployment for table/json/yaml display.
 type deploymentResult serverlessapi.Deployment
 
 func (r deploymentResult) Headers() []string {
-	return []string{colID, colName, colStatus, colCreated}
+	return []string{colField, colValue}
 }
 
 func (r deploymentResult) Rows() [][]any {
-	return [][]any{{
-		r.DeploymentId,
-		r.DeploymentName,
-		string(r.Status),
-		r.CreatedAt.Format(time.RFC3339),
-	}}
+	cfg := r.Configuration
+	return [][]any{
+		{colID, r.DeploymentId},
+		{colName, r.DeploymentName},
+		{colStatus, string(r.Status)},
+		{colCreated, r.CreatedAt.Format(time.RFC3339)},
+		{colUpdated, r.UpdatedAt.Format(time.RFC3339)},
+		{colComputeType, string(cfg.ComputeType)},
+		{colGPUType, formatOptionalString(cfg.GpuType)},
+		{colFallbackGPUType, formatOptionalString(cfg.FallbackGpuType)},
+		{colGPUsPerWorker, cfg.GpusPerWorker},
+		{colMinWorkers, cfg.MinWorkers},
+		{colMaxWorkers, cfg.MaxWorkers},
+		{colMinAvailableWorkers, formatOptionalInt32(cfg.MinAvailableWorkers)},
+		{colAvailableWorkersPct, formatOptionalInt32(cfg.AvailableWorkersPct)},
+		{colIdleTTL, cfg.IdleTtlSecs},
+		{colScalingDelay, cfg.ScalingDelaySecs},
+		{colConcurrency, cfg.Concurrency},
+	}
 }
 
 // deploymentsResult wraps a deployment list for table display.
