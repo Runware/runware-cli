@@ -31,6 +31,7 @@ runware serverless apps [flags]
 * [runware serverless apps builds](runware_serverless_apps_builds.md)	 - Inspect application builds
 * [runware serverless apps delete](runware_serverless_apps_delete.md)	 - Delete a serverless application
 * [runware serverless apps endpoints](runware_serverless_apps_endpoints.md)	 - List endpoints for a serverless application
+* [runware serverless apps env](runware_serverless_apps_env.md)	 - Manage plain-text environment variables for an application
 * [runware serverless apps list](runware_serverless_apps_list.md)	 - List serverless applications
 * [runware serverless apps logs](runware_serverless_apps_logs.md)	 - Show logs for a serverless application
 * [runware serverless apps resume](runware_serverless_apps_resume.md)	 - Resume a stopped serverless application
