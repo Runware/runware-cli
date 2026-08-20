@@ -24,6 +24,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		requirements  []string
 		minWorkers    int32
 		gpusPerWorker int32
+		srcDir        string
 	)
 
 	cmd := &cobra.Command{
@@ -31,11 +32,28 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		Short: "Deploy a new serverless application",
 		Long: `Create a new serverless application from a Python entry file.
 
-The file is zipped and submitted as the application source. Worker settings
-are supplied via flags (a local project config via 'runware serverless init'
-is planned). Endpoints are derived server-side from the SDK.`,
-		Example: `  # deploy a Python entry file
+The whole source directory is zipped and submitted as the application source, so
+the entry file can import its own modules and read its own data files. That
+directory is the working directory unless --src-dir says otherwise.
+
+The entry file must live inside the source directory. A relative path is resolved
+inside it; an absolute path is taken as given.
+
+Exclude what the app does not need with a .runwareignore file at the root of the
+source directory; it takes gitignore syntax. Without one, a .gitignore is used
+instead. Either way .env files are never uploaded, and neither are .git,
+__pycache__, .venv or node_modules.
+
+Worker settings are supplied via flags (a local project config via 'runware
+serverless init' is planned). Endpoints are derived server-side from the SDK.`,
+		Example: `  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
+
+  # deploy a project that lives elsewhere; app.py is resolved inside --src-dir
+  runware serverless deploy app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
+
+  # an entry file in a subdirectory of the project
+  runware serverless deploy src/app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
 
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
@@ -48,7 +66,7 @@ is planned). Endpoints are derived server-side from the SDK.`,
 				name = id
 			}
 
-			zipBase64, modelFile, err := packPythonFile(entryFile)
+			zipBase64, modelFile, err := packDirectory(srcDir, entryFile)
 			if err != nil {
 				return err
 			}
@@ -94,6 +112,7 @@ is planned). Endpoints are derived server-side from the SDK.`,
 		},
 	}
 
+	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")

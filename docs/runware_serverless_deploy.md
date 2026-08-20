@@ -6,9 +6,20 @@ Deploy a new serverless application
 
 Create a new serverless application from a Python entry file.
 
-The file is zipped and submitted as the application source. Worker settings
-are supplied via flags (a local project config via 'runware serverless init'
-is planned). Endpoints are derived server-side from the SDK.
+The whole source directory is zipped and submitted as the application source, so
+the entry file can import its own modules and read its own data files. That
+directory is the working directory unless --src-dir says otherwise.
+
+The entry file must live inside the source directory. A relative path is resolved
+inside it; an absolute path is taken as given.
+
+Exclude what the app does not need with a .runwareignore file at the root of the
+source directory; it takes gitignore syntax. Without one, a .gitignore is used
+instead. Either way .env files are never uploaded, and neither are .git,
+__pycache__, .venv or node_modules.
+
+Worker settings are supplied via flags (a local project config via 'runware
+serverless init' is planned). Endpoints are derived server-side from the SDK.
 
 ```
 runware serverless deploy <file> [flags]
@@ -17,8 +28,14 @@ runware serverless deploy <file> [flags]
 ### Examples
 
 ```
-  # deploy a Python entry file
+  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
+
+  # deploy a project that lives elsewhere; app.py is resolved inside --src-dir
+  runware serverless deploy app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
+
+  # an entry file in a subdirectory of the project
+  runware serverless deploy src/app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
 
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
@@ -40,6 +57,7 @@ runware serverless deploy <file> [flags]
       --name string               Display name (defaults to --id)
       --requirement stringArray   Additional pip package to install (repeatable)
       --scaling-delay int32       Scaling delay in seconds (default 10)
+      --src-dir string            Directory to package as the application source (default: the working directory)
 ```
 
 ### Options inherited from parent commands
