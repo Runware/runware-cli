@@ -15,8 +15,8 @@ import (
 
 // openResult reports the application and dashboard URL that was opened.
 type openResult struct {
-	DeploymentID string `json:"deploymentId" yaml:"deploymentId"`
-	URL          string `json:"url"          yaml:"url"`
+	AppID string `json:"appId" yaml:"appId"`
+	URL   string `json:"url"   yaml:"url"`
 }
 
 func (r openResult) Headers() []string {
@@ -25,7 +25,7 @@ func (r openResult) Headers() []string {
 
 func (r openResult) Rows() [][]any {
 	return [][]any{
-		{colApp, r.DeploymentID},
+		{colApp, r.AppID},
 		{"URL", r.URL},
 	}
 }
@@ -46,8 +46,8 @@ func newOpenCmd() *cobra.Command {
 			}
 
 			return output.Print(cmdutil.FormatFor(cmd), openResult{
-				DeploymentID: id,
-				URL:          dashboardURL,
+				AppID: id,
+				URL:   dashboardURL,
 			})
 		},
 	}

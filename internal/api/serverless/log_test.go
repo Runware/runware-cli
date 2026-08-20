@@ -24,13 +24,13 @@ func TestRedactJSONValues_EnvVarList(t *testing.T) {
 	}
 }
 
-func TestRedactJSONValues_NestedDeploymentEnvVars(t *testing.T) {
-	in := []byte(`{"deploymentId":"my-app","environmentVariables":[{"key":"K","value":"v"}]}`)
+func TestRedactJSONValues_NestedAppEnvVars(t *testing.T) {
+	in := []byte(`{"appId":"my-app","environmentVariables":[{"key":"K","value":"v"}]}`)
 	out := redactJSONValues(in)
 	if strings.Contains(string(out), `"value":"v"`) {
 		t.Fatalf("nested value leaked: %s", out)
 	}
-	if !strings.Contains(string(out), `"deploymentId":"my-app"`) {
+	if !strings.Contains(string(out), `"appId":"my-app"`) {
 		t.Fatalf("other fields should remain: %s", out)
 	}
 }

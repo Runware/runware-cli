@@ -18,7 +18,7 @@ runware serverless deploy <file> [flags]
 
 ```
   # deploy a Python entry file
-  runware serverless deploy ./app.py --id my-app
+  runware serverless deploy ./app.py --id my-app --gpu-type h100
 
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
@@ -30,7 +30,7 @@ runware serverless deploy <file> [flags]
 
 ```
       --base-image string         Builder base image (default "python:3.11-slim")
-      --gpu-type string           Preferred GPU type ID (see 'serverless gpus')
+      --gpu-type string           GPU type ID (see 'serverless gpus')
       --gpus-per-worker int32     GPUs allocated per worker (default 1)
   -h, --help                      help for deploy
       --id string                 Application ID (immutable, lowercase slug)

@@ -15,7 +15,7 @@ import (
 )
 
 // newAppsCmd returns the "serverless apps" command group for managing
-// deployed serverless applications (API: deployments).
+// deployed serverless applications.
 func newAppsCmd(logger *log.Logger) *cobra.Command {
 	cmd := stubGroup("apps", "Manage deployed serverless applications")
 	cmd.Long = "Manage deployed serverless applications on the Runware platform."
@@ -69,18 +69,18 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			if err := validateListLimit(limit); err != nil {
 				return err
 			}
-			sortVal, err := parseDeploymentSort(sort)
+			sortVal, err := parseAppSort(sort)
 			if err != nil {
 				return err
 			}
-			statusVal, err := parseDeploymentStatus(status)
+			statusVal, err := parseAppStatus(status)
 			if err != nil {
 				return err
 			}
 
-			var params *serverlessapi.ListDeploymentsParams
+			var params *serverlessapi.ListAppsParams
 			if limit > 0 || cursor != "" || status != "" || query != "" || gpuType != "" || sort != "" {
-				params = &serverlessapi.ListDeploymentsParams{}
+				params = &serverlessapi.ListAppsParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
 				params.Status = statusVal
 				params.Sort = sortVal
@@ -92,14 +92,14 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			page, err := client.ListDeployments(cmd.Context(), params)
+			page, err := client.ListApps(cmd.Context(), params)
 			if err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, deploymentsResult(page.Data), cmd.ErrOrStderr(), extraListCursorFlags(query, gpuType, sort, status))
+			return printPage(cmdutil.FormatFor(cmd), page, appsResult(page.Data), cmd.ErrOrStderr(), extraListCursorFlags(query, gpuType, sort, status))
 		},
 	}
 
@@ -127,14 +127,14 @@ func newAppsShowCmd(logger *log.Logger) *cobra.Command {
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			dep, err := client.GetDeployment(cmd.Context(), id)
+			app, err := client.GetApp(cmd.Context(), id)
 			if err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), deploymentResult(*dep))
+			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
 		},
 	}
 }
@@ -279,16 +279,16 @@ func parseValidFlag[T validListFlag](flag, value, want string) (*T, error) {
 	return &v, nil
 }
 
-func parseDeploymentSort(sort string) (*serverlessapi.DeploymentSort, error) {
-	return parseValidFlag[serverlessapi.DeploymentSort]("--sort", sort, "createdAt, name, activity, or errorRate")
+func parseAppSort(sort string) (*serverlessapi.AppSort, error) {
+	return parseValidFlag[serverlessapi.AppSort]("--sort", sort, "createdAt, name, activity, or errorRate")
 }
 
-func parseDeploymentStatus(status string) (*serverlessapi.DeploymentStatus, error) {
-	return parseValidFlag[serverlessapi.DeploymentStatus]("--status", status, "active, initializing, stopping, stopped, deleting, deleted, or failed")
+func parseAppStatus(status string) (*serverlessapi.AppStatus, error) {
+	return parseValidFlag[serverlessapi.AppStatus]("--status", status, "active, initializing, stopping, stopped, deleting, deleted, or failed")
 }
 
 func parseWorkerStatus(status string) (*serverlessapi.WorkerStatus, error) {
-	return parseValidFlag[serverlessapi.WorkerStatus]("--status", status, "pending, pulling, loading, ready, busy, draining, stopping, or stopped")
+	return parseValidFlag[serverlessapi.WorkerStatus]("--status", status, "pending, pulling, loading, ready, busy, unhealthy, draining, stopping, or stopped")
 }
 
 // extraListCursorFlags repeats the apps-list filter flags a next-page --cursor is bound to.

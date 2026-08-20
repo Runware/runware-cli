@@ -59,7 +59,7 @@ func TestWorkerConfigPatchFromFlags_EachFlag(t *testing.T) {
 			t.Fatalf("%s: JSON %s=%v, want %v (%s)", name, tc.key, got[tc.key], tc.want, raw)
 		}
 
-		wrap, err := json.Marshal(serverlessapi.DeploymentUpdate{Configuration: patch})
+		wrap, err := json.Marshal(serverlessapi.AppUpdate{Configuration: patch})
 		if err != nil {
 			t.Fatalf("%s: marshal update: %v", name, err)
 		}

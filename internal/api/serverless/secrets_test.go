@@ -192,7 +192,7 @@ func TestDeleteSecret_Conflict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Secret is still attached to a deployment"}`))
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Secret is still attached to an app"}`))
 	}))
 	defer srv.Close()
 
@@ -205,7 +205,7 @@ func TestDeleteSecret_Conflict(t *testing.T) {
 	if re.StatusCode != http.StatusConflict {
 		t.Errorf("expected status 409, got %d", re.StatusCode)
 	}
-	if re.Message != "Secret is still attached to a deployment" {
+	if re.Message != "Secret is still attached to an app" {
 		t.Errorf("unexpected message: %q", re.Message)
 	}
 }
@@ -217,9 +217,9 @@ func TestDeleteSecret_NoAPIKey(t *testing.T) {
 	}
 }
 
-func TestListDeploymentSecrets(t *testing.T) {
+func TestListAppSecrets(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/secrets"
+		want := "/v1/apps/" + testAppID + "/secrets"
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -243,12 +243,12 @@ func TestListDeploymentSecrets(t *testing.T) {
 	limit := Limit(5)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListDeploymentSecrets(context.Background(), testDeploymentID, &ListDeploymentSecretsParams{
+	page, err := c.ListAppSecrets(context.Background(), testAppID, &ListAppSecretsParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 	})
 	if err != nil {
-		t.Fatalf("ListDeploymentSecrets: %v", err)
+		t.Fatalf("ListAppSecrets: %v", err)
 	}
 	if len(page.Data) != 1 || page.Data[0].Name != testSecretName {
 		t.Fatalf("unexpected attachments: %+v", page.Data)
@@ -261,16 +261,16 @@ func TestListDeploymentSecrets(t *testing.T) {
 	}
 }
 
-func TestListDeploymentSecrets_NoAPIKey(t *testing.T) {
+func TestListAppSecrets_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListDeploymentSecrets(context.Background(), testDeploymentID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListAppSecrets(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
-func TestAttachDeploymentSecret(t *testing.T) {
+func TestAttachAppSecret(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/secrets"
+		want := "/v1/apps/" + testAppID + "/secrets"
 		if r.Method != http.MethodPost || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -294,15 +294,15 @@ func TestAttachDeploymentSecret(t *testing.T) {
 
 	env := "FOO_KEY"
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	if err := c.AttachDeploymentSecret(context.Background(), testDeploymentID, SecretAttach{
+	if err := c.AttachAppSecret(context.Background(), testAppID, SecretAttach{
 		SecretName: testSecretName,
 		EnvVarName: &env,
 	}); err != nil {
-		t.Fatalf("AttachDeploymentSecret: %v", err)
+		t.Fatalf("AttachAppSecret: %v", err)
 	}
 }
 
-func TestAttachDeploymentSecret_Conflict(t *testing.T) {
+func TestAttachAppSecret_Conflict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusConflict)
@@ -311,7 +311,7 @@ func TestAttachDeploymentSecret_Conflict(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	err := c.AttachDeploymentSecret(context.Background(), testDeploymentID, SecretAttach{SecretName: testSecretName})
+	err := c.AttachAppSecret(context.Background(), testAppID, SecretAttach{SecretName: testSecretName})
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -324,7 +324,7 @@ func TestAttachDeploymentSecret_Conflict(t *testing.T) {
 	}
 }
 
-func TestAttachDeploymentSecret_Validation(t *testing.T) {
+func TestAttachAppSecret_Validation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -339,7 +339,7 @@ func TestAttachDeploymentSecret_Validation(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	err := c.AttachDeploymentSecret(context.Background(), testDeploymentID, SecretAttach{SecretName: testSecretName})
+	err := c.AttachAppSecret(context.Background(), testAppID, SecretAttach{SecretName: testSecretName})
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -355,16 +355,16 @@ func TestAttachDeploymentSecret_Validation(t *testing.T) {
 	}
 }
 
-func TestAttachDeploymentSecret_NoAPIKey(t *testing.T) {
+func TestAttachAppSecret_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if err := c.AttachDeploymentSecret(context.Background(), testDeploymentID, SecretAttach{SecretName: testSecretName}); !errors.Is(err, transport.ErrNoAPIKey) {
+	if err := c.AttachAppSecret(context.Background(), testAppID, SecretAttach{SecretName: testSecretName}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
-func TestDetachDeploymentSecret(t *testing.T) {
+func TestDetachAppSecret(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v1/deployments/" + testDeploymentID + "/secrets/" + testSecretName
+		want := "/v1/apps/" + testAppID + "/secrets/" + testSecretName
 		if r.Method != http.MethodDelete || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -373,14 +373,14 @@ func TestDetachDeploymentSecret(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	if err := c.DetachDeploymentSecret(context.Background(), testDeploymentID, testSecretName); err != nil {
-		t.Fatalf("DetachDeploymentSecret: %v", err)
+	if err := c.DetachAppSecret(context.Background(), testAppID, testSecretName); err != nil {
+		t.Fatalf("DetachAppSecret: %v", err)
 	}
 }
 
-func TestDetachDeploymentSecret_NoAPIKey(t *testing.T) {
+func TestDetachAppSecret_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if err := c.DetachDeploymentSecret(context.Background(), testDeploymentID, testSecretName); !errors.Is(err, transport.ErrNoAPIKey) {
+	if err := c.DetachAppSecret(context.Background(), testAppID, testSecretName); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }

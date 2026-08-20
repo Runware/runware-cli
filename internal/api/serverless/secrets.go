@@ -12,10 +12,10 @@ import (
 // Secret is organisation-scoped secret metadata. The encrypted value is never returned.
 type Secret = gen.Secret
 
-// SecretAttachment is a secret attached to a deployment. The encrypted value is never returned.
+// SecretAttachment is a secret attached to an app. The encrypted value is never returned.
 type SecretAttachment = gen.SecretAttachment
 
-// SecretAttach is the request body for attachDeploymentSecret.
+// SecretAttach is the request body for attachAppSecret.
 type SecretAttach = gen.SecretAttach
 
 // SecretCreate is the request body for createSecret.
@@ -33,8 +33,8 @@ const SecretTypeGeneric SecretType = gen.Generic
 // ListSecretsParams are optional filters for ListSecrets.
 type ListSecretsParams = gen.ListSecretsParams
 
-// ListDeploymentSecretsParams are optional filters for ListDeploymentSecrets.
-type ListDeploymentSecretsParams = gen.ListDeploymentSecretsParams
+// ListAppSecretsParams are optional filters for ListAppSecrets.
+type ListAppSecretsParams = gen.ListAppSecretsParams
 
 // ListSecrets returns a page of organisation secret metadata.
 func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Page[Secret], error) {
@@ -138,7 +138,7 @@ func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdat
 }
 
 // DeleteSecret soft-deletes an organisation secret. Returns 409 while any
-// deployment still attaches it.
+// app still attaches it.
 func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
@@ -169,15 +169,15 @@ func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 	}
 }
 
-// ListDeploymentSecrets returns a page of secrets attached to a deployment.
-func (c *Client) ListDeploymentSecrets(ctx context.Context, deploymentID string, params *ListDeploymentSecretsParams) (Page[SecretAttachment], error) {
+// ListAppSecrets returns a page of secrets attached to an app.
+func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListAppSecretsParams) (Page[SecretAttachment], error) {
 	if c.apiKey == "" {
 		return Page[SecretAttachment]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListDeploymentSecretsWithResponse(ctx, deploymentID, params)
+	resp, err := c.inner.ListAppSecretsWithResponse(ctx, appID, params)
 	if err != nil {
-		return Page[SecretAttachment]{}, fmt.Errorf("list deployment secrets: %w", err)
+		return Page[SecretAttachment]{}, fmt.Errorf("list app secrets: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, nil)
@@ -203,14 +203,14 @@ func (c *Client) ListDeploymentSecrets(ctx context.Context, deploymentID string,
 	}
 }
 
-// AttachDeploymentSecret records that an organisation secret is attached to a
-// deployment. This is a control-plane association only in this API release.
-func (c *Client) AttachDeploymentSecret(ctx context.Context, deploymentID string, body SecretAttach) error {
+// AttachAppSecret records that an organisation secret is attached to an app.
+// This is a control-plane association only in this API release.
+func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretAttach) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.AttachDeploymentSecretWithResponse(ctx, deploymentID, body)
+	resp, err := c.inner.AttachAppSecretWithResponse(ctx, appID, body)
 	if err != nil {
 		return fmt.Errorf("attach secret: %w", err)
 	}
@@ -237,14 +237,14 @@ func (c *Client) AttachDeploymentSecret(ctx context.Context, deploymentID string
 	}
 }
 
-// DetachDeploymentSecret removes a secret attachment from a deployment. It does
-// not delete the organisation secret.
-func (c *Client) DetachDeploymentSecret(ctx context.Context, deploymentID, secretName string) error {
+// DetachAppSecret removes a secret attachment from an app. It does not delete
+// the organisation secret.
+func (c *Client) DetachAppSecret(ctx context.Context, appID, secretName string) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DetachDeploymentSecretWithResponse(ctx, deploymentID, secretName)
+	resp, err := c.inner.DetachAppSecretWithResponse(ctx, appID, secretName)
 	if err != nil {
 		return fmt.Errorf("detach secret: %w", err)
 	}

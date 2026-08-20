@@ -24,42 +24,42 @@ import (
 // defaultTimeout bounds a single REST request.
 const defaultTimeout = 30 * time.Second
 
-// createDeploymentTimeout bounds createDeployment, which uploads a base64 zip
-// and can exceed the default request timeout on slow links or larger codebases.
-const createDeploymentTimeout = 5 * time.Minute
+// createAppTimeout bounds createApp, which uploads a base64 zip and can
+// exceed the default request timeout on slow links or larger codebases.
+const createAppTimeout = 5 * time.Minute
 
 // GpuType is the public catalogue entry for a supported GPU type.
 type GpuType = gen.GpuType
 
-// Deployment is a serverless application (API: deployment).
-type Deployment = gen.Deployment
+// App is a serverless application.
+type App = gen.App
 
-// DeploymentCreate is the request body for createDeployment.
-type DeploymentCreate = gen.DeploymentCreate
+// AppCreate is the request body for createApp.
+type AppCreate = gen.AppCreate
 
-// DeploymentSourceUpsert selects the initial version creation path.
-type DeploymentSourceUpsert = gen.DeploymentSourceUpsert
+// AppSourceUpsert selects the initial version creation path.
+type AppSourceUpsert = gen.AppSourceUpsert
 
-// CodeSourceUpsert is a code-based deployment source.
+// CodeSourceUpsert is a code-based app source.
 type CodeSourceUpsert = gen.CodeSourceUpsert
 
 // CodebaseSource is the zipped customer code payload.
 type CodebaseSource = gen.CodebaseSource
 
-// WorkerConfig is the live worker configuration on a deployment.
+// WorkerConfig is the live worker configuration on an app.
 type WorkerConfig = gen.WorkerConfig
 
 // WorkerConfigCreate is the worker configuration supplied at create time.
 type WorkerConfigCreate = gen.WorkerConfigCreate
 
-// DeploymentUpdate is the request body for updateDeployment.
-type DeploymentUpdate = gen.DeploymentUpdate
+// AppUpdate is the request body for updateApp.
+type AppUpdate = gen.AppUpdate
 
-// WorkerConfigPatch is a partial worker configuration for updateDeployment.
+// WorkerConfigPatch is a partial worker configuration for updateApp.
 type WorkerConfigPatch = gen.WorkerConfigPatch
 
-// ListDeploymentsParams are optional filters for ListDeployments.
-type ListDeploymentsParams = gen.ListDeploymentsParams
+// ListAppsParams are optional filters for ListApps.
+type ListAppsParams = gen.ListAppsParams
 
 // ListEndpointsParams are optional filters for ListEndpoints.
 type ListEndpointsParams = gen.ListEndpointsParams
@@ -70,7 +70,7 @@ type ListVersionsParams = gen.ListVersionsParams
 // ListBuildsParams are optional filters for ListBuilds.
 type ListBuildsParams = gen.ListBuildsParams
 
-// Build is a code build or container validation for a deployment.
+// Build is a code build or container validation for an app.
 type Build = gen.Build
 
 // BuildStatus is a build lifecycle status.
@@ -79,7 +79,7 @@ type BuildStatus = gen.BuildStatus
 // ListWorkersParams are optional filters for ListWorkers.
 type ListWorkersParams = gen.ListWorkersParams
 
-// Endpoint is a deployment HTTP endpoint.
+// Endpoint is an app HTTP endpoint.
 type Endpoint = gen.Endpoint
 
 // Version is a deployed application version.
@@ -88,11 +88,11 @@ type Version = gen.Version
 // Worker is a runtime worker instance.
 type Worker = gen.Worker
 
-// DeploymentStatus is a deployment lifecycle status.
-type DeploymentStatus = gen.DeploymentStatus
+// AppStatus is an app lifecycle status.
+type AppStatus = gen.AppStatus
 
-// DeploymentSort is a listDeployments ordering.
-type DeploymentSort = gen.DeploymentSort
+// AppSort is a listApps ordering.
+type AppSort = gen.AppSort
 
 // WorkerStatus is a worker lifecycle status.
 type WorkerStatus = gen.WorkerStatus
@@ -109,8 +109,8 @@ type Page[T any] struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
-// DeploymentSourceTypeCode is deploymentSource.type = "code".
-const DeploymentSourceTypeCode = gen.Code
+// AppSourceTypeCode is appSource.type = "code".
+const AppSourceTypeCode = gen.Code
 
 func pageOf[T any](data *[]T, nextCursor *string) Page[T] {
 	if data == nil || *data == nil {
@@ -174,20 +174,20 @@ func newGeneratedClient(apiKey, baseURL string, httpClient gen.HttpRequestDoer) 
 	return inner
 }
 
-// createInner returns a generated client suitable for createDeployment.
+// createInner returns a generated client suitable for createApp.
 // When the underlying doer is an *http.Client with a positive Timeout shorter
-// than createDeploymentTimeout, a clone with the longer timeout is used so
+// than createAppTimeout, a clone with the longer timeout is used so
 // large uploads are not cut off. A zero Timeout (no deadline) is left unchanged.
 func (c *Client) createInner() *gen.ClientWithResponses {
 	hc, ok := c.doer.(*http.Client)
 	if !ok {
 		return c.inner
 	}
-	if hc.Timeout == 0 || hc.Timeout >= createDeploymentTimeout {
+	if hc.Timeout == 0 || hc.Timeout >= createAppTimeout {
 		return c.inner
 	}
 	cloned := *hc
-	cloned.Timeout = createDeploymentTimeout
+	cloned.Timeout = createAppTimeout
 	return newGeneratedClient(c.apiKey, c.baseURL, &cloned)
 }
 
@@ -219,15 +219,15 @@ func (c *Client) ListGpuTypes(ctx context.Context) ([]GpuType, error) {
 	}
 }
 
-// CreateDeployment creates a new deployment and starts its initial rollout.
-func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreate) (*Deployment, error) {
+// CreateApp creates a new app and starts its initial rollout.
+func (c *Client) CreateApp(ctx context.Context, body AppCreate) (*App, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.createInner().CreateDeploymentWithResponse(ctx, body)
+	resp, err := c.createInner().CreateAppWithResponse(ctx, body)
 	if err != nil {
-		return nil, fmt.Errorf("create deployment: %w", err)
+		return nil, fmt.Errorf("create app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -235,7 +235,7 @@ func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreate) (*
 	switch resp.StatusCode() {
 	case http.StatusCreated:
 		if resp.JSON201 == nil {
-			return nil, fmt.Errorf("create deployment: empty 201 response")
+			return nil, fmt.Errorf("create app: empty 201 response")
 		}
 		return resp.JSON201, nil
 	case http.StatusBadRequest:
@@ -253,15 +253,15 @@ func (c *Client) CreateDeployment(ctx context.Context, body DeploymentCreate) (*
 	}
 }
 
-// ListDeployments returns a page of deployments for the authenticated organisation.
-func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsParams) (Page[Deployment], error) {
+// ListApps returns a page of apps for the authenticated organisation.
+func (c *Client) ListApps(ctx context.Context, params *ListAppsParams) (Page[App], error) {
 	if c.apiKey == "" {
-		return Page[Deployment]{}, transport.ErrNoAPIKey
+		return Page[App]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListDeploymentsWithResponse(ctx, params)
+	resp, err := c.inner.ListAppsWithResponse(ctx, params)
 	if err != nil {
-		return Page[Deployment]{}, fmt.Errorf("list deployments: %w", err)
+		return Page[App]{}, fmt.Errorf("list apps: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -269,31 +269,31 @@ func (c *Client) ListDeployments(ctx context.Context, params *ListDeploymentsPar
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return pageOf[Deployment](nil, nil), nil
+			return pageOf[App](nil, nil), nil
 		}
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusBadRequest:
-		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
+		return Page[App]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
-		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+		return Page[App]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
-		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+		return Page[App]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusUnprocessableEntity:
-		return Page[Deployment]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+		return Page[App]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
-		return Page[Deployment]{}, problemFromBody(resp.Body, resp.StatusCode())
+		return Page[App]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
-// GetDeployment returns a single deployment by ID.
-func (c *Client) GetDeployment(ctx context.Context, deploymentID string) (*Deployment, error) {
+// GetApp returns a single app by ID.
+func (c *Client) GetApp(ctx context.Context, appID string) (*App, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetDeploymentWithResponse(ctx, deploymentID)
+	resp, err := c.inner.GetAppWithResponse(ctx, appID)
 	if err != nil {
-		return nil, fmt.Errorf("get deployment: %w", err)
+		return nil, fmt.Errorf("get app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -301,7 +301,7 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentID string) (*Deplo
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return nil, fmt.Errorf("get deployment: empty 200 response")
+			return nil, fmt.Errorf("get app: empty 200 response")
 		}
 		return resp.JSON200, nil
 	case http.StatusUnauthorized:
@@ -315,16 +315,16 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentID string) (*Deplo
 	}
 }
 
-// UpdateDeployment patches a deployment in place. Omitted fields are left
-// unchanged. Currently persisted: deploymentName and configuration.
-func (c *Client) UpdateDeployment(ctx context.Context, deploymentID string, body DeploymentUpdate) (*Deployment, error) {
+// UpdateApp patches an app in place. Omitted fields are left unchanged.
+// Currently persisted: appName and configuration.
+func (c *Client) UpdateApp(ctx context.Context, appID string, body AppUpdate) (*App, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.UpdateDeploymentWithResponse(ctx, deploymentID, body)
+	resp, err := c.inner.UpdateAppWithResponse(ctx, appID, body)
 	if err != nil {
-		return nil, fmt.Errorf("update deployment: %w", err)
+		return nil, fmt.Errorf("update app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -332,7 +332,7 @@ func (c *Client) UpdateDeployment(ctx context.Context, deploymentID string, body
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return nil, fmt.Errorf("update deployment: empty 200 response")
+			return nil, fmt.Errorf("update app: empty 200 response")
 		}
 		return resp.JSON200, nil
 	case http.StatusBadRequest:
@@ -352,21 +352,21 @@ func (c *Client) UpdateDeployment(ctx context.Context, deploymentID string, body
 	}
 }
 
-// StopDeployment accepts a stop and returns the deployment with status
-// stopping. Worker drain is asynchronous.
-func (c *Client) StopDeployment(ctx context.Context, deploymentID string) (*Deployment, error) {
+// StopApp accepts a stop and returns the app with status stopping. Worker
+// drain is asynchronous.
+func (c *Client) StopApp(ctx context.Context, appID string) (*App, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.StopDeploymentWithResponse(ctx, deploymentID)
+	resp, err := c.inner.StopAppWithResponse(ctx, appID)
 	if err != nil {
-		return nil, fmt.Errorf("stop deployment: %w", err)
+		return nil, fmt.Errorf("stop app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	return acceptedDeployment("stop deployment", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
+	return acceptedApp("stop app", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
 		Unauthorized: resp.ApplicationproblemJSON401,
 		Forbidden:    resp.ApplicationproblemJSON403,
 		NotFound:     resp.ApplicationproblemJSON404,
@@ -374,21 +374,21 @@ func (c *Client) StopDeployment(ctx context.Context, deploymentID string) (*Depl
 	})
 }
 
-// ResumeDeployment accepts a resume and returns the deployment with status
-// initializing. Worker start is asynchronous.
-func (c *Client) ResumeDeployment(ctx context.Context, deploymentID string) (*Deployment, error) {
+// ResumeApp accepts a resume and returns the app with status initializing.
+// Worker start is asynchronous.
+func (c *Client) ResumeApp(ctx context.Context, appID string) (*App, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ResumeDeploymentWithResponse(ctx, deploymentID)
+	resp, err := c.inner.ResumeAppWithResponse(ctx, appID)
 	if err != nil {
-		return nil, fmt.Errorf("resume deployment: %w", err)
+		return nil, fmt.Errorf("resume app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	return acceptedDeployment("resume deployment", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
+	return acceptedApp("resume app", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
 		Unauthorized: resp.ApplicationproblemJSON401,
 		Forbidden:    resp.ApplicationproblemJSON403,
 		NotFound:     resp.ApplicationproblemJSON404,
@@ -396,21 +396,21 @@ func (c *Client) ResumeDeployment(ctx context.Context, deploymentID string) (*De
 	})
 }
 
-// DeleteDeployment accepts a soft delete and returns the deployment with
-// status deleting. Router removal and worker drain are asynchronous.
-func (c *Client) DeleteDeployment(ctx context.Context, deploymentID string) (*Deployment, error) {
+// DeleteApp accepts a soft delete and returns the app with status deleting.
+// Router removal and worker drain are asynchronous.
+func (c *Client) DeleteApp(ctx context.Context, appID string) (*App, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteDeploymentWithResponse(ctx, deploymentID)
+	resp, err := c.inner.DeleteAppWithResponse(ctx, appID)
 	if err != nil {
-		return nil, fmt.Errorf("delete deployment: %w", err)
+		return nil, fmt.Errorf("delete app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	return acceptedDeployment("delete deployment", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
+	return acceptedApp("delete app", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
 		Unauthorized: resp.ApplicationproblemJSON401,
 		Forbidden:    resp.ApplicationproblemJSON403,
 		NotFound:     resp.ApplicationproblemJSON404,
@@ -425,13 +425,13 @@ type lifecycleProblems struct {
 	Conflict     *gen.ProblemDetails
 }
 
-func acceptedDeployment(op string, status int, dep *Deployment, body []byte, problems lifecycleProblems) (*Deployment, error) {
+func acceptedApp(op string, status int, app *App, body []byte, problems lifecycleProblems) (*App, error) {
 	switch status {
 	case http.StatusAccepted:
-		if dep == nil {
+		if app == nil {
 			return nil, fmt.Errorf("%s: empty 202 response", op)
 		}
-		return dep, nil
+		return app, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(problems.Unauthorized, http.StatusUnauthorized)
 	case http.StatusForbidden:
@@ -448,13 +448,13 @@ func acceptedDeployment(op string, status int, dep *Deployment, body []byte, pro
 	}
 }
 
-// ListEndpoints returns a page of endpoints for a deployment.
-func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params *ListEndpointsParams) (Page[Endpoint], error) {
+// ListEndpoints returns a page of endpoints for an app.
+func (c *Client) ListEndpoints(ctx context.Context, appID string, params *ListEndpointsParams) (Page[Endpoint], error) {
 	if c.apiKey == "" {
 		return Page[Endpoint]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListEndpointsWithResponse(ctx, deploymentID, params)
+	resp, err := c.inner.ListEndpointsWithResponse(ctx, appID, params)
 	if err != nil {
 		return Page[Endpoint]{}, fmt.Errorf("list endpoints: %w", err)
 	}
@@ -478,13 +478,13 @@ func (c *Client) ListEndpoints(ctx context.Context, deploymentID string, params 
 	}
 }
 
-// ListVersions returns a page of versions for a deployment.
-func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *ListVersionsParams) (Page[Version], error) {
+// ListVersions returns a page of versions for an app.
+func (c *Client) ListVersions(ctx context.Context, appID string, params *ListVersionsParams) (Page[Version], error) {
 	if c.apiKey == "" {
 		return Page[Version]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListVersionsWithResponse(ctx, deploymentID, params)
+	resp, err := c.inner.ListVersionsWithResponse(ctx, appID, params)
 	if err != nil {
 		return Page[Version]{}, fmt.Errorf("list versions: %w", err)
 	}
@@ -509,12 +509,12 @@ func (c *Client) ListVersions(ctx context.Context, deploymentID string, params *
 }
 
 // GetVersion returns a single version by number.
-func (c *Client) GetVersion(ctx context.Context, deploymentID string, versionNumber int32) (*Version, error) {
+func (c *Client) GetVersion(ctx context.Context, appID string, versionNumber int32) (*Version, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetVersionWithResponse(ctx, deploymentID, versionNumber)
+	resp, err := c.inner.GetVersionWithResponse(ctx, appID, versionNumber)
 	if err != nil {
 		return nil, fmt.Errorf("get version: %w", err)
 	}
@@ -538,13 +538,13 @@ func (c *Client) GetVersion(ctx context.Context, deploymentID string, versionNum
 	}
 }
 
-// ListBuilds returns a page of builds for a deployment.
-func (c *Client) ListBuilds(ctx context.Context, deploymentID string, params *ListBuildsParams) (Page[Build], error) {
+// ListBuilds returns a page of builds for an app.
+func (c *Client) ListBuilds(ctx context.Context, appID string, params *ListBuildsParams) (Page[Build], error) {
 	if c.apiKey == "" {
 		return Page[Build]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListBuildsWithResponse(ctx, deploymentID, params)
+	resp, err := c.inner.ListBuildsWithResponse(ctx, appID, params)
 	if err != nil {
 		return Page[Build]{}, fmt.Errorf("list builds: %w", err)
 	}
@@ -569,12 +569,12 @@ func (c *Client) ListBuilds(ctx context.Context, deploymentID string, params *Li
 }
 
 // GetBuild returns a single build by ID.
-func (c *Client) GetBuild(ctx context.Context, deploymentID string, buildID uuid.UUID) (*Build, error) {
+func (c *Client) GetBuild(ctx context.Context, appID string, buildID uuid.UUID) (*Build, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetBuildWithResponse(ctx, deploymentID, buildID)
+	resp, err := c.inner.GetBuildWithResponse(ctx, appID, buildID)
 	if err != nil {
 		return nil, fmt.Errorf("get build: %w", err)
 	}
@@ -598,13 +598,13 @@ func (c *Client) GetBuild(ctx context.Context, deploymentID string, buildID uuid
 	}
 }
 
-// ListWorkers returns a page of workers for a deployment.
-func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *ListWorkersParams) (Page[Worker], error) {
+// ListWorkers returns a page of workers for an app.
+func (c *Client) ListWorkers(ctx context.Context, appID string, params *ListWorkersParams) (Page[Worker], error) {
 	if c.apiKey == "" {
 		return Page[Worker]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListWorkersWithResponse(ctx, deploymentID, params)
+	resp, err := c.inner.ListWorkersWithResponse(ctx, appID, params)
 	if err != nil {
 		return Page[Worker]{}, fmt.Errorf("list workers: %w", err)
 	}
@@ -628,14 +628,14 @@ func (c *Client) ListWorkers(ctx context.Context, deploymentID string, params *L
 	}
 }
 
-// NewCodeDeploymentSource builds a deploymentSource for a code-based create.
-func NewCodeDeploymentSource(src CodeSourceUpsert) (DeploymentSourceUpsert, error) {
-	var source gen.DeploymentSourceUpsert_Source
+// NewCodeAppSource builds an appSource for a code-based create.
+func NewCodeAppSource(src CodeSourceUpsert) (AppSourceUpsert, error) {
+	var source gen.AppSourceUpsert_Source
 	if err := source.FromCodeSourceUpsert(src); err != nil {
-		return DeploymentSourceUpsert{}, err
+		return AppSourceUpsert{}, err
 	}
-	return DeploymentSourceUpsert{
-		Type:   DeploymentSourceTypeCode,
+	return AppSourceUpsert{
+		Type:   AppSourceTypeCode,
 		Source: source,
 	}, nil
 }
