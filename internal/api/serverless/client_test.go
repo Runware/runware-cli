@@ -133,6 +133,20 @@ func TestCreateApp(t *testing.T) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/apps" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		var body AppCreate
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.AppId != testAppID {
+			t.Errorf("appId = %q, want %s", body.AppId, testAppID)
+		}
+		if body.Configuration.GpuType != testGPUType {
+			t.Errorf("gpuType = %q, want %s", body.Configuration.GpuType, testGPUType)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{
