@@ -46,6 +46,9 @@ type CodeSourceUpsert = gen.CodeSourceUpsert
 // CodebaseSource is the zipped customer code payload.
 type CodebaseSource = gen.CodebaseSource
 
+// AppVolume is a persistent node-local directory mounted into the application.
+type AppVolume = gen.AppVolume
+
 // WorkerConfig is the live worker configuration on an app.
 type WorkerConfig = gen.WorkerConfig
 

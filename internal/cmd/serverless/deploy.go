@@ -25,6 +25,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		minWorkers    int32
 		gpusPerWorker int32
 		srcDir        string
+		volumes       []string
 	)
 
 	cmd := &cobra.Command{
@@ -44,6 +45,11 @@ source directory; it takes gitignore syntax. Without one, a .gitignore is used
 instead. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv or node_modules.
 
+Anything the app downloads at runtime belongs on a --volume. The app runs in a
+sandbox whose filesystem is part of the checkpointed state, so an unmounted
+download is copied into every checkpoint and fetched again on every cold start.
+A volume keeps it out of both.
+
 Worker settings are supplied via flags (a local project config via 'runware
 serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 		Example: `  # deploy the current directory, with app.py as the entry point
@@ -54,6 +60,10 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 
   # an entry file in a subdirectory of the project
   runware serverless deploy src/app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
+
+  # keep downloaded model weights on persistent node-local storage
+  runware serverless deploy model.py --id my-app --gpu-type l40s \
+    --volume /root/.cache/huggingface
 
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
@@ -67,6 +77,11 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 			}
 
 			zipBase64, modelFile, err := packDirectory(srcDir, entryFile)
+			if err != nil {
+				return err
+			}
+
+			appVolumes, err := buildVolumes(volumes)
 			if err != nil {
 				return err
 			}
@@ -87,6 +102,7 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 				AppId:     id,
 				AppName:   name,
 				AppSource: source,
+				Volumes:   appVolumes,
 				Configuration: serverlessapi.WorkerConfigCreate{
 					MaxWorkers:       maxWorkers,
 					IdleTtlSecs:      idleTTL,
@@ -113,6 +129,7 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 	}
 
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory)")
+	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")

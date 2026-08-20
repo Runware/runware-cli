@@ -18,6 +18,11 @@ source directory; it takes gitignore syntax. Without one, a .gitignore is used
 instead. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv or node_modules.
 
+Anything the app downloads at runtime belongs on a --volume. The app runs in a
+sandbox whose filesystem is part of the checkpointed state, so an unmounted
+download is copied into every checkpoint and fetched again on every cold start.
+A volume keeps it out of both.
+
 Worker settings are supplied via flags (a local project config via 'runware
 serverless init' is planned). Endpoints are derived server-side from the SDK.
 
@@ -36,6 +41,10 @@ runware serverless deploy <file> [flags]
 
   # an entry file in a subdirectory of the project
   runware serverless deploy src/app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
+
+  # keep downloaded model weights on persistent node-local storage
+  runware serverless deploy model.py --id my-app --gpu-type l40s \
+    --volume /root/.cache/huggingface
 
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
@@ -58,6 +67,7 @@ runware serverless deploy <file> [flags]
       --requirement stringArray   Additional pip package to install (repeatable)
       --scaling-delay int32       Scaling delay in seconds (default 10)
       --src-dir string            Directory to package as the application source (default: the working directory)
+      --volume stringArray        Absolute path inside the app backed by persistent node-local storage (repeatable)
 ```
 
 ### Options inherited from parent commands
