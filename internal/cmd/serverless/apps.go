@@ -30,9 +30,9 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(logger),
 		newAppsUsageCmd(),
-		newAppsStopCmd(),
-		newAppsResumeCmd(),
-		newAppsDeleteCmd(),
+		newAppsStopCmd(logger),
+		newAppsResumeCmd(logger),
+		newAppsDeleteCmd(logger),
 	)
 	return cmd
 }
@@ -352,36 +352,6 @@ func newAppsUsageCmd() *cobra.Command {
 		"Show usage for a serverless application",
 		`  # show usage events for an application
   runware serverless apps usage my-app`,
-		cobra.ExactArgs(1),
-	)
-}
-
-func newAppsStopCmd() *cobra.Command {
-	return stubLeaf(
-		"stop <appId>",
-		"Stop a serverless application",
-		`  # stop a running application
-  runware serverless apps stop my-app`,
-		cobra.ExactArgs(1),
-	)
-}
-
-func newAppsResumeCmd() *cobra.Command {
-	return stubLeaf(
-		"resume <appId>",
-		"Resume a stopped serverless application",
-		`  # resume a stopped application
-  runware serverless apps resume my-app`,
-		cobra.ExactArgs(1),
-	)
-}
-
-func newAppsDeleteCmd() *cobra.Command {
-	return stubLeaf(
-		"delete <appId>",
-		"Delete a serverless application",
-		`  # delete an application
-  runware serverless apps delete my-app`,
 		cobra.ExactArgs(1),
 	)
 }

@@ -2,6 +2,14 @@
 
 Resume a stopped serverless application
 
+### Synopsis
+
+Resume a stopped serverless application.
+
+The server accepts the resume and returns immediately with status initializing.
+Worker start is asynchronous; this command does not wait until the application
+is active. The application must be stopped.
+
 ```
 runware serverless apps resume <appId> [flags]
 ```
