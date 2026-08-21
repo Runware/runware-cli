@@ -18,6 +18,12 @@ source directory; it takes gitignore syntax. Without one, a .gitignore is used
 instead. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv or node_modules.
 
+Environment variables must be supplied here with --env or --env-file. An app's
+environment is frozen into the version this command creates, which is what the
+worker is rendered from, so setting one afterwards with 'apps env set' stores it
+without it ever reaching a pod. Prefer --env-file for anything secret: a value
+passed as --env is visible in the process list and recorded in shell history.
+
 Anything the app downloads at runtime belongs on a --volume. The app runs in a
 sandbox whose filesystem is part of the checkpointed state, so an unmounted
 download is copied into every checkpoint and fetched again on every cold start.
@@ -42,6 +48,10 @@ runware serverless deploy <file> [flags]
   # an entry file in a subdirectory of the project
   runware serverless deploy src/app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
 
+  # pass a token to the worker without putting it in the process list
+  printf 'HF_TOKEN=%s' "$token" > .env.deploy
+  runware serverless deploy model.py --id my-app --gpu-type l40s --env-file .env.deploy
+
   # keep downloaded model weights on persistent node-local storage
   runware serverless deploy model.py --id my-app --gpu-type l40s \
     --volume /root/.cache/huggingface
@@ -56,6 +66,8 @@ runware serverless deploy <file> [flags]
 
 ```
       --base-image string         Builder base image (default "python:3.11-slim")
+      --env stringArray           Environment variable as KEY=VALUE (repeatable)
+      --env-file stringArray      File of KEY=VALUE lines to read environment variables from (repeatable)
       --gpu-type string           GPU type ID (see 'serverless gpus')
       --gpus-per-worker int32     GPUs allocated per worker (default 1)
   -h, --help                      help for deploy

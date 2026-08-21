@@ -26,6 +26,8 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		gpusPerWorker int32
 		srcDir        string
 		volumes       []string
+		envVars       []string
+		envFiles      []string
 	)
 
 	cmd := &cobra.Command{
@@ -45,6 +47,12 @@ source directory; it takes gitignore syntax. Without one, a .gitignore is used
 instead. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv or node_modules.
 
+Environment variables must be supplied here with --env or --env-file. An app's
+environment is frozen into the version this command creates, which is what the
+worker is rendered from, so setting one afterwards with 'apps env set' stores it
+without it ever reaching a pod. Prefer --env-file for anything secret: a value
+passed as --env is visible in the process list and recorded in shell history.
+
 Anything the app downloads at runtime belongs on a --volume. The app runs in a
 sandbox whose filesystem is part of the checkpointed state, so an unmounted
 download is copied into every checkpoint and fetched again on every cold start.
@@ -60,6 +68,10 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 
   # an entry file in a subdirectory of the project
   runware serverless deploy src/app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
+
+  # pass a token to the worker without putting it in the process list
+  printf 'HF_TOKEN=%s' "$token" > .env.deploy
+  runware serverless deploy model.py --id my-app --gpu-type l40s --env-file .env.deploy
 
   # keep downloaded model weights on persistent node-local storage
   runware serverless deploy model.py --id my-app --gpu-type l40s \
@@ -86,6 +98,11 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 				return err
 			}
 
+			appEnv, err := buildEnvironmentVariables(envFiles, envVars)
+			if err != nil {
+				return err
+			}
+
 			source, err := serverlessapi.NewCodeAppSource(serverlessapi.CodeSourceUpsert{
 				BaseImage: baseImage,
 				Codebase: serverlessapi.CodebaseSource{
@@ -99,10 +116,11 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 			}
 
 			body := serverlessapi.AppCreate{
-				AppId:     id,
-				AppName:   name,
-				AppSource: source,
-				Volumes:   appVolumes,
+				AppId:                id,
+				AppName:              name,
+				AppSource:            source,
+				Volumes:              appVolumes,
+				EnvironmentVariables: appEnv,
 				Configuration: serverlessapi.WorkerConfigCreate{
 					MaxWorkers:       maxWorkers,
 					IdleTtlSecs:      idleTTL,
@@ -130,6 +148,8 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory)")
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage (repeatable)")
+	cmd.Flags().StringArrayVar(&envVars, "env", nil, "Environment variable as KEY=VALUE (repeatable)")
+	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")
