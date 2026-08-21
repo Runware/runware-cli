@@ -25,13 +25,15 @@ const maxPackEntryBytes int64 = 10 << 20 // 10 MiB
 // not: a virtualenv is thousands of small files and would sail past it.
 const maxPackTotalBytes int64 = 25 << 20 // 25 MiB
 
-// runwareIgnoreFile is the project's own exclude list. When it is absent the
-// packer falls back to gitIgnoreFile, because a project that already tells git
-// what not to track has usually said the same thing this needs to know.
-const (
-	runwareIgnoreFile = ".runwareignore"
-	gitIgnoreFile     = ".gitignore"
-)
+// runwareIgnoreFile is the project's own exclude list, and the only one read.
+//
+// .gitignore is deliberately NOT consulted. What a project keeps out of version
+// control is a different question from what it ships to a builder -- a generated
+// asset the app needs at run time is a routine .gitignore entry -- and a file
+// silently missing from a deployment because of a rule written for git is the
+// kind of surprise that costs an afternoon. Exclusions are opt-in and local to
+// this file.
+const runwareIgnoreFile = ".runwareignore"
 
 // defaultIgnorePatterns are excluded when no rule says otherwise. They are
 // ordinary gitignore patterns evaluated before the project's own, so a later
@@ -206,36 +208,27 @@ func locateModelFile(root, modelFile string) string {
 }
 
 // loadIgnoreMatcher builds the exclusion matcher: the built-in defaults first,
-// then the project's own rules, so a project rule can override a default.
-// .runwareignore wins outright when present — a project that writes one is
-// saying what to ship, and silently unioning .gitignore into it would make the
-// result impossible to reason about.
+// then the project's own .runwareignore, so a project rule can override a
+// default. Nothing else is read -- see runwareIgnoreFile for why .gitignore is
+// not.
 func loadIgnoreMatcher(root string) (gitignore.Matcher, error) {
 	patterns := make([]gitignore.Pattern, 0, len(defaultIgnorePatterns))
 	for _, p := range defaultIgnorePatterns {
 		patterns = append(patterns, gitignore.ParsePattern(p, nil))
 	}
 
-	for _, name := range []string{runwareIgnoreFile, gitIgnoreFile} {
-		lines, err := readIgnoreFile(filepath.Join(root, name))
-		if err != nil {
-			return nil, err
-		}
-		if lines == nil {
-			continue
-		}
-		for _, line := range lines {
-			patterns = append(patterns, gitignore.ParsePattern(line, nil))
-		}
-		break
+	lines, err := readIgnoreFile(filepath.Join(root, runwareIgnoreFile))
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range lines {
+		patterns = append(patterns, gitignore.ParsePattern(line, nil))
 	}
 
 	return gitignore.NewMatcher(patterns), nil
 }
 
-// readIgnoreFile returns the file's meaningful lines, or nil when it is absent.
-// A present-but-empty file returns a non-nil empty slice, so it still counts as
-// "the project chose .runwareignore" and suppresses the .gitignore fallback.
+// readIgnoreFile returns the file's lines, or nil when it is absent.
 func readIgnoreFile(path string) ([]string, error) {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {

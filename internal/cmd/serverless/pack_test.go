@@ -237,53 +237,34 @@ func TestPackDirectory_NegationCannotReachIntoExcludedDirectory(t *testing.T) {
 	}
 }
 
-// TestPackDirectory_GitignoreFallback proves .gitignore is honoured when there is
-// no .runwareignore, and ignored when there is one — the two must not union, or
-// the result is impossible to reason about.
-func TestPackDirectory_GitignoreFallback(t *testing.T) {
-	tree := map[string]string{
+// TestPackDirectory_GitignoreIsNotRead pins the decision that .gitignore has no
+// effect. What a project keeps out of version control is a different question
+// from what it ships: a generated asset the app needs at run time is a routine
+// .gitignore entry, and a file silently missing from a deployment because of a
+// rule written for git is a surprise nobody can debug from the outside.
+func TestPackDirectory_GitignoreIsNotRead(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
 		testModelFile: "",
 		"secret.txt":  "",
 		"build/o.so":  "",
 		".gitignore":  "secret.txt\nbuild/\n",
+	})
+
+	encoded, _, err := packDirectory(dir, testModelFile)
+	if err != nil {
+		t.Fatalf("packDirectory: %v", err)
 	}
-
-	t.Run("used when no runwareignore", func(t *testing.T) {
-		dir := t.TempDir()
-		writeTree(t, dir, tree)
-
-		encoded, _, err := packDirectory(dir, filepath.Join(dir, testModelFile))
-		if err != nil {
-			t.Fatalf("packDirectory: %v", err)
+	packed := unpack(t, encoded)
+	for _, present := range []string{"secret.txt", "build/o.so"} {
+		if _, ok := packed[present]; !ok {
+			t.Errorf(".gitignore excluded %q; only .runwareignore may exclude", present)
 		}
-		packed := unpack(t, encoded)
-		if _, ok := packed["secret.txt"]; ok {
-			t.Errorf(".gitignore was not honoured; archive = %v", names(packed))
-		}
-		if _, ok := packed["build/o.so"]; ok {
-			t.Errorf(".gitignore directory rule was not honoured; archive = %v", names(packed))
-		}
-	})
-
-	t.Run("ignored when runwareignore exists", func(t *testing.T) {
-		dir := t.TempDir()
-		writeTree(t, dir, tree)
-		writeTree(t, dir, map[string]string{runwareIgnoreFile: "build/\n"})
-
-		encoded, _, err := packDirectory(dir, filepath.Join(dir, testModelFile))
-		if err != nil {
-			t.Fatalf("packDirectory: %v", err)
-		}
-		packed := unpack(t, encoded)
-		// .runwareignore says nothing about secret.txt, so it ships even though
-		// .gitignore excludes it.
-		if _, ok := packed["secret.txt"]; !ok {
-			t.Errorf(".gitignore was still applied alongside .runwareignore; archive = %v", names(packed))
-		}
-		if _, ok := packed["build/o.so"]; ok {
-			t.Errorf(".runwareignore rule was not honoured; archive = %v", names(packed))
-		}
-	})
+	}
+	// The file itself ships like any other: it is not special, just not obeyed.
+	if _, ok := packed[".gitignore"]; !ok {
+		t.Errorf(".gitignore should ship as an ordinary file; archive = %v", names(packed))
+	}
 }
 
 // TestPackDirectory_NeverPacksEnvFiles is the rule that must not be overridable:
@@ -567,13 +548,6 @@ func TestPackDirectory_ModelFileAlwaysPackedFromExcludedDirectory(t *testing.T) 
 		name  string
 		files map[string]string
 	}{
-		{
-			name: "gitignore directory rule",
-			files: map[string]string{
-				gitIgnoreFile:   "dist/\n",
-				nestedModelFile: testPySource,
-			},
-		},
 		{
 			name: "runwareignore directory rule",
 			files: map[string]string{

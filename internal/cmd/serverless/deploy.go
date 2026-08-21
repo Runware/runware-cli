@@ -43,9 +43,10 @@ The entry file must live inside the source directory. A relative path is resolve
 inside it; an absolute path is taken as given.
 
 Exclude what the app does not need with a .runwareignore file at the root of the
-source directory; it takes gitignore syntax. Without one, a .gitignore is used
-instead. Either way .env files are never uploaded, and neither are .git,
-__pycache__, .venv or node_modules.
+source directory; it takes gitignore syntax. A .gitignore is NOT consulted --
+what a project keeps out of version control is a different question from what it
+ships. Either way .env files are never uploaded, and neither are .git,
+__pycache__, .venv, node_modules or the usual build and tool caches.
 
 Environment variables must be supplied here with --env or --env-file. An app's
 environment is frozen into the version this command creates, which is what the
