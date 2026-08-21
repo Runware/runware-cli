@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -229,20 +230,47 @@ func readEnvFile(path string, env map[string]string) error {
 		return fmt.Errorf("read env file: %w", err)
 	}
 	for i, line := range strings.Split(string(raw), "\n") {
+		// The trimmed copy decides whether the line carries an assignment at all;
+		// the assignment itself is parsed from the original, because trailing
+		// whitespace in a value can be deliberate and this is not the place to
+		// silently rewrite it.
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		// `export FOO=bar` is what a shell-sourced file looks like, and pasting one
-		// in is the obvious mistake to absorb rather than reject.
-		trimmed = strings.TrimPrefix(trimmed, "export ")
-		name, value, err := splitEnvAssignment(trimmed)
+		assignment := strings.TrimSuffix(line, "\r")
+		// `export FOO=bar` is what a shell-sourced file looks like, and pasting
+		// one in is the obvious mistake to absorb rather than reject. Trimmed on
+		// the left only, so the value keeps whatever follows the `=`.
+		assignment = strings.TrimPrefix(strings.TrimLeft(assignment, " \t"), "export ")
+		name, value, err := splitEnvAssignment(assignment)
 		if err != nil {
 			return fmt.Errorf("%s line %d: %w", path, i+1, err)
 		}
 		env[name] = value
 	}
 	return nil
+}
+
+// unquote strips one matching pair of surrounding quotes.
+//
+// A .env file written by hand or produced by another tool routinely quotes
+// values, and shells strip those quotes when sourcing the file. Passing them
+// through would send `"hf_x"` as the token itself -- a 401 inside the pod with
+// nothing in the logs to explain it. One pair only, and only when it matches, so
+// a value that genuinely contains a quote keeps it.
+func unquote(value string) string {
+	if len(value) < 2 {
+		return value
+	}
+	first, last := value[0], value[len(value)-1]
+	if first != last {
+		return value
+	}
+	if first == '\'' || first == '"' {
+		return value[1 : len(value)-1]
+	}
+	return value
 }
 
 // splitEnvAssignment parses one KEY=VALUE, validating the name and value against
@@ -252,22 +280,25 @@ func splitEnvAssignment(assignment string) (name, value string, err error) {
 	if !found {
 		return "", "", fmt.Errorf("%q is not KEY%s", assignment, envAssignSuffix)
 	}
-	// The name is trimmed but the value is not: trailing whitespace in a value can
-	// be deliberate, and a token with a stray newline is a 401 the app cannot
-	// explain -- so callers pass values through a file rather than have this guess.
+	// The name is trimmed; the value is not, beyond the quotes below. Trailing
+	// whitespace in a value can be deliberate, and guessing costs more than it
+	// saves -- a token with a stray character is a 401 the app cannot explain.
 	name = strings.TrimSpace(name)
+	value = unquote(value)
 
 	switch {
 	case name == "":
 		return "", "", fmt.Errorf("%q has an empty name", assignment)
-	case len(name) > maxEnvNameLen:
+	// Counted in runes, not bytes: the API's maxLength is characters, so
+	// len() would reject a valid non-ASCII value at half the documented limit.
+	case utf8.RuneCountInString(name) > maxEnvNameLen:
 		return "", "", fmt.Errorf("environment variable name %q exceeds %d characters", name, maxEnvNameLen)
 	case !envNamePattern.MatchString(name):
 		return "", "", fmt.Errorf(
 			"environment variable name %q must be POSIX-style: letters, digits and underscore, not starting with a digit",
 			name,
 		)
-	case len(value) > maxEnvValueLen:
+	case utf8.RuneCountInString(value) > maxEnvValueLen:
 		return "", "", fmt.Errorf("value for %q exceeds %d characters", name, maxEnvValueLen)
 	}
 	return name, value, nil

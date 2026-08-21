@@ -245,13 +245,15 @@ func readIgnoreFile(path string) ([]string, error) {
 		return nil, fmt.Errorf("read %s: %w", filepath.Base(path), err)
 	}
 
+	// Lines are passed through verbatim apart from a CR: gitignore syntax is
+	// whitespace-significant, so trimming would rewrite valid patterns -- an
+	// escaped trailing space (`name\ `) loses its escape and a leading space is
+	// part of the pattern. Blank lines and comments are the parser's own
+	// business; ParsePattern handles both, and a pattern that begins with an
+	// escaped `#` must not be mistaken for one here.
 	lines := []string{}
 	for _, line := range strings.Split(string(raw), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		lines = append(lines, trimmed)
+		lines = append(lines, strings.TrimSuffix(line, "\r"))
 	}
 	return lines, nil
 }
@@ -293,12 +295,20 @@ func collectFiles(root, modelFileRel string, matcher gitignore.Matcher) ([]packe
 		// succeed without it, and an ignore rule that happens to cover it is a
 		// worse failure than a file the customer did not mean to ship.
 		if rel != modelFileRel && matcher.Match(segments, d.IsDir()) {
-			// Pruning the directory rather than descending is what keeps a
-			// .venv from costing a stat per file. It also reproduces git's own
-			// rule -- "it is not possible to re-include a file if a parent
-			// directory of that file is excluded" -- so a `!node_modules/keep.js`
-			// does not apply, exactly as it would not for git.
 			if d.IsDir() {
+				// An excluded directory is pruned rather than walked, which keeps
+				// a .venv from costing a stat per file and reproduces git's own
+				// rule that a negation cannot re-include a file whose parent
+				// directory is excluded.
+				//
+				// Except when the model file is inside it. Pruning there would
+				// drop the one entry the build cannot proceed without, and the
+				// exemption above never fires because the walk stops at the
+				// directory, whose path is not the model file's. Descend, and let
+				// the per-file checks exclude everything else it holds.
+				if isAncestorOf(rel, modelFileRel) {
+					return nil
+				}
 				return fs.SkipDir
 			}
 			return nil
@@ -310,6 +320,15 @@ func collectFiles(root, modelFileRel string, matcher gitignore.Matcher) ([]packe
 		// archive is a copy rather than a checkout; sockets and devices have
 		// nothing to copy.
 		if !d.Type().IsRegular() {
+			// Silently skipping the model file would upload an archive whose
+			// declared entry point is missing, which the builder can only report
+			// as a 422 after the upload. Say it here instead.
+			if rel == modelFileRel {
+				return fmt.Errorf(
+					"model file %s is a %s, not a regular file; point --src-dir at the directory holding the real file",
+					rel, d.Type().String(),
+				)
+			}
 			return nil
 		}
 
@@ -338,6 +357,12 @@ func collectFiles(root, modelFileRel string, matcher gitignore.Matcher) ([]packe
 		)
 	}
 	return files, nil
+}
+
+// isAncestorOf reports whether dir is a parent directory of file, both being
+// slash-separated paths relative to the archive root.
+func isAncestorOf(dir, file string) bool {
+	return strings.HasPrefix(file, dir+"/")
 }
 
 // largestFilesSummary names what filled the archive. "Too big" on its own leaves
@@ -377,9 +402,21 @@ func writeArchive(root string, files []packedFile) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 
+	// Counted here rather than trusted from the walk: a file may grow between
+	// being stat'd and being read, and several files each staying under the
+	// per-file cap can still cross the total.
+	var written int64
 	for _, f := range files {
-		if err := writeArchiveEntry(zw, root, f); err != nil {
+		n, err := writeArchiveEntry(zw, root, f)
+		if err != nil {
 			return nil, err
+		}
+		written += n
+		if written > maxPackTotalBytes {
+			return nil, fmt.Errorf(
+				"the files grew past the %s archive limit while packing; exclude what the app does not need with a %s file",
+				humanBytes(maxPackTotalBytes), runwareIgnoreFile,
+			)
 		}
 	}
 	if err := zw.Close(); err != nil {
@@ -388,28 +425,45 @@ func writeArchive(root string, files []packedFile) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func writeArchiveEntry(zw *zip.Writer, root string, f packedFile) error {
-	src, err := os.Open(filepath.Join(root, filepath.FromSlash(f.rel)))
+func writeArchiveEntry(zw *zip.Writer, root string, f packedFile) (int64, error) {
+	path := filepath.Join(root, filepath.FromSlash(f.rel))
+	src, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", f.rel, err)
+		return 0, fmt.Errorf("open %s: %w", f.rel, err)
 	}
 	defer src.Close() //nolint:errcheck
 
-	w, err := zw.Create(f.rel)
+	info, err := src.Stat()
 	if err != nil {
-		return fmt.Errorf("create zip entry %s: %w", f.rel, err)
+		return 0, fmt.Errorf("stat %s: %w", f.rel, err)
+	}
+	// FileInfoHeader rather than zw.Create, because Create writes mode 0. A
+	// codebase can hold an executable -- an entrypoint script, a helper binary --
+	// and one that arrives without its executable bit fails at run time with
+	// nothing about the archive to explain it. The name has to be re-set: the
+	// header takes it from the FileInfo, which knows only the base name.
+	header, err := zip.FileInfoHeader(info)
+	if err != nil {
+		return 0, fmt.Errorf("build zip header for %s: %w", f.rel, err)
+	}
+	header.Name = f.rel
+	header.Method = zip.Deflate
+
+	w, err := zw.CreateHeader(header)
+	if err != nil {
+		return 0, fmt.Errorf("create zip entry %s: %w", f.rel, err)
 	}
 	// Capped in case the file grew between the walk and here, so a file that
-	// changes underneath us cannot defeat the limit checked above.
+	// changes underneath us cannot defeat the per-file limit checked above.
 	written, err := io.Copy(w, io.LimitReader(src, maxPackEntryBytes+1))
 	if err != nil {
-		return fmt.Errorf("write zip entry %s: %w", f.rel, err)
+		return 0, fmt.Errorf("write zip entry %s: %w", f.rel, err)
 	}
 	if written > maxPackEntryBytes {
-		return fmt.Errorf(
+		return 0, fmt.Errorf(
 			"%s grew past the maximum for a single file (%s) while packing",
 			f.rel, humanBytes(maxPackEntryBytes),
 		)
 	}
-	return nil
+	return written, nil
 }

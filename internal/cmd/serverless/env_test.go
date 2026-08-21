@@ -163,3 +163,81 @@ func TestBuildEnvironmentVariables_TooMany(t *testing.T) {
 		t.Fatal("expected an error past the variable limit")
 	}
 }
+
+// A quoted value in an --env-file must arrive unquoted: shells strip quotes when
+// sourcing, and passing them through sends `"hf_x"` as the token itself -- a 401
+// in the pod with nothing to read.
+func TestBuildEnvironmentVariables_StripsSurroundingQuotes(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want string
+	}{
+		{name: "double", line: `HF_TOKEN="hf_x"`, want: "hf_x"},
+		{name: "single", line: `HF_TOKEN='hf_x'`, want: "hf_x"},
+		// Only a matching pair, and only when it surrounds: a value that
+		// genuinely contains a quote keeps it.
+		{name: "unbalanced", line: `HF_TOKEN="hf_x`, want: `"hf_x`},
+		{name: "mismatched", line: `HF_TOKEN='hf_x"`, want: `'hf_x"`},
+		{name: "inner quote kept", line: `MSG=say "hi"`, want: `say "hi"`},
+		{name: "one pair only", line: `MSG=""quoted""`, want: `"quoted"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, ".env")
+			if err := os.WriteFile(path, []byte(tc.line+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := buildEnvironmentVariables([]string{path}, nil)
+			if err != nil {
+				t.Fatalf("buildEnvironmentVariables: %v", err)
+			}
+			for _, v := range *got {
+				if v != tc.want {
+					t.Errorf("value = %q, want %q", v, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// Whitespace inside a value is the caller's business: trimming the whole line
+// would silently rewrite a token or an indented value.
+func TestBuildEnvironmentVariables_PreservesValueWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	// A trailing space in the value, and a leading-space line that still parses.
+	if err := os.WriteFile(path, []byte("PADDED=value \n  INDENTED=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := buildEnvironmentVariables([]string{path}, nil)
+	if err != nil {
+		t.Fatalf("buildEnvironmentVariables: %v", err)
+	}
+	if (*got)["PADDED"] != "value " {
+		t.Errorf("PADDED = %q, want %q", (*got)["PADDED"], "value ")
+	}
+	if (*got)["INDENTED"] != "x" {
+		t.Errorf("INDENTED = %q, want x", (*got)["INDENTED"])
+	}
+}
+
+// The API's limits are characters; len() counts bytes, so a byte check rejects a
+// valid non-ASCII value at half the documented limit.
+func TestBuildEnvironmentVariables_LimitIsCountedInRunes(t *testing.T) {
+	// 4096 two-byte runes: 4096 characters, 8192 bytes.
+	value := strings.Repeat("é", maxEnvValueLen)
+	got, err := buildEnvironmentVariables(nil, []string{"MSG=" + value})
+	if err != nil {
+		t.Fatalf("a value of exactly the character limit was rejected: %v", err)
+	}
+	if (*got)["MSG"] != value {
+		t.Error("value did not survive")
+	}
+	// One rune past is still rejected.
+	if _, err := buildEnvironmentVariables(nil, []string{"MSG=" + value + "é"}); err == nil {
+		t.Error("expected a rejection one character past the limit")
+	}
+}

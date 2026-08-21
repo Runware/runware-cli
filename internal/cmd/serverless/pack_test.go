@@ -554,3 +554,170 @@ func TestPackDirectory_TotalTooLarge(t *testing.T) {
 		t.Errorf("error %q does not say what filled the archive", err)
 	}
 }
+
+// TestPackDirectory_ModelFileAlwaysPackedFromExcludedDirectory is the reviewer's
+// case: the exemption for the model file has to survive an ignore rule that
+// matches one of its ANCESTORS. The walk meets the directory first, and the
+// directory's path is not the model file's, so a naive prune drops the one entry
+// the build cannot proceed without.
+func TestPackDirectory_ModelFileAlwaysPackedFromExcludedDirectory(t *testing.T) {
+	const nestedModelFile = "dist/" + testModelFile
+
+	cases := []struct {
+		name  string
+		files map[string]string
+	}{
+		{
+			name: "gitignore directory rule",
+			files: map[string]string{
+				gitIgnoreFile:   "dist/\n",
+				nestedModelFile: testPySource,
+			},
+		},
+		{
+			name: "runwareignore directory rule",
+			files: map[string]string{
+				runwareIgnoreFile: "dist/\n",
+				nestedModelFile:   testPySource,
+			},
+		},
+		{
+			name: "built-in default directory rule",
+			files: map[string]string{
+				"node_modules/" + testModelFile: testPySource,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeTree(t, dir, tc.files)
+			// The model file for the built-in case sits under node_modules.
+			model := nestedModelFile
+			if _, ok := tc.files[nestedModelFile]; !ok {
+				model = "node_modules/" + testModelFile
+			}
+
+			encoded, modelFile, err := packDirectory(dir, model)
+			if err != nil {
+				t.Fatalf("packDirectory: %v", err)
+			}
+			if modelFile != model {
+				t.Errorf("modelFile = %q, want %q", modelFile, model)
+			}
+			if _, ok := unpack(t, encoded)[model]; !ok {
+				t.Errorf("the model file was pruned with its directory; archive = %v", names(unpack(t, encoded)))
+			}
+		})
+	}
+}
+
+// Everything else in an excluded directory stays excluded -- descending for the
+// model file must not turn the prune into a free pass for its siblings.
+func TestPackDirectory_ExcludedDirectoryKeepsExcludingSiblings(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		runwareIgnoreFile:       "dist/\n",
+		"dist/" + testModelFile: testPySource,
+		"dist/junk.bin":         "junk",
+		"dist/deep/more.bin":    "junk",
+	})
+
+	encoded, _, err := packDirectory(dir, "dist/"+testModelFile)
+	if err != nil {
+		t.Fatalf("packDirectory: %v", err)
+	}
+	packed := unpack(t, encoded)
+	for _, absent := range []string{"dist/junk.bin", "dist/deep/more.bin"} {
+		if _, ok := packed[absent]; ok {
+			t.Errorf("%q rode along with the model file; archive = %v", absent, names(packed))
+		}
+	}
+}
+
+// The executable bit has to survive the archive: a codebase can hold an
+// entrypoint script, and one that arrives non-executable fails at run time with
+// nothing about the archive to explain it.
+func TestPackDirectory_PreservesFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no executable bit to preserve on Windows")
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource, "entrypoint.sh": "#!/bin/sh\n"})
+	// 0o755 is the point of the test: the executable bit is what has to survive
+	// the archive, so gosec's 0600 ceiling cannot apply here.
+	if err := os.Chmod(filepath.Join(dir, "entrypoint.sh"), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+
+	encoded, _, err := packDirectory(dir, testModelFile)
+	if err != nil {
+		t.Fatalf("packDirectory: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zr.File {
+		if f.Name != "entrypoint.sh" {
+			continue
+		}
+		if f.Mode().Perm()&0o111 == 0 {
+			t.Errorf("entrypoint.sh lost its executable bit: mode %v", f.Mode())
+		}
+		return
+	}
+	t.Fatal("entrypoint.sh missing from the archive")
+}
+
+// A symlink as the model file used to pass the local stat and then be skipped by
+// the walk, uploading an archive whose declared entry point is absent.
+func TestPackDirectory_SymlinkModelFileRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privileges on Windows")
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{"real.py": testPySource})
+	if err := os.Symlink(filepath.Join(dir, "real.py"), filepath.Join(dir, "link.py")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := packDirectory(dir, "link.py")
+	if err == nil {
+		t.Fatal("expected an error for a symlinked model file")
+	}
+	if !strings.Contains(err.Error(), "regular file") {
+		t.Errorf("error %q does not explain the problem", err)
+	}
+}
+
+// Ignore patterns are whitespace-significant, so the file's lines must reach the
+// parser unmodified: a trailing space is escapable and a leading space is part of
+// the pattern.
+func TestPackDirectory_IgnorePatternsAreNotTrimmed(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		testModelFile:     testPySource,
+		"keep me.txt":     "kept",
+		"drop.txt":        "dropped",
+		runwareIgnoreFile: "drop.txt\r\n",
+	})
+
+	encoded, _, err := packDirectory(dir, testModelFile)
+	if err != nil {
+		t.Fatalf("packDirectory: %v", err)
+	}
+	packed := unpack(t, encoded)
+	// A CRLF file must still work: only the CR is normalised.
+	if _, ok := packed["drop.txt"]; ok {
+		t.Errorf("a CRLF ignore line was not honoured; archive = %v", names(packed))
+	}
+	if _, ok := packed["keep me.txt"]; !ok {
+		t.Errorf("an unrelated file with a space was dropped; archive = %v", names(packed))
+	}
+}
