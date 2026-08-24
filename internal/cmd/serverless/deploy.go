@@ -24,6 +24,10 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		requirements  []string
 		minWorkers    int32
 		gpusPerWorker int32
+		srcDir        string
+		volumes       []string
+		envVars       []string
+		envFiles      []string
 	)
 
 	cmd := &cobra.Command{
@@ -31,11 +35,48 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		Short: "Deploy a new serverless application",
 		Long: `Create a new serverless application from a Python entry file.
 
-The file is zipped and submitted as the application source. Worker settings
-are supplied via flags (a local project config via 'runware serverless init'
-is planned). Endpoints are derived server-side from the SDK.`,
-		Example: `  # deploy a Python entry file
+The whole source directory is zipped and submitted as the application source, so
+the entry file can import its own modules and read its own data files. That
+directory is the working directory unless --src-dir says otherwise.
+
+The entry file must live inside the source directory. A relative path is resolved
+inside it; an absolute path is taken as given.
+
+Exclude what the app does not need with a .runwareignore file at the root of the
+source directory; it takes gitignore syntax. A .gitignore is NOT consulted --
+what a project keeps out of version control is a different question from what it
+ships. Either way .env files are never uploaded, and neither are .git,
+__pycache__, .venv, node_modules or the usual build and tool caches.
+
+Environment variables must be supplied here with --env or --env-file. An app's
+environment is frozen into the version this command creates, which is what the
+worker is rendered from, so setting one afterwards with 'apps env set' stores it
+without it ever reaching a pod. Prefer --env-file for anything secret: a value
+passed as --env is visible in the process list and recorded in shell history.
+
+Anything the app downloads at runtime belongs on a --volume. The app runs in a
+sandbox whose filesystem is part of the checkpointed state, so an unmounted
+download is copied into every checkpoint and fetched again on every cold start.
+A volume keeps it out of both.
+
+Worker settings are supplied via flags (a local project config via 'runware
+serverless init' is planned). Endpoints are derived server-side from the SDK.`,
+		Example: `  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
+
+  # deploy a project that lives elsewhere; app.py is resolved inside --src-dir
+  runware serverless deploy app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
+
+  # an entry file in a subdirectory of the project
+  runware serverless deploy src/app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
+
+  # pass a token to the worker without putting it in the process list
+  printf 'HF_TOKEN=%s' "$token" > .env.deploy
+  runware serverless deploy model.py --id my-app --gpu-type l40s --env-file .env.deploy
+
+  # keep downloaded model weights on persistent node-local storage
+  runware serverless deploy model.py --id my-app --gpu-type l40s \
+    --volume /root/.cache/huggingface
 
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
@@ -48,7 +89,17 @@ is planned). Endpoints are derived server-side from the SDK.`,
 				name = id
 			}
 
-			zipBase64, modelFile, err := packPythonFile(entryFile)
+			zipBase64, modelFile, err := packDirectory(srcDir, entryFile)
+			if err != nil {
+				return err
+			}
+
+			appVolumes, err := buildVolumes(volumes)
+			if err != nil {
+				return err
+			}
+
+			appEnv, err := buildEnvironmentVariables(envFiles, envVars)
 			if err != nil {
 				return err
 			}
@@ -66,9 +117,11 @@ is planned). Endpoints are derived server-side from the SDK.`,
 			}
 
 			body := serverlessapi.AppCreate{
-				AppId:     id,
-				AppName:   name,
-				AppSource: source,
+				AppId:                id,
+				AppName:              name,
+				AppSource:            source,
+				Volumes:              appVolumes,
+				EnvironmentVariables: appEnv,
 				Configuration: serverlessapi.WorkerConfigCreate{
 					MaxWorkers:       maxWorkers,
 					IdleTtlSecs:      idleTTL,
@@ -94,6 +147,10 @@ is planned). Endpoints are derived server-side from the SDK.`,
 		},
 	}
 
+	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory)")
+	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage (repeatable)")
+	cmd.Flags().StringArrayVar(&envVars, "env", nil, "Environment variable as KEY=VALUE (repeatable)")
+	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")

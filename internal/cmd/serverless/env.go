@@ -3,6 +3,10 @@ package serverless
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"regexp"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -162,4 +166,140 @@ func newAppsEnvUnsetCmd(logger *log.Logger) *cobra.Command {
 			})
 		},
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Create-time environment variables, for `deploy --env` / `--env-file`.
+// ---------------------------------------------------------------------------
+
+// Environment variable limits, mirrored from the server's EnvironmentVariableName
+// and its deployment_configs column CHECK.
+const (
+	maxEnvVars      = 100
+	maxEnvNameLen   = 128
+	maxEnvValueLen  = 4096
+	envAssignSuffix = "=VALUE"
+)
+
+// envNamePattern is the server's EnvironmentVariableName rule: POSIX-style, so a
+// name this accepts is a name the API can store rather than one it rejects after
+// the archive has already been uploaded.
+var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// buildEnvironmentVariables turns --env KEY=VALUE pairs and --env-file paths into
+// the create request's map.
+//
+// These belong on the CREATE request and nowhere else: an app's environment is
+// frozen into its version snapshot, which is what the deployer renders from, and
+// no endpoint creates a further version -- `deploy` re-applies an existing one by
+// number and says so. So a variable set through the /environment-variables
+// endpoints after the app exists is stored, listed back, and never reaches a
+// worker. Passing it here is the only route that ends up in a pod.
+//
+// Files are read before the inline pairs are applied, so an explicit --env wins
+// over a file entry with the same name.
+func buildEnvironmentVariables(files, pairs []string) (*map[string]string, error) {
+	if len(files) == 0 && len(pairs) == 0 {
+		return nil, nil
+	}
+
+	env := make(map[string]string)
+	for _, path := range files {
+		if err := readEnvFile(path, env); err != nil {
+			return nil, err
+		}
+	}
+	for _, pair := range pairs {
+		name, value, err := splitEnvAssignment(pair)
+		if err != nil {
+			return nil, err
+		}
+		env[name] = value
+	}
+
+	if len(env) > maxEnvVars {
+		return nil, fmt.Errorf("at most %d environment variables (got %d)", maxEnvVars, len(env))
+	}
+	return &env, nil
+}
+
+// readEnvFile reads KEY=VALUE lines into env, skipping blanks and # comments.
+func readEnvFile(path string, env map[string]string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read env file: %w", err)
+	}
+	for i, line := range strings.Split(string(raw), "\n") {
+		// The trimmed copy decides whether the line carries an assignment at all;
+		// the assignment itself is parsed from the original, because trailing
+		// whitespace in a value can be deliberate and this is not the place to
+		// silently rewrite it.
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		assignment := strings.TrimSuffix(line, "\r")
+		// `export FOO=bar` is what a shell-sourced file looks like, and pasting
+		// one in is the obvious mistake to absorb rather than reject. Trimmed on
+		// the left only, so the value keeps whatever follows the `=`.
+		assignment = strings.TrimPrefix(strings.TrimLeft(assignment, " \t"), "export ")
+		name, value, err := splitEnvAssignment(assignment)
+		if err != nil {
+			return fmt.Errorf("%s line %d: %w", path, i+1, err)
+		}
+		env[name] = value
+	}
+	return nil
+}
+
+// unquote strips one matching pair of surrounding quotes.
+//
+// A .env file written by hand or produced by another tool routinely quotes
+// values, and shells strip those quotes when sourcing the file. Passing them
+// through would send `"hf_x"` as the token itself -- a 401 inside the pod with
+// nothing in the logs to explain it. One pair only, and only when it matches, so
+// a value that genuinely contains a quote keeps it.
+func unquote(value string) string {
+	if len(value) < 2 {
+		return value
+	}
+	first, last := value[0], value[len(value)-1]
+	if first != last {
+		return value
+	}
+	if first == '\'' || first == '"' {
+		return value[1 : len(value)-1]
+	}
+	return value
+}
+
+// splitEnvAssignment parses one KEY=VALUE, validating the name and value against
+// the limits the server enforces.
+func splitEnvAssignment(assignment string) (name, value string, err error) {
+	name, value, found := strings.Cut(assignment, "=")
+	if !found {
+		return "", "", fmt.Errorf("%q is not KEY%s", assignment, envAssignSuffix)
+	}
+	// The name is trimmed; the value is not, beyond the quotes below. Trailing
+	// whitespace in a value can be deliberate, and guessing costs more than it
+	// saves -- a token with a stray character is a 401 the app cannot explain.
+	name = strings.TrimSpace(name)
+	value = unquote(value)
+
+	switch {
+	case name == "":
+		return "", "", fmt.Errorf("%q has an empty name", assignment)
+	// Counted in runes, not bytes: the API's maxLength is characters, so
+	// len() would reject a valid non-ASCII value at half the documented limit.
+	case utf8.RuneCountInString(name) > maxEnvNameLen:
+		return "", "", fmt.Errorf("environment variable name %q exceeds %d characters", name, maxEnvNameLen)
+	case !envNamePattern.MatchString(name):
+		return "", "", fmt.Errorf(
+			"environment variable name %q must be POSIX-style: letters, digits and underscore, not starting with a digit",
+			name,
+		)
+	case utf8.RuneCountInString(value) > maxEnvValueLen:
+		return "", "", fmt.Errorf("value for %q exceeds %d characters", name, maxEnvValueLen)
+	}
+	return name, value, nil
 }
