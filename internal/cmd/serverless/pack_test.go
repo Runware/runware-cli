@@ -3,7 +3,6 @@ package serverless
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,13 +27,9 @@ func writeTree(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
-// unpack decodes an archive into path -> contents.
-func unpack(t *testing.T, encoded string) map[string]string {
+// unpack reads an archive into path -> contents.
+func unpack(t *testing.T, raw []byte) map[string]string {
 	t.Helper()
-	raw, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		t.Fatalf("decode: %v", err)
-	}
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
 		t.Fatalf("zip.NewReader: %v", err)
@@ -399,7 +394,7 @@ func TestPackDirectory_Deterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("packDirectory: %v", err)
 	}
-	if first != second {
+	if !bytes.Equal(first, second) {
 		t.Error("packing the same tree twice produced different archives")
 	}
 }
@@ -625,13 +620,9 @@ func TestPackDirectory_PreservesFileMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	encoded, _, err := packDirectory(dir, testModelFile)
+	raw, _, err := packDirectory(dir, testModelFile)
 	if err != nil {
 		t.Fatalf("packDirectory: %v", err)
-	}
-	raw, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		t.Fatal(err)
 	}
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {

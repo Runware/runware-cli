@@ -3,7 +3,6 @@ package serverless
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
@@ -80,45 +79,45 @@ func alwaysExcluded(segments []string) bool {
 	return false
 }
 
-// packDirectory zips srcDir and returns the base64-encoded archive plus the path
-// of modelFile inside it.
+// packDirectory zips srcDir and returns the archive bytes plus the path of
+// modelFile inside it.
 //
 // srcDir is the archive root: every path in the zip is relative to it, which is
 // what the builder puts on PYTHONPATH and hands to MLflow code_paths, so the
 // project's own imports resolve at build and serve time exactly as they do
 // locally. An empty srcDir means the working directory.
-func packDirectory(srcDir, modelFile string) (zipBase64, modelFileRel string, err error) {
+func packDirectory(srcDir, modelFile string) (archive []byte, modelFileRel string, err error) {
 	root, err := resolveSrcDir(srcDir)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	modelFileRel, err = relativeModelFile(root, modelFile)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	matcher, err := loadIgnoreMatcher(root)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	files, err := collectFiles(root, modelFileRel, matcher)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 	if len(files) == 0 {
 		// Unreachable while the model file is forced in, but a packer that can
 		// return an empty archive should say so rather than let the builder
 		// answer with a 422 about a missing model file.
-		return "", "", fmt.Errorf("no files to pack under %q", root)
+		return nil, "", fmt.Errorf("no files to pack under %q", root)
 	}
 
 	raw, err := writeArchive(root, files)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
-	return base64.StdEncoding.EncodeToString(raw), modelFileRel, nil
+	return raw, modelFileRel, nil
 }
 
 // resolveSrcDir defaults an empty srcDir to the working directory and checks it

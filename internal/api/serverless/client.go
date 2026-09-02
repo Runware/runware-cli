@@ -499,7 +499,7 @@ func (c *Client) ListVersions(ctx context.Context, appID string, params *ListVer
 		if resp.JSON200 == nil {
 			return pageOf[Version](nil, nil), nil
 		}
-		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
+		return pageOf(&resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
@@ -559,7 +559,7 @@ func (c *Client) ListBuilds(ctx context.Context, appID string, params *ListBuild
 		if resp.JSON200 == nil {
 			return pageOf[Build](nil, nil), nil
 		}
-		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
+		return pageOf(&resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[Build]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
