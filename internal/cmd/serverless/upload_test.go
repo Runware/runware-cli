@@ -120,6 +120,11 @@ func TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload(t *testing.T) {
 	if declaration.Sha256 != wantSHA {
 		t.Errorf("declared sha256 = %q, want %q", declaration.Sha256, wantSHA)
 	}
+	// A session replays only while pending and answers 409 once it is ready or
+	// consumed, so keying on the archive would let a tree deploy exactly once.
+	if declaration.IdempotencyKey == wantSHA {
+		t.Error("idempotency key is the archive digest; re-deploying the same tree would 409")
+	}
 	if declaration.DeclaredByteLength != int64(len(archive)) {
 		t.Errorf("declared length = %d, want %d", declaration.DeclaredByteLength, len(archive))
 	}
@@ -240,5 +245,78 @@ func TestUploadSource_ReportsARejectedArchive(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "model file not found in archive") {
 		t.Errorf("error = %v, want the rejection reason", err)
+	}
+}
+
+// TestUploadSource_UsesAFreshKeyPerInvocation is the other half of the rule:
+// two deploys of the identical tree must open two sessions, because the first
+// one is consumed by the version it created and will never replay again.
+func TestUploadSource_UsesAFreshKeyPerInvocation(t *testing.T) {
+	archive := []byte("a zip, near enough")
+
+	stage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer stage.Close()
+
+	var keys []string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/complete") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"id": "019c7654-8b21-7abc-9123-abcdef123456",
+				"appId": "` + uploadTestAppID + `",
+				"declaredByteLength": 18,
+				"sha256": "` + strings.Repeat("a", 64) + `",
+				"sourceType": "code",
+				"state": "ready",
+				"expiresAt": "2026-09-02T12:00:00Z",
+				"createdAt": "2026-09-02T11:00:00Z",
+				"updatedAt": "2026-09-02T11:00:00Z"
+			}`))
+			return
+		}
+		var declaration serverlessapi.SourceUploadCreate
+		if err := json.NewDecoder(r.Body).Decode(&declaration); err != nil {
+			t.Fatalf("decode declaration: %v", err)
+		}
+		keys = append(keys, declaration.IdempotencyKey)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{
+			"upload": {
+				"id": "019c7654-8b21-7abc-9123-abcdef123456",
+				"appId": "` + uploadTestAppID + `",
+				"declaredByteLength": 18,
+				"sha256": "` + strings.Repeat("a", 64) + `",
+				"sourceType": "code",
+				"state": "pending",
+				"expiresAt": "2026-09-02T12:00:00Z",
+				"createdAt": "2026-09-02T11:00:00Z",
+				"updatedAt": "2026-09-02T11:00:00Z"
+			},
+			"transfer": {
+				"mode": "singlePut",
+				"method": "PUT",
+				"url": "` + stage.URL + `/staging-object",
+				"headers": {},
+				"expiresAt": "2026-09-02T12:00:00Z"
+			}
+		}`))
+	}))
+	defer api.Close()
+
+	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
+	for range 2 {
+		if _, err := uploadSource(context.Background(), client, uploadTestAppID, archive, "model.py"); err != nil {
+			t.Fatalf("uploadSource: %v", err)
+		}
+	}
+
+	if len(keys) != 2 {
+		t.Fatalf("saw %d declarations, want 2", len(keys))
+	}
+	if keys[0] == keys[1] {
+		t.Errorf("both deploys sent idempotency key %q; the second would 409 on a consumed session", keys[0])
 	}
 }

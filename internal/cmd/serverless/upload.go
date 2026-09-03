@@ -23,9 +23,11 @@ func uploadSource(ctx context.Context, client *serverlessapi.Client, appID strin
 
 	created, err := client.CreateSourceUpload(ctx, appID, serverlessapi.SourceUploadCreate{
 		DeclaredByteLength: int64(len(archive)),
-		// The digest doubles as the idempotency key: retrying the same deploy
-		// declares the same archive, and anything else is a different upload.
-		IdempotencyKey: hex.EncodeToString(digest[:]),
+		// Fresh per invocation, and deliberately not the archive's digest: a
+		// session replays only while it is still pending, and answers 409 once
+		// it is ready or consumed. Keyed on content, a tree that deployed once
+		// could never be deployed again.
+		IdempotencyKey: uuid.NewString(),
 		Sha256:         hex.EncodeToString(digest[:]),
 		SourceType:     serverlessapi.AppSourceTypeCode,
 		ModelFile:      &modelFile,
