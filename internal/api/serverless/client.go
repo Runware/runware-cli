@@ -28,6 +28,11 @@ const defaultTimeout = 30 * time.Second
 // exceed the default request timeout on slow links or larger codebases.
 const createAppTimeout = 5 * time.Minute
 
+// invokeSyncTimeout bounds startSyncTask. It must exceed the platform wait
+// window so a 504/202 with taskId is received; a client-side timeout would
+// lose the id and force a resubmit (a second billable run).
+const invokeSyncTimeout = 5 * time.Minute
+
 // GpuType is the public catalogue entry for a supported GPU type.
 type GpuType = gen.GpuType
 
@@ -81,6 +86,24 @@ type BuildStatus = gen.BuildStatus
 
 // ListWorkersParams are optional filters for ListWorkers.
 type ListWorkersParams = gen.ListWorkersParams
+
+// Task is a serverless invocation.
+type Task = gen.Task
+
+// TaskStatus is a task lifecycle status.
+type TaskStatus = gen.TaskStatus
+
+// TaskPayload is the JSON object forwarded to an endpoint handler.
+type TaskPayload = gen.TaskPayload
+
+// ListTasksParams are optional filters for ListTasks.
+type ListTasksParams = gen.ListTasksParams
+
+const (
+	TaskStatusPending   TaskStatus = gen.TaskStatusPending
+	TaskStatusCompleted TaskStatus = gen.TaskStatusCompleted
+	TaskStatusFailed    TaskStatus = gen.TaskStatusFailed
+)
 
 // Endpoint is an app HTTP endpoint.
 type Endpoint = gen.Endpoint
@@ -178,19 +201,23 @@ func newGeneratedClient(apiKey, baseURL string, httpClient gen.HttpRequestDoer) 
 }
 
 // createInner returns a generated client suitable for createApp.
-// When the underlying doer is an *http.Client with a positive Timeout shorter
-// than createAppTimeout, a clone with the longer timeout is used so
-// large uploads are not cut off. A zero Timeout (no deadline) is left unchanged.
 func (c *Client) createInner() *gen.ClientWithResponses {
+	return c.innerWithMinTimeout(createAppTimeout)
+}
+
+// innerWithMinTimeout returns the generated client, cloning the HTTP client
+// when its Timeout is shorter than minTimeout. A zero Timeout (no deadline) is left
+// unchanged.
+func (c *Client) innerWithMinTimeout(minTimeout time.Duration) *gen.ClientWithResponses {
 	hc, ok := c.doer.(*http.Client)
 	if !ok {
 		return c.inner
 	}
-	if hc.Timeout == 0 || hc.Timeout >= createAppTimeout {
+	if hc.Timeout == 0 || hc.Timeout >= minTimeout {
 		return c.inner
 	}
 	cloned := *hc
-	cloned.Timeout = createAppTimeout
+	cloned.Timeout = minTimeout
 	return newGeneratedClient(c.apiKey, c.baseURL, &cloned)
 }
 
