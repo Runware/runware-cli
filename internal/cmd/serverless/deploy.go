@@ -89,7 +89,7 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 				name = id
 			}
 
-			zipBase64, modelFile, err := packDirectory(srcDir, entryFile)
+			archive, modelFile, err := packDirectory(srcDir, entryFile)
 			if err != nil {
 				return err
 			}
@@ -104,11 +104,20 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 				return err
 			}
 
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Uploading source for %s...", id))
+			spin.Start()
+			uploadID, err := uploadSource(cmd.Context(), client, id, archive, modelFile)
+			spin.Stop()
+			if err != nil {
+				return err
+			}
+
 			source, err := serverlessapi.NewCodeAppSource(serverlessapi.CodeSourceUpsert{
 				BaseImage: baseImage,
 				Codebase: serverlessapi.CodebaseSource{
-					ModelFile: modelFile,
-					ZipBase64: zipBase64,
+					UploadId: uploadID,
 				},
 				Requirements: optionalStringSlice(requirements),
 			})
@@ -132,10 +141,9 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 				},
 			}
 
-			spin := cmdutil.NewSpinner(fmt.Sprintf("Creating application %s...", id))
+			spin = cmdutil.NewSpinner(fmt.Sprintf("Creating application %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
 			app, err := client.CreateApp(cmd.Context(), body)
 			if err != nil {
 				spin.Stop()

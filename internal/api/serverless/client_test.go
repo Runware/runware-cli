@@ -165,8 +165,7 @@ func TestCreateApp(t *testing.T) {
 	source, err := NewCodeAppSource(CodeSourceUpsert{
 		BaseImage: "python:3.11-slim",
 		Codebase: CodebaseSource{
-			ModelFile: "app.py",
-			ZipBase64: "Zm9v",
+			UploadId: uuid.MustParse("019c7654-8b21-7abc-9123-abcdef123456"),
 		},
 	})
 	if err != nil {
@@ -452,7 +451,7 @@ func TestUpdateApp(t *testing.T) {
 		if body.Configuration == nil || body.Configuration.MaxWorkers == nil || *body.Configuration.MaxWorkers != maxWorkers {
 			t.Errorf("unexpected body: %s", raw)
 		}
-		if body.AppName != nil || body.AppSource != nil || body.Secrets != nil || body.EnvironmentVariables != nil || body.Endpoints != nil {
+		if body.AppName != nil || body.AppSource != nil || body.Secrets != nil || body.EnvironmentVariables != nil {
 			t.Errorf("patch included out-of-scope fields: %s", raw)
 		}
 		var rawMap map[string]json.RawMessage

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,14 +67,14 @@ func (e AppSort) Valid() bool {
 	}
 }
 
-// Defines values for AppSourceUpsertType.
+// Defines values for AppSourceType.
 const (
-	Code      AppSourceUpsertType = "code"
-	Container AppSourceUpsertType = "container"
+	Code      AppSourceType = "code"
+	Container AppSourceType = "container"
 )
 
-// Valid indicates whether the value is a known member of the AppSourceUpsertType enum.
-func (e AppSourceUpsertType) Valid() bool {
+// Valid indicates whether the value is a known member of the AppSourceType enum.
+func (e AppSourceType) Valid() bool {
 	switch e {
 	case Code:
 		return true
@@ -111,6 +112,27 @@ func (e AppStatus) Valid() bool {
 	case AppStatusStopped:
 		return true
 	case AppStatusStopping:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BuildPhaseOutcome.
+const (
+	BuildPhaseOutcomeFailed    BuildPhaseOutcome = "failed"
+	BuildPhaseOutcomeRunning   BuildPhaseOutcome = "running"
+	BuildPhaseOutcomeSucceeded BuildPhaseOutcome = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the BuildPhaseOutcome enum.
+func (e BuildPhaseOutcome) Valid() bool {
+	switch e {
+	case BuildPhaseOutcomeFailed:
+		return true
+	case BuildPhaseOutcomeRunning:
+		return true
+	case BuildPhaseOutcomeSucceeded:
 		return true
 	default:
 		return false
@@ -195,6 +217,45 @@ func (e GpuAvailability) Valid() bool {
 	}
 }
 
+// Defines values for OrgTenancyState.
+const (
+	OrgTenancyStateActive   OrgTenancyState = "active"
+	OrgTenancyStateDisabled OrgTenancyState = "disabled"
+	OrgTenancyStatePending  OrgTenancyState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the OrgTenancyState enum.
+func (e OrgTenancyState) Valid() bool {
+	switch e {
+	case OrgTenancyStateActive:
+		return true
+	case OrgTenancyStateDisabled:
+		return true
+	case OrgTenancyStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrgTenancyDesiredState.
+const (
+	OrgTenancyDesiredStateActive   OrgTenancyDesiredState = "active"
+	OrgTenancyDesiredStateDisabled OrgTenancyDesiredState = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the OrgTenancyDesiredState enum.
+func (e OrgTenancyDesiredState) Valid() bool {
+	switch e {
+	case OrgTenancyDesiredStateActive:
+		return true
+	case OrgTenancyDesiredStateDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SecretType.
 const (
 	Generic SecretType = "generic"
@@ -204,6 +265,66 @@ const (
 func (e SecretType) Valid() bool {
 	switch e {
 	case Generic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourceUploadSinglePutTransferMethod.
+const (
+	SourceUploadTransferMethodPut SourceUploadSinglePutTransferMethod = "PUT"
+)
+
+// Valid indicates whether the value is a known member of the SourceUploadSinglePutTransferMethod enum.
+func (e SourceUploadSinglePutTransferMethod) Valid() bool {
+	switch e {
+	case SourceUploadTransferMethodPut:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourceUploadSinglePutTransferMode.
+const (
+	SourceUploadTransferModeSinglePut SourceUploadSinglePutTransferMode = "singlePut"
+)
+
+// Valid indicates whether the value is a known member of the SourceUploadSinglePutTransferMode enum.
+func (e SourceUploadSinglePutTransferMode) Valid() bool {
+	switch e {
+	case SourceUploadTransferModeSinglePut:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourceUploadState.
+const (
+	SourceUploadStateConsumed SourceUploadState = "consumed"
+	SourceUploadStateDeleted  SourceUploadState = "deleted"
+	SourceUploadStateExpired  SourceUploadState = "expired"
+	SourceUploadStatePending  SourceUploadState = "pending"
+	SourceUploadStateReady    SourceUploadState = "ready"
+	SourceUploadStateRejected SourceUploadState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the SourceUploadState enum.
+func (e SourceUploadState) Valid() bool {
+	switch e {
+	case SourceUploadStateConsumed:
+		return true
+	case SourceUploadStateDeleted:
+		return true
+	case SourceUploadStateExpired:
+		return true
+	case SourceUploadStatePending:
+		return true
+	case SourceUploadStateReady:
+		return true
+	case SourceUploadStateRejected:
 		return true
 	default:
 		return false
@@ -225,6 +346,42 @@ func (e TaskStatus) Valid() bool {
 	case TaskStatusFailed:
 		return true
 	case TaskStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TriggeredByKind.
+const (
+	ApiKey TriggeredByKind = "apiKey"
+	User   TriggeredByKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the TriggeredByKind enum.
+func (e TriggeredByKind) Valid() bool {
+	switch e {
+	case ApiKey:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkerStateFilter.
+const (
+	WorkerStateFilterAll  WorkerStateFilter = "all"
+	WorkerStateFilterLive WorkerStateFilter = "live"
+)
+
+// Valid indicates whether the value is a known member of the WorkerStateFilter enum.
+func (e WorkerStateFilter) Valid() bool {
+	switch e {
+	case WorkerStateFilterAll:
+		return true
+	case WorkerStateFilterLive:
 		return true
 	default:
 		return false
@@ -270,12 +427,135 @@ func (e WorkerStatus) Valid() bool {
 	}
 }
 
+// Defines values for MetricWindow.
+const (
+	MetricWindowN1h  MetricWindow = "1h"
+	MetricWindowN24h MetricWindow = "24h"
+	MetricWindowN30d MetricWindow = "30d"
+	MetricWindowN6h  MetricWindow = "6h"
+	MetricWindowN7d  MetricWindow = "7d"
+)
+
+// Valid indicates whether the value is a known member of the MetricWindow enum.
+func (e MetricWindow) Valid() bool {
+	switch e {
+	case MetricWindowN1h:
+		return true
+	case MetricWindowN24h:
+		return true
+	case MetricWindowN30d:
+		return true
+	case MetricWindowN6h:
+		return true
+	case MetricWindowN7d:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SelectorStatusClass.
+const (
+	SelectorStatusClassN2xx SelectorStatusClass = "2xx"
+	SelectorStatusClassN4xx SelectorStatusClass = "4xx"
+	SelectorStatusClassN5xx SelectorStatusClass = "5xx"
+)
+
+// Valid indicates whether the value is a known member of the SelectorStatusClass enum.
+func (e SelectorStatusClass) Valid() bool {
+	switch e {
+	case SelectorStatusClassN2xx:
+		return true
+	case SelectorStatusClassN4xx:
+		return true
+	case SelectorStatusClassN5xx:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetLogEntriesParamsWindow.
+const (
+	GetLogEntriesParamsWindowN1h  GetLogEntriesParamsWindow = "1h"
+	GetLogEntriesParamsWindowN24h GetLogEntriesParamsWindow = "24h"
+	GetLogEntriesParamsWindowN30d GetLogEntriesParamsWindow = "30d"
+	GetLogEntriesParamsWindowN6h  GetLogEntriesParamsWindow = "6h"
+	GetLogEntriesParamsWindowN7d  GetLogEntriesParamsWindow = "7d"
+)
+
+// Valid indicates whether the value is a known member of the GetLogEntriesParamsWindow enum.
+func (e GetLogEntriesParamsWindow) Valid() bool {
+	switch e {
+	case GetLogEntriesParamsWindowN1h:
+		return true
+	case GetLogEntriesParamsWindowN24h:
+		return true
+	case GetLogEntriesParamsWindowN30d:
+		return true
+	case GetLogEntriesParamsWindowN6h:
+		return true
+	case GetLogEntriesParamsWindowN7d:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetMetricSeriesParamsWindow.
+const (
+	GetMetricSeriesParamsWindowN1h  GetMetricSeriesParamsWindow = "1h"
+	GetMetricSeriesParamsWindowN24h GetMetricSeriesParamsWindow = "24h"
+	GetMetricSeriesParamsWindowN30d GetMetricSeriesParamsWindow = "30d"
+	GetMetricSeriesParamsWindowN6h  GetMetricSeriesParamsWindow = "6h"
+	GetMetricSeriesParamsWindowN7d  GetMetricSeriesParamsWindow = "7d"
+)
+
+// Valid indicates whether the value is a known member of the GetMetricSeriesParamsWindow enum.
+func (e GetMetricSeriesParamsWindow) Valid() bool {
+	switch e {
+	case GetMetricSeriesParamsWindowN1h:
+		return true
+	case GetMetricSeriesParamsWindowN24h:
+		return true
+	case GetMetricSeriesParamsWindowN30d:
+		return true
+	case GetMetricSeriesParamsWindowN6h:
+		return true
+	case GetMetricSeriesParamsWindowN7d:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetMetricSeriesParamsStatusClass.
+const (
+	GetMetricSeriesParamsStatusClassN2xx GetMetricSeriesParamsStatusClass = "2xx"
+	GetMetricSeriesParamsStatusClassN4xx GetMetricSeriesParamsStatusClass = "4xx"
+	GetMetricSeriesParamsStatusClassN5xx GetMetricSeriesParamsStatusClass = "5xx"
+)
+
+// Valid indicates whether the value is a known member of the GetMetricSeriesParamsStatusClass enum.
+func (e GetMetricSeriesParamsStatusClass) Valid() bool {
+	switch e {
+	case GetMetricSeriesParamsStatusClassN2xx:
+		return true
+	case GetMetricSeriesParamsStatusClassN4xx:
+		return true
+	case GetMetricSeriesParamsStatusClassN5xx:
+		return true
+	default:
+		return false
+	}
+}
+
 // App defines model for App.
 type App struct {
 	// ActiveVersionId Current deployed version; null until the first version is successfully deployed.
 	ActiveVersionId *openapi_types.UUID `json:"activeVersionId,omitempty"`
 
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// AppName Mutable display name. Must contain at least one non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Unlike `appId` the pattern is unanchored, so interior spaces are allowed — only an entirely blank name is rejected.
@@ -288,8 +568,11 @@ type App struct {
 	// EnvironmentVariables Plain-text environment variables for this app. Populated on single-app responses (get, update, stop, resume, delete, deploy, favourite). List of apps returns an empty array to avoid an N+1 per page row — use the `/environment-variables` endpoints to page the set.
 	EnvironmentVariables []EnvironmentVariable `json:"environmentVariables"`
 
-	// IsFavourite Whether the authenticated organisation has favourited this app. Drives the console Favourites section; toggled via `PUT`/`DELETE` `/v1/apps/{appId}/favourite`.
+	// IsFavourite Whether the authenticated organisation has favourited this app. Favourited apps sort ahead of non-favourited apps; toggled via `PUT`/`DELETE` `/v1/apps/{appId}/favourite`.
 	IsFavourite bool `json:"isFavourite"`
+
+	// Runtime Observed state for one app at `calculatedAt`. Desired worker scale remains in `configuration`. Worker and GPU counts are always present; traffic and duration fields are omitted when their backing data is unavailable.
+	Runtime AppRuntime `json:"runtime"`
 
 	// Secrets Secrets attached to this app, including any env-var name override. Populated on single-app responses; list of apps returns an empty array to avoid an N+1 — use `/apps/{appId}/secrets` to page the set.
 	Secrets   []SecretAttachment `json:"secrets"`
@@ -299,7 +582,7 @@ type App struct {
 
 // AppCreate defines model for AppCreate.
 type AppCreate struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// AppName Mutable display name. Must contain at least one non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Unlike `appId` the pattern is unanchored, so interior spaces are allowed — only an entirely blank name is rejected.
@@ -309,21 +592,19 @@ type AppCreate struct {
 	// - `code`: the codebase is submitted to the build pipeline; a new image is built and
 	//   deployed once ready.
 	//
-	// - `container`: no build step — the version names the image reference supplied here.
-	//   No worker runs from a container source yet, so the app stays `initializing`.
+	// - `container`: the submitted zip is built into a wrapper image by the same
+	//   pipeline and deployed once ready; the version records the built image, not a
+	//   customer-supplied reference.
 	//
-	// Either way the version is recorded with the app. A code-source app transitions to `active` once its first version is ready, or to `failed` if the build, validation, or rollout fails.
+	// Either way the version is recorded with the app, and the app transitions to `active` once its first version is ready, or to `failed` if the build, validation, or rollout fails.
 	AppSource     AppSourceUpsert    `json:"appSource"`
 	Configuration WorkerConfigCreate `json:"configuration"`
-
-	// Endpoints Invocable routes to expose on the app. Paths are unique within an app: repeating one in this array is rejected rather than collapsed, since there would be no answer to which entry a request meant.
-	Endpoints *[]EndpointCreate `json:"endpoints,omitempty"`
 
 	// EnvironmentVariables Map with environment variables. Keys are the environment variable names, values are the environment variable values. Use the dedicated `/environment-variables` endpoints to change them after the app exists.
 	// Each key must satisfy `EnvironmentVariableName` — POSIX-style, at most 128 characters. OpenAPI 3.0 cannot constrain map keys, so a bad one is rejected by the server rather than by the schema. Keys must also not collide with a secret's injected env var name on the same app (see `attachAppSecret`).
 	EnvironmentVariables *map[string]string `json:"environmentVariables,omitempty"`
 
-	// Secrets Existing organisation secrets to attach to this app, with an optional env-var name override per entry. Not persisted yet — supplying this field returns `422`, rather than accepting a set nothing attaches to the workload. Shape matches `POST /apps/{appId}/secrets` so create and attach share one contract. When wired, each injected name must not collide with a key in `environmentVariables` (or an existing `deployment_configs` row) — see `SecretAttach`.
+	// Secrets Existing organisation secrets to attach to this app, with an optional env-var name override per entry. This is the app's initial attachment set, so the first rollout carries the values into the worker. The secret must already exist and be `active`; this route does not create one, and an unknown or inactive name returns `404`. Shape matches `POST /apps/{appId}/secrets` so create and attach share one contract. Each injected name must not collide with a key in `environmentVariables` — see `SecretAttach`.
 	Secrets *[]SecretAttach `json:"secrets,omitempty"`
 
 	// Volumes Persistent node-local directories bind-mounted through the checkpointer into the sandboxed application. Use these for downloaded weights and caches that must stay outside the checkpointed root filesystem. Paths must be unique and non-overlapping. The set is frozen into each immutable app version.
@@ -332,7 +613,7 @@ type AppCreate struct {
 
 // AppEvent defines model for AppEvent.
 type AppEvent struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId      AppId               `json:"appId"`
 	CreatedAt  *time.Time          `json:"createdAt,omitempty"`
 	EndpointId *openapi_types.UUID `json:"endpointId,omitempty"`
@@ -347,13 +628,34 @@ type AppEvent struct {
 // AppEventType defines model for AppEventType.
 type AppEventType string
 
-// AppId Immutable app identifier, unique within the authenticated organisation.
+// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 type AppId = string
 
 // AppName Mutable display name. Must contain at least one non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Unlike `appId` the pattern is unanchored, so interior spaces are allowed — only an entirely blank name is rejected.
 type AppName = string
 
-// AppSort Ordering for `listApps`. Every ordering is total (ties broken by `appId`), so a page is reproducible and its cursor stable.
+// AppRuntime Observed state for one app at `calculatedAt`. Desired worker scale remains in `configuration`. Worker and GPU counts are always present; traffic and duration fields are omitted when their backing data is unavailable.
+type AppRuntime struct {
+	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) on this app. Pending workers count because they still hold capacity.
+	ActiveWorkers int64 `json:"activeWorkers"`
+
+	// AverageRequestDuration24h Mean inference request duration in seconds over the last 24 hours (all requests; the duration histogram has no status class). Omitted when metrics cannot be read, when the app had no requests, or when the duration series has no samples for the app in the window.
+	AverageRequestDuration24h *float64 `json:"averageRequestDuration24h,omitempty"`
+
+	// CalculatedAt When this runtime snapshot was read from the database.
+	CalculatedAt time.Time `json:"calculatedAt"`
+
+	// ErrorRate24h Error ratio (4xx + 5xx over requests) for this app in the last 24 hours, in 0–1. Omitted when metrics cannot be read or when the app had no requests in the window.
+	ErrorRate24h *float64 `json:"errorRate24h,omitempty"`
+
+	// ProvisionedGpuCount Sum of `gpuCount` across those workers. A pending worker contributes zero until Kubernetes schedules it onto a node.
+	ProvisionedGpuCount int64 `json:"provisionedGpuCount"`
+
+	// Requests24h Requests served by this app in the last 24 hours. Omitted until available.
+	Requests24h *int64 `json:"requests24h,omitempty"`
+}
+
+// AppSort Ordering for `listApps`. Favourited apps appear before non-favourited apps, and the selected ordering applies within each group. Every ordering is total (ties broken by `appId`), so a page is reproducible and its cursor stable.
 //
 // - `createdAt`: newest first. The default.
 // - `name`: `appName` A–Z, case-insensitive.
@@ -363,12 +665,15 @@ type AppName = string
 // `activity` and `errorRate` rank on per-app traffic metrics, which are not collected yet; requesting either returns `422` until they are.
 type AppSort string
 
+// AppSourceType defines model for AppSourceType.
+type AppSourceType string
+
 // AppSourceUpsert defines model for AppSourceUpsert.
 type AppSourceUpsert struct {
 	Source AppSourceUpsert_Source `json:"source"`
 
-	// Type Selects the version creation path. `code` submits customer source code to the Image Build Service; `container` references a pre-built OCI image.
-	Type AppSourceUpsertType `json:"type"`
+	// Type Selects the version creation path. `code` submits customer source code to the Image Build Service; `container` submits a wrapper `Dockerfile` and `container.yaml` for Runware to build into a hosted image.
+	Type AppSourceType `json:"type"`
 }
 
 // AppSourceUpsert_Source defines model for AppSourceUpsert.Source.
@@ -376,13 +681,10 @@ type AppSourceUpsert_Source struct {
 	union json.RawMessage
 }
 
-// AppSourceUpsertType Selects the version creation path. `code` submits customer source code to the Image Build Service; `container` references a pre-built OCI image.
-type AppSourceUpsertType string
-
 // AppStatus defines model for AppStatus.
 type AppStatus string
 
-// AppSummary Aggregate dashboard metrics for every app in the authenticated organisation. App and worker tallies are always present (zero when empty). Traffic and spend metrics whose backing system is not yet available are omitted (rendered as "no data" by the frontend) rather than reported as zero.
+// AppSummary Aggregate dashboard metrics for every app in the authenticated organisation. App and worker tallies are always present (zero when empty). Request and error-rate totals are omitted when the metrics store cannot be read, rather than reported as zero. Spend is omitted until billing rollups exist.
 type AppSummary struct {
 	// ActiveApps Apps currently in the `active` status.
 	ActiveApps int64 `json:"activeApps"`
@@ -393,13 +695,13 @@ type AppSummary struct {
 	// CalculatedAt When these metrics were computed.
 	CalculatedAt time.Time `json:"calculatedAt"`
 
-	// ErrorRate24h Error ratio (0–1) over the last 24h. Omitted until request metrics are available.
+	// ErrorRate24h Error ratio (4xx + 5xx over requests) for the last 24 hours, in 0–1. Omitted when metrics cannot be read or when `requests24h` is zero.
 	ErrorRate24h *float64 `json:"errorRate24h,omitempty"`
 
 	// ProvisionedGpuCount Sum of `gpuCount` across those same non-terminal workers.
 	ProvisionedGpuCount int64 `json:"provisionedGpuCount"`
 
-	// Requests24h Requests served in the last 24h. Omitted until request metrics are available.
+	// Requests24h Requests served in the last 24 hours across every app. Omitted when metrics cannot be read. Zero when the organisation had no traffic.
 	Requests24h *int64 `json:"requests24h,omitempty"`
 
 	// SpendToday Estimated spend since 00:00 UTC. Omitted until billing rollups are available.
@@ -410,25 +712,23 @@ type AppSummary struct {
 }
 
 // AppUpdate Updates one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Lifecycle transitions (stop/resume/delete/deploy) use their dedicated operations.
-// A successful update records a new version carrying the updated configuration and the same image, so what to deploy is always a version rather than the current state of a mutable row. `activeVersionId` does not move: the running workload is unchanged until that version is deployed.
-// **Currently applied:** `appName` and `configuration`. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys). When wired, configuration/secret/endpoint changes take effect on the next Scaler cycle; `appSource` triggers a new build and rollout.
+// A successful configuration or `environmentVariables` update records a new version carrying the updated values and the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. A name-only update records a version and does not pin. If the roll of a live app fails, `activeVersionId` is restored so the field keeps naming the running configuration.
+// `appSource` starts a build and records version N+1 with a new image. The deploy queue rolls that version once the build is ready; `activeVersionId` moves only then. A builder rejection leaves the app on its current version. After accept, a late overlay race leaves the new version recorded and the previous attachments in place.
+// `secrets` replaces the attachment set and does not roll the workload. Endpoints are not a field of this contract at all: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys, and an unknown `endpoints` field is rejected like any other.
 type AppUpdate struct {
 	// AppName Mutable display name; does not affect app identity or routing. Omit to leave unchanged — an explicit blank value is rejected, not treated as a clear.
 	AppName *AppName `json:"appName,omitempty"`
 
-	// AppSource Write-only. New source to build and deploy; not returned in the App response. Use the `/builds` endpoints to inspect build status. Triggers a build (for `code` sources) or image validation (for `container` sources); on success the resulting version is deployed automatically. On failure the app remains on the previous version. Not persisted yet — supplying this field returns `422`.
+	// AppSource Write-only. New source to build and deploy; not returned in the App response. Use the `/builds` endpoints to inspect build status. Triggers a build (for `code` sources) or validates `container.yaml` then builds (for `container` sources). On accept the resulting version is recorded with a new image tag and rolled through the deploy queue. A builder rejection leaves the app on the previous version and writes no version or build row. After accept, a concurrent secret deactivation or env/secret collision leaves version N+1 recorded and the previous attachment set in place. `activeVersionId` moves only when that rollout completes. Not valid on a `stopped` or `stopping` app — there is nothing to roll the new version onto, and `resume` rolls the pinned one — so supplying it in those statuses returns `409 Conflict`.
 	AppSource *AppSourceUpsert `json:"appSource,omitempty"`
 
-	// Configuration Partial worker configuration. Any field present overwrites the live value; omitted fields are left unchanged. Clearing a nullable live field (setting it to null) is not supported — omit the field to leave it unchanged. `computeType` is create-time only and cannot be patched. Changing `gpuType` or `gpusPerWorker` affects only newly created workers.
+	// Configuration Partial worker configuration. Any field present overwrites the live value; omitted fields are left unchanged. Clearing a nullable live field (setting it to null) is not supported — omit the field to leave it unchanged. `fallbackGpuType` is the exception: send an empty string to clear it. `computeType` is create-time only and cannot be patched. Changing `gpuType` affects only newly created workers.
 	Configuration *WorkerConfigPatch `json:"configuration,omitempty"`
 
-	// Endpoints Replaces the app's endpoints. Not persisted yet — supplying this field returns `422`.
-	Endpoints *[]EndpointCreate `json:"endpoints,omitempty"`
-
-	// EnvironmentVariables Map with environment variables. Keys are the environment variable names, values are the environment variable values. Setting the value of an environment variable to null deletes the environment variable from the app. Not persisted yet — supplying this field returns `422`.
+	// EnvironmentVariables Replaces the app's environment variables. Keys are the variable names, values are the values. A key absent from the map is deleted. A null value omits that key from the new set. The resolved map is snapshotted onto the version this update records, so a deploy applies it. When the copied image is deployable the update pins and rolls, the same as a configuration change.
 	EnvironmentVariables *map[string]*string `json:"environmentVariables,omitempty"`
 
-	// Secrets Replaces the app's secret attachments. Same `SecretAttach` shape as create and `POST /apps/{appId}/secrets`. Not persisted yet — supplying this field returns `422`. When wired, injected names must not collide with plain environment variables on the app.
+	// Secrets Replaces the app's secret attachments. Same `SecretAttach` shape as create and `POST /apps/{appId}/secrets`. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. Control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so this field does not roll the workload. An app holds at most 100 environment bindings in total; this array cannot exceed that ceiling on its own.
 	Secrets *[]SecretAttach `json:"secrets,omitempty"`
 }
 
@@ -438,24 +738,122 @@ type AppVolume struct {
 	MountPath string `json:"mountPath"`
 }
 
-// Build Details of a code build or container validation.
+// Build Details of a build. Both source types build, and `kind` says which pipeline ran: a `code` submission or a customer's own wrapper Dockerfile. Phase lists differ by kind, so never assume a fixed one. `listBuilds` and `getBuild` return this same shape.
+//
+// Nullability:
+//
+//   - `error` is null while the build is running (`queued`, `building`), on success
+//     (`ready`), and on `superseded` (a newer version took over — the `status` conveys
+//     that, and it is not a failure); it is present only on `failed`.
+//
+//   - `completedAt` and `durationMs` are null while the build is running and set once it
+//     reaches a terminal status (`ready`/`failed`/`superseded`). They are also null for
+//     terminal builds that finished before completion timestamps were tracked.
+//
+//   - `exitCode` is null while running. On a terminal build it carries the build Job's
+//     exit code when the builder still had it to report; it can remain null on a terminal
+//     build whose Job aged out before the code was read.
+//
+//   - `versionId` / `versionNumber` name the version this build produced. A code build's
+//     version is created together with the build, so these are populated from the moment
+//     the build exists, in every status; they are null only when no version references the
+//     build. When later config updates carry the build forward onto new versions, this is
+//     the earliest — the one the build actually produced.
+//
+//   - `triggeredBy` names the user or API key that submitted the build; it is null only
+//     for builds created before the actor was recorded.
 type Build struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	AppId *AppId `json:"appId,omitempty"`
+
+	// CompletedAt When the build reached a terminal status (`ready`/`failed`/`superseded`); null while running or for terminal builds recorded before this was tracked.
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+
+	// DurationMs Wall-clock milliseconds from `createdAt` to `completedAt`; null while the build is still running or when no completion time was recorded.
+	DurationMs *int64 `json:"durationMs,omitempty"`
 
 	// Error Error message or failure reason; null when the build is still running or succeeded.
-	Error    *string            `json:"error,omitempty"`
+	Error *string `json:"error,omitempty"`
+
+	// ExitCode Exit code of the build container: 0 on success, its non-zero code on a build failure. Null while running, on a terminal build whose exit code the builder could no longer report, and when the build container never ran (e.g. an init container such as dockerfile generation failed first).
 	ExitCode *int32             `json:"exitCode,omitempty"`
 	Id       openapi_types.UUID `json:"id"`
 
 	// LogTail Trailing build log output.
 	LogTail *string `json:"logTail,omitempty"`
 
+	// Phases Observed build phases with their timings, recorded once the build is terminal; empty until then. Phase lists differ by `source.type`; never assume a fixed list.
+	Phases []BuildPhase `json:"phases"`
+
+	// Source Where a build's source came from: `code` for a customer code submission, `container` for a customer wrapper Dockerfile. `repository` and `revision` are not yet recorded (both sources are zip uploads) and will be added when the platform stores that provenance.
+	Source BuildSource `json:"source"`
+
 	// Status Build/validation lifecycle status.
 	Status BuildStatus `json:"status"`
+
+	// TriggeredBy Who performed an action — the authenticated user (JWT) or the API key. `kind` says which, so `id` (that actor's UUID) is resolvable to the right thing; `displayName` is its name captured at write time, so it renders as it was even if the user or key is later renamed. Used as `Build.triggeredBy` and `Version.author`.
+	TriggeredBy *TriggeredBy `json:"triggeredBy,omitempty"`
+
+	// VersionId The version this build produced. A code build's version is created together with the build, so this is populated in every status; it is null only when no version references the build. A code update carries an image — and so its build — forward onto a new version, so a build may be named by several versions; this is the earliest, the one the build actually produced.
+	VersionId *openapi_types.UUID `json:"versionId,omitempty"`
+
+	// VersionNumber Version number of `versionId`; null when `versionId` is null.
+	VersionNumber *int32 `json:"versionNumber,omitempty"`
+}
+
+// BuildListSummary Collection totals for this app's builds list. Independent of the page: the same values on every cursor, including a seek past the last row. `total` counts builds. `versions` counts versions on the same app — the same predicate as `listVersions` `summary.total`, excluding soft-deleted versions.
+type BuildListSummary struct {
+	// Total Number of builds recorded for this app.
+	Total int64 `json:"total"`
+
+	// Versions Number of versions recorded for this app. Same value as `listVersions` `summary.total`. A config-only update increments this without incrementing `total`.
+	Versions int64 `json:"versions"`
+}
+
+// BuildPhase One observed step of a build, in execution order. The phase list is open: which phases a build reports depends on its kind and on how it ran, so clients must not assume a fixed set of names or a fixed count.
+type BuildPhase struct {
+	// CompletedAt Null while the phase is still running.
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+
+	// Name Phase identifier, e.g. `prepare`, `build`, `index`. Deliberately not an enum — new build kinds report new phases without a contract change.
+	Name      string            `json:"name"`
+	Outcome   BuildPhaseOutcome `json:"outcome"`
+	StartedAt time.Time         `json:"startedAt"`
+}
+
+// BuildPhaseOutcome defines model for BuildPhase.Outcome.
+type BuildPhaseOutcome string
+
+// BuildSource Where a build's source came from: `code` for a customer code submission, `container` for a customer wrapper Dockerfile. `repository` and `revision` are not yet recorded (both sources are zip uploads) and will be added when the platform stores that provenance.
+type BuildSource struct {
+	// Type The kind of source that produced this build — `code` or `container`, straight from the build record. Build phases differ by kind, so clients must not assume a fixed phase list. Not modelled as an enum so adding a kind later does not churn the existing source-type constants this API shares.
+	Type string `json:"type"`
 }
 
 // BuildStatus Build/validation lifecycle status.
 type BuildStatus string
+
+// CatalogueEntry defines model for CatalogueEntry.
+type CatalogueEntry struct {
+	// Aggregation How each bucket was reduced, e.g. `avg` or `p50`. Carried so a tooltip can say what a point means rather than presenting a bucket reduction as an instant reading.
+	Aggregation string `json:"aggregation"`
+
+	// Id The value to pass as `queryId`.
+	Id string `json:"id"`
+
+	// Selectors The narrowings this query accepts. Anything else is rejected.
+	Selectors []string `json:"selectors"`
+
+	// Series The stable series ids this query returns. Empty when those ids are not known until the request (`apps_request_volume` keys each line on an app id).
+	Series []string `json:"series"`
+
+	// Unit The unit of every value in this query's series, e.g. `req/min`.
+	Unit string `json:"unit"`
+
+	// Windows The windows this query can answer. A window absent here has no stored series behind it, so a client should not offer it.
+	Windows []string `json:"windows"`
+}
 
 // CodeSourceUpsert defines model for CodeSourceUpsert.
 type CodeSourceUpsert struct {
@@ -469,11 +867,8 @@ type CodeSourceUpsert struct {
 
 // CodebaseSource defines model for CodebaseSource.
 type CodebaseSource struct {
-	// ModelFile Path within the zip to the MLflow model entry point (e.g. `model.py`).
-	ModelFile string `json:"modelFile"`
-
-	// ZipBase64 Base64-encoded zip archive of the customer's code. Note: move to presigned URL upload for production — base64 bloats the request body for large codebases.
-	ZipBase64 string `json:"zipBase64"`
+	// UploadId Id of a ready, unexpired source upload created for this app via `POST /v1/apps/{appId}/source-uploads` and completed. The archive it names is the zip of the customer's code, and the upload's own declaration carries the model entry point (`modelFile`), verified against the archive at completion — it is not repeated here. The operation consumes the upload atomically with the version it creates (version 1 on create, the next version on a source update); a consumed upload cannot back a second app or version.
+	UploadId SourceUploadId `json:"uploadId"`
 }
 
 // ComputeType Worker compute class. GPU is the only supported value. CPU workloads are not supported.
@@ -481,12 +876,8 @@ type ComputeType string
 
 // ContainerSource defines model for ContainerSource.
 type ContainerSource struct {
-	// ImageRef Registry URI of a pre-built image, e.g. `ghcr.io/acme/model:v2`.
-	ImageRef string `json:"imageRef"`
-
-	// RegistrySecretName Pull-credential name for a private image registry. Omit for a public registry. Parked on the version until image-pull custody has its own ADR — it is not a `secrets` row (ADR-019 covers only env-var secrets unsealed in-pod; the kubelet needs the credential before any container starts).
-	// When wired, the name becomes a Kubernetes Secret name, so it must be a DNS-1123 subdomain: lower-case alphanumerics, `-` and `.`, starting and ending alphanumeric, at most 253 characters. That is a hard requirement of what the name is used for, not a Runware naming policy.
-	RegistrySecretName *string `json:"registrySecretName,omitempty"`
+	// UploadId Id of a ready, unexpired source upload created for this app via `POST /v1/apps/{appId}/source-uploads` and completed. The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it — resolving the Dockerfile's public base images to immutable digests — and hosts the result, so no image reference or pull credential is supplied: a private base image is not supported until a build-time credential mechanism exists. An invalid `container.yaml` rejects the create — `400` where the document could not be parsed, `422` where it parsed and broke a rule — with `errors[]` entries carrying `configPointer` into the document; the endpoint set it declares becomes visible once the first build is ready and deployed. The operation consumes the upload atomically with the version it creates (version 1 on create, the next version on a source update); a consumed upload cannot back a second app or version.
+	UploadId SourceUploadId `json:"uploadId"`
 }
 
 // Currency ISO 4217 alphabetic code. The platform bills in USD only.
@@ -500,7 +891,7 @@ type DeployRequest struct {
 
 // Endpoint defines model for Endpoint.
 type Endpoint struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId     AppId              `json:"appId"`
 	CreatedAt *time.Time         `json:"createdAt,omitempty"`
 	Id        openapi_types.UUID `json:"id"`
@@ -510,15 +901,12 @@ type Endpoint struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
-// EndpointCreate defines model for EndpointCreate.
-type EndpointCreate struct {
-	// Path The endpoint's identity within the app: a bare lowercase URL segment, e.g. `generate` — a letter first, then letters, digits and hyphens, ending with a letter or digit, max 64 characters. No leading slash: documentation may display `/generate`, but the stored and addressed form is `generate`, so it drops into the invocation URL with no encoding. Unique within the app. All invocations are POST; the HTTP method is not part of endpoint identity.
-	Path string `json:"path"`
-}
+// EndpointPath Path of the endpoint to route the task to: a bare lowercase segment such as `generate`, with no leading slash.
+type EndpointPath = string
 
 // EnvironmentVariable defines model for EnvironmentVariable.
 type EnvironmentVariable struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId     *AppId              `json:"appId,omitempty"`
 	CreatedAt *time.Time          `json:"createdAt,omitempty"`
 	Id        *openapi_types.UUID `json:"id,omitempty"`
@@ -641,6 +1029,9 @@ type GpuTypeCreatePricing struct {
 // GpuTypeId Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalogue). This is not the internal database row UUID.
 type GpuTypeId = string
 
+// GpuTypeIdOrEmpty A `GpuTypeId`, or the empty string. Optional fallback GPU fields accept `""` because forms bind an unselected dropdown as empty rather than omitting the key. A non-empty value has the same shape as `GpuTypeId` — keep this pattern aligned when the catalogue-code format changes.
+type GpuTypeIdOrEmpty = string
+
 // GpuTypeList defines model for GpuTypeList.
 type GpuTypeList struct {
 	Data []GpuType `json:"data"`
@@ -655,6 +1046,66 @@ type GpuTypeUpdate struct {
 	SortOrder    *int32           `json:"sortOrder,omitempty"`
 }
 
+// ListSummary Collection totals for a paged list. Independent of the page: `total` is the COUNT of items in the collection and is the same value on every page, including a cursor that seeks past the last row.
+type ListSummary struct {
+	// Total Number of items in the collection this page was drawn from.
+	Total int64 `json:"total"`
+}
+
+// LogEntry defines model for LogEntry.
+type LogEntry struct {
+	Body   string             `json:"body"`
+	Fields *map[string]string `json:"fields,omitempty"`
+	Level  *string            `json:"level,omitempty"`
+	Time   int64              `json:"time"`
+}
+
+// LogEntryPage defines model for LogEntryPage.
+type LogEntryPage struct {
+	Entries []LogEntry `json:"entries"`
+
+	// NextCursor Opaque; absent on the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// MetricSeries defines model for MetricSeries.
+type MetricSeries struct {
+	Aggregation string              `json:"aggregation"`
+	Query       string              `json:"query"`
+	Series      []MetricSeriesEntry `json:"series"`
+
+	// StepS Seconds between adjacent timestamps in `t`.
+	StepS int64 `json:"step_s"`
+
+	// T The timestamp axis, shared by every series. Each value is the END of its bucket, in unix seconds: a point at `t[i]` is the aggregate over `(t[i] - step_s, t[i]]`, which is what the underlying range functions compute.
+	T    []int64 `json:"t"`
+	Unit string  `json:"unit"`
+
+	// Window The range covered, as `(from, to]`.
+	Window MetricWindowRange `json:"window"`
+}
+
+// MetricSeriesEntry defines model for MetricSeriesEntry.
+type MetricSeriesEntry struct {
+	// Id Stable identifier for this line. For chart queries it does not change, so a client can map it to a colour or legend position. For `apps_request_volume` it is the app id of that line.
+	Id string `json:"id"`
+
+	// Label Display text. May change without notice; do not switch on it.
+	Label string `json:"label"`
+
+	// V Values, positionally aligned to `t` and always the same length. `null` is a genuine absence of data, never a zero, and is sent explicitly rather than omitted so a gap draws as a gap instead of a line across an outage.
+	V []*float64 `json:"v"`
+}
+
+// MetricWindowRange The range covered, as `(from, to]`.
+type MetricWindowRange struct {
+	// From EXCLUSIVE: one `step_s` before the first timestamp in `t`. Nothing is sampled at `from` itself.
+	From int64 `json:"from"`
+
+	// To INCLUSIVE, and equal to the last timestamp in `t`.
+	To int64 `json:"to"`
+}
+
 // MoneyAmount A monetary amount as an exact decimal string in the currency's major unit. Money is never represented as a float (see `GpuPricing.perSecond`).
 type MoneyAmount struct {
 	// Amount Amount in major units as an exact decimal string.
@@ -664,6 +1115,30 @@ type MoneyAmount struct {
 
 	// Currency ISO 4217 alphabetic code. The platform bills in USD only.
 	Currency Currency `json:"currency"`
+}
+
+// OrgTenancy Receipt that an organisation has been provisioned for serverless (ADR-019). Names are derived from the organisation UUID; this object is the state machine, not a directory.
+type OrgTenancy struct {
+	// KsaName Kubernetes service account in the shared app namespace (`org-<uuid>`).
+	KsaName          string             `json:"ksaName"`
+	OrganizationUuid openapi_types.UUID `json:"organizationUuid"`
+
+	// State `pending` while Ensure is in flight, `active` when key, KSA and bindings have converged, `disabled` after teardown. Rows are tombstones — disable does not delete.
+	State OrgTenancyState `json:"state"`
+}
+
+// OrgTenancyState `pending` while Ensure is in flight, `active` when key, KSA and bindings have converged, `disabled` after teardown. Rows are tombstones — disable does not delete.
+type OrgTenancyState string
+
+// OrgTenancyDesiredState Client-writable tenancy state. `active` runs Ensure; `disabled` runs teardown. `pending` is server-only on the receipt and is rejected.
+type OrgTenancyDesiredState string
+
+// OrgTenancyUpsert Desired serverless tenancy for a customer organisation. The UUID is the organisation being provisioned, not the authenticated caller.
+type OrgTenancyUpsert struct {
+	OrganizationUuid openapi_types.UUID `json:"organizationUuid"`
+
+	// State Client-writable tenancy state. `active` runs Ensure; `disabled` runs teardown. `pending` is server-only on the receipt and is rejected.
+	State OrgTenancyDesiredState `json:"state"`
 }
 
 // Page defines model for Page.
@@ -701,9 +1176,6 @@ type ProblemDetails struct {
 	// Example: 404
 	Status int32 `json:"status"`
 
-	// TaskId Extension member. Present on synchronous inference timeouts when the accepted task can be polled for its eventual result.
-	TaskId *string `json:"taskId,omitempty"`
-
 	// Title Short, human-readable summary of the problem type (the standard HTTP status text). Stable for a given `type`; does not change from occurrence to occurrence.
 	//
 	//
@@ -719,6 +1191,12 @@ type ProblemDetails struct {
 
 // ProblemError A single field-level validation error within a ProblemDetails.
 type ProblemError struct {
+	// ConfigPointer JSON Pointer (RFC 6901) to the offending field inside a document the request carried, rather than in the request body itself: a container source's `container.yaml`. On such a rejection `pointer` names where the archive sat in the request body and this member names the field inside the document. A rejection about the archive rather than the document carries no `configPointer`, because nothing was parsed.
+	//
+	//
+	// Example: /endpoints/0/path
+	ConfigPointer *string `json:"configPointer,omitempty"`
+
 	// Detail Human-readable reason this field was rejected.
 	//
 	// Example: is required
@@ -729,6 +1207,12 @@ type ProblemError struct {
 	//
 	// Example: /configuration/maxWorkers
 	Pointer *string `json:"pointer,omitempty"`
+}
+
+// QueryCatalogue defines model for QueryCatalogue.
+type QueryCatalogue struct {
+	Logs    []CatalogueEntry `json:"logs"`
+	Metrics []CatalogueEntry `json:"metrics"`
 }
 
 // Secret Secret metadata. The encrypted value is never returned.
@@ -748,9 +1232,9 @@ type Secret struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
-// SecretAttach Attach an organisation secret to an app (control-plane record only in this release). The resolved name (`envVarName`, or `secretName` when omitted) is stored as one NOT NULL column. It must be unique among this app's secret attaches and must not collide with a plain environment variable key on the same app — both names are reserved for the same future pod env namespace. Reserved platform names are rejected as on `SecretName`.
+// SecretAttach Attach an organisation secret to an app. The resolved name (`envVarName`, or `secretName` when omitted) is the environment variable the secret is injected as, and the next rollout carries the value into the worker. It must be unique among this app's secret attaches and must not collide with a plain environment variable key on the same app — both names land in the same pod env namespace. Reserved platform names are rejected as on `SecretName`.
 type SecretAttach struct {
-	// EnvVarName Environment variable name to use when the secret is eventually injected. Omit or null to use `secretName`; the server resolves and stores the final name. Same reserved-name rules as `SecretName` (`422` if reserved). The resolved name must also not collide with `deployment_configs.key` on this app (`422`).
+	// EnvVarName Environment variable name the secret is injected as. Omit or null to use `secretName`; the server resolves and stores the final name. Same reserved-name rules as `SecretName` (`422` if reserved). The resolved name must also not collide with a plain environment variable key on this app (`422`).
 	EnvVarName *EnvironmentVariableName `json:"envVarName,omitempty"`
 
 	// SecretName Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
@@ -810,17 +1294,92 @@ type SecretUpdate struct {
 	Value string `json:"value"`
 }
 
+// SourceUpload defines model for SourceUpload.
+type SourceUpload struct {
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	AppId              AppId          `json:"appId"`
+	CreatedAt          time.Time      `json:"createdAt"`
+	DeclaredByteLength int64          `json:"declaredByteLength"`
+	ExpiresAt          time.Time      `json:"expiresAt"`
+	Id                 SourceUploadId `json:"id"`
+
+	// RejectionReason Reason completion rejected the archive, when state is `rejected`.
+	RejectionReason *string           `json:"rejectionReason,omitempty"`
+	Sha256          string            `json:"sha256"`
+	SourceType      AppSourceType     `json:"sourceType"`
+	State           SourceUploadState `json:"state"`
+	UpdatedAt       time.Time         `json:"updatedAt"`
+}
+
+// SourceUploadCreate defines model for SourceUploadCreate.
+type SourceUploadCreate struct {
+	// DeclaredByteLength Exact archive size in bytes with a 10 MiB MVP limit.
+	DeclaredByteLength int64 `json:"declaredByteLength"`
+
+	// IdempotencyKey Client-generated key used to make session creation safe to retry.
+	IdempotencyKey string `json:"idempotencyKey"`
+
+	// ModelFile Path of the MLflow model entry point inside the archive, relative to its root (e.g. `model.py`). Required for a `code` upload and refused for a `container` one, whose required files the contract names rather than the client.
+	//
+	// It is declared here rather than at app creation because upload completion is the last thing that opens the archive: `POST /v1/apps` consumes a ready upload and never reads the object, so an entry point named there could only be proved against the archive by reading it a second time. The pattern refuses a leading separator; a path that escapes the archive root is refused by completion.
+	ModelFile *string `json:"modelFile,omitempty"`
+
+	// Sha256 Lowercase SHA-256 digest of the complete archive.
+	Sha256     string        `json:"sha256"`
+	SourceType AppSourceType `json:"sourceType"`
+}
+
+// SourceUploadCreation defines model for SourceUploadCreation.
+type SourceUploadCreation struct {
+	Transfer SourceUploadTransfer `json:"transfer"`
+	Upload   SourceUpload         `json:"upload"`
+}
+
+// SourceUploadId defines model for SourceUploadId.
+type SourceUploadId = openapi_types.UUID
+
+// SourceUploadSinglePutTransfer defines model for SourceUploadSinglePutTransfer.
+type SourceUploadSinglePutTransfer struct {
+	// ExpiresAt Time after which the transfer instruction is no longer valid.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Headers Headers the client must include in the upload request.
+	Headers map[string]string                   `json:"headers"`
+	Method  SourceUploadSinglePutTransferMethod `json:"method"`
+	Mode    SourceUploadSinglePutTransferMode   `json:"mode"`
+
+	// Url Short-lived URL for this upload's exact staging object.
+	Url string `json:"url"`
+}
+
+// SourceUploadSinglePutTransferMethod defines model for SourceUploadSinglePutTransfer.Method.
+type SourceUploadSinglePutTransferMethod string
+
+// SourceUploadSinglePutTransferMode defines model for SourceUploadSinglePutTransfer.Mode.
+type SourceUploadSinglePutTransferMode string
+
+// SourceUploadState defines model for SourceUploadState.
+type SourceUploadState string
+
+// SourceUploadTransfer defines model for SourceUploadTransfer.
+type SourceUploadTransfer struct {
+	union json.RawMessage
+}
+
 // Task defines model for Task.
 type Task struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId       AppId      `json:"appId"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 
+	// EndpointPath Path of the endpoint to route the task to: a bare lowercase segment such as `generate`, with no leading slash.
+	EndpointPath EndpointPath `json:"endpointPath"`
+
 	// Error Failure detail when status is `failed`; null otherwise.
 	Error *string `json:"error,omitempty"`
 
-	// Id Opaque task identifier returned by the execution backend.
+	// Id Task identifier, supplied by the caller when the task was submitted.
 	Id string `json:"id"`
 
 	// Output Inference result payload on success; null otherwise.
@@ -828,12 +1387,36 @@ type Task struct {
 	Status TaskStatus              `json:"status"`
 }
 
+// TaskId Client-generated task identifier, canonical lowercase UUID. One id is one task: resubmitting it is answered with the task it already names rather than starting a second, so a request whose response was lost can be sent again without paying for the work twice. Reusing an id for a different request returns the first task, so the id is the caller's to keep unique.
+type TaskId = openapi_types.UUID
+
+// TaskInvocation The request body for both invoke routes. The endpoint's own input schema describes `payload`, never the whole body, so no platform field can collide with one of the app's own. Unknown top-level members are rejected rather than ignored: the envelope is the platform's to extend, and silently accepting a stray member would make a later addition breaking.
+type TaskInvocation struct {
+	// Payload The body the endpoint's handler receives, validated against the endpoint's declared input schema. An endpoint that declares none takes it unvalidated.
+	Payload map[string]interface{} `json:"payload"`
+
+	// TaskId Client-generated task identifier, canonical lowercase UUID. One id is one task: resubmitting it is answered with the task it already names rather than starting a second, so a request whose response was lost can be sent again without paying for the work twice. Reusing an id for a different request returns the first task, so the id is the caller's to keep unique.
+	TaskId TaskId `json:"taskId"`
+}
+
 // TaskStatus defines model for TaskStatus.
 type TaskStatus string
 
+// TriggeredBy Who performed an action — the authenticated user (JWT) or the API key. `kind` says which, so `id` (that actor's UUID) is resolvable to the right thing; `displayName` is its name captured at write time, so it renders as it was even if the user or key is later renamed. Used as `Build.triggeredBy` and `Version.author`.
+type TriggeredBy struct {
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Kind Whether the actor is a user (JWT) or an API key.
+	Kind TriggeredByKind `json:"kind"`
+}
+
+// TriggeredByKind Whether the actor is a user (JWT) or an API key.
+type TriggeredByKind string
+
 // UsageEvent defines model for UsageEvent.
 type UsageEvent struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// CreatedAt When the event was recorded. Audit only — may lag `occurredAt`.
@@ -849,27 +1432,85 @@ type UsageEvent struct {
 	WorkerId   openapi_types.UUID `json:"workerId"`
 }
 
-// Version An immutable record of what to deploy. One is created with the app and one on every update, so a rollout always names a version rather than reading configuration that may since have changed.
+// Version An immutable record of what to deploy. One is created with the app and one on every update, so a rollout always names a version rather than reading configuration that may since have changed. `listVersions` and `getVersion` return this same shape. The version internally pins the exact image digest its build pushed, and everything the version references — the built image and the submitted source — is retained for the life of the version.
+// Computed fields:
+//
+//   - `buildDurationMs` is the wall-clock duration of the build this version names.
+//     Null while the build is running or when no completion time is available. A
+//     config-only update carries the image — and therefore this duration — forward.
+//
+//   - `changes` is the structured diff against the previous version. Null on version 1
+//     (no predecessor). A name-only update still inserts a version; `changes` is then
+//     present with `imageChanged` false and no field diffs.
 type Version struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
-	// BuildId The build that produced this version's image. Null for a `container` source, which names an image the customer already built and so has no build. A version created by an update carries the image, and therefore this build, forward.
-	BuildId   *openapi_types.UUID `json:"buildId,omitempty"`
-	CreatedAt time.Time           `json:"createdAt"`
-	Id        openapi_types.UUID  `json:"id"`
+	// Author Who created this version — the authenticated user (JWT) or the API key. `displayName` is the name captured at write time.
+	Author *TriggeredBy `json:"author,omitempty"`
+
+	// BuildDurationMs Wall-clock milliseconds of the named build (`completedAt - createdAt` on that build). Null while the build is running or when no completion time is available. Bytes and units are not included; this is a raw millisecond count.
+	BuildDurationMs *int64 `json:"buildDurationMs,omitempty"`
+
+	// BuildId The build that produced this version's image. Both source types build — a `code` source bakes an image around a submitted codebase, a `container` source builds the customer's own wrapper Dockerfile. A version created by an update carries the image, and therefore this build, forward.
+	BuildId *openapi_types.UUID `json:"buildId,omitempty"`
+
+	// Changes Structured diff against the previous version. Null on version 1.
+	Changes   *VersionChanges `json:"changes,omitempty"`
+	CreatedAt time.Time       `json:"createdAt"`
+
+	// GpuType Preferred GPU type of this version, taken from the config snapshot.
+	GpuType *GpuTypeId         `json:"gpuType,omitempty"`
+	Id      openapi_types.UUID `json:"id"`
 
 	// VersionNumber Monotonically increasing per app.
 	VersionNumber int32 `json:"versionNumber"`
 }
 
+// VersionChanges How this version differs from the previous one. Environment-variable *values* never appear — only keys — so a secret-bearing env var cannot leak through the versions list. Numeric worker-config fields are rendered as decimal-free integer strings (the same spelling the event log uses). Empty collections are omitted: a name-only update is `{ "imageChanged": false }`.
+type VersionChanges struct {
+	// Endpoints Keys added, removed, or changed between consecutive versions. For environment variables, `changed` is keys whose *value* changed (the value itself is never returned). For endpoints the key is the path; for volumes it is `mountPath`. `changed` is omitted on those two (a path either exists or does not).
+	Endpoints *VersionKeySetDiff `json:"endpoints,omitempty"`
+
+	// EnvironmentVariables Keys added, removed, or changed between consecutive versions. For environment variables, `changed` is keys whose *value* changed (the value itself is never returned). For endpoints the key is the path; for volumes it is `mountPath`. `changed` is omitted on those two (a path either exists or does not).
+	EnvironmentVariables *VersionKeySetDiff `json:"environmentVariables,omitempty"`
+
+	// ImageChanged True when this version names a different image than the previous one (`buildId` or `imageRef` changed). False for a config-only update, which carries the image forward.
+	ImageChanged bool `json:"imageChanged"`
+
+	// Volumes Keys added, removed, or changed between consecutive versions. For environment variables, `changed` is keys whose *value* changed (the value itself is never returned). For endpoints the key is the path; for volumes it is `mountPath`. `changed` is omitted on those two (a path either exists or does not).
+	Volumes      *VersionKeySetDiff     `json:"volumes,omitempty"`
+	WorkerConfig *[]VersionConfigChange `json:"workerConfig,omitempty"`
+}
+
+// VersionConfigChange One worker-config field that changed. `field` is the public JSON name (`gpuType`, `minWorkers`, `idleTtlSecs`, …). `from` / `to` are strings; null means the field was unset on that side.
+type VersionConfigChange struct {
+	Field string  `json:"field"`
+	From  *string `json:"from"`
+	To    *string `json:"to"`
+}
+
+// VersionKeySetDiff Keys added, removed, or changed between consecutive versions. For environment variables, `changed` is keys whose *value* changed (the value itself is never returned). For endpoints the key is the path; for volumes it is `mountPath`. `changed` is omitted on those two (a path either exists or does not).
+type VersionKeySetDiff struct {
+	Added   *[]string `json:"added,omitempty"`
+	Changed *[]string `json:"changed,omitempty"`
+	Removed *[]string `json:"removed,omitempty"`
+}
+
 // Worker A worker instance observed from Kubernetes. Read-only runtime state written by the reconciler; `id` is the pod UID.
+//
+// Address a worker by `id`, which is stable for the life of the pod, and show `podName`, which is the name the same pod has in the cluster. There is no separate short identifier.
+//
+// Uptime is derived, not carried: a worker has been up from `createdAt` until `statusOccurredAt` once its `status` is `stopped`, and until now before that.
 type Worker struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
-	// CreatedAt Pod creation time (`metadata.creationTimestamp`), not insert time.
-	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	// CreatedAt Pod creation time (`metadata.creationTimestamp`), not insert time. It is also the start of the worker's uptime.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// GpuAvailability How the catalogue currently provisions this worker's `gpuType`. Omitted for a CPU worker and for a code the catalogue no longer holds. Unlike `gpuType` this is read now rather than snapshotted, so it tells you how that GPU is supplied today, not how it was supplied when the worker started.
+	GpuAvailability *GpuAvailability `json:"gpuAvailability,omitempty"`
 
 	// GpuCount GPUs attached to this worker at observation time.
 	GpuCount int32 `json:"gpuCount"`
@@ -888,7 +1529,7 @@ type Worker struct {
 	// Status Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field — `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop.
 	Status WorkerStatus `json:"status"`
 
-	// StatusOccurredAt When the worker entered its current status.
+	// StatusOccurredAt When the worker entered its current status. For a `stopped` worker this is when it stopped, so it is also the end of the worker's uptime.
 	StatusOccurredAt time.Time `json:"statusOccurredAt"`
 
 	// StatusReason Kubernetes-facing reason for the current status when unhealthy or otherwise notable (e.g. `ImagePullBackOff`, `CrashLoopBackOff`).
@@ -899,10 +1540,10 @@ type Worker struct {
 
 // WorkerConfig defines model for WorkerConfig.
 type WorkerConfig struct {
-	// AppId Immutable app identifier, unique within the authenticated organisation.
+	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
-	// AvailableWorkersPct Scaling buffer as a percentage of incoming task load.
+	// AvailableWorkersPct Reserved for future percentage-based buffer support.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
 
 	// ComputeType Worker compute class. GPU is the only supported value. CPU workloads are not supported.
@@ -916,7 +1557,9 @@ type WorkerConfig struct {
 	FallbackGpuType *GpuTypeId `json:"fallbackGpuType,omitempty"`
 
 	// GpuType Preferred GPU type. Absent (or null) only on historical apps created before a GPU type was required.
-	GpuType       *GpuTypeId         `json:"gpuType,omitempty"`
+	GpuType *GpuTypeId `json:"gpuType,omitempty"`
+
+	// GpusPerWorker One GPU per worker is currently supported. Historical apps may contain another value.
 	GpusPerWorker int32              `json:"gpusPerWorker"`
 	Id            openapi_types.UUID `json:"id"`
 
@@ -924,7 +1567,7 @@ type WorkerConfig struct {
 	IdleTtlSecs int32 `json:"idleTtlSecs"`
 	MaxWorkers  int32 `json:"maxWorkers"`
 
-	// MinAvailableWorkers Minimum number of available (idle) workers kept as a pre-emptive buffer.
+	// MinAvailableWorkers Reserved for future idle-worker buffer support.
 	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
 
 	// MinWorkers Floor for scale-down; 0 = scale to zero.
@@ -937,43 +1580,55 @@ type WorkerConfig struct {
 
 // WorkerConfigCreate defines model for WorkerConfigCreate.
 type WorkerConfigCreate struct {
+	// AvailableWorkersPct A non-null value returns 422 because this setting is not supported yet.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
 
 	// ComputeType GPU is the only supported compute type. Omitting the field selects GPU. CPU workloads are not supported; a request that names `cpu` is rejected with 422 before a build or deploy starts.
-	ComputeType     *ComputeType `json:"computeType,omitempty"`
-	Concurrency     *int32       `json:"concurrency,omitempty"`
-	FallbackGpuType *GpuTypeId   `json:"fallbackGpuType,omitempty"`
+	ComputeType *ComputeType `json:"computeType,omitempty"`
+	Concurrency *int32       `json:"concurrency,omitempty"`
+
+	// FallbackGpuType Secondary GPU type used if the preferred type is unavailable. Omit, send JSON null, or send an empty string for no fallback — forms bind an unselected dropdown as `""`, which is not a `GpuTypeId`. A non-empty value must be an active catalogue code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
+	FallbackGpuType *GpuTypeIdOrEmpty `json:"fallbackGpuType,omitempty"`
 
 	// GpuType GPU type the workers run on. Required: omitting it (or sending null) is a 422 before a build or deploy starts, because a GPU app with no type is unpinned and the deployer would render NVIDIA defaults. Must match an `id` returned by `GET /v1/gpu-types` that currently has admitted capacity.
-	GpuType             GpuTypeId `json:"gpuType"`
-	GpusPerWorker       *int32    `json:"gpusPerWorker,omitempty"`
-	IdleTtlSecs         int32     `json:"idleTtlSecs"`
-	MaxWorkers          int32     `json:"maxWorkers"`
-	MinAvailableWorkers *int32    `json:"minAvailableWorkers,omitempty"`
-	MinWorkers          *int32    `json:"minWorkers,omitempty"`
-	ScalingDelaySecs    int32     `json:"scalingDelaySecs"`
+	GpuType GpuTypeId `json:"gpuType"`
+
+	// GpusPerWorker Only 1 is currently supported. Any other value returns 422.
+	GpusPerWorker *int32 `json:"gpusPerWorker,omitempty"`
+	IdleTtlSecs   int32  `json:"idleTtlSecs"`
+	MaxWorkers    int32  `json:"maxWorkers"`
+
+	// MinAvailableWorkers A non-null value returns 422 because this setting is not supported yet.
+	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
+	MinWorkers          *int32 `json:"minWorkers,omitempty"`
+	ScalingDelaySecs    int32  `json:"scalingDelaySecs"`
 }
 
-// WorkerConfigPatch Partial worker configuration. Any field present overwrites the live value; omitted fields are left unchanged. Clearing a nullable live field (setting it to null) is not supported — omit the field to leave it unchanged. `computeType` is create-time only and cannot be patched. Changing `gpuType` or `gpusPerWorker` affects only newly created workers.
+// WorkerConfigPatch Partial worker configuration. Any field present overwrites the live value; omitted fields are left unchanged. Clearing a nullable live field (setting it to null) is not supported — omit the field to leave it unchanged. `fallbackGpuType` is the exception: send an empty string to clear it. `computeType` is create-time only and cannot be patched. Changing `gpuType` affects only newly created workers.
 type WorkerConfigPatch struct {
-	// AvailableWorkersPct Scaling buffer as a percentage of load. Omit to leave unchanged.
+	// AvailableWorkersPct Reserved for future use. Supplying it returns 422.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
 	Concurrency         *int32 `json:"concurrency,omitempty"`
 
-	// FallbackGpuType Secondary GPU type. Omit to leave unchanged.
-	FallbackGpuType *GpuTypeId `json:"fallbackGpuType,omitempty"`
+	// FallbackGpuType Secondary GPU type. Omit to leave unchanged. Send an empty string to clear — forms bind an unselected dropdown as `""`. JSON null is rejected: this field is not nullable, so a client that meant to clear must send `""` rather than null. A non-empty value must be an active catalogue code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
+	FallbackGpuType *GpuTypeIdOrEmpty `json:"fallbackGpuType,omitempty"`
 
 	// GpuType Preferred GPU type. Omit to leave unchanged. Rejected with a 422 when no capacity is currently offered for the type (it does not appear in `GET /v1/gpu-types`).
-	GpuType       *GpuTypeId `json:"gpuType,omitempty"`
-	GpusPerWorker *int32     `json:"gpusPerWorker,omitempty"`
-	IdleTtlSecs   *int32     `json:"idleTtlSecs,omitempty"`
-	MaxWorkers    *int32     `json:"maxWorkers,omitempty"`
+	GpuType *GpuTypeId `json:"gpuType,omitempty"`
 
-	// MinAvailableWorkers Pre-emptive idle-worker buffer. Omit to leave unchanged.
+	// GpusPerWorker Only 1 is currently supported. Any other value returns 422.
+	GpusPerWorker *int32 `json:"gpusPerWorker,omitempty"`
+	IdleTtlSecs   *int32 `json:"idleTtlSecs,omitempty"`
+	MaxWorkers    *int32 `json:"maxWorkers,omitempty"`
+
+	// MinAvailableWorkers Reserved for future use. Supplying it returns 422.
 	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
 	MinWorkers          *int32 `json:"minWorkers,omitempty"`
 	ScalingDelaySecs    *int32 `json:"scalingDelaySecs,omitempty"`
 }
+
+// WorkerStateFilter Which worker states a page covers. `live` is every status other than `stopped`, so it is the page a dashboard wants and the one `status` alone can only ask for one value at a time. `all` includes the terminal rows that are kept as history.
+type WorkerStateFilter string
 
 // WorkerStatus Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field — `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop.
 type WorkerStatus string
@@ -981,14 +1636,41 @@ type WorkerStatus string
 // Cursor defines model for Cursor.
 type Cursor = string
 
-// EndpointPath defines model for EndpointPath.
-type EndpointPath = string
-
 // Limit defines model for Limit.
 type Limit = int32
 
+// MetricWindow defines model for MetricWindow.
+type MetricWindow string
+
+// PinnedTo defines model for PinnedTo.
+type PinnedTo = int64
+
+// QueryId defines model for QueryId.
+type QueryId = string
+
+// SelectorDeployment Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+type SelectorDeployment = AppId
+
+// SelectorEndpoint defines model for SelectorEndpoint.
+type SelectorEndpoint = openapi_types.UUID
+
+// SelectorRegion defines model for SelectorRegion.
+type SelectorRegion = string
+
+// SelectorStatusClass defines model for SelectorStatusClass.
+type SelectorStatusClass string
+
+// SeriesAppId defines model for SeriesAppId.
+type SeriesAppId = []AppId
+
+// SeriesEndpointId defines model for SeriesEndpointId.
+type SeriesEndpointId = []openapi_types.UUID
+
 // WorkerId defines model for WorkerId.
 type WorkerId = openapi_types.UUID
+
+// BadGateway RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type BadGateway = ProblemDetails
 
 // BadRequest RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type BadRequest = ProblemDetails
@@ -999,6 +1681,9 @@ type Conflict = ProblemDetails
 // Forbidden RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type Forbidden = ProblemDetails
 
+// GatewayTimeout RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type GatewayTimeout = ProblemDetails
+
 // NotFound RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type NotFound = ProblemDetails
 
@@ -1008,17 +1693,14 @@ type ServiceUnavailable = ProblemDetails
 // TaskAccepted defines model for TaskAccepted.
 type TaskAccepted = Task
 
-// Timeout RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
-type Timeout = ProblemDetails
+// TooManyRequests RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type TooManyRequests = ProblemDetails
 
 // Unauthorized RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type Unauthorized = ProblemDetails
 
 // ValidationError RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type ValidationError = ProblemDetails
-
-// TaskPayload defines model for TaskPayload.
-type TaskPayload map[string]interface{}
 
 // ListAppsParams defines parameters for ListApps.
 type ListAppsParams struct {
@@ -1076,12 +1758,6 @@ type ListAppEventsParams struct {
 	Type   *AppEventType `form:"type,omitempty" json:"type,omitempty"`
 }
 
-// StartAsyncTaskJSONBody defines parameters for StartAsyncTask.
-type StartAsyncTaskJSONBody map[string]interface{}
-
-// StartSyncTaskJSONBody defines parameters for StartSyncTask.
-type StartSyncTaskJSONBody map[string]interface{}
-
 // ListAppSecretsParams defines parameters for ListAppSecrets.
 type ListAppSecretsParams struct {
 	// Limit Maximum number of items to return.
@@ -1116,8 +1792,13 @@ type ListWorkersParams struct {
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
-	Cursor *Cursor       `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Status *WorkerStatus `form:"status,omitempty" json:"status,omitempty"`
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// State Narrow the page by worker state. The default, `all`, keeps the terminal `stopped` rows in the page; `live` drops them.
+	//
+	// A `state` of `live` with a `status` of `stopped` is a contradiction and is refused, because an empty page would read as "this app has never run".
+	State  *WorkerStateFilter `form:"state,omitempty" json:"state,omitempty"`
+	Status *WorkerStatus      `form:"status,omitempty" json:"status,omitempty"`
 }
 
 // ListGpuTypePricesParams defines parameters for ListGpuTypePrices.
@@ -1128,6 +1809,60 @@ type ListGpuTypePricesParams struct {
 	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// GetLogEntriesParams defines parameters for GetLogEntries.
+type GetLogEntriesParams struct {
+	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalogue can be asked of it.
+	Window GetLogEntriesParamsWindow `form:"window" json:"window"`
+
+	// Limit Maximum number of items to return.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Deployment Narrow to one app.
+	Deployment *SelectorDeployment `form:"deployment,omitempty" json:"deployment,omitempty"`
+
+	// Endpoint Narrow to one endpoint within a deployment. The value is the allocated `endpoints.id` (UUID), never the customer-authored path. A query that does not declare this selector rejects it rather than ignoring it.
+	Endpoint *SelectorEndpoint `form:"endpoint,omitempty" json:"endpoint,omitempty"`
+}
+
+// GetLogEntriesParamsWindow defines parameters for GetLogEntries.
+type GetLogEntriesParamsWindow string
+
+// GetMetricSeriesParams defines parameters for GetMetricSeries.
+type GetMetricSeriesParams struct {
+	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalogue can be asked of it.
+	Window GetMetricSeriesParamsWindow `form:"window" json:"window"`
+
+	// PinnedTo Fixes the window's inclusive end, the last timestamp in `t`, so that several calls making up one visual share an axis instead of racing the clock between them. Must be aligned to the window's step, no newer than the newest readable edge, and inside retention.
+	PinnedTo *PinnedTo `form:"pinnedTo,omitempty" json:"pinnedTo,omitempty"`
+
+	// Deployment Narrow to one app.
+	Deployment *SelectorDeployment `form:"deployment,omitempty" json:"deployment,omitempty"`
+
+	// Endpoint Narrow to one endpoint within a deployment. The value is the allocated `endpoints.id` (UUID), never the customer-authored path. A query that does not declare this selector rejects it rather than ignoring it.
+	Endpoint *SelectorEndpoint `form:"endpoint,omitempty" json:"endpoint,omitempty"`
+
+	// StatusClass Narrow to one response class.
+	StatusClass *GetMetricSeriesParamsStatusClass `form:"statusClass,omitempty" json:"statusClass,omitempty"`
+
+	// Region Narrow to one region. No series carries a region label yet, so no query currently accepts this and supplying it is rejected rather than ignored.
+	Region *SelectorRegion `form:"region,omitempty" json:"region,omitempty"`
+
+	// AppId Restrict expand-by-`app_id` queries (`apps_request_volume`, `apps_error_volume`, `apps_request_duration`) to these app ids: one series per id, in request order, with all-null series for apps that had no samples. Values are hourly over `window=24h`. Hours that started before that live app's `createdAt` are null. Repeat the parameter once per id on the current list page (at most 100, matching `listApps`). Omit it to receive every app in the organisation that had data, unless that set is larger than this query will expand: then the call is a `422` on `appId` and the list page should name the apps it is showing. Other queries reject this parameter.
+	AppId *SeriesAppId `form:"appId,omitempty" json:"appId,omitempty"`
+
+	// EndpointId Restrict `endpoints_request_volume` to these endpoint ids: one series per id, in request order, with all-null series for endpoints that had no traffic. Values are hourly request counts over `window=24h`. Hours that started before that endpoint row's `createdAt` are null. Repeat the parameter once per id on the current list page (at most 100, matching `listEndpoints`). Omit it to receive every endpoint on the selected app that had data, unless that set is larger than this query will expand: then the call is a `422` on `endpointId` and the list page should name the endpoints it is showing. Other queries reject this parameter. Requires `deployment`.
+	EndpointId *SeriesEndpointId `form:"endpointId,omitempty" json:"endpointId,omitempty"`
+}
+
+// GetMetricSeriesParamsWindow defines parameters for GetMetricSeries.
+type GetMetricSeriesParamsWindow string
+
+// GetMetricSeriesParamsStatusClass defines parameters for GetMetricSeries.
+type GetMetricSeriesParamsStatusClass string
 
 // ListSecretsParams defines parameters for ListSecrets.
 type ListSecretsParams struct {
@@ -1167,13 +1902,16 @@ type DeployVersionJSONRequestBody = DeployRequest
 type UpdateAppEnvironmentVariableJSONRequestBody = EnvironmentVariableUpdate
 
 // StartAsyncTaskJSONRequestBody defines body for StartAsyncTask for application/json ContentType.
-type StartAsyncTaskJSONRequestBody StartAsyncTaskJSONBody
+type StartAsyncTaskJSONRequestBody = TaskInvocation
 
 // StartSyncTaskJSONRequestBody defines body for StartSyncTask for application/json ContentType.
-type StartSyncTaskJSONRequestBody StartSyncTaskJSONBody
+type StartSyncTaskJSONRequestBody = TaskInvocation
 
 // AttachAppSecretJSONRequestBody defines body for AttachAppSecret for application/json ContentType.
 type AttachAppSecretJSONRequestBody = SecretAttach
+
+// CreateSourceUploadJSONRequestBody defines body for CreateSourceUpload for application/json ContentType.
+type CreateSourceUploadJSONRequestBody = SourceUploadCreate
 
 // CreateGpuTypeJSONRequestBody defines body for CreateGpuType for application/json ContentType.
 type CreateGpuTypeJSONRequestBody = GpuTypeCreate
@@ -1186,6 +1924,9 @@ type CreateGpuTypePriceJSONRequestBody = GpuPricingCreate
 
 // UpdateGpuTypePriceJSONRequestBody defines body for UpdateGpuTypePrice for application/json ContentType.
 type UpdateGpuTypePriceJSONRequestBody = GpuPricingUpdate
+
+// UpsertOrgTenancyJSONRequestBody defines body for UpsertOrgTenancy for application/json ContentType.
+type UpsertOrgTenancyJSONRequestBody = OrgTenancyUpsert
 
 // CreateSecretJSONRequestBody defines body for CreateSecret for application/json ContentType.
 type CreateSecretJSONRequestBody = SecretCreate
@@ -1251,6 +1992,71 @@ func (t AppSourceUpsert_Source) MarshalJSON() ([]byte, error) {
 }
 
 func (t *AppSourceUpsert_Source) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsSourceUploadSinglePutTransfer returns the union data inside the SourceUploadTransfer as a SourceUploadSinglePutTransfer
+func (t SourceUploadTransfer) AsSourceUploadSinglePutTransfer() (SourceUploadSinglePutTransfer, error) {
+	var body SourceUploadSinglePutTransfer
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSourceUploadSinglePutTransfer overwrites any union data inside the SourceUploadTransfer as the provided SourceUploadSinglePutTransfer
+func (t *SourceUploadTransfer) FromSourceUploadSinglePutTransfer(v SourceUploadSinglePutTransfer) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"mode":"singlePut"}`))
+	t.union = b
+	return err
+}
+
+// MergeSourceUploadSinglePutTransfer performs a merge with any union data inside the SourceUploadTransfer, using the provided SourceUploadSinglePutTransfer
+func (t *SourceUploadTransfer) MergeSourceUploadSinglePutTransfer(v SourceUploadSinglePutTransfer) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"mode":"singlePut"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SourceUploadTransfer) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"mode"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t SourceUploadTransfer) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "singlePut":
+		return t.AsSourceUploadSinglePutTransfer()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t SourceUploadTransfer) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SourceUploadTransfer) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
@@ -1331,14 +2137,14 @@ type ClientInterface interface {
 
 	// GetAppSummary App summary metrics for the authenticated organisation
 	//
-	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. Metrics whose backing system is not yet available are omitted from the response rather than reported as zero.
+	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
 	//
 	// Corresponds with GET /v1/app-summary (the `GetAppSummary` operationId).
 	GetAppSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListApps List apps
 	//
-	// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly.
+	// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
 	//
 	// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 	//
@@ -1354,14 +2160,17 @@ type ClientInterface interface {
 	//   points at that version. If the build, validation, or rollout fails the app is
 	//   marked `failed`.
 	//
-	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
-	//   from a container source yet, so the app stays `initializing` and does not serve
-	//   inference — poll `active` only for a `code` source.
+	// - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+	//   goes through the same build pipeline — the wrapper image is built, published and
+	//   deployed, so the version carries a `buildId` and the app follows the same
+	//   lifecycle as a code source. An invalid `container.yaml` rejects the create
+	//   before any build capacity is spent — `400` where the document could not be
+	//   parsed at all, `422` where it parsed and broke a rule.
 	//
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1377,14 +2186,17 @@ type ClientInterface interface {
 	//   points at that version. If the build, validation, or rollout fails the app is
 	//   marked `failed`.
 	//
-	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
-	//   from a container source yet, so the app stays `initializing` and does not serve
-	//   inference — poll `active` only for a `code` source.
+	// - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+	//   goes through the same build pipeline — the wrapper image is built, published and
+	//   deployed, so the version carries a `buildId` and the app follows the same
+	//   lifecycle as a code source. An invalid `container.yaml` rejects the create
+	//   before any build capacity is spent — `400` where the document could not be
+	//   parsed at all, `422` where it parsed and broke a rule.
 	//
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1395,10 +2207,14 @@ type ClientInterface interface {
 	//
 	// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
 	//
+	// The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
+	//
 	// Corresponds with DELETE /v1/apps/{appId} (the `DeleteApp` operationId).
 	DeleteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApp Get an app
+	//
+	// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 	//
 	// Corresponds with GET /v1/apps/{appId} (the `GetApp` operationId).
 	GetApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1406,22 +2222,11 @@ type ClientInterface interface {
 	// UpdateAppWithBody Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	//
-	// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-	//
-	// Target behaviour (once fully wired):
-	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-	//   restart with the new configuration. If the rollout fails, the app remains on
-	//   the previous configuration.
-	//
-	// - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-	//   sources); on success the new version is deployed automatically. If the build or
-	//   validation fails, the app remains on the previous version.
-	//
-	// - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-	//   current set — any item absent from the request is deleted. Endpoints take effect
-	//   immediately. Changes to secrets or environment variables trigger a rollout so workers
-	//   restart and pick up the new values.
+	// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+	// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+	// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1431,22 +2236,11 @@ type ClientInterface interface {
 	// UpdateApp Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	//
-	// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-	//
-	// Target behaviour (once fully wired):
-	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-	//   restart with the new configuration. If the rollout fails, the app remains on
-	//   the previous configuration.
-	//
-	// - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-	//   sources); on success the new version is deployed automatically. If the build or
-	//   validation fails, the app remains on the previous version.
-	//
-	// - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-	//   current set — any item absent from the request is deleted. Endpoints take effect
-	//   immediately. Changes to secrets or environment variables trigger a rollout so workers
-	//   restart and pick up the new values.
+	// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+	// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+	// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1458,6 +2252,13 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/apps/{appId}/builds (the `ListBuilds` operationId).
 	ListBuilds(ctx context.Context, appId AppId, params *ListBuildsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteBuild Delete or cancel a build
+	//
+	// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+	//
+	// Corresponds with DELETE /v1/apps/{appId}/builds/{buildId} (the `DeleteBuild` operationId).
+	DeleteBuild(ctx context.Context, appId AppId, buildId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetBuild Get a build
 	//
 	// Corresponds with GET /v1/apps/{appId}/builds/{buildId} (the `GetBuild` operationId).
@@ -1465,12 +2266,12 @@ type ClientInterface interface {
 
 	// DeployVersionWithBody Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1479,12 +2280,12 @@ type ClientInterface interface {
 
 	// DeployVersion Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1492,6 +2293,8 @@ type ClientInterface interface {
 	DeployVersion(ctx context.Context, appId AppId, body DeployVersionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListEndpoints List endpoints
+	//
+	// Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 	//
 	// Corresponds with GET /v1/apps/{appId}/endpoints (the `ListEndpoints` operationId).
 	ListEndpoints(ctx context.Context, appId AppId, params *ListEndpointsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1558,7 +2361,7 @@ type ClientInterface interface {
 
 	// StartAsyncTaskWithBody Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1567,7 +2370,7 @@ type ClientInterface interface {
 
 	// StartAsyncTask Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1576,7 +2379,7 @@ type ClientInterface interface {
 
 	// StartSyncTaskWithBody Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1585,7 +2388,7 @@ type ClientInterface interface {
 
 	// StartSyncTask Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1606,8 +2409,8 @@ type ClientInterface interface {
 
 	// AttachAppSecretWithBody Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	//
 	// Takes any type of body and a specified content type.
@@ -1617,8 +2420,8 @@ type ClientInterface interface {
 
 	// AttachAppSecret Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	//
 	// Takes a body of the `application/json` content type.
@@ -1628,10 +2431,49 @@ type ClientInterface interface {
 
 	// DetachAppSecret Detach a secret from an app
 	//
-	// Removes the control-plane attachment. Does not roll workers in this release.
+	// Removes the attachment from the next rollout. This operation does not roll workers. Existing workers keep the value until they stop.
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 	DetachAppSecret(ctx context.Context, appId AppId, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSourceUploadWithBody Create a source upload
+	//
+	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUploadWithBody(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSourceUpload Create a source upload
+	//
+	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUpload(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSourceUpload Abort a source upload
+	//
+	// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
+	//
+	// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+	DeleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSourceUpload Get a source upload
+	//
+	// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
+	//
+	// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+	GetSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteSourceUpload Complete a source upload
+	//
+	// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
+	//
+	// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+	CompleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StopApp Stop an app
 	//
@@ -1642,7 +2484,7 @@ type ClientInterface interface {
 
 	// ListTasks List tasks for an app
 	//
-	// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
+	// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1652,12 +2494,19 @@ type ClientInterface interface {
 	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`; retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`.
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
-	GetTask(ctx context.Context, appId AppId, taskId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetTask(ctx context.Context, appId AppId, taskId TaskId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListVersions List versions
 	//
 	// Corresponds with GET /v1/apps/{appId}/versions (the `ListVersions` operationId).
 	ListVersions(ctx context.Context, appId AppId, params *ListVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteVersion Delete a version
+	//
+	// Deletes an unused version while retaining its immutable history. Deleted versions are omitted from version lists, return `404` from version reads, and cannot be deployed. Returns `409` while the app is deleting, or when the version is active, is the app's only remaining version, has a non-stopped worker, or is targeted by a live rollout. Deleting an already deleted version returns `404`. This operation does not remove the version's OCI image.
+	//
+	// Corresponds with DELETE /v1/apps/{appId}/versions/{versionNumber} (the `DeleteVersion` operationId).
+	DeleteVersion(ctx context.Context, appId AppId, versionNumber int32, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetVersion Get a version
 	//
@@ -1666,7 +2515,7 @@ type ClientInterface interface {
 
 	// ListWorkers List workers
 	//
-	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `state` and `status` narrow the page; a cursor must be replayed under the same filters it was issued with.
 	//
 	// Corresponds with GET /v1/apps/{appId}/workers (the `ListWorkers` operationId).
 	ListWorkers(ctx context.Context, appId AppId, params *ListWorkersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1785,6 +2634,65 @@ type ClientInterface interface {
 	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
 	UpdateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetLogEntries Read one page of a named log query
+	//
+	// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists.
+	//
+	// No query is registered yet: live tail, retention tiers and log quotas are decided in a follow-up ADR, so every request currently answers `404`. The route exists so the contract is fixed before the templates land.
+	//
+	// Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
+	GetLogEntries(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListInsightsQueries List the metric and log queries this build can answer
+	//
+	// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+	//
+	// This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
+	//
+	// Corresponds with GET /v1/metrics/queries (the `ListInsightsQueries` operationId).
+	ListInsightsQueries(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMetricSeries Read one named metric query
+	//
+	// Returns one chart's data: a single timestamp axis shared by every series, and one dense value array per series aligned to it.
+	//
+	// Values are dense and positionally aligned to `t`, with an explicit `null` wherever there was no sample. Each timestamp is the END of its bucket, so `window.to` is inclusive and equals the last timestamp in `t`, while `window.from` is exclusive and is one `step_s` before the first.
+	//
+	// An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
+	//
+	// `apps_request_volume` returns one series per app: 24 hourly request counts over `window=24h` (`step_s` 3600, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. Hours that started before that live app's `createdAt` are null, so a reused app id does not inherit the previous generation's traffic still in the 24h store. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
+	//
+	// `endpoints_request_volume` is the endpoints-list counterpart: 24 hourly request counts per endpoint over `window=24h` (`step_s` 3600, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Hours that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+	//
+	// Corresponds with GET /v1/metrics/queries/{queryId}/series (the `GetMetricSeries` operationId).
+	GetMetricSeries(ctx context.Context, queryId QueryId, params *GetMetricSeriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpsertOrgTenancyWithBody Set an organisation's serverless tenancy state
+	//
+	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+	//
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	//
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+	UpsertOrgTenancyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpsertOrgTenancy Set an organisation's serverless tenancy state
+	//
+	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+	//
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	//
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+	UpsertOrgTenancy(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSecrets List secrets
 	//
 	// Returns secret metadata only; encrypted values are never returned.
@@ -1794,7 +2702,7 @@ type ClientInterface interface {
 
 	// CreateSecretWithBody Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -1803,7 +2711,7 @@ type ClientInterface interface {
 
 	// CreateSecret Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1812,7 +2720,7 @@ type ClientInterface interface {
 
 	// DeleteSecret Delete a secret
 	//
-	// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
+	// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row. A background sweep removes the row and releases the name once no running worker can still hold the value — the value travels inside the worker's own environment, which is fixed when the container starts, so a worker keeps it until it stops. There is no deadline on that wait. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach and detach change the secret set for the next rollout. Neither operation rolls workers. While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 	//
 	// Corresponds with DELETE /v1/secrets/{secretName} (the `DeleteSecret` operationId).
 	DeleteSecret(ctx context.Context, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1841,7 +2749,7 @@ type ClientInterface interface {
 
 // GetAppSummary App summary metrics for the authenticated organisation
 //
-// Aggregate dashboard metrics across all apps owned by the authenticated organisation. Metrics whose backing system is not yet available are omitted from the response rather than reported as zero.
+// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
 //
 // Corresponds with GET /v1/app-summary (the `GetAppSummary` operationId).
 func (c *Client) GetAppSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1858,7 +2766,7 @@ func (c *Client) GetAppSummary(ctx context.Context, reqEditors ...RequestEditorF
 
 // ListApps List apps
 //
-// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly.
+// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
 //
 // A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 //
@@ -1884,13 +2792,16 @@ func (c *Client) ListApps(ctx context.Context, params *ListAppsParams, reqEditor
 //     points at that version. If the build, validation, or rollout fails the app is
 //     marked `failed`.
 //
-//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
-//     from a container source yet, so the app stays `initializing` and does not serve
-//     inference — poll `active` only for a `code` source.
+//   - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+//     goes through the same build pipeline — the wrapper image is built, published and
+//     deployed, so the version carries a `buildId` and the app follows the same
+//     lifecycle as a code source. An invalid `container.yaml` rejects the create
+//     before any build capacity is spent — `400` where the document could not be
+//     parsed at all, `422` where it parsed and broke a rule.
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1916,13 +2827,16 @@ func (c *Client) CreateAppWithBody(ctx context.Context, contentType string, body
 //     points at that version. If the build, validation, or rollout fails the app is
 //     marked `failed`.
 //
-//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
-//     from a container source yet, so the app stays `initializing` and does not serve
-//     inference — poll `active` only for a `code` source.
+//   - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+//     goes through the same build pipeline — the wrapper image is built, published and
+//     deployed, so the version carries a `buildId` and the app follows the same
+//     lifecycle as a code source. An invalid `container.yaml` rejects the create
+//     before any build capacity is spent — `400` where the document could not be
+//     parsed at all, `422` where it parsed and broke a rule.
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1943,6 +2857,8 @@ func (c *Client) CreateApp(ctx context.Context, body CreateAppJSONRequestBody, r
 //
 // Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
 //
+// The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
+//
 // Corresponds with DELETE /v1/apps/{appId} (the `DeleteApp` operationId).
 func (c *Client) DeleteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteAppRequest(c.Server, appId)
@@ -1957,6 +2873,8 @@ func (c *Client) DeleteApp(ctx context.Context, appId AppId, reqEditors ...Reque
 }
 
 // GetApp Get an app
+//
+// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 //
 // Corresponds with GET /v1/apps/{appId} (the `GetApp` operationId).
 func (c *Client) GetApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1974,22 +2892,11 @@ func (c *Client) GetApp(ctx context.Context, appId AppId, reqEditors ...RequestE
 // UpdateAppWithBody Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-//
-// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-//
-// Target behaviour (once fully wired):
-//   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-//     restart with the new configuration. If the rollout fails, the app remains on
-//     the previous configuration.
-//
-//   - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-//     sources); on success the new version is deployed automatically. If the build or
-//     validation fails, the app remains on the previous version.
-//
-//   - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-//     current set — any item absent from the request is deleted. Endpoints take effect
-//     immediately. Changes to secrets or environment variables trigger a rollout so workers
-//     restart and pick up the new values.
+// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 //
 // Takes any type of body and a specified content type.
 //
@@ -2009,23 +2916,11 @@ func (c *Client) UpdateAppWithBody(ctx context.Context, appId AppId, contentType
 // UpdateApp Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-//
-// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-//
-// Target behaviour (once fully wired):
-//
-//   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-//     restart with the new configuration. If the rollout fails, the app remains on
-//     the previous configuration.
-//
-//   - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-//     sources); on success the new version is deployed automatically. If the build or
-//     validation fails, the app remains on the previous version.
-//
-//   - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-//     current set — any item absent from the request is deleted. Endpoints take effect
-//     immediately. Changes to secrets or environment variables trigger a rollout so workers
-//     restart and pick up the new values.
+// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2057,6 +2952,23 @@ func (c *Client) ListBuilds(ctx context.Context, appId AppId, params *ListBuilds
 	return c.Client.Do(req)
 }
 
+// DeleteBuild Delete or cancel a build
+//
+// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+//
+// Corresponds with DELETE /v1/apps/{appId}/builds/{buildId} (the `DeleteBuild` operationId).
+func (c *Client) DeleteBuild(ctx context.Context, appId AppId, buildId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteBuildRequest(c.Server, appId, buildId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetBuild Get a build
 //
 // Corresponds with GET /v1/apps/{appId}/builds/{buildId} (the `GetBuild` operationId).
@@ -2074,12 +2986,12 @@ func (c *Client) GetBuild(ctx context.Context, appId AppId, buildId openapi_type
 
 // DeployVersionWithBody Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes any type of body and a specified content type.
 //
@@ -2098,12 +3010,12 @@ func (c *Client) DeployVersionWithBody(ctx context.Context, appId AppId, content
 
 // DeployVersion Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2121,6 +3033,8 @@ func (c *Client) DeployVersion(ctx context.Context, appId AppId, body DeployVers
 }
 
 // ListEndpoints List endpoints
+//
+// Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 //
 // Corresponds with GET /v1/apps/{appId}/endpoints (the `ListEndpoints` operationId).
 func (c *Client) ListEndpoints(ctx context.Context, appId AppId, params *ListEndpointsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2277,7 +3191,7 @@ func (c *Client) FavouriteApp(ctx context.Context, appId AppId, reqEditors ...Re
 
 // StartAsyncTaskWithBody Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type.
 //
@@ -2296,7 +3210,7 @@ func (c *Client) StartAsyncTaskWithBody(ctx context.Context, appId AppId, endpoi
 
 // StartAsyncTask Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2315,7 +3229,7 @@ func (c *Client) StartAsyncTask(ctx context.Context, appId AppId, endpointPath E
 
 // StartSyncTaskWithBody Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type.
 //
@@ -2334,7 +3248,7 @@ func (c *Client) StartSyncTaskWithBody(ctx context.Context, appId AppId, endpoin
 
 // StartSyncTask Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2385,8 +3299,8 @@ func (c *Client) ListAppSecrets(ctx context.Context, appId AppId, params *ListAp
 
 // AttachAppSecretWithBody Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 //
 // Takes any type of body and a specified content type.
@@ -2406,8 +3320,8 @@ func (c *Client) AttachAppSecretWithBody(ctx context.Context, appId AppId, conte
 
 // AttachAppSecret Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 //
 // Takes a body of the `application/json` content type.
@@ -2427,11 +3341,100 @@ func (c *Client) AttachAppSecret(ctx context.Context, appId AppId, body AttachAp
 
 // DetachAppSecret Detach a secret from an app
 //
-// Removes the control-plane attachment. Does not roll workers in this release.
+// Removes the attachment from the next rollout. This operation does not roll workers. Existing workers keep the value until they stop.
 //
 // Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 func (c *Client) DetachAppSecret(ctx context.Context, appId AppId, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDetachAppSecretRequest(c.Server, appId, secretName)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSourceUploadWithBody Create a source upload
+//
+// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+func (c *Client) CreateSourceUploadWithBody(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSourceUploadRequestWithBody(c.Server, appId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSourceUpload Create a source upload
+//
+// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+func (c *Client) CreateSourceUpload(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSourceUploadRequest(c.Server, appId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSourceUpload Abort a source upload
+//
+// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
+//
+// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+func (c *Client) DeleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSourceUploadRequest(c.Server, appId, uploadId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSourceUpload Get a source upload
+//
+// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
+//
+// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+func (c *Client) GetSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSourceUploadRequest(c.Server, appId, uploadId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompleteSourceUpload Complete a source upload
+//
+// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
+//
+// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+func (c *Client) CompleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteSourceUploadRequest(c.Server, appId, uploadId)
 	if err != nil {
 		return nil, err
 	}
@@ -2461,7 +3464,7 @@ func (c *Client) StopApp(ctx context.Context, appId AppId, reqEditors ...Request
 
 // ListTasks List tasks for an app
 //
-// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
+// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
 //
 // Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 func (c *Client) ListTasks(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2481,7 +3484,7 @@ func (c *Client) ListTasks(ctx context.Context, appId AppId, params *ListTasksPa
 // Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`; when `failed`, includes `error`; when `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`; retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`.
 //
 // Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
-func (c *Client) GetTask(ctx context.Context, appId AppId, taskId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+func (c *Client) GetTask(ctx context.Context, appId AppId, taskId TaskId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTaskRequest(c.Server, appId, taskId)
 	if err != nil {
 		return nil, err
@@ -2498,6 +3501,23 @@ func (c *Client) GetTask(ctx context.Context, appId AppId, taskId string, reqEdi
 // Corresponds with GET /v1/apps/{appId}/versions (the `ListVersions` operationId).
 func (c *Client) ListVersions(ctx context.Context, appId AppId, params *ListVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListVersionsRequest(c.Server, appId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteVersion Delete a version
+//
+// Deletes an unused version while retaining its immutable history. Deleted versions are omitted from version lists, return `404` from version reads, and cannot be deployed. Returns `409` while the app is deleting, or when the version is active, is the app's only remaining version, has a non-stopped worker, or is targeted by a live rollout. Deleting an already deleted version returns `404`. This operation does not remove the version's OCI image.
+//
+// Corresponds with DELETE /v1/apps/{appId}/versions/{versionNumber} (the `DeleteVersion` operationId).
+func (c *Client) DeleteVersion(ctx context.Context, appId AppId, versionNumber int32, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteVersionRequest(c.Server, appId, versionNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -2525,7 +3545,7 @@ func (c *Client) GetVersion(ctx context.Context, appId AppId, versionNumber int3
 
 // ListWorkers List workers
 //
-// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `state` and `status` narrow the page; a cursor must be replayed under the same filters it was issued with.
 //
 // Corresponds with GET /v1/apps/{appId}/workers (the `ListWorkers` operationId).
 func (c *Client) ListWorkers(ctx context.Context, appId AppId, params *ListWorkersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2794,6 +3814,115 @@ func (c *Client) UpdateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, pr
 	return c.Client.Do(req)
 }
 
+// GetLogEntries Read one page of a named log query
+//
+// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists.
+//
+// No query is registered yet: live tail, retention tiers and log quotas are decided in a follow-up ADR, so every request currently answers `404`. The route exists so the contract is fixed before the templates land.
+//
+// Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
+func (c *Client) GetLogEntries(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLogEntriesRequest(c.Server, queryId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListInsightsQueries List the metric and log queries this build can answer
+//
+// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+//
+// This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
+//
+// Corresponds with GET /v1/metrics/queries (the `ListInsightsQueries` operationId).
+func (c *Client) ListInsightsQueries(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListInsightsQueriesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMetricSeries Read one named metric query
+//
+// Returns one chart's data: a single timestamp axis shared by every series, and one dense value array per series aligned to it.
+//
+// Values are dense and positionally aligned to `t`, with an explicit `null` wherever there was no sample. Each timestamp is the END of its bucket, so `window.to` is inclusive and equals the last timestamp in `t`, while `window.from` is exclusive and is one `step_s` before the first.
+//
+// An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
+//
+// `apps_request_volume` returns one series per app: 24 hourly request counts over `window=24h` (`step_s` 3600, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. Hours that started before that live app's `createdAt` are null, so a reused app id does not inherit the previous generation's traffic still in the 24h store. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
+//
+// `endpoints_request_volume` is the endpoints-list counterpart: 24 hourly request counts per endpoint over `window=24h` (`step_s` 3600, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Hours that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+//
+// Corresponds with GET /v1/metrics/queries/{queryId}/series (the `GetMetricSeries` operationId).
+func (c *Client) GetMetricSeries(ctx context.Context, queryId QueryId, params *GetMetricSeriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMetricSeriesRequest(c.Server, queryId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpsertOrgTenancyWithBody Set an organisation's serverless tenancy state
+//
+// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+//
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+//
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+func (c *Client) UpsertOrgTenancyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpsertOrgTenancyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpsertOrgTenancy Set an organisation's serverless tenancy state
+//
+// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+//
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+//
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+func (c *Client) UpsertOrgTenancy(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpsertOrgTenancyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListSecrets List secrets
 //
 // Returns secret metadata only; encrypted values are never returned.
@@ -2813,7 +3942,7 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams, req
 
 // CreateSecretWithBody Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 //
 // Takes any type of body and a specified content type.
 //
@@ -2832,7 +3961,7 @@ func (c *Client) CreateSecretWithBody(ctx context.Context, contentType string, b
 
 // CreateSecret Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2851,7 +3980,7 @@ func (c *Client) CreateSecret(ctx context.Context, body CreateSecretJSONRequestB
 
 // DeleteSecret Delete a secret
 //
-// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
+// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row. A background sweep removes the row and releases the name once no running worker can still hold the value — the value travels inside the worker's own environment, which is fixed when the container starts, so a worker keeps it until it stops. There is no deadline on that wait. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach and detach change the secret set for the next rollout. Neither operation rolls workers. While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 //
 // Corresponds with DELETE /v1/secrets/{secretName} (the `DeleteSecret` operationId).
 func (c *Client) DeleteSecret(ctx context.Context, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3279,6 +4408,47 @@ func NewListBuildsRequest(server string, appId AppId, params *ListBuildsParams) 
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteBuildRequest constructs an http.Request for the DeleteBuild method
+func NewDeleteBuildRequest(server string, appId AppId, buildId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "buildId", buildId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/builds/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -4112,6 +5282,176 @@ func NewDetachAppSecretRequest(server string, appId AppId, secretName SecretName
 	return req, nil
 }
 
+// NewCreateSourceUploadRequest calls the generic CreateSourceUpload builder with application/json body
+func NewCreateSourceUploadRequest(server string, appId AppId, body CreateSourceUploadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSourceUploadRequestWithBody(server, appId, "application/json", bodyReader)
+}
+
+// NewCreateSourceUploadRequestWithBody constructs an http.Request for the CreateSourceUpload method, with any body, and a specified content type
+func NewCreateSourceUploadRequestWithBody(server string, appId AppId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSourceUploadRequest constructs an http.Request for the DeleteSourceUpload method
+func NewDeleteSourceUploadRequest(server string, appId AppId, uploadId SourceUploadId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSourceUploadRequest constructs an http.Request for the GetSourceUpload method
+func NewGetSourceUploadRequest(server string, appId AppId, uploadId SourceUploadId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompleteSourceUploadRequest constructs an http.Request for the CompleteSourceUpload method
+func NewCompleteSourceUploadRequest(server string, appId AppId, uploadId SourceUploadId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads/%s/complete", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewStopAppRequest constructs an http.Request for the StopApp method
 func NewStopAppRequest(server string, appId AppId) (*http.Request, error) {
 	var err error
@@ -4232,7 +5572,7 @@ func NewListTasksRequest(server string, appId AppId, params *ListTasksParams) (*
 }
 
 // NewGetTaskRequest constructs an http.Request for the GetTask method
-func NewGetTaskRequest(server string, appId AppId, taskId string) (*http.Request, error) {
+func NewGetTaskRequest(server string, appId AppId, taskId TaskId) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -4244,7 +5584,7 @@ func NewGetTaskRequest(server string, appId AppId, taskId string) (*http.Request
 
 	var pathParam1 string
 
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "taskId", taskId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "taskId", taskId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
 	if err != nil {
 		return nil, err
 	}
@@ -4345,6 +5685,47 @@ func NewListVersionsRequest(server string, appId AppId, params *ListVersionsPara
 	return req, nil
 }
 
+// NewDeleteVersionRequest constructs an http.Request for the DeleteVersion method
+func NewDeleteVersionRequest(server string, appId AppId, versionNumber int32) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "versionNumber", versionNumber, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int32"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/versions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetVersionRequest constructs an http.Request for the GetVersion method
 func NewGetVersionRequest(server string, appId AppId, versionNumber int32) (*http.Request, error) {
 	var err error
@@ -4436,6 +5817,18 @@ func NewListWorkersRequest(server string, appId AppId, params *ListWorkersParams
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -4909,6 +6302,319 @@ func NewUpdateGpuTypePriceRequestWithBody(server string, gpuTypeId GpuTypeId, pr
 	return req, nil
 }
 
+// NewGetLogEntriesRequest constructs an http.Request for the GetLogEntries method
+func NewGetLogEntriesRequest(server string, queryId QueryId, params *GetLogEntriesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "queryId", queryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/logs/queries/%s/entries", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "window", params.Window, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Deployment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "deployment", *params.Deployment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Endpoint != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "endpoint", *params.Endpoint, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "uuid"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListInsightsQueriesRequest constructs an http.Request for the ListInsightsQueries method
+func NewListInsightsQueriesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/metrics/queries")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMetricSeriesRequest constructs an http.Request for the GetMetricSeries method
+func NewGetMetricSeriesRequest(server string, queryId QueryId, params *GetMetricSeriesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "queryId", queryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/metrics/queries/%s/series", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "window", params.Window, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.PinnedTo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "pinnedTo", *params.PinnedTo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Deployment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "deployment", *params.Deployment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Endpoint != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "endpoint", *params.Endpoint, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "uuid"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.StatusClass != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "statusClass", *params.StatusClass, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Region != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "region", *params.Region, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.AppId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "appId", *params.AppId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.EndpointId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "endpointId", *params.EndpointId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpsertOrgTenancyRequest calls the generic UpsertOrgTenancy builder with application/json body
+func NewUpsertOrgTenancyRequest(server string, body UpsertOrgTenancyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpsertOrgTenancyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpsertOrgTenancyRequestWithBody constructs an http.Request for the UpsertOrgTenancy method, with any body, and a specified content type
+func NewUpsertOrgTenancyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/org-tenancies")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListSecretsRequest constructs an http.Request for the ListSecrets method
 func NewListSecretsRequest(server string, params *ListSecretsParams) (*http.Request, error) {
 	var err error
@@ -5244,7 +6950,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetAppSummaryWithResponse App summary metrics for the authenticated organisation
 	//
-	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. Metrics whose backing system is not yet available are omitted from the response rather than reported as zero.
+	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -5253,7 +6959,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAppsWithResponse List apps
 	//
-	// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly.
+	// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
 	//
 	// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 	//
@@ -5271,14 +6977,17 @@ type ClientWithResponsesInterface interface {
 	//   points at that version. If the build, validation, or rollout fails the app is
 	//   marked `failed`.
 	//
-	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
-	//   from a container source yet, so the app stays `initializing` and does not serve
-	//   inference — poll `active` only for a `code` source.
+	// - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+	//   goes through the same build pipeline — the wrapper image is built, published and
+	//   deployed, so the version carries a `buildId` and the app follows the same
+	//   lifecycle as a code source. An invalid `container.yaml` rejects the create
+	//   before any build capacity is spent — `400` where the document could not be
+	//   parsed at all, `422` where it parsed and broke a rule.
 	//
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5294,14 +7003,17 @@ type ClientWithResponsesInterface interface {
 	//   points at that version. If the build, validation, or rollout fails the app is
 	//   marked `failed`.
 	//
-	// - `container` source: no build step, so the version carries no `buildId`. No worker runs
-	//   from a container source yet, so the app stays `initializing` and does not serve
-	//   inference — poll `active` only for a `code` source.
+	// - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+	//   goes through the same build pipeline — the wrapper image is built, published and
+	//   deployed, so the version carries a `buildId` and the app follows the same
+	//   lifecycle as a code source. An invalid `container.yaml` rejects the create
+	//   before any build capacity is spent — `400` where the document could not be
+	//   parsed at all, `422` where it parsed and broke a rule.
 	//
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5312,12 +7024,16 @@ type ClientWithResponsesInterface interface {
 	//
 	// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
 	//
+	// The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /v1/apps/{appId} (the `DeleteApp` operationId).
 	DeleteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*DeleteAppResponse, error)
 
 	// GetAppWithResponse Get an app
+	//
+	// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -5327,22 +7043,11 @@ type ClientWithResponsesInterface interface {
 	// UpdateAppWithBodyWithResponse Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	//
-	// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-	//
-	// Target behaviour (once fully wired):
-	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-	//   restart with the new configuration. If the rollout fails, the app remains on
-	//   the previous configuration.
-	//
-	// - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-	//   sources); on success the new version is deployed automatically. If the build or
-	//   validation fails, the app remains on the previous version.
-	//
-	// - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-	//   current set — any item absent from the request is deleted. Endpoints take effect
-	//   immediately. Changes to secrets or environment variables trigger a rollout so workers
-	//   restart and pick up the new values.
+	// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+	// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+	// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5352,22 +7057,11 @@ type ClientWithResponsesInterface interface {
 	// UpdateAppWithResponse Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-	//
-	// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-	//
-	// Target behaviour (once fully wired):
-	// - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-	//   restart with the new configuration. If the rollout fails, the app remains on
-	//   the previous configuration.
-	//
-	// - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-	//   sources); on success the new version is deployed automatically. If the build or
-	//   validation fails, the app remains on the previous version.
-	//
-	// - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-	//   current set — any item absent from the request is deleted. Endpoints take effect
-	//   immediately. Changes to secrets or environment variables trigger a rollout so workers
-	//   restart and pick up the new values.
+	// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+	// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+	// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5381,6 +7075,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/apps/{appId}/builds (the `ListBuilds` operationId).
 	ListBuildsWithResponse(ctx context.Context, appId AppId, params *ListBuildsParams, reqEditors ...RequestEditorFn) (*ListBuildsResponse, error)
 
+	// DeleteBuildWithResponse Delete or cancel a build
+	//
+	// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/apps/{appId}/builds/{buildId} (the `DeleteBuild` operationId).
+	DeleteBuildWithResponse(ctx context.Context, appId AppId, buildId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteBuildResponse, error)
+
 	// GetBuildWithResponse Get a build
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -5390,12 +7093,12 @@ type ClientWithResponsesInterface interface {
 
 	// DeployVersionWithBodyWithResponse Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5404,12 +7107,12 @@ type ClientWithResponsesInterface interface {
 
 	// DeployVersionWithResponse Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5417,6 +7120,8 @@ type ClientWithResponsesInterface interface {
 	DeployVersionWithResponse(ctx context.Context, appId AppId, body DeployVersionJSONRequestBody, reqEditors ...RequestEditorFn) (*DeployVersionResponse, error)
 
 	// ListEndpointsWithResponse List endpoints
+	//
+	// Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -5497,7 +7202,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithBodyWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5506,7 +7211,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5515,7 +7220,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithBodyWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5524,7 +7229,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5549,8 +7254,8 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppSecretWithBodyWithResponse Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -5560,8 +7265,8 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppSecretWithResponse Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+	// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -5571,12 +7276,57 @@ type ClientWithResponsesInterface interface {
 
 	// DetachAppSecretWithResponse Detach a secret from an app
 	//
-	// Removes the control-plane attachment. Does not roll workers in this release.
+	// Removes the attachment from the next rollout. This operation does not roll workers. Existing workers keep the value until they stop.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 	DetachAppSecretWithResponse(ctx context.Context, appId AppId, secretName SecretName, reqEditors ...RequestEditorFn) (*DetachAppSecretResponse, error)
+
+	// CreateSourceUploadWithBodyWithResponse Create a source upload
+	//
+	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUploadWithBodyWithResponse(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error)
+
+	// CreateSourceUploadWithResponse Create a source upload
+	//
+	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUploadWithResponse(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error)
+
+	// DeleteSourceUploadWithResponse Abort a source upload
+	//
+	// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+	DeleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*DeleteSourceUploadResponse, error)
+
+	// GetSourceUploadWithResponse Get a source upload
+	//
+	// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+	GetSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*GetSourceUploadResponse, error)
+
+	// CompleteSourceUploadWithResponse Complete a source upload
+	//
+	// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+	CompleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*CompleteSourceUploadResponse, error)
 
 	// StopAppWithResponse Stop an app
 	//
@@ -5589,7 +7339,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListTasksWithResponse List tasks for an app
 	//
-	// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
+	// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -5603,7 +7353,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
-	GetTaskWithResponse(ctx context.Context, appId AppId, taskId string, reqEditors ...RequestEditorFn) (*GetTaskResponse, error)
+	GetTaskWithResponse(ctx context.Context, appId AppId, taskId TaskId, reqEditors ...RequestEditorFn) (*GetTaskResponse, error)
 
 	// ListVersionsWithResponse List versions
 	//
@@ -5611,6 +7361,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/apps/{appId}/versions (the `ListVersions` operationId).
 	ListVersionsWithResponse(ctx context.Context, appId AppId, params *ListVersionsParams, reqEditors ...RequestEditorFn) (*ListVersionsResponse, error)
+
+	// DeleteVersionWithResponse Delete a version
+	//
+	// Deletes an unused version while retaining its immutable history. Deleted versions are omitted from version lists, return `404` from version reads, and cannot be deployed. Returns `409` while the app is deleting, or when the version is active, is the app's only remaining version, has a non-stopped worker, or is targeted by a live rollout. Deleting an already deleted version returns `404`. This operation does not remove the version's OCI image.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/apps/{appId}/versions/{versionNumber} (the `DeleteVersion` operationId).
+	DeleteVersionWithResponse(ctx context.Context, appId AppId, versionNumber int32, reqEditors ...RequestEditorFn) (*DeleteVersionResponse, error)
 
 	// GetVersionWithResponse Get a version
 	//
@@ -5621,7 +7380,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListWorkersWithResponse List workers
 	//
-	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `state` and `status` narrow the page; a cursor must be replayed under the same filters it was issued with.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -5754,6 +7513,71 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
 	UpdateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error)
 
+	// GetLogEntriesWithResponse Read one page of a named log query
+	//
+	// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists.
+	//
+	// No query is registered yet: live tail, retention tiers and log quotas are decided in a follow-up ADR, so every request currently answers `404`. The route exists so the contract is fixed before the templates land.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
+	GetLogEntriesWithResponse(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*GetLogEntriesResponse, error)
+
+	// ListInsightsQueriesWithResponse List the metric and log queries this build can answer
+	//
+	// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+	//
+	// This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/metrics/queries (the `ListInsightsQueries` operationId).
+	ListInsightsQueriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListInsightsQueriesResponse, error)
+
+	// GetMetricSeriesWithResponse Read one named metric query
+	//
+	// Returns one chart's data: a single timestamp axis shared by every series, and one dense value array per series aligned to it.
+	//
+	// Values are dense and positionally aligned to `t`, with an explicit `null` wherever there was no sample. Each timestamp is the END of its bucket, so `window.to` is inclusive and equals the last timestamp in `t`, while `window.from` is exclusive and is one `step_s` before the first.
+	//
+	// An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
+	//
+	// `apps_request_volume` returns one series per app: 24 hourly request counts over `window=24h` (`step_s` 3600, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. Hours that started before that live app's `createdAt` are null, so a reused app id does not inherit the previous generation's traffic still in the 24h store. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
+	//
+	// `endpoints_request_volume` is the endpoints-list counterpart: 24 hourly request counts per endpoint over `window=24h` (`step_s` 3600, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Hours that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/metrics/queries/{queryId}/series (the `GetMetricSeries` operationId).
+	GetMetricSeriesWithResponse(ctx context.Context, queryId QueryId, params *GetMetricSeriesParams, reqEditors ...RequestEditorFn) (*GetMetricSeriesResponse, error)
+
+	// UpsertOrgTenancyWithBodyWithResponse Set an organisation's serverless tenancy state
+	//
+	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+	//
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	//
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+	UpsertOrgTenancyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error)
+
+	// UpsertOrgTenancyWithResponse Set an organisation's serverless tenancy state
+	//
+	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+	//
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	//
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+	UpsertOrgTenancyWithResponse(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error)
+
 	// ListSecretsWithResponse List secrets
 	//
 	// Returns secret metadata only; encrypted values are never returned.
@@ -5765,7 +7589,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithBodyWithResponse Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5774,7 +7598,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithResponse Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -5783,7 +7607,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteSecretWithResponse Delete a secret
 	//
-	// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
+	// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row. A background sweep removes the row and releases the name once no running worker can still hold the value — the value travels inside the worker's own environment, which is fixed when the container starts, so a worker keeps it until it stops. There is no deadline on that wait. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach and detach change the secret set for the next rollout. Neither operation rolls workers. While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -5973,6 +7797,8 @@ type CreateAppResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
@@ -5999,6 +7825,11 @@ func (r CreateAppResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r CreateAppResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CreateAppResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
 }
 
 // GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
@@ -6278,10 +8109,13 @@ type ListBuildsResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *struct {
-		Data *[]Build `json:"data,omitempty"`
+		Data []Build `json:"data"`
 
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
+
+		// Summary Collection totals for this app's builds list. Independent of the page: the same values on every cursor, including a seek past the last row. `total` counts builds. `versions` counts versions on the same app — the same predicate as `listVersions` `summary.total`, excluding soft-deleted versions.
+		Summary BuildListSummary `json:"summary"`
 	}
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
@@ -6295,10 +8129,13 @@ type ListBuildsResponse struct {
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ListBuildsResponse) GetJSON200() *struct {
-	Data *[]Build `json:"data,omitempty"`
+	Data []Build `json:"data"`
 
 	// NextCursor Cursor for the next page; null when there are no more items.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Summary Collection totals for this app's builds list. Independent of the page: the same values on every cursor, including a seek past the last row. `total` counts builds. `versions` counts versions on the same app — the same predicate as `listVersions` `summary.total`, excluding soft-deleted versions.
+	Summary BuildListSummary `json:"summary"`
 } {
 	return r.JSON200
 }
@@ -6346,6 +8183,96 @@ func (r ListBuildsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListBuildsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteBuildResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteBuildResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteBuildResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteBuildResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteBuildResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteBuildResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7223,6 +9150,8 @@ type StartSyncTaskResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Task
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *TaskAccepted
 	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
@@ -7237,13 +9166,16 @@ type StartSyncTaskResponse struct {
 	ApplicationproblemJSON422 *ValidationError
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
-	// ApplicationproblemJSON504 the response for an HTTP 504 `application/problem+json` response
-	ApplicationproblemJSON504 *Timeout
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r StartSyncTaskResponse) GetJSON200() *Task {
 	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r StartSyncTaskResponse) GetJSON202() *TaskAccepted {
+	return r.JSON202
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
@@ -7279,11 +9211,6 @@ func (r StartSyncTaskResponse) GetApplicationproblemJSON422() *ValidationError {
 // GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
 func (r StartSyncTaskResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
 	return r.ApplicationproblemJSON503
-}
-
-// GetApplicationproblemJSON504 returns the response for an HTTP 504 `application/problem+json` response
-func (r StartSyncTaskResponse) GetApplicationproblemJSON504() *Timeout {
-	return r.ApplicationproblemJSON504
 }
 
 // GetBody returns the raw response body bytes
@@ -7636,6 +9563,366 @@ func (r DetachAppSecretResponse) ContentType() string {
 	return ""
 }
 
+type CreateSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SourceUploadCreation
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSourceUploadResponse) GetJSON201() *SourceUploadCreation {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SourceUpload
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSourceUploadResponse) GetJSON200() *SourceUpload {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompleteSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SourceUpload
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompleteSourceUploadResponse) GetJSON200() *SourceUpload {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CompleteSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompleteSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompleteSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompleteSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type StopAppResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -7879,10 +10166,13 @@ type ListVersionsResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *struct {
-		Data *[]Version `json:"data,omitempty"`
+		Data []Version `json:"data"`
 
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
+
+		// Summary Collection totals for a paged list. Independent of the page: `total` is the COUNT of items in the collection and is the same value on every page, including a cursor that seeks past the last row.
+		Summary ListSummary `json:"summary"`
 	}
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
@@ -7896,10 +10186,13 @@ type ListVersionsResponse struct {
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ListVersionsResponse) GetJSON200() *struct {
-	Data *[]Version `json:"data,omitempty"`
+	Data []Version `json:"data"`
 
 	// NextCursor Cursor for the next page; null when there are no more items.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Summary Collection totals for a paged list. Independent of the page: `total` is the COUNT of items in the collection and is the same value on every page, including a cursor that seeks past the last row.
+	Summary ListSummary `json:"summary"`
 } {
 	return r.JSON200
 }
@@ -7947,6 +10240,75 @@ func (r ListVersionsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListVersionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteVersionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteVersionResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteVersionResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteVersionResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteVersionResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteVersionResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteVersionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteVersionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteVersionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteVersionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8906,6 +11268,380 @@ func (r UpdateGpuTypePriceResponse) ContentType() string {
 	return ""
 }
 
+// GetLogEntriesResponse429Headers the declared response headers of an HTTP 429 response for GetLogEntries
+type GetLogEntriesResponse429Headers struct {
+	RetryAfter int32
+}
+
+type GetLogEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LogEntryPage
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *TooManyRequests
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+	// ApplicationproblemJSON504 the response for an HTTP 504 `application/problem+json` response
+	ApplicationproblemJSON504 *GatewayTimeout
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetLogEntriesResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetLogEntriesResponse) GetJSON200() *LogEntryPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON429() *TooManyRequests {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSON504 returns the response for an HTTP 504 `application/problem+json` response
+func (r GetLogEntriesResponse) GetApplicationproblemJSON504() *GatewayTimeout {
+	return r.ApplicationproblemJSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r GetLogEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLogEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLogEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetLogEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListInsightsQueriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *QueryCatalogue
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+	// ApplicationproblemJSON504 the response for an HTTP 504 `application/problem+json` response
+	ApplicationproblemJSON504 *GatewayTimeout
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListInsightsQueriesResponse) GetJSON200() *QueryCatalogue {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListInsightsQueriesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListInsightsQueriesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r ListInsightsQueriesResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListInsightsQueriesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSON504 returns the response for an HTTP 504 `application/problem+json` response
+func (r ListInsightsQueriesResponse) GetApplicationproblemJSON504() *GatewayTimeout {
+	return r.ApplicationproblemJSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r ListInsightsQueriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListInsightsQueriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListInsightsQueriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListInsightsQueriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetMetricSeriesResponse429Headers the declared response headers of an HTTP 429 response for GetMetricSeries
+type GetMetricSeriesResponse429Headers struct {
+	RetryAfter int32
+}
+
+type GetMetricSeriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MetricSeries
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *TooManyRequests
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+	// ApplicationproblemJSON504 the response for an HTTP 504 `application/problem+json` response
+	ApplicationproblemJSON504 *GatewayTimeout
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetMetricSeriesResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMetricSeriesResponse) GetJSON200() *MetricSeries {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON429() *TooManyRequests {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetApplicationproblemJSON504 returns the response for an HTTP 504 `application/problem+json` response
+func (r GetMetricSeriesResponse) GetApplicationproblemJSON504() *GatewayTimeout {
+	return r.ApplicationproblemJSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMetricSeriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMetricSeriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMetricSeriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMetricSeriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpsertOrgTenancyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrgTenancy
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpsertOrgTenancyResponse) GetJSON200() *OrgTenancy {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r UpsertOrgTenancyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpsertOrgTenancyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpsertOrgTenancyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpsertOrgTenancyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSecretsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9315,7 +12051,7 @@ func (r ListUsageEventsResponse) ContentType() string {
 
 // GetAppSummaryWithResponse App summary metrics for the authenticated organisation
 //
-// Aggregate dashboard metrics across all apps owned by the authenticated organisation. Metrics whose backing system is not yet available are omitted from the response rather than reported as zero.
+// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9330,7 +12066,7 @@ func (c *ClientWithResponses) GetAppSummaryWithResponse(ctx context.Context, req
 
 // ListAppsWithResponse List apps
 //
-// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly.
+// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
 //
 // A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 //
@@ -9354,13 +12090,16 @@ func (c *ClientWithResponses) ListAppsWithResponse(ctx context.Context, params *
 //     points at that version. If the build, validation, or rollout fails the app is
 //     marked `failed`.
 //
-//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
-//     from a container source yet, so the app stays `initializing` and does not serve
-//     inference — poll `active` only for a `code` source.
+//   - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+//     goes through the same build pipeline — the wrapper image is built, published and
+//     deployed, so the version carries a `buildId` and the app follows the same
+//     lifecycle as a code source. An invalid `container.yaml` rejects the create
+//     before any build capacity is spent — `400` where the document could not be
+//     parsed at all, `422` where it parsed and broke a rule.
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9382,13 +12121,16 @@ func (c *ClientWithResponses) CreateAppWithBodyWithResponse(ctx context.Context,
 //     points at that version. If the build, validation, or rollout fails the app is
 //     marked `failed`.
 //
-//   - `container` source: no build step, so the version carries no `buildId`. No worker runs
-//     from a container source yet, so the app stays `initializing` and does not serve
-//     inference — poll `active` only for a `code` source.
+//   - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+//     goes through the same build pipeline — the wrapper image is built, published and
+//     deployed, so the version carries a `buildId` and the app follows the same
+//     lifecycle as a code source. An invalid `container.yaml` rejects the create
+//     before any build capacity is spent — `400` where the document could not be
+//     parsed at all, `422` where it parsed and broke a rule.
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` is accepted by the schema but not yet applied, so supplying it returns `422` rather than silently dropping it.
+// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9405,6 +12147,8 @@ func (c *ClientWithResponses) CreateAppWithResponse(ctx context.Context, body Cr
 //
 // Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
 //
+// The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /v1/apps/{appId} (the `DeleteApp` operationId).
@@ -9417,6 +12161,8 @@ func (c *ClientWithResponses) DeleteAppWithResponse(ctx context.Context, appId A
 }
 
 // GetAppWithResponse Get an app
+//
+// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9432,22 +12178,11 @@ func (c *ClientWithResponses) GetAppWithResponse(ctx context.Context, appId AppI
 // UpdateAppWithBodyWithResponse Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-//
-// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-//
-// Target behaviour (once fully wired):
-//   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-//     restart with the new configuration. If the rollout fails, the app remains on
-//     the previous configuration.
-//
-//   - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-//     sources); on success the new version is deployed automatically. If the build or
-//     validation fails, the app remains on the previous version.
-//
-//   - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-//     current set — any item absent from the request is deleted. Endpoints take effect
-//     immediately. Changes to secrets or environment variables trigger a rollout so workers
-//     restart and pick up the new values.
+// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9463,23 +12198,11 @@ func (c *ClientWithResponses) UpdateAppWithBodyWithResponse(ctx context.Context,
 // UpdateAppWithResponse Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional; omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations.
-//
-// **Currently persisted:** `appName` and `configuration` only. Supplying `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422` (bulk env-var replace is not wired — use the dedicated `/environment-variables` endpoints for individual keys).
-//
-// Target behaviour (once fully wired):
-//
-//   - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-//     restart with the new configuration. If the rollout fails, the app remains on
-//     the previous configuration.
-//
-//   - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-//     sources); on success the new version is deployed automatically. If the build or
-//     validation fails, the app remains on the previous version.
-//
-//   - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-//     current set — any item absent from the request is deleted. Endpoints take effect
-//     immediately. Changes to secrets or environment variables trigger a rollout so workers
-//     restart and pick up the new values.
+// A configuration or `environmentVariables` change records a new version with the same image. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`. A name-only or `secrets`-only change does not.
+// `appSource` starts a build and records version N+1 with a new image tag. The deploy queue carries the build-then-deploy tail; `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation or env/secret collision prevents this request's env/secrets overlay; in that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots.
+// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version.
+// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app; the combined set of plain variables and attachments is capped at 100. This is a control-plane record only — secret values do not reach a pod, and the version snapshot carries no secrets — so a secrets-only change does not roll the workload.
+// Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when a new version with a new source builds and deploys.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9505,6 +12228,21 @@ func (c *ClientWithResponses) ListBuildsWithResponse(ctx context.Context, appId 
 	return ParseListBuildsResponse(rsp)
 }
 
+// DeleteBuildWithResponse Delete or cancel a build
+//
+// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/apps/{appId}/builds/{buildId} (the `DeleteBuild` operationId).
+func (c *ClientWithResponses) DeleteBuildWithResponse(ctx context.Context, appId AppId, buildId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteBuildResponse, error) {
+	rsp, err := c.DeleteBuild(ctx, appId, buildId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteBuildResponse(rsp)
+}
+
 // GetBuildWithResponse Get a build
 //
 // Returns a wrapper object for the known response body format(s).
@@ -9520,12 +12258,12 @@ func (c *ClientWithResponses) GetBuildWithResponse(ctx context.Context, appId Ap
 
 // DeployVersionWithBodyWithResponse Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9540,12 +12278,12 @@ func (c *ClientWithResponses) DeployVersionWithBodyWithResponse(ctx context.Cont
 
 // DeployVersionWithResponse Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A `container`-source version returns `409 Conflict` until container apps are supported - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9559,6 +12297,8 @@ func (c *ClientWithResponses) DeployVersionWithResponse(ctx context.Context, app
 }
 
 // ListEndpointsWithResponse List endpoints
+//
+// Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9693,7 +12433,7 @@ func (c *ClientWithResponses) FavouriteAppWithResponse(ctx context.Context, appI
 
 // StartAsyncTaskWithBodyWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9708,7 +12448,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithBodyWithResponse(ctx context.Con
 
 // StartAsyncTaskWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9723,7 +12463,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithResponse(ctx context.Context, ap
 
 // StartSyncTaskWithBodyWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9738,7 +12478,7 @@ func (c *ClientWithResponses) StartSyncTaskWithBodyWithResponse(ctx context.Cont
 
 // StartSyncTaskWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`), or `504` if it does not complete within the wait window. When the accepted task ID is available, the response includes `taskId` for polling. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9781,8 +12521,8 @@ func (c *ClientWithResponses) ListAppSecretsWithResponse(ctx context.Context, ap
 
 // AttachAppSecretWithBodyWithResponse Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -9798,8 +12538,8 @@ func (c *ClientWithResponses) AttachAppSecretWithBodyWithResponse(ctx context.Co
 
 // AttachAppSecretWithResponse Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name. This is a control-plane association only in this release — it does not roll workers or inject values into pods yet (ADR-019 in-pod unseal is separate). Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
-// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources are reserved for the same future pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
+// Records that an organisation secret is attached to an app under a resolved env-var name. The next rollout injects the value into the worker. This operation does not roll workers. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -9815,7 +12555,7 @@ func (c *ClientWithResponses) AttachAppSecretWithResponse(ctx context.Context, a
 
 // DetachAppSecretWithResponse Detach a secret from an app
 //
-// Removes the control-plane attachment. Does not roll workers in this release.
+// Removes the attachment from the next rollout. This operation does not roll workers. Existing workers keep the value until they stop.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9826,6 +12566,81 @@ func (c *ClientWithResponses) DetachAppSecretWithResponse(ctx context.Context, a
 		return nil, err
 	}
 	return ParseDetachAppSecretResponse(rsp)
+}
+
+// CreateSourceUploadWithBodyWithResponse Create a source upload
+//
+// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+func (c *ClientWithResponses) CreateSourceUploadWithBodyWithResponse(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error) {
+	rsp, err := c.CreateSourceUploadWithBody(ctx, appId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSourceUploadResponse(rsp)
+}
+
+// CreateSourceUploadWithResponse Create a source upload
+//
+// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
+func (c *ClientWithResponses) CreateSourceUploadWithResponse(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error) {
+	rsp, err := c.CreateSourceUpload(ctx, appId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSourceUploadResponse(rsp)
+}
+
+// DeleteSourceUploadWithResponse Abort a source upload
+//
+// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+func (c *ClientWithResponses) DeleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*DeleteSourceUploadResponse, error) {
+	rsp, err := c.DeleteSourceUpload(ctx, appId, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSourceUploadResponse(rsp)
+}
+
+// GetSourceUploadWithResponse Get a source upload
+//
+// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+func (c *ClientWithResponses) GetSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*GetSourceUploadResponse, error) {
+	rsp, err := c.GetSourceUpload(ctx, appId, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSourceUploadResponse(rsp)
+}
+
+// CompleteSourceUploadWithResponse Complete a source upload
+//
+// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+func (c *ClientWithResponses) CompleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*CompleteSourceUploadResponse, error) {
+	rsp, err := c.CompleteSourceUpload(ctx, appId, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteSourceUploadResponse(rsp)
 }
 
 // StopAppWithResponse Stop an app
@@ -9845,7 +12660,7 @@ func (c *ClientWithResponses) StopAppWithResponse(ctx context.Context, appId App
 
 // ListTasksWithResponse List tasks for an app
 //
-// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. Each submission has a new task id, so client retries can appear as separate tasks. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
+// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`; continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts; tracked tasks reappear on completion. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9865,7 +12680,7 @@ func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, appId A
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
-func (c *ClientWithResponses) GetTaskWithResponse(ctx context.Context, appId AppId, taskId string, reqEditors ...RequestEditorFn) (*GetTaskResponse, error) {
+func (c *ClientWithResponses) GetTaskWithResponse(ctx context.Context, appId AppId, taskId TaskId, reqEditors ...RequestEditorFn) (*GetTaskResponse, error) {
 	rsp, err := c.GetTask(ctx, appId, taskId, reqEditors...)
 	if err != nil {
 		return nil, err
@@ -9886,6 +12701,21 @@ func (c *ClientWithResponses) ListVersionsWithResponse(ctx context.Context, appI
 	return ParseListVersionsResponse(rsp)
 }
 
+// DeleteVersionWithResponse Delete a version
+//
+// Deletes an unused version while retaining its immutable history. Deleted versions are omitted from version lists, return `404` from version reads, and cannot be deployed. Returns `409` while the app is deleting, or when the version is active, is the app's only remaining version, has a non-stopped worker, or is targeted by a live rollout. Deleting an already deleted version returns `404`. This operation does not remove the version's OCI image.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/apps/{appId}/versions/{versionNumber} (the `DeleteVersion` operationId).
+func (c *ClientWithResponses) DeleteVersionWithResponse(ctx context.Context, appId AppId, versionNumber int32, reqEditors ...RequestEditorFn) (*DeleteVersionResponse, error) {
+	rsp, err := c.DeleteVersion(ctx, appId, versionNumber, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteVersionResponse(rsp)
+}
+
 // GetVersionWithResponse Get a version
 //
 // Returns a wrapper object for the known response body format(s).
@@ -9901,7 +12731,7 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, appId 
 
 // ListWorkersWithResponse List workers
 //
-// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `status` narrows the page; a cursor must be replayed under the same status filter it was issued with.
+// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Optional `state` and `status` narrow the page; a cursor must be replayed under the same filters it was issued with.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -10124,6 +12954,101 @@ func (c *ClientWithResponses) UpdateGpuTypePriceWithResponse(ctx context.Context
 	return ParseUpdateGpuTypePriceResponse(rsp)
 }
 
+// GetLogEntriesWithResponse Read one page of a named log query
+//
+// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists.
+//
+// No query is registered yet: live tail, retention tiers and log quotas are decided in a follow-up ADR, so every request currently answers `404`. The route exists so the contract is fixed before the templates land.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
+func (c *ClientWithResponses) GetLogEntriesWithResponse(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*GetLogEntriesResponse, error) {
+	rsp, err := c.GetLogEntries(ctx, queryId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLogEntriesResponse(rsp)
+}
+
+// ListInsightsQueriesWithResponse List the metric and log queries this build can answer
+//
+// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+//
+// This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/metrics/queries (the `ListInsightsQueries` operationId).
+func (c *ClientWithResponses) ListInsightsQueriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListInsightsQueriesResponse, error) {
+	rsp, err := c.ListInsightsQueries(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListInsightsQueriesResponse(rsp)
+}
+
+// GetMetricSeriesWithResponse Read one named metric query
+//
+// Returns one chart's data: a single timestamp axis shared by every series, and one dense value array per series aligned to it.
+//
+// Values are dense and positionally aligned to `t`, with an explicit `null` wherever there was no sample. Each timestamp is the END of its bucket, so `window.to` is inclusive and equals the last timestamp in `t`, while `window.from` is exclusive and is one `step_s` before the first.
+//
+// An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
+//
+// `apps_request_volume` returns one series per app: 24 hourly request counts over `window=24h` (`step_s` 3600, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. Hours that started before that live app's `createdAt` are null, so a reused app id does not inherit the previous generation's traffic still in the 24h store. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
+//
+// `endpoints_request_volume` is the endpoints-list counterpart: 24 hourly request counts per endpoint over `window=24h` (`step_s` 3600, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Hours that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/metrics/queries/{queryId}/series (the `GetMetricSeries` operationId).
+func (c *ClientWithResponses) GetMetricSeriesWithResponse(ctx context.Context, queryId QueryId, params *GetMetricSeriesParams, reqEditors ...RequestEditorFn) (*GetMetricSeriesResponse, error) {
+	rsp, err := c.GetMetricSeries(ctx, queryId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMetricSeriesResponse(rsp)
+}
+
+// UpsertOrgTenancyWithBodyWithResponse Set an organisation's serverless tenancy state
+//
+// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+//
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+//
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+func (c *ClientWithResponses) UpsertOrgTenancyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error) {
+	rsp, err := c.UpsertOrgTenancyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpsertOrgTenancyResponse(rsp)
+}
+
+// UpsertOrgTenancyWithResponse Set an organisation's serverless tenancy state
+//
+// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+//
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+//
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
+func (c *ClientWithResponses) UpsertOrgTenancyWithResponse(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error) {
+	rsp, err := c.UpsertOrgTenancy(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpsertOrgTenancyResponse(rsp)
+}
+
 // ListSecretsWithResponse List secrets
 //
 // Returns secret metadata only; encrypted values are never returned.
@@ -10141,7 +13066,7 @@ func (c *ClientWithResponses) ListSecretsWithResponse(ctx context.Context, param
 
 // CreateSecretWithBodyWithResponse Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -10156,7 +13081,7 @@ func (c *ClientWithResponses) CreateSecretWithBodyWithResponse(ctx context.Conte
 
 // CreateSecretWithResponse Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. Hard deletion of `pending_destroy` rows (which would release the name) is not performed by this API yet. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -10171,7 +13096,7 @@ func (c *ClientWithResponses) CreateSecretWithResponse(ctx context.Context, body
 
 // DeleteSecretWithResponse Delete a secret
 //
-// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row; a future GC path is expected to remove unattached `pending_destroy` secrets and release the name, but that sweep is not implemented yet. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach/detach are control-plane records only in this release (they do not roll workers). While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
+// Soft-deletes a secret: marks the row `pending_destroy` and bumps revision. This API does not hard-delete the row. A background sweep removes the row and releases the name once no running worker can still hold the value — the value travels inside the worker's own environment, which is fixed when the container starts, so a worker keeps it until it stops. There is no deadline on that wait. Returns `409` while any app still attaches it — cascade-detach is not performed here; detach each holder with `DELETE .../apps/{id}/secrets/{name}` first. Attach and detach change the secret set for the next rollout. Neither operation rolls workers. While the row remains `pending_destroy` the name stays reserved, so create may return `409` even though list no longer shows the secret. Retries on an already-pending name are safe when no attachments remain (`204`); they still return `409` while attached.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -10379,6 +13304,13 @@ func ParseCreateAppResponse(rsp *http.Response) (*CreateAppResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Conflict
@@ -10605,10 +13537,13 @@ func ParseListBuildsResponse(rsp *http.Response) (*ListBuildsResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest struct {
-			Data *[]Build `json:"data,omitempty"`
+			Data []Build `json:"data"`
 
 			// NextCursor Cursor for the next page; null when there are no more items.
 			NextCursor *string `json:"nextCursor,omitempty"`
+
+			// Summary Collection totals for this app's builds list. Independent of the page: the same values on every cursor, including a seek past the last row. `total` counts builds. `versions` counts versions on the same app — the same predicate as `listVersions` `summary.total`, excluding soft-deleted versions.
+			Summary BuildListSummary `json:"summary"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
@@ -10635,6 +13570,84 @@ func ParseListBuildsResponse(rsp *http.Response) (*ListBuildsResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteBuildResponse parses an HTTP response from a DeleteBuildWithResponse call
+func ParseDeleteBuildResponse(rsp *http.Response) (*DeleteBuildResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteBuildResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest ServiceUnavailable
@@ -11358,6 +14371,13 @@ func ParseStartSyncTaskResponse(rsp *http.Response) (*StartSyncTaskResponse, err
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest TaskAccepted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest BadRequest
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -11406,13 +14426,6 @@ func ParseStartSyncTaskResponse(rsp *http.Response) (*StartSyncTaskResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON503 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
-		var dest Timeout
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON504 = &dest
 
 	}
 
@@ -11681,6 +14694,309 @@ func ParseDetachAppSecretResponse(rsp *http.Response) (*DetachAppSecretResponse,
 	return response, nil
 }
 
+// ParseCreateSourceUploadResponse parses an HTTP response from a CreateSourceUploadWithResponse call
+func ParseCreateSourceUploadResponse(rsp *http.Response) (*CreateSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SourceUploadCreation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSourceUploadResponse parses an HTTP response from a DeleteSourceUploadWithResponse call
+func ParseDeleteSourceUploadResponse(rsp *http.Response) (*DeleteSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSourceUploadResponse parses an HTTP response from a GetSourceUploadWithResponse call
+func ParseGetSourceUploadResponse(rsp *http.Response) (*GetSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SourceUpload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompleteSourceUploadResponse parses an HTTP response from a CompleteSourceUploadWithResponse call
+func ParseCompleteSourceUploadResponse(rsp *http.Response) (*CompleteSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompleteSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SourceUpload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStopAppResponse parses an HTTP response from a StopAppWithResponse call
 func ParseStopAppResponse(rsp *http.Response) (*StopAppResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -11885,10 +15201,13 @@ func ParseListVersionsResponse(rsp *http.Response) (*ListVersionsResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest struct {
-			Data *[]Version `json:"data,omitempty"`
+			Data []Version `json:"data"`
 
 			// NextCursor Cursor for the next page; null when there are no more items.
 			NextCursor *string `json:"nextCursor,omitempty"`
+
+			// Summary Collection totals for a paged list. Independent of the page: `total` is the COUNT of items in the collection and is the same value on every page, including a cursor that seeks past the last row.
+			Summary ListSummary `json:"summary"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
@@ -11915,6 +15234,63 @@ func ParseListVersionsResponse(rsp *http.Response) (*ListVersionsResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteVersionResponse parses an HTTP response from a DeleteVersionWithResponse call
+func ParseDeleteVersionResponse(rsp *http.Response) (*DeleteVersionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteVersionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest ServiceUnavailable
@@ -12691,6 +16067,332 @@ func ParseUpdateGpuTypePriceResponse(rsp *http.Response) (*UpdateGpuTypePriceRes
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetLogEntriesResponse parses an HTTP response from a GetLogEntriesWithResponse call
+func ParseGetLogEntriesResponse(rsp *http.Response) (*GetLogEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLogEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LogEntryPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest GatewayTimeout
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON504 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetLogEntriesResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int32
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListInsightsQueriesResponse parses an HTTP response from a ListInsightsQueriesWithResponse call
+func ParseListInsightsQueriesResponse(rsp *http.Response) (*ListInsightsQueriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListInsightsQueriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest QueryCatalogue
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest GatewayTimeout
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON504 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMetricSeriesResponse parses an HTTP response from a GetMetricSeriesWithResponse call
+func ParseGetMetricSeriesResponse(rsp *http.Response) (*GetMetricSeriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMetricSeriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MetricSeries
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest GatewayTimeout
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON504 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetMetricSeriesResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int32
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpsertOrgTenancyResponse parses an HTTP response from a UpsertOrgTenancyWithResponse call
+func ParseUpsertOrgTenancyResponse(rsp *http.Response) (*UpsertOrgTenancyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpsertOrgTenancyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgTenancy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 

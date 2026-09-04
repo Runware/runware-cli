@@ -4,12 +4,11 @@ servers:
 
 info:
   title: Serverless API
-  version: 0.4.0
+  version: 0.6.0
   license:
     name: Proprietary
   description: >
     Control plane and task-ingestion API for the Runware Serverless platform.
-
 
     A Runware organisation is the tenant boundary. Apps are addressed as
     `/v1/apps/{appId}` and endpoints are invoked as
@@ -34,6 +33,8 @@ tags:
     description: Submit work to app endpoints and inspect task status
   - name: Apps
     description: Manage apps and their lifecycle
+  - name: SourceUploads
+    description: Stage source archives for future app create and update integration
   - name: Builds
     description: Immutable builds
   - name: Versions
@@ -50,6 +51,10 @@ tags:
     description: Plain-text environment variables scoped to an app
   - name: Observability
     description: Usage, events and errors
+  - name: Tenancy
+    description: >
+      Platform-only organisation tenancy (ADR-019). Restricted to the Runware
+      platform organisation. Admin-api calls these when serverlessAccess changes.
 
 paths:
   # ---------------------------------------------------------------------------
@@ -376,9 +381,16 @@ paths:
       description: >
         Starts a new async task on `appId`, routing the request body payload to an available
         worker. The task runs asynchronously and the response is `202`; poll
-        `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Apps in
+        `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is
+        answered with the task it already names rather than starting a second one, so the
+        `202` can carry a task that has already finished: read its `status` instead of
+        assuming `pending`, and note it may name a different `appId`. Apps in
         `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
         `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+        Endpoint membership is checked against the active version's endpoint set before
+        the task is accepted: an endpoint the app does not declare returns `404` whose
+        `endpointPath` extension member carries the rejected path, distinguishing it
+        from an unknown app, and the task never enters the queue.
       operationId: startAsyncTask
       security:
         - ApiKeyAuth: []
@@ -386,7 +398,7 @@ paths:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/EndpointPath'
       requestBody:
-        $ref: '#/components/requestBodies/TaskPayload'
+        $ref: '#/components/requestBodies/TaskInvocation'
       responses:
         '202':
           $ref: '#/components/responses/TaskAccepted'
@@ -412,11 +424,21 @@ paths:
       summary: Start a new sync task
       description: >
         Starts a new sync task on `appId`, routing the request body payload to an available
-        worker. The request blocks until the task is terminal and returns the result inline (`200`),
-        or `504` if it does not complete within the wait window. When the accepted task ID is
-        available, the response includes `taskId` for polling. Apps in `initializing`,
-        `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return
-        `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+        worker. The request blocks until the task is terminal and returns the result inline (`200`).
+        Resubmitting a task id waits on the task it already names rather than starting a second
+        one, so the `200` carries that task's result and may name a different `appId` — poll it
+        under the one returned. A task that outlives the wait window is **not** a failure: the
+        task is still queued or running, and the response is `202` carrying that task with
+        `status: pending` — the same shape `invoke-async` returns, and it names the owning
+        `appId` on a resubmission just as the `200` does. Poll
+        `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot
+        attribute to an accepted task fails instead, with no task to poll. Apps in
+        `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
+        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint
+        membership is checked against the active version's endpoint set before the task
+        is accepted: an endpoint the app does not declare returns `404` whose
+        `endpointPath` extension member carries the rejected path, distinguishing it
+        from an unknown app, and the task never enters the queue.
       operationId: startSyncTask
       security:
         - ApiKeyAuth: []
@@ -424,10 +446,12 @@ paths:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/EndpointPath'
       requestBody:
-        $ref: '#/components/requestBodies/TaskPayload'
+        $ref: '#/components/requestBodies/TaskInvocation'
       responses:
         '200':
           $ref: '#/components/responses/Task'
+        '202':
+          $ref: '#/components/responses/TaskAccepted'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -442,8 +466,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/ValidationError'
-        '504':
-          $ref: '#/components/responses/Timeout'
 
   /v1/apps/{appId}/tasks/{taskId}:
     get:
@@ -467,9 +489,9 @@ paths:
         - name: taskId
           in: path
           required: true
+          description: Task identifier, supplied by the caller when the task was submitted.
           schema:
-            type: string
-            description: Opaque task identifier returned by the execution backend.
+            $ref: '#/components/schemas/TaskId'
       responses:
         '200':
           $ref: '#/components/responses/Task'
@@ -494,8 +516,8 @@ paths:
         configured recovery window. A page can be empty and still have `nextCursor`;
         continue until it is null. Pending entries are best effort and may disappear
         if the recovery store restarts; tracked tasks reappear on completion. This is
-        not persisted task history. Each submission has a new task id, so client retries
-        can appear as separate tasks. If the app is `stopped`, `deleting`, or `failed`,
+        not persisted task history. A task id names one task, so resubmitting one
+        does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`,
         recovery stays available. Unknown or deleted apps return `404 Not Found`.
       operationId: listTasks
       security:
@@ -546,7 +568,8 @@ paths:
       summary: List apps
       description: >
         Returns a page of the organisation's apps. Filters combine with AND; soft-deleted
-        apps are excluded unless `status=deleted` is requested explicitly.
+        apps are excluded unless `status=deleted` is requested explicitly. Favourited apps
+        appear before non-favourited apps, with the selected ordering applied within each group.
 
 
         A `cursor` is only valid for the `sort` and filters it was issued under — reusing one
@@ -625,17 +648,25 @@ paths:
           points at that version. If the build, validation, or rollout fails the app is
           marked `failed`.
 
-        - `container` source: no build step, so the version carries no `buildId`. No worker runs
-          from a container source yet, so the app stays `initializing` and does not serve
-          inference — poll `active` only for a `code` source.
+        - `container` source: the submitted zip (wrapper `Dockerfile` + `container.yaml`)
+          goes through the same build pipeline — the wrapper image is built, published and
+          deployed, so the version carries a `buildId` and the app follows the same
+          lifecycle as a code source. An invalid `container.yaml` rejects the create
+          before any build capacity is spent — `400` where the document could not be
+          parsed at all, `422` where it parsed and broke a rule.
 
 
         `activeVersionId` is null until a rollout completes: a version records what should run,
         and only a finished deploy says what does.
 
 
-        `secrets` is accepted by the schema but not yet applied, so supplying it returns `422`
-        rather than silently dropping it.
+        `secrets` attaches organisation secrets that already exist. It is the app's initial
+        attachment set, so the first rollout carries their values into the worker. This
+        route does not create a secret — use `POST /v1/secrets` first. A name that is
+        unknown to the organisation, or that is not `active`, returns `404`. A name that
+        collides with a key in `environmentVariables`, a repeated name and a set that goes
+        past the binding limit each return `422`. The whole set is checked before any build
+        capacity is spent.
       operationId: createApp
       requestBody:
         required: true
@@ -660,6 +691,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -668,6 +701,11 @@ paths:
       tags:
         - Apps
       summary: Get an app
+      description: >
+        Returns the app the authenticated organisation owns under this `appId`. An unknown
+        app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to
+        its owner, and its rows are retained only for billing and audit. To read deleted
+        apps, list them with `status=deleted`.
       operationId: getApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -696,27 +734,44 @@ paths:
         (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`,
         `resume`, and `delete` operations.
 
+        A configuration or `environmentVariables` change records a new version with
+        the same image. If that image is deployable, the update pins it as
+        `activeVersionId` and rolls the workload when the app is `active` or
+        `initializing`. A `failed` app is moved to `initializing` and rolled, the
+        same as `POST /deploy`. If the image is not deployable, the version is
+        recorded and `activeVersionId` is left unchanged. If the roll fails,
+        `activeVersionId` is restored and the previous configuration keeps serving.
+        A name-only change records a version and does not pin. A `stopped` or
+        `stopping` app pins the version and rolls it on `resume`. A
+        configuration, `environmentVariables`, or `appSource` change while a
+        create or resume rollout is already in progress returns `409 Conflict`.
+        A name-only or `secrets`-only change does not.
 
-        **Currently persisted:** `appName` and `configuration` only. Supplying
-        `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
-        (bulk env-var replace is not wired — use the dedicated `/environment-variables`
-        endpoints for individual keys).
+        `appSource` starts a build and records version N+1 with a new image tag.
+        The deploy queue carries the build-then-deploy tail; `activeVersionId`
+        moves only when that rollout completes. A builder rejection (400 where
+        a container document's parser refused it, 422 where it parsed and broke
+        a rule) leaves the app on its current version and writes no version row
+        and no build row. After the builder accepts, version N+1 is recorded
+        even if a concurrent secret deactivation or env/secret collision
+        prevents this request's env/secrets overlay; in that case the previous
+        environmentVariables and attachment set stay in place and are what the
+        new version snapshots.
 
+        `environmentVariables` replaces the whole set: a key absent from the map
+        is deleted, and a null value omits that key from the new set. The
+        resolved map is snapshotted onto the new version.
 
-        Target behaviour (once fully wired):
+        `secrets` replaces the whole attachment set. An attachment absent from
+        the array is detached. Injected names must not collide with a plain
+        environment variable on the app; the combined set of plain variables and
+        attachments is capped at 100. This is a control-plane record only —
+        secret values do not reach a pod, and the version snapshot carries no
+        secrets — so a secrets-only change does not roll the workload.
 
-        - `configuration`: applied on the next Scaler cycle; triggers a rollout so workers
-          restart with the new configuration. If the rollout fails, the app remains on
-          the previous configuration.
-
-        - `appSource`: triggers a build (for `code` sources) or image validation (for `container`
-          sources); on success the new version is deployed automatically. If the build or
-          validation fails, the app remains on the previous version.
-
-        - `secrets` / `environmentVariables` / `endpoints`: the supplied array **replaces** the
-          current set — any item absent from the request is deleted. Endpoints take effect
-          immediately. Changes to secrets or environment variables trigger a rollout so workers
-          restart and pick up the new values.
+        Endpoints are not a field of this contract: the set belongs to the app
+        source, so it changes only when a new version with a new source builds
+        and deploys.
       operationId: updateApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -758,6 +813,12 @@ paths:
         `status` becomes `deleted` once all workers stop. All rows are retained for billing
         finalisation, audit, and usage history. Idempotent if the app is already
         `deleting`.
+
+
+        The `appId` is released once `status` reaches `deleted`, and not before: while the app
+        is `deleting` its workload is still being torn down and the name stays taken. A new app
+        created under a released name is a new app and inherits nothing — no version, no build,
+        no event history, and no workers.
       operationId: deleteApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -777,6 +838,149 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/apps/{appId}/source-uploads:
+    post:
+      tags:
+        - SourceUploads
+      summary: Create a source upload
+      description: >
+        Creates an upload session for source intended for `appId`. The app does not need
+        to exist yet. The response contains a short-lived transfer instruction for one
+        exact staging object. Repeating the request with the same idempotency key and
+        declaration while the session is pending and unexpired returns the same upload
+        resource with a refreshed transfer instruction. Replays with a different declaration
+        or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+      operationId: createSourceUpload
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceUploadCreate'
+      responses:
+        '201':
+          description: Source upload created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceUploadCreation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/apps/{appId}/source-uploads/{uploadId}:
+    get:
+      tags:
+        - SourceUploads
+      summary: Get a source upload
+      description: >
+        Returns the upload session belonging to the authenticated organization and
+        `appId`. An upload belonging to another organization or app returns `404`.
+      operationId: getSourceUpload
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/SourceUploadId'
+      responses:
+        '200':
+          description: Source upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceUpload'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags:
+        - SourceUploads
+      summary: Abort a source upload
+      description: >
+        Aborts an unconsumed upload and removes its staging object. The session remains as
+        a deleted tombstone so its object key cannot be reused. Repeating a successful
+        abort is idempotent.
+      operationId: deleteSourceUpload
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/SourceUploadId'
+      responses:
+        '204':
+          description: Source upload aborted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/apps/{appId}/source-uploads/{uploadId}/complete:
+    post:
+      tags:
+        - SourceUploads
+      summary: Complete a source upload
+      description: >
+        Verifies the staging object's length, content type, and SHA-256 digest against the
+        session declaration. A successful retry returns the existing ready resource. A
+        rejected upload keeps its rejection so later retries return the same result.
+      operationId: completeSourceUpload
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/SourceUploadId'
+      responses:
+        '200':
+          description: Source upload ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceUpload'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /v1/apps/{appId}/deploy:
     post:
       tags:
@@ -785,7 +989,7 @@ paths:
       description: >
         Activates a `ready` version by number, setting `activeVersionId` and returning `202`
         once that intent is persisted. Worker rollout, routing switch, and cancelling
-        in-progress builds (`failed` with `error: "superseded"`) are performed asynchronously
+        in-progress builds (`superseded`) are performed asynchronously
         by the deployer/Scaler. Permitted in any addressable status, including `initializing`
         and `failed`.
 
@@ -810,7 +1014,6 @@ paths:
         Errors:
         - Deploy to a `deleting` app returns `409 Conflict`
         - `versionNumber` not found or not `ready` returns `409 Conflict`
-        - A `container`-source version returns `409 Conflict` until container apps are supported
         - Deploy to a non-existent or `deleted` app returns `404 Not Found`
       operationId: deployVersion
       parameters:
@@ -972,8 +1175,9 @@ paths:
       summary: App summary metrics for the authenticated organisation
       description: >
         Aggregate dashboard metrics across all apps owned by the authenticated organisation.
-        Metrics whose backing system is not yet available are omitted from the
-        response rather than reported as zero.
+        App and worker tallies are always present. Request and error-rate totals come from
+        the metrics store and are omitted when that hop cannot answer rather than reported
+        as zero. Spend is omitted until billing rollups exist.
       operationId: getAppSummary
       responses:
         '200':
@@ -1004,18 +1208,23 @@ paths:
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: A page of builds
+          description: A page of builds, plus a collection summary that is independent of the page.
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/Page'
                   - type: object
+                    required:
+                      - data
+                      - summary
                     properties:
                       data:
                         type: array
                         items:
                           $ref: '#/components/schemas/Build'
+                      summary:
+                        $ref: '#/components/schemas/BuildListSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -1054,6 +1263,44 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Builds
+      summary: Delete or cancel a build
+      description: >
+        Cancels a queued or running build and records it as `superseded`. Deleting
+        a queued or running build ends its current rollout without activating the
+        cancelled build, so any previous version keeps serving. A terminal build can
+        be deleted once no live rollout still needs it. Ready builds remain while a
+        version references them.
+      operationId: deleteBuild
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Build cancelled or deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/BadGateway'
 
   # ---------------------------------------------------------------------------
   # Versions
@@ -1070,18 +1317,23 @@ paths:
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: A page of versions
+          description: A page of versions, plus a collection summary that is independent of the page.
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/Page'
                   - type: object
+                    required:
+                      - data
+                      - summary
                     properties:
                       data:
                         type: array
                         items:
                           $ref: '#/components/schemas/Version'
+                      summary:
+                        $ref: '#/components/schemas/ListSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -1120,6 +1372,40 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Versions
+      summary: Delete a version
+      description: >
+        Deletes an unused version while retaining its immutable history.
+        Deleted versions are omitted from version lists, return `404` from
+        version reads, and cannot be deployed. Returns `409` while the app is
+        deleting, or when the version is active, is the app's only remaining
+        version, has a non-stopped worker, or is targeted by a live rollout.
+        Deleting an already deleted version returns `404`. This operation does
+        not remove the version's OCI image.
+      operationId: deleteVersion
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - name: versionNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '204':
+          description: Version deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   # ---------------------------------------------------------------------------
   # Endpoints
@@ -1129,6 +1415,13 @@ paths:
       tags:
         - Endpoints
       summary: List endpoints
+      description: >
+        Lists the endpoints of the app's active version. The set is written by the
+        source itself — a code build's introspection, or a container's config
+        document — and is replaced atomically whenever a version activates, so a
+        deploy of a newer version or a rollback to an older one is immediately
+        reflected here. Empty while the app is `initializing`: nothing is routable
+        until its first build is ready and deployed.
       operationId: listEndpoints
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1205,13 +1498,25 @@ paths:
       summary: List workers
       description: >
         Returns a newest-first page of workers observed for the app (including
-        terminal `stopped` rows until purged). Optional `status` narrows the page;
-        a cursor must be replayed under the same status filter it was issued with.
+        terminal `stopped` rows until purged). Optional `state` and `status` narrow the
+        page; a cursor must be replayed under the same filters it was issued with.
       operationId: listWorkers
       parameters:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
+        - name: state
+          in: query
+          required: false
+          description: >
+            Narrow the page by worker state. The default, `all`, keeps the terminal
+            `stopped` rows in the page; `live` drops them.
+
+
+            A `state` of `live` with a `status` of `stopped` is a contradiction and is
+            refused, because an empty page would read as "this app has never run".
+          schema:
+            $ref: '#/components/schemas/WorkerStateFilter'
         - name: status
           in: query
           required: false
@@ -1323,8 +1628,10 @@ paths:
         already in use — including when a secret of that name is
         `pending_destroy`. List only shows active secrets, so a name can appear
         free while create still conflicts for as long as that row remains.
-        Hard deletion of `pending_destroy` rows (which would release the name)
-        is not performed by this API yet. Recreate-while-deleting may later
+        A `pending_destroy` row is removed, and its name released, by a
+        background sweep once no running worker can still hold the value —
+        there is no deadline on that wait, so a continuously busy app can hold
+        a name for as long as it runs. Recreate-while-deleting may later
         reuse the pending row with the new value (same name, new ciphertext).
       operationId: createSecret
       requestBody:
@@ -1392,13 +1699,15 @@ paths:
       summary: Delete a secret
       description: >
         Soft-deletes a secret: marks the row `pending_destroy` and bumps
-        revision. This API does not hard-delete the row; a future GC path is
-        expected to remove unattached `pending_destroy` secrets and release the
-        name, but that sweep is not implemented yet. Returns `409` while any
+        revision. This API does not hard-delete the row. A background sweep
+        removes the row and releases the name once no running worker can still
+        hold the value — the value travels inside the worker's own environment,
+        which is fixed when the container starts, so a worker keeps it until it
+        stops. There is no deadline on that wait. Returns `409` while any
         app still attaches it — cascade-detach is not performed here;
         detach each holder with
-        `DELETE .../apps/{id}/secrets/{name}` first. Attach/detach are
-        control-plane records only in this release (they do not roll workers).
+        `DELETE .../apps/{id}/secrets/{name}` first. Attach and detach change
+        the secret set for the next rollout. Neither operation rolls workers.
         While the row remains `pending_destroy` the name stays reserved, so
         create may return `409` even though list no longer shows the secret.
         Retries on an already-pending name are safe when no attachments remain
@@ -1421,6 +1730,60 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # ---------------------------------------------------------------------------
+  # Organisation tenancy (ADR-019 Option 2b)
+  # ---------------------------------------------------------------------------
+  /v1/org-tenancies:
+    put:
+      tags:
+        - Tenancy
+      summary: Set an organisation's serverless tenancy state
+      description: >
+        Idempotent upsert for one customer organisation. The customer UUID
+        is in the body — public paths never carry an organisation identifier
+        (the authenticated API key names the *caller*, which for this route
+        must be the Runware platform organisation).
+
+
+        `state: active` runs Ensure: a Cloud KMS CryptoKey named after the
+        organisation UUID, a Kubernetes service account `org-<uuid>` in the
+        shared app namespace, and a decrypt IAM binding on that key for the
+        KSA principal. `state: disabled` runs teardown: disable the key's
+        primary version, drop the decrypt binding, delete the KSA. The key
+        itself is not destroyed — a destroyed key makes every ciphertext
+        under it permanently unreadable. The local row stays as a tombstone
+        so a later Ensure converges on the same names.
+
+
+        A retry after a partial failure converges rather than duplicating
+        objects. `200` returns the resulting receipt. `503` when Cloud KMS
+        key-admin is rate-limited (60 writes/min) or otherwise unavailable;
+        the caller (admin-api Messenger) retries the same PUT.
+      operationId: upsertOrgTenancy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrgTenancyUpsert'
+      responses:
+        '200':
+          description: Tenancy is in the requested state (created, already present, or disabled)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgTenancy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -1469,15 +1832,15 @@ paths:
       summary: Attach a secret to an app
       description: >
         Records that an organisation secret is attached to an app under a
-        resolved env-var name. This is a control-plane association only in this
-        release — it does not roll workers or inject values into pods yet
-        (ADR-019 in-pod unseal is separate). Returns `409` if the secret is
-        already attached, or if another attach would use the same env-var name.
+        resolved env-var name. The next rollout injects the value into the
+        worker. This operation does not roll workers. Returns `409` if the
+        secret is already attached, or if another attach would use the same
+        env-var name.
 
         The resolved name (`envVarName`, or `secretName` when omitted) must not
         already exist as a plain environment variable on this app
-        (`deployment_configs.key`). Both sources are reserved for the same
-        future pod env namespace, so the server rejects the collision with `422`
+        (`deployment_configs.key`). Both sources use the same pod env namespace,
+        so the server rejects the collision with `422`
         instead of allowing a last-wins override later. The reverse check
         applies when setting a plain environment variable.
 
@@ -1518,8 +1881,8 @@ paths:
         - Secrets
       summary: Detach a secret from an app
       description: >
-        Removes the control-plane attachment. Does not roll workers in this
-        release.
+        Removes the attachment from the next rollout. This operation does not
+        roll workers. Existing workers keep the value until they stop.
       operationId: detachAppSecret
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1746,6 +2109,172 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  # ---------------------------------------------------------------------------
+  # Insights: customer-facing metrics and logs
+  #
+  # No path here names a tenant. The organization comes from the authenticated
+  # credential and nothing else, and it is what the stores are read under, so a caller
+  # cannot ask for another organization's data by naming it.
+  #
+  # Nothing on these routes accepts a query expression or a label matcher. A caller
+  # names a query from the catalogue and narrows it with selectors from a closed set;
+  # how that becomes a read is decided downstream (ADR-023).
+  # ---------------------------------------------------------------------------
+  /v1/metrics/queries:
+    get:
+      tags:
+        - Observability
+      summary: List the metric and log queries this build can answer
+      description: >
+        The catalogue: every named query, its unit and aggregation, the selectors it
+        accepts, the series it returns, and the windows actually backed by stored series.
+
+
+        This is the source of query ids. Clients discover ids here rather than carrying a
+        list of their own, and render window tabs from `windows` rather than from the full
+        ladder, so a window whose storage tier has no backing series stays invisible
+        instead of rendering a tab with nothing behind it.
+      operationId: listInsightsQueries
+      responses:
+        '200':
+          description: The catalogue for this build
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryCatalogue'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /v1/metrics/queries/{queryId}/series:
+    get:
+      tags:
+        - Observability
+      summary: Read one named metric query
+      description: >
+        Returns one chart's data: a single timestamp axis shared by every series, and one
+        dense value array per series aligned to it.
+
+
+        Values are dense and positionally aligned to `t`, with an explicit `null` wherever
+        there was no sample. Each timestamp is the END of its bucket, so `window.to` is
+        inclusive and equals the last timestamp in `t`, while `window.from` is exclusive
+        and is one `step_s` before the first.
+
+
+        An organization with no metrics yet is answered with the full axis and all-null
+        series rather than an error.
+
+
+        `apps_request_volume` returns one series per app: 24 hourly request counts over
+        `window=24h` (`step_s` 3600, unit `requests`). Repeat `appId` once per id on the
+        current list page to pad idle apps with all-null series, in request order. Hours
+        that started before that live app's `createdAt` are null, so a reused app id does
+        not inherit the previous generation's traffic still in the 24h store. The same
+        `appId` pad applies to the list-scoped `apps_error_volume` and
+        `apps_request_duration` queries. Other queries reject `appId`. Other windows
+        are not available for these queries.
+
+
+        `endpoints_request_volume` is the endpoints-list counterpart: 24 hourly request
+        counts per endpoint over `window=24h` (`step_s` 3600, unit `requests`). It
+        requires `deployment` (the public app id, rewritten to the live deployment
+        UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to
+        pad idle endpoints with all-null series, in request order. Hours that started
+        before that endpoint row's `createdAt` are null, so a removed-then-readded path
+        does not inherit the previous row's traffic. Other queries reject `endpointId`.
+        Other windows are not available for this query.
+      operationId: getMetricSeries
+      parameters:
+        - $ref: '#/components/parameters/QueryId'
+        - $ref: '#/components/parameters/MetricWindow'
+        - $ref: '#/components/parameters/PinnedTo'
+        - $ref: '#/components/parameters/SelectorDeployment'
+        - $ref: '#/components/parameters/SelectorEndpoint'
+        - $ref: '#/components/parameters/SelectorStatusClass'
+        - $ref: '#/components/parameters/SelectorRegion'
+        - $ref: '#/components/parameters/SeriesAppId'
+        - $ref: '#/components/parameters/SeriesEndpointId'
+      responses:
+        '200':
+          description: One chart's data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricSeries'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /v1/logs/queries/{queryId}/entries:
+    get:
+      tags:
+        - Observability
+      summary: Read one page of a named log query
+      description: >
+        Returns one page of log entries, newest first, with an opaque cursor for the next
+        page when one exists.
+
+
+        No query is registered yet: live tail, retention tiers and log quotas are decided
+        in a follow-up ADR, so every request currently answers `404`. The route exists so
+        the contract is fixed before the templates land.
+      operationId: getLogEntries
+      parameters:
+        - $ref: '#/components/parameters/QueryId'
+        - $ref: '#/components/parameters/MetricWindow'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/SelectorDeployment'
+        - $ref: '#/components/parameters/SelectorEndpoint'
+      responses:
+        '200':
+          description: One page of log entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogEntryPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1768,9 +2297,17 @@ components:
       name: appId
       in: path
       required: true
-      description: Immutable app identifier, unique within the authenticated organisation.
+      description: >
+        Immutable app identifier, unique among the authenticated organisation's live apps.
       schema:
         $ref: '#/components/schemas/AppId'
+    SourceUploadId:
+      name: uploadId
+      in: path
+      required: true
+      description: Source upload session identifier.
+      schema:
+        $ref: '#/components/schemas/SourceUploadId'
     GpuTypeId:
       name: gpuTypeId
       in: path
@@ -1783,7 +2320,8 @@ components:
       in: path
       required: true
       description: >
-        Worker identifier — the Kubernetes pod UID recorded by the reconciler.
+        Worker identifier — the Kubernetes pod UID recorded by the reconciler. This is the
+        stable key to address a worker with; `podName` is the value to show a person.
       schema:
         type: string
         format: uuid
@@ -1795,10 +2333,7 @@ components:
         Path of the endpoint to route the task to, as returned by `listEndpoints`:
         a bare lowercase segment such as `generate`, with no leading slash.
       schema:
-        type: string
-        minLength: 1
-        maxLength: 64
-        pattern: '^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$'
+        $ref: '#/components/schemas/EndpointPath'
     SecretName:
       name: secretName
       in: path
@@ -1825,15 +2360,128 @@ components:
       schema:
         type: string
 
-  requestBodies:
-    TaskPayload:
+    QueryId:
+      name: queryId
+      in: path
       required: true
-      description: Arbitrary JSON payload forwarded to the endpoint's RPC handler.
+      description: >
+        A query id from the catalogue. Deliberately not an enum: the downstream registry is
+        the source of ids, and an enum here would be a second list to keep in step with it.
+      schema:
+        type: string
+        pattern: '^[a-z][a-z0-9_]{0,63}$'
+    MetricWindow:
+      name: window
+      in: query
+      required: true
+      description: >
+        The time window. A closed set rather than a free-form range, because every distinct
+        range defeats the server-side cache alignment that makes a sliding window cheap.
+        Only the windows a query lists in the catalogue can be asked of it.
+      schema:
+        type: string
+        enum: [1h, 6h, 24h, 7d, 30d]
+    PinnedTo:
+      name: pinnedTo
+      in: query
+      required: false
+      description: >
+        Fixes the window's inclusive end, the last timestamp in `t`, so that several calls
+        making up one visual share an axis instead of racing the clock between them. Must
+        be aligned to the window's step, no newer than the newest readable edge, and inside
+        retention.
+      schema:
+        type: integer
+        format: int64
+    SelectorDeployment:
+      name: deployment
+      in: query
+      required: false
+      description: Narrow to one app.
+      schema:
+        $ref: '#/components/schemas/AppId'
+    SelectorEndpoint:
+      name: endpoint
+      in: query
+      required: false
+      description: >
+        Narrow to one endpoint within a deployment. The value is the allocated
+        `endpoints.id` (UUID), never the customer-authored path. A query that
+        does not declare this selector rejects it rather than ignoring it.
+      schema:
+        type: string
+        format: uuid
+    SelectorStatusClass:
+      name: statusClass
+      in: query
+      required: false
+      description: Narrow to one response class.
+      schema:
+        type: string
+        enum: ['2xx', '4xx', '5xx']
+    SelectorRegion:
+      name: region
+      in: query
+      required: false
+      description: >
+        Narrow to one region. No series carries a region label yet, so no query currently
+        accepts this and supplying it is rejected rather than ignored.
+      schema:
+        type: string
+        pattern: '^[a-z0-9_-]{1,32}$'
+    SeriesAppId:
+      name: appId
+      in: query
+      required: false
+      style: form
+      explode: true
+      description: >
+        Restrict expand-by-`app_id` queries (`apps_request_volume`,
+        `apps_error_volume`, `apps_request_duration`) to these app ids: one series
+        per id, in request order, with all-null series for apps that had no samples.
+        Values are hourly over `window=24h`. Hours that started before that live
+        app's `createdAt` are null. Repeat the parameter once per id on the current
+        list page (at most 100, matching `listApps`). Omit it to receive every app
+        in the organisation that had data, unless that set is larger than this
+        query will expand: then the call is a `422` on `appId` and the list page
+        should name the apps it is showing. Other queries reject this parameter.
+      schema:
+        type: array
+        maxItems: 100
+        items:
+          $ref: '#/components/schemas/AppId'
+    SeriesEndpointId:
+      name: endpointId
+      in: query
+      required: false
+      style: form
+      explode: true
+      description: >
+        Restrict `endpoints_request_volume` to these endpoint ids: one series per id,
+        in request order, with all-null series for endpoints that had no traffic.
+        Values are hourly request counts over `window=24h`. Hours that started
+        before that endpoint row's `createdAt` are null. Repeat the parameter once
+        per id on the current list page (at most 100, matching `listEndpoints`).
+        Omit it to receive every endpoint on the selected app that had data, unless
+        that set is larger than this query will expand: then the call is a `422`
+        on `endpointId` and the list page should name the endpoints it is showing.
+        Other queries reject this parameter. Requires `deployment`.
+      schema:
+        type: array
+        maxItems: 100
+        items:
+          type: string
+          format: uuid
+  requestBodies:
+    TaskInvocation:
+      required: true
+      description: >
+        The invocation envelope. `taskId` is the client's own identifier for this
+        task and `payload` is the body the endpoint's handler receives.
       content:
         application/json:
           schema:
-            type: object
-            additionalProperties: true
+            $ref: '#/components/schemas/TaskInvocation'
 
   responses:
     Task:
@@ -1843,7 +2491,10 @@ components:
           schema:
             $ref: '#/components/schemas/Task'
     TaskAccepted:
-      description: Task accepted and pending
+      description: >
+        Task accepted. Normally `pending`, but a resubmitted task id is answered
+        with the task it already names, which may have finished — read `status`
+        rather than assuming.
       content:
         application/json:
           schema:
@@ -1895,20 +2546,215 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
-    Timeout:
-      description: Task timed out; `taskId` is present when the accepted task is known.
+    TooManyRequests:
+      description: >
+        The organization's read allowance is exhausted. `Retry-After` says how long to wait;
+        a client that ignores it will keep being refused.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          required: true
+          schema:
+            type: integer
+            format: int32
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
-
+    BadGateway:
+      description: An upstream service was unreachable or refused the request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    GatewayTimeout:
+      description: An upstream service did not answer in time
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
   schemas:
     AppId:
       type: string
-      description: Immutable app identifier, unique within the authenticated organisation.
+      description: >
+        Immutable app identifier. Unique among the authenticated organisation's live apps:
+        it cannot be changed after creation, and it becomes available again once the app it
+        named reaches `deleted`.
       minLength: 6
       maxLength: 30
       pattern: '^[a-z][a-z0-9-]{4,28}[a-z0-9]$'
+
+    SourceUploadId:
+      type: string
+      format: uuid
+
+    AppSourceType:
+      type: string
+      enum: [code, container]
+      x-enum-varnames:
+        - Code
+        - Container
+
+    SourceUploadState:
+      type: string
+      enum: [pending, ready, rejected, consumed, expired, deleted]
+      x-enum-varnames:
+        - SourceUploadStatePending
+        - SourceUploadStateReady
+        - SourceUploadStateRejected
+        - SourceUploadStateConsumed
+        - SourceUploadStateExpired
+        - SourceUploadStateDeleted
+
+    SourceUploadCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - declaredByteLength
+        - idempotencyKey
+        - sha256
+        - sourceType
+      properties:
+        declaredByteLength:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 10485760
+          description: Exact archive size in bytes with a 10 MiB MVP limit.
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^\S+$'
+          description: Client-generated key used to make session creation safe to retry.
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Lowercase SHA-256 digest of the complete archive.
+        sourceType:
+          $ref: '#/components/schemas/AppSourceType'
+        modelFile:
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: '^[^/\\\s]\S*$'
+          description: >
+            Path of the MLflow model entry point inside the archive, relative to its root
+            (e.g. `model.py`). Required for a `code` upload and refused for a `container`
+            one, whose required files the contract names rather than the client.
+
+
+            It is declared here rather than at app creation because upload completion is
+            the last thing that opens the archive: `POST /v1/apps` consumes a ready upload
+            and never reads the object, so an entry point named there could only be proved
+            against the archive by reading it a second time. The pattern refuses a leading
+            separator; a path that escapes the archive root is refused by completion.
+
+    SourceUpload:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - appId
+        - declaredByteLength
+        - sha256
+        - sourceType
+        - state
+        - expiresAt
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/SourceUploadId'
+        appId:
+          $ref: '#/components/schemas/AppId'
+        declaredByteLength:
+          type: integer
+          format: int64
+          minimum: 1
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        sourceType:
+          $ref: '#/components/schemas/AppSourceType'
+        state:
+          $ref: '#/components/schemas/SourceUploadState'
+        rejectionReason:
+          type: string
+          nullable: true
+          description: Reason completion rejected the archive, when state is `rejected`.
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SourceUploadTransfer:
+      oneOf:
+        - $ref: '#/components/schemas/SourceUploadSinglePutTransfer'
+      discriminator:
+        propertyName: mode
+        mapping:
+          singlePut: '#/components/schemas/SourceUploadSinglePutTransfer'
+
+    SourceUploadSinglePutTransfer:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - method
+        - url
+        - headers
+        - expiresAt
+      properties:
+        mode:
+          type: string
+          enum: [singlePut]
+          x-enum-varnames:
+            - SourceUploadTransferModeSinglePut
+        method:
+          type: string
+          enum: [PUT]
+          x-enum-varnames:
+            - SourceUploadTransferMethodPut
+        url:
+          type: string
+          format: uri
+          description: Short-lived URL for this upload's exact staging object.
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Headers the client must include in the upload request.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Time after which the transfer instruction is no longer valid.
+
+    SourceUploadCreation:
+      type: object
+      additionalProperties: false
+      required:
+        - upload
+        - transfer
+      properties:
+        upload:
+          $ref: '#/components/schemas/SourceUpload'
+        transfer:
+          $ref: '#/components/schemas/SourceUploadTransfer'
+
+    EndpointPath:
+      type: string
+      description: >
+        Path of the endpoint to route the task to: a bare lowercase segment such
+        as `generate`, with no leading slash.
+      minLength: 1
+      maxLength: 64
+      pattern: '^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$'
 
     AppName:
       type: string
@@ -1966,7 +2812,8 @@ components:
     AppSort:
       type: string
       description: >
-        Ordering for `listApps`. Every ordering is total (ties broken by
+        Ordering for `listApps`. Favourited apps appear before non-favourited apps, and the
+        selected ordering applies within each group. Every ordering is total (ties broken by
         `appId`), so a page is reproducible and its cursor stable.
 
 
@@ -2020,6 +2867,41 @@ components:
         - draining
         - stopping
         - stopped
+      # Pins the generated Go constant names. Without it, oapi-codegen prefixes
+      # an enum's constants only while some *other* enum shares a value with it,
+      # so adding an unrelated enum elsewhere in this spec silently renames all
+      # of these — which is exactly how WorkerStatusReady once became a bare
+      # Ready when new enums absorbed the conflicts that had forced the prefix.
+      x-enum-varnames:
+        - WorkerStatusPending
+        - WorkerStatusPulling
+        - WorkerStatusLoading
+        - WorkerStatusReady
+        - WorkerStatusBusy
+        - WorkerStatusUnhealthy
+        - WorkerStatusDraining
+        - WorkerStatusStopping
+        - WorkerStatusStopped
+    WorkerStateFilter:
+      type: string
+      description: >
+        Which worker states a page covers. `live` is every status other than
+        `stopped`, so it is the page a dashboard wants and the one `status`
+        alone can only ask for one value at a time. `all` includes the terminal
+        rows that are kept as history.
+      enum:
+        - live
+        - all
+      # oapi-codegen names an enum member after its value alone and prefixes the
+      # type only where two members collide, so `live` and `all` would generate
+      # as package-scope `Live` and `All`. Both read as belonging to nothing, and
+      # the next enum with a member of either name renames these two under the
+      # generator's own collision rule. Naming them here is the same spelling
+      # every other enum in this spec ends up with.
+      x-enum-varnames:
+        - WorkerStateFilterLive
+        - WorkerStateFilterAll
+      default: all
     TaskStatus:
       type: string
       enum:
@@ -2053,6 +2935,16 @@ components:
       minLength: 1
       maxLength: 64
       pattern: '^[a-z][a-z0-9_-]{0,63}$'
+
+    GpuTypeIdOrEmpty:
+      type: string
+      description: >
+        A `GpuTypeId`, or the empty string. Optional fallback GPU fields accept
+        `""` because forms bind an unselected dropdown as empty rather than
+        omitting the key. A non-empty value has the same shape as `GpuTypeId` —
+        keep this pattern aligned when the catalogue-code format changes.
+      maxLength: 64
+      pattern: '^$|^[a-z][a-z0-9_-]{0,63}$'
 
     GpuAvailability:
       type: string
@@ -2290,6 +3182,49 @@ components:
           nullable: true
           description: Cursor for the next page; null when there are no more items.
 
+    ListSummary:
+      type: object
+      additionalProperties: false
+      description: >
+        Collection totals for a paged list. Independent of the page:
+        `total` is the COUNT of items in the collection and is the same value
+        on every page, including a cursor that seeks past the last row.
+      required:
+        - total
+      properties:
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of items in the collection this page was drawn from.
+
+    BuildListSummary:
+      type: object
+      additionalProperties: false
+      description: >
+        Collection totals for this app's builds list. Independent of the page:
+        the same values on every cursor, including a seek past the last row.
+        `total` counts builds. `versions` counts versions on the same app —
+        the same predicate as `listVersions` `summary.total`, excluding
+        soft-deleted versions.
+      required:
+        - total
+        - versions
+      properties:
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of builds recorded for this app.
+        versions:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Number of versions recorded for this app. Same value as
+            `listVersions` `summary.total`. A config-only update increments
+            this without incrementing `total`.
+
     # ---- Money -------------------------------------------------------------
     Currency:
       type: string
@@ -2320,9 +3255,9 @@ components:
       description: >
         Aggregate dashboard metrics for every app in the authenticated
         organisation. App and worker tallies are always present (zero when
-        empty). Traffic and spend metrics whose backing system is not yet
-        available are omitted (rendered as "no data" by the frontend) rather
-        than reported as zero.
+        empty). Request and error-rate totals are omitted when the metrics
+        store cannot be read, rather than reported as zero. Spend is omitted
+        until billing rollups exist.
       required:
         - totalApps
         - activeApps
@@ -2352,11 +3287,15 @@ components:
         requests24h:
           type: integer
           format: int64
-          description: Requests served in the last 24h. Omitted until request metrics are available.
+          description: >
+            Requests served in the last 24 hours across every app. Omitted when
+            metrics cannot be read. Zero when the organisation had no traffic.
         errorRate24h:
           type: number
           format: double
-          description: Error ratio (0–1) over the last 24h. Omitted until request metrics are available.
+          description: >
+            Error ratio (4xx + 5xx over requests) for the last 24 hours, in 0–1.
+            Omitted when metrics cannot be read or when `requests24h` is zero.
         spendToday:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
@@ -2368,12 +3307,67 @@ components:
           format: date-time
           description: When these metrics were computed.
 
+    AppRuntime:
+      type: object
+      additionalProperties: false
+      description: >
+        Observed state for one app at `calculatedAt`. Desired worker scale remains
+        in `configuration`. Worker and GPU counts are always present; traffic and
+        duration fields are omitted when their backing data is unavailable.
+      required:
+        - activeWorkers
+        - provisionedGpuCount
+        - calculatedAt
+      properties:
+        activeWorkers:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Non-terminal workers (`status` other than `stopped`) on this app.
+            Pending workers count because they still hold capacity.
+        provisionedGpuCount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Sum of `gpuCount` across those workers. A pending worker contributes
+            zero until Kubernetes schedules it onto a node.
+        calculatedAt:
+          type: string
+          format: date-time
+          description: When this runtime snapshot was read from the database.
+        requests24h:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Requests served by this app in the last 24 hours. Omitted until available.
+        errorRate24h:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: >
+            Error ratio (4xx + 5xx over requests) for this app in the last 24
+            hours, in 0–1. Omitted when metrics cannot be read or when the app
+            had no requests in the window.
+        averageRequestDuration24h:
+          type: number
+          format: double
+          minimum: 0
+          description: >
+            Mean inference request duration in seconds over the last 24 hours
+            (all requests; the duration histogram has no status class). Omitted
+            when metrics cannot be read, when the app had no requests, or when
+            the duration series has no samples for the app in the window.
+
     App:
       type: object
       required:
         - appId
         - appName
         - configuration
+        - runtime
         - secrets
         - environmentVariables
         - status
@@ -2389,6 +3383,8 @@ components:
           allOf:
             - $ref: '#/components/schemas/WorkerConfig'
           description: Live worker configuration. Updated via `PATCH /apps/{appId}`.
+        runtime:
+          $ref: '#/components/schemas/AppRuntime'
         secrets:
           type: array
           description: >
@@ -2413,8 +3409,8 @@ components:
         isFavourite:
           type: boolean
           description: >
-            Whether the authenticated organisation has favourited this app. Drives the
-            console Favourites section; toggled via `PUT`/`DELETE`
+            Whether the authenticated organisation has favourited this app. Favourited apps
+            sort ahead of non-favourited apps; toggled via `PUT`/`DELETE`
             `/v1/apps/{appId}/favourite`.
         activeVersionId:
           type: string
@@ -2472,23 +3468,24 @@ components:
             - `code`: the codebase is submitted to the build pipeline; a new image is built and
               deployed once ready.
 
-            - `container`: no build step — the version names the image reference supplied here.
-              No worker runs from a container source yet, so the app stays `initializing`.
+            - `container`: the submitted zip is built into a wrapper image by the same
+              pipeline and deployed once ready; the version records the built image, not a
+              customer-supplied reference.
 
-            Either way the version is recorded with the app. A code-source app transitions
-            to `active` once its first version is ready, or to `failed` if the build, validation,
-            or rollout fails.
+            Either way the version is recorded with the app, and the app transitions
+            to `active` once its first version is ready, or to `failed` if the build,
+            validation, or rollout fails.
         secrets:
           type: array
           description: >
             Existing organisation secrets to attach to this app, with an
-            optional env-var name override per entry. Not persisted yet —
-            supplying this field returns `422`, rather than accepting a set
-            nothing attaches to the workload. Shape matches
-            `POST /apps/{appId}/secrets` so create and attach
-            share one contract. When wired, each injected name must not collide
-            with a key in `environmentVariables` (or an existing
-            `deployment_configs` row) — see `SecretAttach`.
+            optional env-var name override per entry. This is the app's initial
+            attachment set, so the first rollout carries the values into the
+            worker. The secret must already exist and be `active`; this route
+            does not create one, and an unknown or inactive name returns `404`.
+            Shape matches `POST /apps/{appId}/secrets` so create and attach
+            share one contract. Each injected name must not collide with a key
+            in `environmentVariables` — see `SecretAttach`.
           items:
             $ref: '#/components/schemas/SecretAttach'
         environmentVariables:
@@ -2517,16 +3514,6 @@ components:
             the sandboxed application. Use these for downloaded weights and caches that
             must stay outside the checkpointed root filesystem. Paths must be unique and
             non-overlapping. The set is frozen into each immutable app version.
-        endpoints:
-          type: array
-          description: >
-            Invocable routes to expose on the app. Paths are unique within an
-            app: repeating one in this array is rejected rather than collapsed,
-            since there would be no answer to which entry a request meant.
-          uniqueItems: true
-          maxItems: 20
-          items:
-            $ref: '#/components/schemas/EndpointCreate'
 
     AppUpdate:
       type: object
@@ -2535,17 +3522,27 @@ components:
         omitted fields are left unchanged. Lifecycle transitions (stop/resume/delete/deploy)
         use their dedicated operations.
 
-        A successful update records a new version carrying the updated configuration and the
-        same image, so what to deploy is always a version rather than the current state of a
-        mutable row. `activeVersionId` does not move: the running workload is unchanged until
-        that version is deployed.
+        A successful configuration or `environmentVariables` update records a new
+        version carrying the updated values and the same image. If that image is
+        deployable, the update pins it as `activeVersionId` and rolls the workload
+        when the app can take one (`active`, `initializing`, or `failed` which
+        becomes `initializing`). If the image is not deployable, the version is
+        recorded and `activeVersionId` is left unchanged. A name-only update
+        records a version and does not pin. If the roll of a live app fails,
+        `activeVersionId` is restored so the field keeps naming the running
+        configuration.
 
-        **Currently applied:** `appName` and `configuration`. Supplying
-        `appSource`, `secrets`, `environmentVariables`, or `endpoints` returns `422`
-        (bulk env-var replace is not wired — use the dedicated `/environment-variables`
-        endpoints for individual keys). When wired, configuration/secret/endpoint changes
-        take effect on the next Scaler cycle; `appSource` triggers a new build and
-        rollout.
+        `appSource` starts a build and records version N+1 with a new image.
+        The deploy queue rolls that version once the build is ready;
+        `activeVersionId` moves only then. A builder rejection leaves the app
+        on its current version. After accept, a late overlay race leaves
+        the new version recorded and the previous attachments in place.
+
+        `secrets` replaces the attachment set and does not roll the workload.
+        Endpoints are not a field of this contract at all: the set belongs to
+        the app source, so it changes only when a new version with a new source
+        builds and deploys, and an unknown `endpoints` field is rejected like
+        any other.
       additionalProperties: false
       properties:
         appName:
@@ -2561,38 +3558,46 @@ components:
           allOf:
             - $ref: '#/components/schemas/AppSourceUpsert'
           description: >
-            Write-only. New source to build and deploy; not returned in the App response.
-            Use the `/builds` endpoints to inspect build status. Triggers a build (for `code`
-            sources) or image validation (for `container` sources); on success the resulting
-            version is deployed automatically. On failure the app remains on the previous
-            version. Not persisted yet — supplying this field returns `422`.
+            Write-only. New source to build and deploy; not returned in the App
+            response. Use the `/builds` endpoints to inspect build status.
+            Triggers a build (for `code` sources) or validates `container.yaml`
+            then builds (for `container` sources). On accept the resulting
+            version is recorded with a new image tag and rolled through the
+            deploy queue. A builder rejection leaves the app on the previous
+            version and writes no version or build row. After accept, a
+            concurrent secret deactivation or env/secret collision leaves
+            version N+1 recorded and the previous attachment set in place.
+            `activeVersionId` moves only when that rollout completes. Not
+            valid on a `stopped` or `stopping` app — there is nothing to roll
+            the new version onto, and `resume` rolls the pinned one — so
+            supplying it in those statuses returns `409 Conflict`.
         secrets:
           type: array
           description: >
             Replaces the app's secret attachments. Same `SecretAttach`
-            shape as create and
-            `POST /apps/{appId}/secrets`. Not persisted yet —
-            supplying this field returns `422`. When wired, injected names must
-            not collide with plain environment variables on the app.
+            shape as create and `POST /apps/{appId}/secrets`. An attachment
+            absent from the array is detached. Injected names must not collide
+            with a plain environment variable on the app. Control-plane record
+            only — secret values do not reach a pod, and the version snapshot
+            carries no secrets — so this field does not roll the workload.
+            An app holds at most 100 environment bindings in total; this
+            array cannot exceed that ceiling on its own.
+          maxItems: 100
           items:
             $ref: '#/components/schemas/SecretAttach'
         environmentVariables:
           type: object
           description: >
-            Map with environment variables. Keys are the environment variable names, values
-            are the environment variable values. Setting the value of an environment variable
-            to null deletes the environment variable from the app. Not persisted yet —
-            supplying this field returns `422`.
+            Replaces the app's environment variables. Keys are the variable
+            names, values are the values. A key absent from the map is deleted.
+            A null value omits that key from the new set. The resolved map is
+            snapshotted onto the version this update records, so a deploy
+            applies it. When the copied image is deployable the update pins
+            and rolls, the same as a configuration change.
           additionalProperties:
             type: string
             nullable: true
-        endpoints:
-          type: array
-          description: >
-            Replaces the app's endpoints. Not persisted yet — supplying this field
-            returns `422`.
-          items:
-            $ref: '#/components/schemas/EndpointCreate'
+          maxProperties: 100
 
     WorkerConfig:
       type: object
@@ -2632,6 +3637,7 @@ components:
           type: integer
           format: int32
           default: 1
+          description: One GPU per worker is currently supported. Historical apps may contain another value.
         minWorkers:
           type: integer
           format: int32
@@ -2647,12 +3653,12 @@ components:
           format: int32
           nullable: true
           minimum: 0
-          description: Minimum number of available (idle) workers kept as a pre-emptive buffer.
+          description: Reserved for future idle-worker buffer support.
         availableWorkersPct:
           type: integer
           format: int32
           nullable: true
-          description: Scaling buffer as a percentage of incoming task load.
+          description: Reserved for future percentage-based buffer support.
         idleTtlSecs:
           type: integer
           format: int32
@@ -2703,13 +3709,22 @@ components:
         fallbackGpuType:
           type: string
           allOf:
-            - $ref: '#/components/schemas/GpuTypeId'
+            - $ref: '#/components/schemas/GpuTypeIdOrEmpty'
           nullable: true
+          description: >
+            Secondary GPU type used if the preferred type is unavailable. Omit,
+            send JSON null, or send an empty string for no fallback — forms bind
+            an unselected dropdown as `""`, which is not a `GpuTypeId`. A
+            non-empty value must be an active catalogue code. Unlike `gpuType`
+            this is an existence check only: it does not require admitted
+            capacity, so the code may not appear in the customer
+            `GET /v1/gpu-types` list.
         gpusPerWorker:
           type: integer
           format: int32
           minimum: 0
           default: 1
+          description: Only 1 is currently supported. Any other value returns 422.
         minWorkers:
           type: integer
           format: int32
@@ -2724,12 +3739,14 @@ components:
           format: int32
           minimum: 0
           nullable: true
+          description: A non-null value returns 422 because this setting is not supported yet.
         availableWorkersPct:
           type: integer
           format: int32
           minimum: 0
           maximum: 100
           nullable: true
+          description: A non-null value returns 422 because this setting is not supported yet.
         idleTtlSecs:
           type: integer
           format: int32
@@ -2748,9 +3765,10 @@ components:
       type: object
       description: >
         Partial worker configuration. Any field present overwrites the live value; omitted
-        fields are left unchanged. Clearing a nullable live field (setting it to null) is not
-        supported — omit the field to leave it unchanged. `computeType` is create-time only and
-        cannot be patched. Changing `gpuType` or `gpusPerWorker` affects only newly created workers.
+        fields are left unchanged. Clearing a nullable live field (setting it to null) is
+        not supported — omit the field to leave it unchanged. `fallbackGpuType` is the
+        exception: send an empty string to clear it. `computeType` is create-time only
+        and cannot be patched. Changing `gpuType` affects only newly created workers.
       additionalProperties: false
       properties:
         gpuType:
@@ -2764,12 +3782,20 @@ components:
         fallbackGpuType:
           type: string
           allOf:
-            - $ref: '#/components/schemas/GpuTypeId'
-          description: Secondary GPU type. Omit to leave unchanged.
+            - $ref: '#/components/schemas/GpuTypeIdOrEmpty'
+          description: >
+            Secondary GPU type. Omit to leave unchanged. Send an empty string
+            to clear — forms bind an unselected dropdown as `""`. JSON null is
+            rejected: this field is not nullable, so a client that meant to
+            clear must send `""` rather than null. A non-empty value must be
+            an active catalogue code. Unlike `gpuType` this is an existence
+            check only: it does not require admitted capacity, so the code
+            may not appear in the customer `GET /v1/gpu-types` list.
         gpusPerWorker:
           type: integer
           format: int32
           minimum: 0
+          description: Only 1 is currently supported. Any other value returns 422.
         minWorkers:
           type: integer
           format: int32
@@ -2782,13 +3808,13 @@ components:
           type: integer
           format: int32
           minimum: 0
-          description: Pre-emptive idle-worker buffer. Omit to leave unchanged.
+          description: Reserved for future use. Supplying it returns 422.
         availableWorkersPct:
           type: integer
           format: int32
           minimum: 0
           maximum: 100
-          description: Scaling buffer as a percentage of load. Omit to leave unchanged.
+          description: Reserved for future use. Supplying it returns 422.
         idleTtlSecs:
           type: integer
           format: int32
@@ -2807,7 +3833,20 @@ components:
       description: >
         An immutable record of what to deploy. One is created with the app and one on
         every update, so a rollout always names a version rather than reading configuration
-        that may since have changed.
+        that may since have changed. `listVersions` and `getVersion` return this same shape.
+        The version internally pins the exact image digest its build pushed, and everything
+        the version references — the built image and the submitted source — is retained for
+        the life of the version.
+
+        Computed fields:
+
+        - `buildDurationMs` is the wall-clock duration of the build this version names.
+          Null while the build is running or when no completion time is available. A
+          config-only update carries the image — and therefore this duration — forward.
+
+        - `changes` is the structured diff against the previous version. Null on version 1
+          (no predecessor). A name-only update still inserts a version; `changes` is then
+          present with `imageChanged` false and no field diffs.
       required:
         - id
         - appId
@@ -2828,25 +3867,211 @@ components:
           format: uuid
           nullable: true
           description: >
-            The build that produced this version's image. Null for a `container` source,
-            which names an image the customer already built and so has no build. A version
-            created by an update carries the image, and therefore this build, forward.
+            The build that produced this version's image. Both source types build — a
+            `code` source bakes an image around a submitted codebase, a `container` source
+            builds the customer's own wrapper Dockerfile. A version created by an update
+            carries the image, and therefore this build, forward.
+        gpuType:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          nullable: true
+          description: >
+            Preferred GPU type of this version, taken from the config snapshot.
+        author:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/TriggeredBy'
+          nullable: true
+          description: >
+            Who created this version — the authenticated user (JWT) or the API key.
+            `displayName` is the name captured at write time.
+        buildDurationMs:
+          type: integer
+          format: int64
+          nullable: true
+          description: >
+            Wall-clock milliseconds of the named build (`completedAt - createdAt` on that
+            build). Null while the build is running or when no completion time is
+            available. Bytes and units are not included; this is a raw millisecond count.
+        changes:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/VersionChanges'
+          nullable: true
+          description: >
+            Structured diff against the previous version. Null on version 1.
         createdAt:
           type: string
           format: date-time
 
+    VersionChanges:
+      type: object
+      additionalProperties: false
+      description: >
+        How this version differs from the previous one. Environment-variable *values*
+        never appear — only keys — so a secret-bearing env var cannot leak through the
+        versions list. Numeric worker-config fields are rendered as decimal-free
+        integer strings (the same spelling the event log uses). Empty collections are
+        omitted: a name-only update is `{ "imageChanged": false }`.
+      required:
+        - imageChanged
+      properties:
+        imageChanged:
+          type: boolean
+          description: >
+            True when this version names a different image than the previous one
+            (`buildId` or `imageRef` changed). False for a config-only update, which
+            carries the image forward.
+        workerConfig:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionConfigChange'
+        environmentVariables:
+          $ref: '#/components/schemas/VersionKeySetDiff'
+        endpoints:
+          $ref: '#/components/schemas/VersionKeySetDiff'
+        volumes:
+          $ref: '#/components/schemas/VersionKeySetDiff'
+
+    VersionConfigChange:
+      type: object
+      additionalProperties: false
+      description: >
+        One worker-config field that changed. `field` is the public JSON name
+        (`gpuType`, `minWorkers`, `idleTtlSecs`, …). `from` / `to` are strings;
+        null means the field was unset on that side.
+      required:
+        - field
+        - from
+        - to
+      properties:
+        field:
+          type: string
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+
+    VersionKeySetDiff:
+      type: object
+      additionalProperties: false
+      description: >
+        Keys added, removed, or changed between consecutive versions. For
+        environment variables, `changed` is keys whose *value* changed (the value
+        itself is never returned). For endpoints the key is the path; for volumes
+        it is `mountPath`. `changed` is omitted on those two (a path either exists
+        or does not).
+      properties:
+        added:
+          type: array
+          items:
+            type: string
+        removed:
+          type: array
+          items:
+            type: string
+        changed:
+          type: array
+          items:
+            type: string
+
+    BuildPhase:
+      type: object
+      description: >
+        One observed step of a build, in execution order. The phase list is open:
+        which phases a build reports depends on its kind and on how it ran, so
+        clients must not assume a fixed set of names or a fixed count.
+      required:
+        - name
+        - startedAt
+        - outcome
+      properties:
+        name:
+          type: string
+          description: >
+            Phase identifier, e.g. `prepare`, `build`, `index`. Deliberately not
+            an enum — new build kinds report new phases without a contract change.
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null while the phase is still running.
+        outcome:
+          type: string
+          enum:
+            - running
+            - succeeded
+            - failed
+
     Build:
       type: object
-      description: Details of a code build or container validation.
+      description: >
+        Details of a build. Both source types build, and `kind` says which pipeline ran:
+        a `code` submission or a customer's own wrapper Dockerfile. Phase lists differ by
+        kind, so never assume a fixed one. `listBuilds` and `getBuild` return this same
+        shape.
+
+
+        Nullability:
+
+        - `error` is null while the build is running (`queued`, `building`), on success
+          (`ready`), and on `superseded` (a newer version took over — the `status` conveys
+          that, and it is not a failure); it is present only on `failed`.
+
+        - `completedAt` and `durationMs` are null while the build is running and set once it
+          reaches a terminal status (`ready`/`failed`/`superseded`). They are also null for
+          terminal builds that finished before completion timestamps were tracked.
+
+        - `exitCode` is null while running. On a terminal build it carries the build Job's
+          exit code when the builder still had it to report; it can remain null on a terminal
+          build whose Job aged out before the code was read.
+
+        - `versionId` / `versionNumber` name the version this build produced. A code build's
+          version is created together with the build, so these are populated from the moment
+          the build exists, in every status; they are null only when no version references the
+          build. When later config updates carry the build forward onto new versions, this is
+          the earliest — the one the build actually produced.
+
+        - `triggeredBy` names the user or API key that submitted the build; it is null only
+          for builds created before the actor was recorded.
       required:
         - id
         - status
+        - source
+        - phases
       properties:
         id:
           type: string
           format: uuid
+        appId:
+          $ref: '#/components/schemas/AppId'
+        source:
+          $ref: '#/components/schemas/BuildSource'
+        triggeredBy:
+          $ref: '#/components/schemas/TriggeredBy'
         status:
           $ref: "#/components/schemas/BuildStatus"
+        versionId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            The version this build produced. A code build's version is created together with
+            the build, so this is populated in every status; it is null only when no version
+            references the build. A code update carries an image — and so its build — forward
+            onto a new version, so a build may be named by several versions; this is the
+            earliest, the one the build actually produced.
+        versionNumber:
+          type: integer
+          format: int32
+          nullable: true
+          description: Version number of `versionId`; null when `versionId` is null.
         error:
           type: string
           nullable: true
@@ -2855,57 +4080,139 @@ components:
           type: integer
           format: int32
           nullable: true
+          description: >
+            Exit code of the build container: 0 on success, its non-zero code on a build
+            failure. Null while running, on a terminal build whose exit code the builder
+            could no longer report, and when the build container never ran (e.g. an init
+            container such as dockerfile generation failed first).
         logTail:
           type: string
           nullable: true
           description: Trailing build log output.
+        durationMs:
+          type: integer
+          format: int64
+          nullable: true
+          description: >
+            Wall-clock milliseconds from `createdAt` to `completedAt`; null while the build is
+            still running or when no completion time was recorded.
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/BuildPhase"
+          description: >
+            Observed build phases with their timings, recorded once the build is
+            terminal; empty until then. Phase lists differ by `source.type`;
+            never assume a fixed list.
         createdAt:
           type: string
           format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            When the build reached a terminal status (`ready`/`failed`/`superseded`); null
+            while running or for terminal builds recorded before this was tracked.
+
+    BuildSource:
+      type: object
+      description: >
+        Where a build's source came from: `code` for a customer code submission, `container`
+        for a customer wrapper Dockerfile. `repository` and `revision` are not yet recorded
+        (both sources are zip uploads) and will be added when the platform stores that
+        provenance.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: >
+            The kind of source that produced this build — `code` or `container`, straight
+            from the build record. Build phases differ by kind, so clients must not assume
+            a fixed phase list. Not modelled as an enum so adding a kind later does not
+            churn the existing source-type constants this API shares.
+
+    TriggeredBy:
+      type: object
+      description: >
+        Who performed an action — the authenticated user (JWT) or the API key.
+        `kind` says which, so `id` (that actor's UUID) is resolvable to the right thing;
+        `displayName` is its name captured at write time, so it renders as it was even if
+        the user or key is later renamed. Used as `Build.triggeredBy` and `Version.author`.
+      required:
+        - kind
+        - id
+        - displayName
+      properties:
+        kind:
+          type: string
+          enum: [user, apiKey]
+          description: Whether the actor is a user (JWT) or an API key.
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
 
     ContainerSource:
       type: object
+      # Rejects the retired zipBase64 (and any other stray field) at the edge:
+      # without this, a payload carrying both a valid uploadId and the old
+      # inline archive would still be accepted.
+      additionalProperties: false
       required:
-        - imageRef
+        - uploadId
       properties:
-        imageRef:
-          type: string
-          minLength: 1
-          maxLength: 512
-          pattern: '^\S+$'
-          description: Registry URI of a pre-built image, e.g. `ghcr.io/acme/model:v2`.
-        registrySecretName:
-          type: string
-          nullable: true
-          minLength: 1
-          maxLength: 253
-          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+        uploadId:
+          allOf:
+            - $ref: '#/components/schemas/SourceUploadId'
+          # The pattern is what the request validator enforces on the body:
+          # kin-openapi treats `format` as advisory, so without it a non-uuid
+          # uploadId would pass the edge and fail deeper with a worse error.
+          # On the body only — a malformed *path* id stays the parse-time 400.
+          pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
           description: >
-            Pull-credential name for a private image registry. Omit for a public
-            registry. Parked on the version until image-pull custody has its own
-            ADR — it is not a `secrets` row (ADR-019 covers only env-var secrets
-            unsealed in-pod; the kubelet needs the credential before any
-            container starts).
-
-            When wired, the name becomes a Kubernetes Secret name, so it must be
-            a DNS-1123 subdomain: lower-case alphanumerics, `-` and `.`, starting
-            and ending alphanumeric, at most 253 characters. That is a hard
-            requirement of what the name is used for, not a Runware naming policy.
+            Id of a ready, unexpired source upload created for this app via
+            `POST /v1/apps/{appId}/source-uploads` and completed. The archive
+            it names carries a wrapper `Dockerfile` and a `container.yaml`
+            config document at its root, plus any build-context files the
+            Dockerfile copies in. Runware builds the image from it — resolving
+            the Dockerfile's public base images to immutable digests — and
+            hosts the result, so no image reference or pull credential is
+            supplied: a private base image is not supported until a build-time
+            credential mechanism exists. An invalid `container.yaml` rejects the
+            create — `400` where the document could not be parsed, `422` where it
+            parsed and broke a rule — with `errors[]` entries carrying
+            `configPointer` into the document; the endpoint set it declares
+            becomes visible once the first build is ready and deployed. The
+            operation consumes the upload atomically with the version it
+            creates (version 1 on create, the next version on a source
+            update); a consumed upload cannot back a second app or version.
 
     CodebaseSource:
       type: object
+      # Same edge rejection of the retired zipBase64 (and modelFile, which now
+      # lives on the upload declaration) as ContainerSource.
+      additionalProperties: false
       required:
-        - zipBase64
-        - modelFile
+        - uploadId
       properties:
-        zipBase64:
-          type: string
+        uploadId:
+          allOf:
+            - $ref: '#/components/schemas/SourceUploadId'
+          # Same edge enforcement as the container source's uploadId: `format`
+          # alone is advisory to the request validator.
+          pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
           description: >
-            Base64-encoded zip archive of the customer's code.
-            Note: move to presigned URL upload for production — base64 bloats the request body for large codebases.
-        modelFile:
-          type: string
-          description: Path within the zip to the MLflow model entry point (e.g. `model.py`).
+            Id of a ready, unexpired source upload created for this app via
+            `POST /v1/apps/{appId}/source-uploads` and completed. The archive
+            it names is the zip of the customer's code, and the upload's own
+            declaration carries the model entry point (`modelFile`), verified
+            against the archive at completion — it is not repeated here. The
+            operation consumes the upload atomically with the version it
+            creates (version 1 on create, the next version on a source
+            update); a consumed upload cannot back a second app or version.
 
     AppSourceUpsert:
       type: object
@@ -2914,11 +4221,12 @@ components:
         - source
       properties:
         type:
-          type: string
-          enum: [code, container]
+          allOf:
+            - $ref: '#/components/schemas/AppSourceType'
           description: >
             Selects the version creation path. `code` submits customer source code to
-            the Image Build Service; `container` references a pre-built OCI image.
+            the Image Build Service; `container` submits a wrapper `Dockerfile` and
+            `container.yaml` for Runware to build into a hosted image.
         source:
           oneOf:
             - $ref: '#/components/schemas/CodeSourceUpsert'
@@ -2978,30 +4286,20 @@ components:
           type: string
           format: date-time
 
-    EndpointCreate:
-      type: object
-      required:
-        - path
-      properties:
-        path:
-          type: string
-          minLength: 1
-          maxLength: 64
-          pattern: '^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$'
-          description: >
-            The endpoint's identity within the app: a bare lowercase URL
-            segment, e.g. `generate` — a letter first, then letters, digits and
-            hyphens, ending with a letter or digit, max 64 characters. No leading
-            slash: documentation may display `/generate`, but the stored and
-            addressed form is `generate`, so it drops into the invocation URL with
-            no encoding. Unique within the app. All invocations are POST;
-            the HTTP method is not part of endpoint identity.
-
     Worker:
       type: object
       description: >
         A worker instance observed from Kubernetes. Read-only runtime state written
         by the reconciler; `id` is the pod UID.
+
+
+        Address a worker by `id`, which is stable for the life of the pod, and show
+        `podName`, which is the name the same pod has in the cluster. There is no
+        separate short identifier.
+
+
+        Uptime is derived, not carried: a worker has been up from `createdAt` until
+        `statusOccurredAt` once its `status` is `stopped`, and until now before that.
       required:
         - id
         - appId
@@ -3010,6 +4308,10 @@ components:
         - status
         - gpuCount
         - statusOccurredAt
+        # Required because the uptime derivation above rests on it, and the column it
+        # comes from is NOT NULL. updatedAt is always sent too but carries no such
+        # contract, so it stays optional.
+        - createdAt
       properties:
         id:
           type: string
@@ -3036,7 +4338,9 @@ components:
         statusOccurredAt:
           type: string
           format: date-time
-          description: When the worker entered its current status.
+          description: >
+            When the worker entered its current status. For a `stopped` worker this is
+            when it stopped, so it is also the end of the worker's uptime.
         gpuCount:
           type: integer
           format: int32
@@ -3048,6 +4352,16 @@ components:
             - $ref: '#/components/schemas/GpuTypeId'
           nullable: true
           description: GPU catalogue code snapshotted at observation time; omitted for CPU workers.
+        gpuAvailability:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/GpuAvailability'
+          nullable: true
+          description: >
+            How the catalogue currently provisions this worker's `gpuType`. Omitted for a
+            CPU worker and for a code the catalogue no longer holds. Unlike `gpuType` this
+            is read now rather than snapshotted, so it tells you how that GPU is supplied
+            today, not how it was supplied when the worker started.
         lastSeenAt:
           type: string
           format: date-time
@@ -3058,10 +4372,64 @@ components:
         createdAt:
           type: string
           format: date-time
-          description: Pod creation time (`metadata.creationTimestamp`), not insert time.
+          description: >
+            Pod creation time (`metadata.creationTimestamp`), not insert time. It is also
+            the start of the worker's uptime.
         updatedAt:
           type: string
           format: date-time
+
+    OrgTenancyDesiredState:
+      type: string
+      description: >
+        Client-writable tenancy state. `active` runs Ensure; `disabled` runs
+        teardown. `pending` is server-only on the receipt and is rejected.
+      enum:
+        - active
+        - disabled
+    OrgTenancyUpsert:
+      type: object
+      additionalProperties: false
+      description: >
+        Desired serverless tenancy for a customer organisation. The UUID is
+        the organisation being provisioned, not the authenticated caller.
+      required:
+        - organizationUuid
+        - state
+      properties:
+        organizationUuid:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/OrgTenancyDesiredState'
+    OrgTenancy:
+      type: object
+      description: >
+        Receipt that an organisation has been provisioned for serverless
+        (ADR-019). Names are derived from the organisation UUID; this object
+        is the state machine, not a directory.
+      required:
+        - organizationUuid
+        - state
+        - ksaName
+      properties:
+        organizationUuid:
+          type: string
+          format: uuid
+        state:
+          type: string
+          description: >
+            `pending` while Ensure is in flight, `active` when key, KSA and
+            bindings have converged, `disabled` after teardown. Rows are
+            tombstones — disable does not delete.
+          enum:
+            - pending
+            - active
+            - disabled
+        ksaName:
+          type: string
+          description: Kubernetes service account in the shared app namespace (`org-<uuid>`).
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
 
     Secret:
       type: object
@@ -3112,12 +4480,12 @@ components:
     SecretAttach:
       type: object
       description: >
-        Attach an organisation secret to an app (control-plane record
-        only in this release). The resolved name (`envVarName`, or `secretName`
-        when omitted) is stored as one NOT NULL column. It must be unique among
-        this app's secret attaches and must not collide with a plain
-        environment variable key on the same app — both names are
-        reserved for the same future pod env namespace. Reserved platform names
+        Attach an organisation secret to an app. The resolved name
+        (`envVarName`, or `secretName` when omitted) is the environment variable
+        the secret is injected as, and the next rollout carries the value into
+        the worker. It must be unique among this app's secret attaches and must
+        not collide with a plain environment variable key on the same app —
+        both names land in the same pod env namespace. Reserved platform names
         are rejected as on `SecretName`.
       required:
         - secretName
@@ -3130,11 +4498,11 @@ components:
             - $ref: '#/components/schemas/EnvironmentVariableName'
           nullable: true
           description: >
-            Environment variable name to use when the secret is eventually
-            injected. Omit or null to use `secretName`; the server resolves and
-            stores the final name. Same reserved-name rules as `SecretName`
-            (`422` if reserved). The resolved name must also not collide with
-            `deployment_configs.key` on this app (`422`).
+            Environment variable name the secret is injected as. Omit or null to
+            use `secretName`; the server resolves and stores the final name. Same
+            reserved-name rules as `SecretName` (`422` if reserved). The resolved
+            name must also not collide with a plain environment variable key on
+            this app (`422`).
 
     SecretCreate:
       type: object
@@ -3220,21 +4588,60 @@ components:
             what the Kubernetes API server accepts — the same `maxLength` create
             applies, so one path cannot be used to exceed the other.
 
+    TaskInvocation:
+      type: object
+      additionalProperties: false
+      required:
+        - taskId
+        - payload
+      description: >
+        The request body for both invoke routes. The endpoint's own input schema
+        describes `payload`, never the whole body, so no platform field can
+        collide with one of the app's own. Unknown top-level members are rejected
+        rather than ignored: the envelope is the platform's to extend, and
+        silently accepting a stray member would make a later addition breaking.
+      properties:
+        taskId:
+          $ref: '#/components/schemas/TaskId'
+        payload:
+          type: object
+          additionalProperties: true
+          description: >
+            The body the endpoint's handler receives, validated against the
+            endpoint's declared input schema. An endpoint that declares none
+            takes it unvalidated.
+
+    TaskId:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      description: >
+        Client-generated task identifier, canonical lowercase UUID. One id is one
+        task: resubmitting it is answered with the task it already names rather
+        than starting a second, so a request whose response was lost can be sent
+        again without paying for the work twice. Reusing an id for a different
+        request returns the first task, so the id is the caller's to keep unique.
+
     Task:
       type: object
       required:
         - id
         - status
         - appId
+        - endpointPath
         - createdAt
       properties:
         id:
           type: string
-          description: Opaque task identifier returned by the execution backend.
+          description: Task identifier, supplied by the caller when the task was submitted.
         status:
           $ref: '#/components/schemas/TaskStatus'
         appId:
           $ref: '#/components/schemas/AppId'
+        endpointPath:
+          $ref: '#/components/schemas/EndpointPath'
         output:
           type: object
           additionalProperties: true
@@ -3371,11 +4778,6 @@ components:
           description: >
             Extension member. Correlation id for this request, echoed in the
             `X-Request-Id` response header; quote it when reporting problems.
-        taskId:
-          type: string
-          description: >
-            Extension member. Present on synchronous inference timeouts when the
-            accepted task can be polled for its eventual result.
         endpointPath:
           type: string
           description: >
@@ -3408,3 +4810,153 @@ components:
             JSON Pointer (RFC 6901) to the offending field in the request body,
             e.g. `/configuration/maxWorkers`. Absent for non-body parameters.
           example: /configuration/maxWorkers
+        configPointer:
+          type: string
+          description: >
+            JSON Pointer (RFC 6901) to the offending field inside a document the
+            request carried, rather than in the request body itself: a container
+            source's `container.yaml`. On such a rejection `pointer` names where
+            the archive sat in the request body and this member names the field
+            inside the document. A rejection about the archive rather than the
+            document carries no `configPointer`, because nothing was parsed.
+          example: /endpoints/0/path
+    QueryCatalogue:
+      type: object
+      required: [metrics, logs]
+      properties:
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueEntry'
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogueEntry'
+    CatalogueEntry:
+      type: object
+      required: [id, unit, aggregation, windows, selectors, series]
+      properties:
+        id:
+          type: string
+          description: The value to pass as `queryId`.
+        unit:
+          type: string
+          description: The unit of every value in this query's series, e.g. `req/min`.
+        aggregation:
+          type: string
+          description: >
+            How each bucket was reduced, e.g. `avg` or `p50`. Carried so a tooltip can say
+            what a point means rather than presenting a bucket reduction as an instant
+            reading.
+        windows:
+          type: array
+          description: >
+            The windows this query can answer. A window absent here has no stored series
+            behind it, so a client should not offer it.
+          items:
+            type: string
+        selectors:
+          type: array
+          description: The narrowings this query accepts. Anything else is rejected.
+          items:
+            type: string
+        series:
+          type: array
+          description: >
+            The stable series ids this query returns. Empty when those ids are not known
+            until the request (`apps_request_volume` keys each line on an app id).
+          items:
+            type: string
+    MetricSeries:
+      type: object
+      required: [query, unit, step_s, aggregation, window, t, series]
+      properties:
+        query:
+          type: string
+        unit:
+          type: string
+        step_s:
+          type: integer
+          format: int64
+          description: Seconds between adjacent timestamps in `t`.
+        aggregation:
+          type: string
+        window:
+          $ref: '#/components/schemas/MetricWindowRange'
+        t:
+          type: array
+          description: >
+            The timestamp axis, shared by every series. Each value is the END of its
+            bucket, in unix seconds: a point at `t[i]` is the aggregate over
+            `(t[i] - step_s, t[i]]`, which is what the underlying range functions compute.
+          items:
+            type: integer
+            format: int64
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricSeriesEntry'
+    MetricWindowRange:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: integer
+          format: int64
+          description: >
+            EXCLUSIVE: one `step_s` before the first timestamp in `t`. Nothing is sampled
+            at `from` itself.
+        to:
+          type: integer
+          format: int64
+          description: INCLUSIVE, and equal to the last timestamp in `t`.
+      description: The range covered, as `(from, to]`.
+    MetricSeriesEntry:
+      type: object
+      required: [id, label, v]
+      properties:
+        id:
+          type: string
+          description: >
+            Stable identifier for this line. For chart queries it does not change, so a
+            client can map it to a colour or legend position. For `apps_request_volume`
+            it is the app id of that line.
+        label:
+          type: string
+          description: Display text. May change without notice; do not switch on it.
+        v:
+          type: array
+          description: >
+            Values, positionally aligned to `t` and always the same length. `null` is a
+            genuine absence of data, never a zero, and is sent explicitly rather than
+            omitted so a gap draws as a gap instead of a line across an outage.
+          items:
+            type: number
+            format: double
+            nullable: true
+    LogEntryPage:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogEntry'
+        nextCursor:
+          type: string
+          description: Opaque; absent on the last page.
+    LogEntry:
+      type: object
+      required: [time, body]
+      properties:
+        time:
+          type: integer
+          format: int64
+        level:
+          type: string
+        body:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
