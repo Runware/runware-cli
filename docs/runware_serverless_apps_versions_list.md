@@ -41,5 +41,5 @@ runware serverless apps versions list <appId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless apps versions](runware_serverless_apps_versions.md)	 - Inspect application versions
+* [runware serverless apps versions](runware_serverless_apps_versions.md)	 - Manage application versions
 

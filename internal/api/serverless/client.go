@@ -67,6 +67,9 @@ type AppUpdate = gen.AppUpdate
 // WorkerConfigPatch is a partial worker configuration for updateApp.
 type WorkerConfigPatch = gen.WorkerConfigPatch
 
+// DeployRequest is the request body for DeployVersion.
+type DeployRequest = gen.DeployRequest
+
 // ListAppsParams are optional filters for ListApps.
 type ListAppsParams = gen.ListAppsParams
 
@@ -446,6 +449,31 @@ func (c *Client) DeleteApp(ctx context.Context, appID string) (*App, error) {
 		Unauthorized: resp.ApplicationproblemJSON401,
 		Forbidden:    resp.ApplicationproblemJSON403,
 		NotFound:     resp.ApplicationproblemJSON404,
+	})
+}
+
+// DeployVersion activates a ready version by number. Worker rollout is
+// asynchronous; the 202 App reflects the persisted intent (activeVersionId
+// and status), not healthy workers. An older ready number is a rollback.
+func (c *Client) DeployVersion(ctx context.Context, appID string, versionNumber int32) (*App, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.DeployVersionWithResponse(ctx, appID, DeployRequest{
+		VersionNumber: versionNumber,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("deploy version: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	return acceptedApp("deploy version", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
+		Unauthorized: resp.ApplicationproblemJSON401,
+		Forbidden:    resp.ApplicationproblemJSON403,
+		NotFound:     resp.ApplicationproblemJSON404,
+		Conflict:     resp.ApplicationproblemJSON409,
 	})
 }
 

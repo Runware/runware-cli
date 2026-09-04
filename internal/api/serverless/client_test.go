@@ -908,6 +908,109 @@ func TestGetVersion_NoAPIKey(t *testing.T) {
 	}
 }
 
+func TestDeployVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1/apps/" + testAppID + "/deploy"
+		if r.Method != http.MethodPost || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		var req DeployRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Errorf("body is not JSON: %s", body)
+		}
+		if req.VersionNumber != testVersionNumber {
+			t.Errorf("versionNumber = %d, want %d", req.VersionNumber, testVersionNumber)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{
+			"appId":"my-app",
+			"appName":"My App",
+			"status":"initializing",
+			"activeVersionId":"` + testVersionID + `",
+			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"computeType":"gpu"},
+			"environmentVariables":[],
+			"secrets":[],
+			"createdAt":"2026-07-30T12:00:00Z",
+			"updatedAt":"2026-07-30T12:00:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	app, err := c.DeployVersion(context.Background(), testAppID, testVersionNumber)
+	if err != nil {
+		t.Fatalf("DeployVersion: %v", err)
+	}
+	if app.AppId != testAppID {
+		t.Fatalf("unexpected app: %+v", app)
+	}
+	if app.ActiveVersionId == nil || app.ActiveVersionId.String() != testVersionID {
+		t.Fatalf("unexpected activeVersionId: %+v", app.ActiveVersionId)
+	}
+}
+
+func TestDeployVersion_Conflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Version is not ready"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.DeployVersion(context.Background(), testAppID, testVersionNumber)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeValidation {
+		t.Errorf("expected CodeValidation, got %v", re.Code)
+	}
+	if re.StatusCode != http.StatusConflict {
+		t.Errorf("expected status 409, got %d", re.StatusCode)
+	}
+	if re.Message != "Version is not ready" {
+		t.Errorf("unexpected message: %q", re.Message)
+	}
+}
+
+func TestDeployVersion_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No app 'missing' exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.DeployVersion(context.Background(), "missing", testVersionNumber)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeNotFound {
+		t.Errorf("expected CodeNotFound, got %v", re.Code)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+	if re.Message != "No app 'missing' exists" {
+		t.Errorf("unexpected message: %q", re.Message)
+	}
+}
+
+func TestDeployVersion_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.DeployVersion(context.Background(), testAppID, testVersionNumber); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
+	}
+}
+
 func TestListWorkers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		want := "/v1/apps/" + testAppID + "/workers"
