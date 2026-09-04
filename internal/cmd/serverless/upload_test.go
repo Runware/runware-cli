@@ -100,7 +100,7 @@ func TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload(t *testing.T) {
 	defer api.Close()
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
-	id, err := uploadSource(context.Background(), client, archive)
+	id, err := uploadSource(context.Background(), client, archive, serverlessapi.AppSourceTypeCode)
 	if err != nil {
 		t.Fatalf("uploadSource: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestUploadSource_AbortsTheSessionWhenStagingFails(t *testing.T) {
 	defer api.Close()
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
-	if _, err := uploadSource(context.Background(), client, []byte("zip")); err == nil {
+	if _, err := uploadSource(context.Background(), client, []byte("zip"), serverlessapi.AppSourceTypeCode); err == nil {
 		t.Fatal("uploadSource succeeded despite a refused transfer")
 	}
 	if !aborted {
@@ -230,7 +230,7 @@ func TestUploadSource_ReportsARejectedArchive(t *testing.T) {
 	defer api.Close()
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
-	_, err := uploadSource(context.Background(), client, []byte("zip"))
+	_, err := uploadSource(context.Background(), client, []byte("zip"), serverlessapi.AppSourceTypeCode)
 	if err == nil {
 		t.Fatal("uploadSource accepted a rejected archive")
 	}
@@ -298,7 +298,7 @@ func TestUploadSource_UsesAFreshKeyPerInvocation(t *testing.T) {
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
 	for range 2 {
-		if _, err := uploadSource(context.Background(), client, archive); err != nil {
+		if _, err := uploadSource(context.Background(), client, archive, serverlessapi.AppSourceTypeCode); err != nil {
 			t.Fatalf("uploadSource: %v", err)
 		}
 	}
@@ -308,5 +308,28 @@ func TestUploadSource_UsesAFreshKeyPerInvocation(t *testing.T) {
 	}
 	if keys[0] == keys[1] {
 		t.Errorf("both deploys sent idempotency key %q; the second would 409 on a consumed session", keys[0])
+	}
+}
+
+// TestUploadSource_DeclaresContainerSourceType is the container half of the
+// declaration: completion and create both key off sourceType, so a container
+// archive uploaded as code would be validated against the wrong rules.
+func TestUploadSource_DeclaresContainerSourceType(t *testing.T) {
+	var declaration serverlessapi.SourceUploadCreate
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&declaration); err != nil {
+			t.Fatalf("decode declaration: %v", err)
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer api.Close()
+
+	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
+	_, err := uploadSource(context.Background(), client, []byte("zip"), serverlessapi.AppSourceTypeContainer)
+	if err == nil {
+		t.Fatal("uploadSource succeeded against a refused declaration")
+	}
+	if declaration.SourceType != serverlessapi.AppSourceTypeContainer {
+		t.Errorf("declared sourceType = %q, want container", declaration.SourceType)
 	}
 }

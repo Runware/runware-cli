@@ -102,7 +102,7 @@ func packDirectory(srcDir, modelFile string) (archive []byte, modelFileRel strin
 		return nil, "", err
 	}
 
-	files, err := collectFiles(root, modelFileRel, matcher)
+	files, err := collectFiles(root, []string{modelFileRel}, matcher)
 	if err != nil {
 		return nil, "", err
 	}
@@ -118,6 +118,55 @@ func packDirectory(srcDir, modelFile string) (archive []byte, modelFileRel strin
 		return nil, "", err
 	}
 	return raw, modelFileRel, nil
+}
+
+const (
+	containerDockerfile = "Dockerfile"
+	containerConfig     = "container.yaml"
+)
+
+// packContainerDirectory zips a container source directory. The root must
+// contain Dockerfile and container.yaml; both are packed even if an ignore
+// rule would otherwise exclude them.
+func packContainerDirectory(srcDir string) ([]byte, error) {
+	root, err := resolveSrcDir(srcDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireContainerFiles(root); err != nil {
+		return nil, err
+	}
+
+	matcher, err := loadIgnoreMatcher(root)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := collectFiles(root, []string{containerDockerfile, containerConfig}, matcher)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no files to pack under %q", root)
+	}
+
+	return writeArchive(root, files)
+}
+
+func requireContainerFiles(root string) error {
+	for _, name := range []string{containerDockerfile, containerConfig} {
+		info, err := os.Stat(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf(
+				"read %s: %w (a container source directory must contain Dockerfile and container.yaml at its root)",
+				name, err,
+			)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("%s is a directory; the container source root must contain that file", name)
+		}
+	}
+	return nil
 }
 
 // resolveSrcDir defaults an empty srcDir to the working directory and checks it
@@ -258,9 +307,10 @@ type packedFile struct {
 
 // collectFiles walks the tree and returns what belongs in the archive, in the
 // lexical order WalkDir yields — so the same tree always packs to the same bytes.
-func collectFiles(root, modelFileRel string, matcher gitignore.Matcher) ([]packedFile, error) {
+func collectFiles(root string, required []string, matcher gitignore.Matcher) ([]packedFile, error) {
 	var files []packedFile
 	var total int64
+	mustPack := requiredSet(required)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -283,22 +333,22 @@ func collectFiles(root, modelFileRel string, matcher gitignore.Matcher) ([]packe
 			}
 			return nil
 		}
-		// The model file is packed whatever the rules say: the deploy cannot
-		// succeed without it, and an ignore rule that happens to cover it is a
-		// worse failure than a file the customer did not mean to ship.
-		if rel != modelFileRel && matcher.Match(segments, d.IsDir()) {
+		// Required files are packed whatever the rules say: the deploy cannot
+		// succeed without them, and an ignore rule that happens to cover one is
+		// a worse failure than a file the customer did not mean to ship.
+		if !isRequired(rel, mustPack) && matcher.Match(segments, d.IsDir()) {
 			if d.IsDir() {
 				// An excluded directory is pruned rather than walked, which keeps
 				// a .venv from costing a stat per file and reproduces git's own
 				// rule that a negation cannot re-include a file whose parent
 				// directory is excluded.
 				//
-				// Except when the model file is inside it. Pruning there would
+				// Except when a required file is inside it. Pruning there would
 				// drop the one entry the build cannot proceed without, and the
 				// exemption above never fires because the walk stops at the
-				// directory, whose path is not the model file's. Descend, and let
-				// the per-file checks exclude everything else it holds.
-				if isAncestorOf(rel, modelFileRel) {
+				// directory, whose path is not the required file's. Descend, and
+				// let the per-file checks exclude everything else it holds.
+				if isRequiredAncestor(rel, mustPack) {
 					return nil
 				}
 				return fs.SkipDir
@@ -315,9 +365,9 @@ func collectFiles(root, modelFileRel string, matcher gitignore.Matcher) ([]packe
 			// Silently skipping the model file would upload an archive whose
 			// declared entry point is missing, which the builder can only report
 			// as a 422 after the upload. Say it here instead.
-			if rel == modelFileRel {
+			if isRequired(rel, mustPack) {
 				return fmt.Errorf(
-					"model file %s is a %s, not a regular file; point --src-dir at the directory holding the real file",
+					"%s is a %s, not a regular file; point the source directory at the directory holding the real file",
 					rel, d.Type().String(),
 				)
 			}
@@ -355,6 +405,28 @@ func collectFiles(root, modelFileRel string, matcher gitignore.Matcher) ([]packe
 // slash-separated paths relative to the archive root.
 func isAncestorOf(dir, file string) bool {
 	return strings.HasPrefix(file, dir+"/")
+}
+
+func requiredSet(files []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(files))
+	for _, f := range files {
+		out[f] = struct{}{}
+	}
+	return out
+}
+
+func isRequired(rel string, required map[string]struct{}) bool {
+	_, ok := required[rel]
+	return ok
+}
+
+func isRequiredAncestor(dir string, required map[string]struct{}) bool {
+	for rel := range required {
+		if isAncestorOf(dir, rel) {
+			return true
+		}
+	}
+	return false
 }
 
 // largestFilesSummary names what filled the archive. "Too big" on its own leaves

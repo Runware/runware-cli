@@ -43,6 +43,9 @@ type App = gen.App
 // AppCreate is the request body for createApp.
 type AppCreate = gen.AppCreate
 
+// AppSourceType selects the version creation path (`code` or `container`).
+type AppSourceType = gen.AppSourceType
+
 // AppSourceUpsert selects the initial version creation path.
 type AppSourceUpsert = gen.AppSourceUpsert
 
@@ -51,6 +54,9 @@ type CodeSourceUpsert = gen.CodeSourceUpsert
 
 // CodebaseSource is the zipped customer code payload.
 type CodebaseSource = gen.CodebaseSource
+
+// ContainerSource is a Dockerfile + container.yaml archive identified by sourceId.
+type ContainerSource = gen.ContainerSource
 
 // AppVolume is a persistent node-local directory mounted into the application.
 type AppVolume = gen.AppVolume
@@ -140,8 +146,12 @@ type Page[T any] struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
-// AppSourceTypeCode is appSource.type = "code".
-const AppSourceTypeCode = gen.Code
+const (
+	// AppSourceTypeCode is appSource.type = "code".
+	AppSourceTypeCode = gen.Code
+	// AppSourceTypeContainer is appSource.type = "container".
+	AppSourceTypeContainer = gen.Container
+)
 
 func pageOf[T any](data *[]T, nextCursor *string) Page[T] {
 	if data == nil || *data == nil {
@@ -696,6 +706,18 @@ func NewCodeAppSource(src CodeSourceUpsert) (AppSourceUpsert, error) {
 	}
 	return AppSourceUpsert{
 		Type:   AppSourceTypeCode,
+		Source: source,
+	}, nil
+}
+
+// NewContainerAppSource builds an appSource for a container-based create.
+func NewContainerAppSource(src ContainerSource) (AppSourceUpsert, error) {
+	var source gen.AppSourceUpsert_Source
+	if err := source.FromContainerSource(src); err != nil {
+		return AppSourceUpsert{}, err
+	}
+	return AppSourceUpsert{
+		Type:   AppSourceTypeContainer,
 		Source: source,
 	}, nil
 }

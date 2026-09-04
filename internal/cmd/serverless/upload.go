@@ -18,7 +18,7 @@ import (
 // the API names, and completion is what opens the archive and verifies it
 // against the declaration. Only then does the published source mean anything to
 // a create.
-func uploadSource(ctx context.Context, client *serverlessapi.Client, archive []byte) (uuid.UUID, error) {
+func uploadSource(ctx context.Context, client *serverlessapi.Client, archive []byte, sourceType serverlessapi.AppSourceType) (uuid.UUID, error) {
 	digest := sha256.Sum256(archive)
 
 	created, err := client.CreateSourceUpload(ctx, serverlessapi.SourceUploadCreate{
@@ -29,7 +29,7 @@ func uploadSource(ctx context.Context, client *serverlessapi.Client, archive []b
 		// could never be deployed again.
 		IdempotencyKey: uuid.NewString(),
 		Sha256:         hex.EncodeToString(digest[:]),
-		SourceType:     serverlessapi.AppSourceTypeCode,
+		SourceType:     sourceType,
 	})
 	if err != nil {
 		return uuid.Nil, err

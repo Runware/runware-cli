@@ -224,6 +224,69 @@ func TestCreateApp_Conflict(t *testing.T) {
 	}
 }
 
+func TestNewContainerAppSource(t *testing.T) {
+	id := uuid.MustParse("019c7654-8b21-7abc-9123-abcdef123456")
+	source, err := NewContainerAppSource(ContainerSource{
+		SourceId: id,
+	})
+	if err != nil {
+		t.Fatalf("NewContainerAppSource: %v", err)
+	}
+	if source.Type != AppSourceTypeContainer {
+		t.Errorf("type = %q, want container", source.Type)
+	}
+	inner, err := source.Source.AsContainerSource()
+	if err != nil {
+		t.Fatalf("AsContainerSource: %v", err)
+	}
+	if inner.SourceId != id {
+		t.Errorf("sourceId = %s, want %s", inner.SourceId, id)
+	}
+
+	raw, err := json.Marshal(source)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var wire AppSourceUpsert
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if wire.Type != AppSourceTypeContainer {
+		t.Errorf("wire type = %q, want container", wire.Type)
+	}
+	got, err := wire.Source.AsContainerSource()
+	if err != nil {
+		t.Fatalf("wire AsContainerSource: %v", err)
+	}
+	if got.SourceId != id {
+		t.Errorf("wire sourceId = %s, want %s", got.SourceId, id)
+	}
+}
+
+func TestNewCodeAppSource(t *testing.T) {
+	id := uuid.MustParse("019c7654-8b21-7abc-9123-abcdef123456")
+	source, err := NewCodeAppSource(CodeSourceUpsert{
+		BaseImage: "python:3.11-slim",
+		Codebase: CodebaseSource{
+			SourceId:  id,
+			ModelFile: "model.py",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewCodeAppSource: %v", err)
+	}
+	if source.Type != AppSourceTypeCode {
+		t.Errorf("type = %q, want code", source.Type)
+	}
+	inner, err := source.Source.AsCodeSourceUpsert()
+	if err != nil {
+		t.Fatalf("AsCodeSourceUpsert: %v", err)
+	}
+	if inner.Codebase.SourceId != id || inner.Codebase.ModelFile != "model.py" {
+		t.Errorf("codebase = %+v", inner.Codebase)
+	}
+}
+
 func TestCreateApp_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
 	if _, err := c.CreateApp(context.Background(), AppCreate{}); !errors.Is(err, transport.ErrNoAPIKey) {
