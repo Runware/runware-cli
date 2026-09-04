@@ -20,6 +20,7 @@ func newAppsInvokeCmd(logger *log.Logger) *cobra.Command {
 		sync         bool
 		wait         bool
 		bodyFile     string
+		taskID       string
 		pollInterval time.Duration
 	)
 
@@ -36,7 +37,11 @@ to poll until the task is completed or failed.
 
 --sync uses the sync invocation endpoint. If the platform wait window
 expires, the command polls the returned task id; it never treats expiry as
-a failure and never resubmits.`,
+a failure and never resubmits.
+
+A client-generated task id is sent with every invoke. Omit --task-id to
+generate one. Resubmitting the same id returns the task it already names
+instead of starting a second run.`,
 		Example: `  # list endpoint paths, then invoke asynchronously
   runware serverless apps endpoints my-app
   runware serverless apps invoke my-app infer -f payload.json
@@ -45,7 +50,10 @@ a failure and never resubmits.`,
   runware serverless apps invoke my-app infer --sync -f payload.json
 
   # async invoke and poll
-  runware serverless apps invoke my-app infer --wait -f payload.json`,
+  runware serverless apps invoke my-app infer --wait -f payload.json
+
+  # retry a lost response without starting a second task
+  runware serverless apps invoke my-app infer --task-id 7c9e6679-7425-40de-944b-e07fc1f90ae7 -f payload.json`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appID := args[0]
@@ -60,9 +68,9 @@ a failure and never resubmits.`,
 
 			var task *serverlessapi.Task
 			if sync {
-				task, err = client.InvokeSync(cmd.Context(), appID, endpointPath, payload)
+				task, err = client.InvokeSync(cmd.Context(), appID, endpointPath, taskID, payload)
 			} else {
-				task, err = client.InvokeAsync(cmd.Context(), appID, endpointPath, payload)
+				task, err = client.InvokeAsync(cmd.Context(), appID, endpointPath, taskID, payload)
 			}
 			if err != nil {
 				spin.Stop()
@@ -91,6 +99,7 @@ a failure and never resubmits.`,
 	cmd.Flags().BoolVar(&sync, "sync", false, "Use sync invocation and wait for a terminal task")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the task is completed or failed")
 	cmd.Flags().StringVarP(&bodyFile, "body", "f", "", "JSON payload file, or - for stdin (default {})")
+	cmd.Flags().StringVar(&taskID, "task-id", "", "Client task id (UUID); generated if omitted")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for a task")
 	return cmd
 }

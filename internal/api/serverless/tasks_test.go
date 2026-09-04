@@ -13,15 +13,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
 const (
-	testTaskID     = "task-1"
+	testTaskID     = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 	testEndpoint   = "infer"
-	testTaskJSON   = `{"id":"task-1","status":"pending","appId":"my-app","createdAt":"2026-07-30T12:00:00Z"}`
-	testTaskDone   = `{"id":"task-1","status":"completed","appId":"my-app","createdAt":"2026-07-30T12:00:00Z","completedAt":"2026-07-30T12:00:05Z","output":{"ok":true}}`
-	testTaskFailed = `{"id":"task-1","status":"failed","appId":"my-app","createdAt":"2026-07-30T12:00:00Z","error":"oom killed"}`
+	testTaskJSON   = `{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","status":"pending","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z"}`
+	testTaskDone   = `{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","status":"completed","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z","completedAt":"2026-07-30T12:00:05Z","output":{"ok":true}}`
+	testTaskFailed = `{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","status":"failed","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z","error":"oom killed"}`
 )
 
 func TestValidateEndpointPath(t *testing.T) {
@@ -70,10 +71,14 @@ func TestInvokeAsync(t *testing.T) {
 		if err != nil {
 			t.Errorf("read body: %v", err)
 		}
-		var payload map[string]any
-		if err := json.Unmarshal(body, &payload); err != nil {
+		var invocation map[string]any
+		if err := json.Unmarshal(body, &invocation); err != nil {
 			t.Errorf("body is not JSON: %s", body)
 		}
+		if invocation["taskId"] != testTaskID {
+			t.Errorf("taskId = %v, want %s", invocation["taskId"], testTaskID)
+		}
+		payload, _ := invocation["payload"].(map[string]any)
 		if payload["prompt"] != "hi" {
 			t.Errorf("payload = %s", body)
 		}
@@ -84,7 +89,7 @@ func TestInvokeAsync(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	task, err := c.InvokeAsync(context.Background(), testAppID, testEndpoint, TaskPayload{"prompt": "hi"})
+	task, err := c.InvokeAsync(context.Background(), testAppID, testEndpoint, testTaskID, TaskPayload{"prompt": "hi"})
 	if err != nil {
 		t.Fatalf("InvokeAsync: %v", err)
 	}
@@ -98,7 +103,7 @@ func TestInvokeAsync(t *testing.T) {
 
 func TestInvokeAsync_RejectsLeadingSlash(t *testing.T) {
 	c := NewClient("test-key", "https://example.invalid", slog.Default())
-	_, err := c.InvokeAsync(context.Background(), testAppID, "/infer", nil)
+	_, err := c.InvokeAsync(context.Background(), testAppID, "/infer", "", nil)
 	if err == nil || !strings.Contains(err.Error(), "bare segment") {
 		t.Fatalf("expected leading-slash error, got %v", err)
 	}
@@ -106,7 +111,7 @@ func TestInvokeAsync_RejectsLeadingSlash(t *testing.T) {
 
 func TestInvokeAsync_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.InvokeAsync(context.Background(), testAppID, testEndpoint, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.InvokeAsync(context.Background(), testAppID, testEndpoint, "", nil); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
@@ -123,7 +128,7 @@ func TestInvokeSync_Completed(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	task, err := c.InvokeSync(context.Background(), testAppID, testEndpoint, nil)
+	task, err := c.InvokeSync(context.Background(), testAppID, testEndpoint, "", nil)
 	if err != nil {
 		t.Fatalf("InvokeSync: %v", err)
 	}
@@ -132,30 +137,30 @@ func TestInvokeSync_Completed(t *testing.T) {
 	}
 }
 
-func TestInvokeSync_WaitExpiry504(t *testing.T) {
-	var posts atomic.Int32
+func TestInvokeAsync_GeneratesTaskID(t *testing.T) {
+	var gotID string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/invoke-sync/") {
-			posts.Add(1)
-			w.Header().Set("Content-Type", "application/problem+json")
-			w.WriteHeader(http.StatusGatewayTimeout)
-			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Gateway Timeout","status":504,"taskId":"task-1"}`))
-			return
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
 		}
-		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		var invocation map[string]any
+		if err := json.Unmarshal(body, &invocation); err != nil {
+			t.Errorf("body is not JSON: %s", body)
+		}
+		gotID, _ = invocation["taskId"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(testTaskJSON))
 	}))
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	task, err := c.InvokeSync(context.Background(), testAppID, testEndpoint, nil)
-	if err != nil {
-		t.Fatalf("InvokeSync must not treat 504 as failure: %v", err)
+	if _, err := c.InvokeAsync(context.Background(), testAppID, testEndpoint, "", nil); err != nil {
+		t.Fatalf("InvokeAsync: %v", err)
 	}
-	if task.Id != testTaskID || task.Status != TaskStatusPending {
-		t.Fatalf("expected pending task %s, got %+v", testTaskID, task)
-	}
-	if posts.Load() != 1 {
-		t.Fatalf("504 must not resubmit: got %d POSTs", posts.Load())
+	if _, err := uuid.Parse(gotID); err != nil {
+		t.Fatalf("generated taskId %q is not a UUID: %v", gotID, err)
 	}
 }
 
@@ -168,7 +173,7 @@ func TestInvokeSync_WaitExpiry202(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	task, err := c.InvokeSync(context.Background(), testAppID, testEndpoint, nil)
+	task, err := c.InvokeSync(context.Background(), testAppID, testEndpoint, "", nil)
 	if err != nil {
 		t.Fatalf("InvokeSync must not treat 202 as failure: %v", err)
 	}
@@ -177,21 +182,19 @@ func TestInvokeSync_WaitExpiry202(t *testing.T) {
 	}
 }
 
-func TestInvokeSync_504WithoutTaskID(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/problem+json")
-		w.WriteHeader(http.StatusGatewayTimeout)
-		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Gateway Timeout","status":504}`))
-	}))
-	defer srv.Close()
-
-	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.InvokeSync(context.Background(), testAppID, testEndpoint, nil)
-	if err == nil || !strings.Contains(err.Error(), "without a task id") {
-		t.Fatalf("expected missing-id error, got %v", err)
+func TestGetTask_InvalidID(t *testing.T) {
+	c := NewClient("test-key", "https://example.invalid", slog.Default())
+	_, err := c.GetTask(context.Background(), testAppID, "not-a-uuid")
+	if err == nil || !strings.Contains(err.Error(), "invalid task id") {
+		t.Fatalf("expected invalid task id error, got %v", err)
 	}
-	if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "Timeout") {
-		t.Fatalf("must not report a timeout error: %v", err)
+}
+
+func TestInvokeAsync_InvalidTaskID(t *testing.T) {
+	c := NewClient("test-key", "https://example.invalid", slog.Default())
+	_, err := c.InvokeAsync(context.Background(), testAppID, testEndpoint, "not-a-uuid", nil)
+	if err == nil || !strings.Contains(err.Error(), "invalid task id") {
+		t.Fatalf("expected invalid task id error, got %v", err)
 	}
 }
 

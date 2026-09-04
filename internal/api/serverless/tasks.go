@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
 )
@@ -44,18 +45,20 @@ func ValidateEndpointPath(path string) error {
 }
 
 // InvokeAsync starts a task and returns the accepted (typically pending) task.
-func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath string, body TaskPayload) (*Task, error) {
+// taskID is the client-owned identifier; an empty value is replaced with a new UUID.
+func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath, taskID string, body TaskPayload) (*Task, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 	if err := ValidateEndpointPath(endpointPath); err != nil {
 		return nil, err
 	}
-	if body == nil {
-		body = TaskPayload{}
+	invocation, err := newTaskInvocation(taskID, body)
+	if err != nil {
+		return nil, err
 	}
 
-	resp, err := c.inner.StartAsyncTaskWithResponse(ctx, appID, endpointPath, gen.StartAsyncTaskJSONRequestBody(body))
+	resp, err := c.inner.StartAsyncTaskWithResponse(ctx, appID, endpointPath, invocation)
 	if err != nil {
 		return nil, fmt.Errorf("invoke async: %w", err)
 	}
@@ -80,26 +83,29 @@ func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath string, bo
 		return nil, problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
 	case http.StatusUnprocessableEntity:
 		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+	case http.StatusServiceUnavailable:
+		return nil, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
 // InvokeSync starts a task and waits up to the platform wait window.
-// A wait-window expiry (504 today, 202 after RUNSERV-547) is not a failure:
-// the accepted task is returned so the caller can poll. Never resubmit.
-func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath string, body TaskPayload) (*Task, error) {
+// A wait-window expiry is not a failure: the accepted task is returned so
+// the caller can poll. Never resubmit.
+func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID string, body TaskPayload) (*Task, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 	if err := ValidateEndpointPath(endpointPath); err != nil {
 		return nil, err
 	}
-	if body == nil {
-		body = TaskPayload{}
+	invocation, err := newTaskInvocation(taskID, body)
+	if err != nil {
+		return nil, err
 	}
 
-	resp, err := c.innerWithMinTimeout(invokeSyncTimeout).StartSyncTaskWithResponse(ctx, appID, endpointPath, gen.StartSyncTaskJSONRequestBody(body))
+	resp, err := c.innerWithMinTimeout(invokeSyncTimeout).StartSyncTaskWithResponse(ctx, appID, endpointPath, invocation)
 	if err != nil {
 		return nil, fmt.Errorf("invoke sync: %w", err)
 	}
@@ -113,20 +119,14 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath string, bod
 		}
 		return resp.JSON200, nil
 	case http.StatusAccepted:
-		// Settled shape (RUNSERV-547): wait expiry returns 202 + Task.
+		if resp.JSON202 != nil {
+			return resp.JSON202, nil
+		}
 		task, err := taskFromBody(resp.Body)
 		if err != nil {
-			if id := taskIDFromProblem(nil, resp.Body); id != "" {
-				return pendingTask(appID, id), nil
-			}
 			return nil, fmt.Errorf("invoke sync: wait window expired without a task id")
 		}
 		return task, nil
-	case http.StatusGatewayTimeout:
-		if id := taskIDFromProblem(resp.ApplicationproblemJSON504, resp.Body); id != "" {
-			return pendingTask(appID, id), nil
-		}
-		return nil, fmt.Errorf("invoke sync: wait window expired without a task id")
 	case http.StatusBadRequest:
 		return nil, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
@@ -139,6 +139,8 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath string, bod
 		return nil, problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
 	case http.StatusUnprocessableEntity:
 		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+	case http.StatusServiceUnavailable:
+		return nil, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
@@ -150,7 +152,12 @@ func (c *Client) GetTask(ctx context.Context, appID, taskID string) (*Task, erro
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetTaskWithResponse(ctx, appID, taskID)
+	id, err := parseTaskID(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.inner.GetTaskWithResponse(ctx, appID, id)
 	if err != nil {
 		return nil, fmt.Errorf("get task: %w", err)
 	}
@@ -169,6 +176,8 @@ func (c *Client) GetTask(ctx context.Context, appID, taskID string) (*Task, erro
 		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusServiceUnavailable:
+		return nil, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
@@ -203,6 +212,8 @@ func (c *Client) ListTasks(ctx context.Context, appID string, params *ListTasksP
 		return Page[Task]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:
 		return Page[Task]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+	case http.StatusServiceUnavailable:
+		return Page[Task]{}, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
 	default:
 		return Page[Task]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
@@ -247,12 +258,33 @@ func (c *Client) WaitTask(ctx context.Context, appID, taskID string, interval ti
 	}
 }
 
-func pendingTask(appID, taskID string) *Task {
-	return &Task{
-		Id:     taskID,
-		AppId:  appID,
-		Status: TaskStatusPending,
+func newTaskInvocation(taskID string, body TaskPayload) (gen.TaskInvocation, error) {
+	id, err := resolveTaskID(taskID)
+	if err != nil {
+		return gen.TaskInvocation{}, err
 	}
+	if body == nil {
+		body = TaskPayload{}
+	}
+	return gen.TaskInvocation{
+		Payload: body,
+		TaskId:  id,
+	}, nil
+}
+
+func resolveTaskID(taskID string) (uuid.UUID, error) {
+	if taskID == "" {
+		return uuid.New(), nil
+	}
+	return parseTaskID(taskID)
+}
+
+func parseTaskID(taskID string) (uuid.UUID, error) {
+	id, err := uuid.Parse(taskID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid task id %q: must be a lowercase UUID", taskID)
+	}
+	return id, nil
 }
 
 func taskFromBody(body []byte) (*Task, error) {
@@ -264,23 +296,6 @@ func taskFromBody(body []byte) (*Task, error) {
 		return nil, fmt.Errorf("empty task id")
 	}
 	return &task, nil
-}
-
-func taskIDFromProblem(p *gen.ProblemDetails, body []byte) string {
-	if p != nil && p.TaskId != nil && *p.TaskId != "" {
-		return *p.TaskId
-	}
-	if len(body) == 0 {
-		return ""
-	}
-	var parsed gen.ProblemDetails
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return ""
-	}
-	if parsed.TaskId == nil {
-		return ""
-	}
-	return *parsed.TaskId
 }
 
 func isNotFound(err error) bool {
