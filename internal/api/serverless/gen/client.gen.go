@@ -303,7 +303,6 @@ func (e SourceUploadSinglePutTransferMode) Valid() bool {
 
 // Defines values for SourceUploadState.
 const (
-	SourceUploadStateConsumed SourceUploadState = "consumed"
 	SourceUploadStateDeleted  SourceUploadState = "deleted"
 	SourceUploadStateExpired  SourceUploadState = "expired"
 	SourceUploadStatePending  SourceUploadState = "pending"
@@ -314,8 +313,6 @@ const (
 // Valid indicates whether the value is a known member of the SourceUploadState enum.
 func (e SourceUploadState) Valid() bool {
 	switch e {
-	case SourceUploadStateConsumed:
-		return true
 	case SourceUploadStateDeleted:
 		return true
 	case SourceUploadStateExpired:
@@ -867,8 +864,11 @@ type CodeSourceUpsert struct {
 
 // CodebaseSource defines model for CodebaseSource.
 type CodebaseSource struct {
-	// UploadId Id of a ready, unexpired source upload created for this app via `POST /v1/apps/{appId}/source-uploads` and completed. The archive it names is the zip of the customer's code, and the upload's own declaration carries the model entry point (`modelFile`), verified against the archive at completion — it is not repeated here. The operation consumes the upload atomically with the version it creates (version 1 on create, the next version on a source update); a consumed upload cannot back a second app or version.
-	UploadId SourceUploadId `json:"uploadId"`
+	// ModelFile Path of the MLflow model entry point inside the archive, relative to its root (e.g. `model.py`). Version execution configuration rather than archive identity, so two apps may run one source with different entry points. The build proves the file is in the archive and answers `422` when it is not.
+	ModelFile string `json:"modelFile"`
+
+	// SourceId Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names is the zip of the customer's code. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions, each choosing its own `modelFile`.
+	SourceId SourceId `json:"sourceId"`
 }
 
 // ComputeType Worker compute class. GPU is the only supported value. CPU workloads are not supported.
@@ -876,8 +876,8 @@ type ComputeType string
 
 // ContainerSource defines model for ContainerSource.
 type ContainerSource struct {
-	// UploadId Id of a ready, unexpired source upload created for this app via `POST /v1/apps/{appId}/source-uploads` and completed. The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it — resolving the Dockerfile's public base images to immutable digests — and hosts the result, so no image reference or pull credential is supplied: a private base image is not supported until a build-time credential mechanism exists. An invalid `container.yaml` rejects the create — `400` where the document could not be parsed, `422` where it parsed and broke a rule — with `errors[]` entries carrying `configPointer` into the document; the endpoint set it declares becomes visible once the first build is ready and deployed. The operation consumes the upload atomically with the version it creates (version 1 on create, the next version on a source update); a consumed upload cannot back a second app or version.
-	UploadId SourceUploadId `json:"uploadId"`
+	// SourceId Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it — resolving the Dockerfile's public base images to immutable digests — and hosts the result, so no image reference or pull credential is supplied: a private base image is not supported until a build-time credential mechanism exists. An invalid `container.yaml` rejects the create — `400` where the document could not be parsed, `422` where it parsed and broke a rule — with `errors[]` entries carrying `configPointer` into the document; the endpoint set it declares becomes visible once the first build is ready and deployed. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions in the organization.
+	SourceId SourceId `json:"sourceId"`
 }
 
 // Currency ISO 4217 alphabetic code. The platform bills in USD only.
@@ -1294,21 +1294,37 @@ type SecretUpdate struct {
 	Value string `json:"value"`
 }
 
+// Source An immutable source artifact: the archive a completed upload published, with the facts upload completion verified it under. It names no app, version, or entry point, so any number of versions across the organization's apps may reference it.
+type Source struct {
+	// ByteLength Verified length of the archive in bytes.
+	ByteLength int64     `json:"byteLength"`
+	CreatedAt  time.Time `json:"createdAt"`
+	Id         SourceId  `json:"id"`
+
+	// Sha256 Verified lowercase SHA-256 digest of the archive.
+	Sha256     string        `json:"sha256"`
+	SourceType AppSourceType `json:"sourceType"`
+}
+
+// SourceId defines model for SourceId.
+type SourceId = openapi_types.UUID
+
 // SourceUpload defines model for SourceUpload.
 type SourceUpload struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
-	AppId              AppId          `json:"appId"`
 	CreatedAt          time.Time      `json:"createdAt"`
 	DeclaredByteLength int64          `json:"declaredByteLength"`
 	ExpiresAt          time.Time      `json:"expiresAt"`
 	Id                 SourceUploadId `json:"id"`
 
 	// RejectionReason Reason completion rejected the archive, when state is `rejected`.
-	RejectionReason *string           `json:"rejectionReason,omitempty"`
-	Sha256          string            `json:"sha256"`
-	SourceType      AppSourceType     `json:"sourceType"`
-	State           SourceUploadState `json:"state"`
-	UpdatedAt       time.Time         `json:"updatedAt"`
+	RejectionReason *string `json:"rejectionReason,omitempty"`
+	Sha256          string  `json:"sha256"`
+
+	// SourceId The immutable source this upload published. Set once the upload is `ready`; it is what app create and source update name. Equal to `id`, so a retry of completion returns the same value.
+	SourceId   *SourceId         `json:"sourceId,omitempty"`
+	SourceType AppSourceType     `json:"sourceType"`
+	State      SourceUploadState `json:"state"`
+	UpdatedAt  time.Time         `json:"updatedAt"`
 }
 
 // SourceUploadCreate defines model for SourceUploadCreate.
@@ -1318,11 +1334,6 @@ type SourceUploadCreate struct {
 
 	// IdempotencyKey Client-generated key used to make session creation safe to retry.
 	IdempotencyKey string `json:"idempotencyKey"`
-
-	// ModelFile Path of the MLflow model entry point inside the archive, relative to its root (e.g. `model.py`). Required for a `code` upload and refused for a `container` one, whose required files the contract names rather than the client.
-	//
-	// It is declared here rather than at app creation because upload completion is the last thing that opens the archive: `POST /v1/apps` consumes a ready upload and never reads the object, so an entry point named there could only be proved against the archive by reading it a second time. The pattern refuses a leading separator; a path that escapes the archive root is refused by completion.
-	ModelFile *string `json:"modelFile,omitempty"`
 
 	// Sha256 Lowercase SHA-256 digest of the complete archive.
 	Sha256     string        `json:"sha256"`
@@ -1910,9 +1921,6 @@ type StartSyncTaskJSONRequestBody = TaskInvocation
 // AttachAppSecretJSONRequestBody defines body for AttachAppSecret for application/json ContentType.
 type AttachAppSecretJSONRequestBody = SecretAttach
 
-// CreateSourceUploadJSONRequestBody defines body for CreateSourceUpload for application/json ContentType.
-type CreateSourceUploadJSONRequestBody = SourceUploadCreate
-
 // CreateGpuTypeJSONRequestBody defines body for CreateGpuType for application/json ContentType.
 type CreateGpuTypeJSONRequestBody = GpuTypeCreate
 
@@ -1933,6 +1941,9 @@ type CreateSecretJSONRequestBody = SecretCreate
 
 // UpdateSecretJSONRequestBody defines body for UpdateSecret for application/json ContentType.
 type UpdateSecretJSONRequestBody = SecretUpdate
+
+// CreateSourceUploadJSONRequestBody defines body for CreateSourceUpload for application/json ContentType.
+type CreateSourceUploadJSONRequestBody = SourceUploadCreate
 
 // AsCodeSourceUpsert returns the union data inside the AppSourceUpsert_Source as a CodeSourceUpsert
 func (t AppSourceUpsert_Source) AsCodeSourceUpsert() (CodeSourceUpsert, error) {
@@ -2361,7 +2372,7 @@ type ClientInterface interface {
 
 	// StartAsyncTaskWithBody Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2370,7 +2381,7 @@ type ClientInterface interface {
 
 	// StartAsyncTask Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2379,7 +2390,7 @@ type ClientInterface interface {
 
 	// StartSyncTaskWithBody Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2388,7 +2399,7 @@ type ClientInterface interface {
 
 	// StartSyncTask Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2435,45 +2446,6 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 	DetachAppSecret(ctx context.Context, appId AppId, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateSourceUploadWithBody Create a source upload
-	//
-	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-	CreateSourceUploadWithBody(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateSourceUpload Create a source upload
-	//
-	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-	CreateSourceUpload(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteSourceUpload Abort a source upload
-	//
-	// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
-	//
-	// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
-	DeleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetSourceUpload Get a source upload
-	//
-	// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
-	//
-	// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
-	GetSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CompleteSourceUpload Complete a source upload
-	//
-	// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
-	//
-	// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
-	CompleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StopApp Stop an app
 	//
@@ -2671,9 +2643,9 @@ type ClientInterface interface {
 	//
 	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2684,9 +2656,9 @@ type ClientInterface interface {
 	//
 	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2738,6 +2710,52 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /v1/secrets/{secretName} (the `UpdateSecret` operationId).
 	UpdateSecret(ctx context.Context, secretName SecretName, body UpdateSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSourceUploadWithBody Create a source upload
+	//
+	// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUploadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSourceUpload Create a source upload
+	//
+	// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUpload(ctx context.Context, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSourceUpload Abort a source upload
+	//
+	// Aborts an upload that has not published its source and removes its staging object. The session remains as a deleted tombstone so its staging key cannot be reused. Repeating a successful abort is idempotent. A `ready` upload cannot be aborted: the source it published is a resource in its own right, and the request answers `409` with type `source-upload-completed`.
+	//
+	// Corresponds with DELETE /v1/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+	DeleteSourceUpload(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSourceUpload Get a source upload
+	//
+	// Returns the upload session belonging to the authenticated organization. Once the upload is `ready` the session carries the `sourceId` it published. An upload belonging to another organization returns `404`.
+	//
+	// Corresponds with GET /v1/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+	GetSourceUpload(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteSourceUpload Complete a source upload
+	//
+	// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration, applies the archive rules for the source type, and publishes the verified bytes as an immutable source artifact. The first success creates the source and returns the ready session carrying its `sourceId`; a retry returns the same session and the same `sourceId`. A rejected upload keeps its rejection so later retries return the same result.
+	//
+	// Corresponds with POST /v1/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+	CompleteSourceUpload(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSource Get a source
+	//
+	// Returns the immutable source artifact a completed upload published: its type and the length and digest upload completion verified. A source is organization-scoped and may be named by any number of apps and versions in that organization; one belonging to another organization returns `404`. There is no list and no delete.
+	//
+	// Corresponds with GET /v1/sources/{sourceId} (the `GetSource` operationId).
+	GetSource(ctx context.Context, sourceId SourceId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListUsageEvents List usage events
 	//
@@ -3191,7 +3209,7 @@ func (c *Client) FavouriteApp(ctx context.Context, appId AppId, reqEditors ...Re
 
 // StartAsyncTaskWithBody Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3210,7 +3228,7 @@ func (c *Client) StartAsyncTaskWithBody(ctx context.Context, appId AppId, endpoi
 
 // StartAsyncTask Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3229,7 +3247,7 @@ func (c *Client) StartAsyncTask(ctx context.Context, appId AppId, endpointPath E
 
 // StartSyncTaskWithBody Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3248,7 +3266,7 @@ func (c *Client) StartSyncTaskWithBody(ctx context.Context, appId AppId, endpoin
 
 // StartSyncTask Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3346,95 +3364,6 @@ func (c *Client) AttachAppSecret(ctx context.Context, appId AppId, body AttachAp
 // Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 func (c *Client) DetachAppSecret(ctx context.Context, appId AppId, secretName SecretName, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDetachAppSecretRequest(c.Server, appId, secretName)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateSourceUploadWithBody Create a source upload
-//
-// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-func (c *Client) CreateSourceUploadWithBody(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateSourceUploadRequestWithBody(c.Server, appId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateSourceUpload Create a source upload
-//
-// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-func (c *Client) CreateSourceUpload(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateSourceUploadRequest(c.Server, appId, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DeleteSourceUpload Abort a source upload
-//
-// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
-//
-// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
-func (c *Client) DeleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteSourceUploadRequest(c.Server, appId, uploadId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// GetSourceUpload Get a source upload
-//
-// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
-//
-// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
-func (c *Client) GetSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetSourceUploadRequest(c.Server, appId, uploadId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CompleteSourceUpload Complete a source upload
-//
-// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
-//
-// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
-func (c *Client) CompleteSourceUpload(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCompleteSourceUploadRequest(c.Server, appId, uploadId)
 	if err != nil {
 		return nil, err
 	}
@@ -3881,9 +3810,9 @@ func (c *Client) GetMetricSeries(ctx context.Context, queryId QueryId, params *G
 //
 // Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 //
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 //
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3904,9 +3833,9 @@ func (c *Client) UpsertOrgTenancyWithBody(ctx context.Context, contentType strin
 //
 // Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 //
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 //
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4019,6 +3948,112 @@ func (c *Client) UpdateSecretWithBody(ctx context.Context, secretName SecretName
 // Corresponds with PUT /v1/secrets/{secretName} (the `UpdateSecret` operationId).
 func (c *Client) UpdateSecret(ctx context.Context, secretName SecretName, body UpdateSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateSecretRequest(c.Server, secretName, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSourceUploadWithBody Create a source upload
+//
+// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+func (c *Client) CreateSourceUploadWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSourceUploadRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSourceUpload Create a source upload
+//
+// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+func (c *Client) CreateSourceUpload(ctx context.Context, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSourceUploadRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSourceUpload Abort a source upload
+//
+// Aborts an upload that has not published its source and removes its staging object. The session remains as a deleted tombstone so its staging key cannot be reused. Repeating a successful abort is idempotent. A `ready` upload cannot be aborted: the source it published is a resource in its own right, and the request answers `409` with type `source-upload-completed`.
+//
+// Corresponds with DELETE /v1/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+func (c *Client) DeleteSourceUpload(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSourceUploadRequest(c.Server, uploadId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSourceUpload Get a source upload
+//
+// Returns the upload session belonging to the authenticated organization. Once the upload is `ready` the session carries the `sourceId` it published. An upload belonging to another organization returns `404`.
+//
+// Corresponds with GET /v1/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+func (c *Client) GetSourceUpload(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSourceUploadRequest(c.Server, uploadId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompleteSourceUpload Complete a source upload
+//
+// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration, applies the archive rules for the source type, and publishes the verified bytes as an immutable source artifact. The first success creates the source and returns the ready session carrying its `sourceId`; a retry returns the same session and the same `sourceId`. A rejected upload keeps its rejection so later retries return the same result.
+//
+// Corresponds with POST /v1/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+func (c *Client) CompleteSourceUpload(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteSourceUploadRequest(c.Server, uploadId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSource Get a source
+//
+// Returns the immutable source artifact a completed upload published: its type and the length and digest upload completion verified. A source is organization-scoped and may be named by any number of apps and versions in that organization; one belonging to another organization returns `404`. There is no list and no delete.
+//
+// Corresponds with GET /v1/sources/{sourceId} (the `GetSource` operationId).
+func (c *Client) GetSource(ctx context.Context, sourceId SourceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSourceRequest(c.Server, sourceId)
 	if err != nil {
 		return nil, err
 	}
@@ -5275,176 +5310,6 @@ func NewDetachAppSecretRequest(server string, appId AppId, secretName SecretName
 	}
 
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewCreateSourceUploadRequest calls the generic CreateSourceUpload builder with application/json body
-func NewCreateSourceUploadRequest(server string, appId AppId, body CreateSourceUploadJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCreateSourceUploadRequestWithBody(server, appId, "application/json", bodyReader)
-}
-
-// NewCreateSourceUploadRequestWithBody constructs an http.Request for the CreateSourceUpload method, with any body, and a specified content type
-func NewCreateSourceUploadRequestWithBody(server string, appId AppId, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDeleteSourceUploadRequest constructs an http.Request for the DeleteSourceUpload method
-func NewDeleteSourceUploadRequest(server string, appId AppId, uploadId SourceUploadId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetSourceUploadRequest constructs an http.Request for the GetSourceUpload method
-func NewGetSourceUploadRequest(server string, appId AppId, uploadId SourceUploadId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewCompleteSourceUploadRequest constructs an http.Request for the CompleteSourceUpload method
-func NewCompleteSourceUploadRequest(server string, appId AppId, uploadId SourceUploadId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/apps/%s/source-uploads/%s/complete", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6802,6 +6667,182 @@ func NewUpdateSecretRequestWithBody(server string, secretName SecretName, conten
 	return req, nil
 }
 
+// NewCreateSourceUploadRequest calls the generic CreateSourceUpload builder with application/json body
+func NewCreateSourceUploadRequest(server string, body CreateSourceUploadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSourceUploadRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateSourceUploadRequestWithBody constructs an http.Request for the CreateSourceUpload method, with any body, and a specified content type
+func NewCreateSourceUploadRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/source-uploads")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSourceUploadRequest constructs an http.Request for the DeleteSourceUpload method
+func NewDeleteSourceUploadRequest(server string, uploadId SourceUploadId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/source-uploads/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSourceUploadRequest constructs an http.Request for the GetSourceUpload method
+func NewGetSourceUploadRequest(server string, uploadId SourceUploadId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/source-uploads/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompleteSourceUploadRequest constructs an http.Request for the CompleteSourceUpload method
+func NewCompleteSourceUploadRequest(server string, uploadId SourceUploadId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/source-uploads/%s/complete", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSourceRequest constructs an http.Request for the GetSource method
+func NewGetSourceRequest(server string, sourceId SourceId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "sourceId", sourceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/sources/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListUsageEventsRequest constructs an http.Request for the ListUsageEvents method
 func NewListUsageEventsRequest(server string, params *ListUsageEventsParams) (*http.Request, error) {
 	var err error
@@ -7202,7 +7243,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithBodyWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7211,7 +7252,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7220,7 +7261,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithBodyWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7229,7 +7270,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7282,51 +7323,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 	DetachAppSecretWithResponse(ctx context.Context, appId AppId, secretName SecretName, reqEditors ...RequestEditorFn) (*DetachAppSecretResponse, error)
-
-	// CreateSourceUploadWithBodyWithResponse Create a source upload
-	//
-	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-	CreateSourceUploadWithBodyWithResponse(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error)
-
-	// CreateSourceUploadWithResponse Create a source upload
-	//
-	// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-	CreateSourceUploadWithResponse(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error)
-
-	// DeleteSourceUploadWithResponse Abort a source upload
-	//
-	// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
-	DeleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*DeleteSourceUploadResponse, error)
-
-	// GetSourceUploadWithResponse Get a source upload
-	//
-	// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
-	GetSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*GetSourceUploadResponse, error)
-
-	// CompleteSourceUploadWithResponse Complete a source upload
-	//
-	// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
-	CompleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*CompleteSourceUploadResponse, error)
 
 	// StopAppWithResponse Stop an app
 	//
@@ -7556,9 +7552,9 @@ type ClientWithResponsesInterface interface {
 	//
 	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7569,9 +7565,9 @@ type ClientWithResponsesInterface interface {
 	//
 	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7627,6 +7623,60 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /v1/secrets/{secretName} (the `UpdateSecret` operationId).
 	UpdateSecretWithResponse(ctx context.Context, secretName SecretName, body UpdateSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSecretResponse, error)
+
+	// CreateSourceUploadWithBodyWithResponse Create a source upload
+	//
+	// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUploadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error)
+
+	// CreateSourceUploadWithResponse Create a source upload
+	//
+	// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+	CreateSourceUploadWithResponse(ctx context.Context, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error)
+
+	// DeleteSourceUploadWithResponse Abort a source upload
+	//
+	// Aborts an upload that has not published its source and removes its staging object. The session remains as a deleted tombstone so its staging key cannot be reused. Repeating a successful abort is idempotent. A `ready` upload cannot be aborted: the source it published is a resource in its own right, and the request answers `409` with type `source-upload-completed`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+	DeleteSourceUploadWithResponse(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*DeleteSourceUploadResponse, error)
+
+	// GetSourceUploadWithResponse Get a source upload
+	//
+	// Returns the upload session belonging to the authenticated organization. Once the upload is `ready` the session carries the `sourceId` it published. An upload belonging to another organization returns `404`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+	GetSourceUploadWithResponse(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*GetSourceUploadResponse, error)
+
+	// CompleteSourceUploadWithResponse Complete a source upload
+	//
+	// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration, applies the archive rules for the source type, and publishes the verified bytes as an immutable source artifact. The first success creates the source and returns the ready session carrying its `sourceId`; a retry returns the same session and the same `sourceId`. A rejected upload keeps its rejection so later retries return the same result.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+	CompleteSourceUploadWithResponse(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*CompleteSourceUploadResponse, error)
+
+	// GetSourceWithResponse Get a source
+	//
+	// Returns the immutable source artifact a completed upload published: its type and the length and digest upload completion verified. A source is organization-scoped and may be named by any number of apps and versions in that organization; one belonging to another organization returns `404`. There is no list and no delete.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/sources/{sourceId} (the `GetSource` operationId).
+	GetSourceWithResponse(ctx context.Context, sourceId SourceId, reqEditors ...RequestEditorFn) (*GetSourceResponse, error)
 
 	// ListUsageEventsWithResponse List usage events
 	//
@@ -8117,6 +8167,8 @@ type ListBuildsResponse struct {
 		// Summary Collection totals for this app's builds list. Independent of the page: the same values on every cursor, including a seek past the last row. `total` counts builds. `versions` counts versions on the same app — the same predicate as `listVersions` `summary.total`, excluding soft-deleted versions.
 		Summary BuildListSummary `json:"summary"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -8138,6 +8190,11 @@ func (r ListBuildsResponse) GetJSON200() *struct {
 	Summary BuildListSummary `json:"summary"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListBuildsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -8284,6 +8341,8 @@ type GetBuildResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Build
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -8297,6 +8356,11 @@ type GetBuildResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r GetBuildResponse) GetJSON200() *Build {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetBuildResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -8624,6 +8688,8 @@ type ListAppEnvironmentVariablesResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -8642,6 +8708,11 @@ func (r ListAppEnvironmentVariablesResponse) GetJSON200() *struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListAppEnvironmentVariablesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -8848,6 +8919,8 @@ type ListAppEventsResponse struct {
 		// NextCursor Cursor for the next page; null when there are no more items.
 		NextCursor *string `json:"nextCursor,omitempty"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -8866,6 +8939,11 @@ func (r ListAppEventsResponse) GetJSON200() *struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListAppEventsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -9563,366 +9641,6 @@ func (r DetachAppSecretResponse) ContentType() string {
 	return ""
 }
 
-type CreateSourceUploadResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *SourceUploadCreation
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
-	ApplicationproblemJSON502 *BadGateway
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r CreateSourceUploadResponse) GetJSON201() *SourceUploadCreation {
-	return r.JSON201
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r CreateSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r CreateSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r CreateSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r CreateSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r CreateSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
-func (r CreateSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
-	return r.ApplicationproblemJSON502
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r CreateSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r CreateSourceUploadResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r CreateSourceUploadResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CreateSourceUploadResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r CreateSourceUploadResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DeleteSourceUploadResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
-	ApplicationproblemJSON502 *BadGateway
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
-	return r.ApplicationproblemJSON502
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r DeleteSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r DeleteSourceUploadResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteSourceUploadResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteSourceUploadResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteSourceUploadResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type GetSourceUploadResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *SourceUpload
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetSourceUploadResponse) GetJSON200() *SourceUpload {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r GetSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r GetSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r GetSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r GetSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r GetSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r GetSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r GetSourceUploadResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetSourceUploadResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetSourceUploadResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetSourceUploadResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type CompleteSourceUploadResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *SourceUpload
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
-	ApplicationproblemJSON502 *BadGateway
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r CompleteSourceUploadResponse) GetJSON200() *SourceUpload {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
-	return r.ApplicationproblemJSON502
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r CompleteSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r CompleteSourceUploadResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r CompleteSourceUploadResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CompleteSourceUploadResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r CompleteSourceUploadResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type StopAppResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10174,6 +9892,8 @@ type ListVersionsResponse struct {
 		// Summary Collection totals for a paged list. Independent of the page: `total` is the COUNT of items in the collection and is the same value on every page, including a cursor that seeks past the last row.
 		Summary ListSummary `json:"summary"`
 	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -10195,6 +9915,11 @@ func (r ListVersionsResponse) GetJSON200() *struct {
 	Summary ListSummary `json:"summary"`
 } {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListVersionsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -10249,6 +9974,8 @@ func (r ListVersionsResponse) ContentType() string {
 type DeleteVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -10259,6 +9986,11 @@ type DeleteVersionResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeleteVersionResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -10320,6 +10052,8 @@ type GetVersionResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *Version
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -10333,6 +10067,11 @@ type GetVersionResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r GetVersionResponse) GetJSON200() *Version {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetVersionResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -11970,6 +11709,449 @@ func (r UpdateSecretResponse) ContentType() string {
 	return ""
 }
 
+type CreateSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SourceUploadCreation
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSourceUploadResponse) GetJSON201() *SourceUploadCreation {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SourceUpload
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSourceUploadResponse) GetJSON200() *SourceUpload {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompleteSourceUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SourceUpload
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompleteSourceUploadResponse) GetJSON200() *SourceUpload {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CompleteSourceUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CompleteSourceUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompleteSourceUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompleteSourceUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompleteSourceUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSourceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Source
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSourceResponse) GetJSON200() *Source {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetSourceResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetSourceResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetSourceResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetSourceResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetSourceResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetSourceResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSourceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSourceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSourceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSourceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListUsageEventsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12433,7 +12615,7 @@ func (c *ClientWithResponses) FavouriteAppWithResponse(ctx context.Context, appI
 
 // StartAsyncTaskWithBodyWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12448,7 +12630,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithBodyWithResponse(ctx context.Con
 
 // StartAsyncTaskWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12463,7 +12645,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithResponse(ctx context.Context, ap
 
 // StartSyncTaskWithBodyWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12478,7 +12660,7 @@ func (c *ClientWithResponses) StartSyncTaskWithBodyWithResponse(ctx context.Cont
 
 // StartSyncTaskWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12566,81 +12748,6 @@ func (c *ClientWithResponses) DetachAppSecretWithResponse(ctx context.Context, a
 		return nil, err
 	}
 	return ParseDetachAppSecretResponse(rsp)
-}
-
-// CreateSourceUploadWithBodyWithResponse Create a source upload
-//
-// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-func (c *ClientWithResponses) CreateSourceUploadWithBodyWithResponse(ctx context.Context, appId AppId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error) {
-	rsp, err := c.CreateSourceUploadWithBody(ctx, appId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateSourceUploadResponse(rsp)
-}
-
-// CreateSourceUploadWithResponse Create a source upload
-//
-// Creates an upload session for source intended for `appId`. The app does not need to exist yet. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/apps/{appId}/source-uploads (the `CreateSourceUpload` operationId).
-func (c *ClientWithResponses) CreateSourceUploadWithResponse(ctx context.Context, appId AppId, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error) {
-	rsp, err := c.CreateSourceUpload(ctx, appId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateSourceUploadResponse(rsp)
-}
-
-// DeleteSourceUploadWithResponse Abort a source upload
-//
-// Aborts an unconsumed upload and removes its staging object. The session remains as a deleted tombstone so its object key cannot be reused. Repeating a successful abort is idempotent.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /v1/apps/{appId}/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
-func (c *ClientWithResponses) DeleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*DeleteSourceUploadResponse, error) {
-	rsp, err := c.DeleteSourceUpload(ctx, appId, uploadId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteSourceUploadResponse(rsp)
-}
-
-// GetSourceUploadWithResponse Get a source upload
-//
-// Returns the upload session belonging to the authenticated organization and `appId`. An upload belonging to another organization or app returns `404`.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /v1/apps/{appId}/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
-func (c *ClientWithResponses) GetSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*GetSourceUploadResponse, error) {
-	rsp, err := c.GetSourceUpload(ctx, appId, uploadId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetSourceUploadResponse(rsp)
-}
-
-// CompleteSourceUploadWithResponse Complete a source upload
-//
-// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration. A successful retry returns the existing ready resource. A rejected upload keeps its rejection so later retries return the same result.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/apps/{appId}/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
-func (c *ClientWithResponses) CompleteSourceUploadWithResponse(ctx context.Context, appId AppId, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*CompleteSourceUploadResponse, error) {
-	rsp, err := c.CompleteSourceUpload(ctx, appId, uploadId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCompleteSourceUploadResponse(rsp)
 }
 
 // StopAppWithResponse Stop an app
@@ -13015,9 +13122,9 @@ func (c *ClientWithResponses) GetMetricSeriesWithResponse(ctx context.Context, q
 //
 // Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 //
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 //
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13034,9 +13141,9 @@ func (c *ClientWithResponses) UpsertOrgTenancyWithBodyWithResponse(ctx context.C
 //
 // Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
 //
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names.
+// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
 //
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable; the caller (admin-api Messenger) retries the same PUT.
+// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13133,6 +13240,96 @@ func (c *ClientWithResponses) UpdateSecretWithResponse(ctx context.Context, secr
 		return nil, err
 	}
 	return ParseUpdateSecretResponse(rsp)
+}
+
+// CreateSourceUploadWithBodyWithResponse Create a source upload
+//
+// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+func (c *ClientWithResponses) CreateSourceUploadWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error) {
+	rsp, err := c.CreateSourceUploadWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSourceUploadResponse(rsp)
+}
+
+// CreateSourceUploadWithResponse Create a source upload
+//
+// Creates an upload session for a source archive. The session belongs to the authenticated organization and names no app: an upload precedes any app, and the source it publishes may back several. The response contains a short-lived transfer instruction for one exact staging object. Repeating the request with the same idempotency key and declaration while the session is pending and unexpired returns the same upload resource with a refreshed transfer instruction. Replays with a different declaration, or after the session becomes ready, rejected, expired, or deleted, return `409`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/source-uploads (the `CreateSourceUpload` operationId).
+func (c *ClientWithResponses) CreateSourceUploadWithResponse(ctx context.Context, body CreateSourceUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSourceUploadResponse, error) {
+	rsp, err := c.CreateSourceUpload(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSourceUploadResponse(rsp)
+}
+
+// DeleteSourceUploadWithResponse Abort a source upload
+//
+// Aborts an upload that has not published its source and removes its staging object. The session remains as a deleted tombstone so its staging key cannot be reused. Repeating a successful abort is idempotent. A `ready` upload cannot be aborted: the source it published is a resource in its own right, and the request answers `409` with type `source-upload-completed`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/source-uploads/{uploadId} (the `DeleteSourceUpload` operationId).
+func (c *ClientWithResponses) DeleteSourceUploadWithResponse(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*DeleteSourceUploadResponse, error) {
+	rsp, err := c.DeleteSourceUpload(ctx, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSourceUploadResponse(rsp)
+}
+
+// GetSourceUploadWithResponse Get a source upload
+//
+// Returns the upload session belonging to the authenticated organization. Once the upload is `ready` the session carries the `sourceId` it published. An upload belonging to another organization returns `404`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/source-uploads/{uploadId} (the `GetSourceUpload` operationId).
+func (c *ClientWithResponses) GetSourceUploadWithResponse(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*GetSourceUploadResponse, error) {
+	rsp, err := c.GetSourceUpload(ctx, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSourceUploadResponse(rsp)
+}
+
+// CompleteSourceUploadWithResponse Complete a source upload
+//
+// Verifies the staging object's length, content type, and SHA-256 digest against the session declaration, applies the archive rules for the source type, and publishes the verified bytes as an immutable source artifact. The first success creates the source and returns the ready session carrying its `sourceId`; a retry returns the same session and the same `sourceId`. A rejected upload keeps its rejection so later retries return the same result.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/source-uploads/{uploadId}/complete (the `CompleteSourceUpload` operationId).
+func (c *ClientWithResponses) CompleteSourceUploadWithResponse(ctx context.Context, uploadId SourceUploadId, reqEditors ...RequestEditorFn) (*CompleteSourceUploadResponse, error) {
+	rsp, err := c.CompleteSourceUpload(ctx, uploadId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteSourceUploadResponse(rsp)
+}
+
+// GetSourceWithResponse Get a source
+//
+// Returns the immutable source artifact a completed upload published: its type and the length and digest upload completion verified. A source is organization-scoped and may be named by any number of apps and versions in that organization; one belonging to another organization returns `404`. There is no list and no delete.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/sources/{sourceId} (the `GetSource` operationId).
+func (c *ClientWithResponses) GetSourceWithResponse(ctx context.Context, sourceId SourceId, reqEditors ...RequestEditorFn) (*GetSourceResponse, error) {
+	rsp, err := c.GetSource(ctx, sourceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSourceResponse(rsp)
 }
 
 // ListUsageEventsWithResponse List usage events
@@ -13550,6 +13747,13 @@ func ParseListBuildsResponse(rsp *http.Response) (*ListBuildsResponse, error) {
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -13681,6 +13885,13 @@ func ParseGetBuildResponse(rsp *http.Response) (*GetBuildResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -13957,6 +14168,13 @@ func ParseListAppEnvironmentVariablesResponse(rsp *http.Response) (*ListAppEnvir
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -14133,6 +14351,13 @@ func ParseListAppEventsResponse(rsp *http.Response) (*ListAppEventsResponse, err
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -14694,309 +14919,6 @@ func ParseDetachAppSecretResponse(rsp *http.Response) (*DetachAppSecretResponse,
 	return response, nil
 }
 
-// ParseCreateSourceUploadResponse parses an HTTP response from a CreateSourceUploadWithResponse call
-func ParseCreateSourceUploadResponse(rsp *http.Response) (*CreateSourceUploadResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CreateSourceUploadResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest SourceUploadCreation
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
-		var dest BadGateway
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON502 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteSourceUploadResponse parses an HTTP response from a DeleteSourceUploadWithResponse call
-func ParseDeleteSourceUploadResponse(rsp *http.Response) (*DeleteSourceUploadResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteSourceUploadResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
-		var dest BadGateway
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON502 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetSourceUploadResponse parses an HTTP response from a GetSourceUploadWithResponse call
-func ParseGetSourceUploadResponse(rsp *http.Response) (*GetSourceUploadResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetSourceUploadResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest SourceUpload
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseCompleteSourceUploadResponse parses an HTTP response from a CompleteSourceUploadWithResponse call
-func ParseCompleteSourceUploadResponse(rsp *http.Response) (*CompleteSourceUploadResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CompleteSourceUploadResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest SourceUpload
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
-		var dest BadGateway
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON502 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseStopAppResponse parses an HTTP response from a StopAppWithResponse call
 func ParseStopAppResponse(rsp *http.Response) (*StopAppResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -15214,6 +15136,13 @@ func ParseListVersionsResponse(rsp *http.Response) (*ListVersionsResponse, error
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -15263,6 +15192,13 @@ func ParseDeleteVersionResponse(rsp *http.Response) (*DeleteVersionResponse, err
 	switch {
 	case rsp.StatusCode == 204:
 		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -15324,6 +15260,13 @@ func ParseGetVersionResponse(rsp *http.Response) (*GetVersionResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
@@ -16613,6 +16556,377 @@ func ParseUpdateSecretResponse(rsp *http.Response) (*UpdateSecretResponse, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Secret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSourceUploadResponse parses an HTTP response from a CreateSourceUploadWithResponse call
+func ParseCreateSourceUploadResponse(rsp *http.Response) (*CreateSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SourceUploadCreation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSourceUploadResponse parses an HTTP response from a DeleteSourceUploadWithResponse call
+func ParseDeleteSourceUploadResponse(rsp *http.Response) (*DeleteSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSourceUploadResponse parses an HTTP response from a GetSourceUploadWithResponse call
+func ParseGetSourceUploadResponse(rsp *http.Response) (*GetSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SourceUpload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompleteSourceUploadResponse parses an HTTP response from a CompleteSourceUploadWithResponse call
+func ParseCompleteSourceUploadResponse(rsp *http.Response) (*CompleteSourceUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompleteSourceUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SourceUpload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSourceResponse parses an HTTP response from a GetSourceWithResponse call
+func ParseGetSourceResponse(rsp *http.Response) (*GetSourceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSourceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Source
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

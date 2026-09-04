@@ -108,7 +108,7 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Uploading source for %s...", id))
 			spin.Start()
-			uploadID, err := uploadSource(cmd.Context(), client, id, archive, modelFile)
+			sourceID, err := uploadSource(cmd.Context(), client, archive)
 			spin.Stop()
 			if err != nil {
 				return err
@@ -117,7 +117,8 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 			source, err := serverlessapi.NewCodeAppSource(serverlessapi.CodeSourceUpsert{
 				BaseImage: baseImage,
 				Codebase: serverlessapi.CodebaseSource{
-					UploadId: uploadID,
+					SourceId:  sourceID,
+					ModelFile: modelFile,
 				},
 				Requirements: optionalStringSlice(requirements),
 			})

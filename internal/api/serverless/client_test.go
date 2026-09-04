@@ -165,7 +165,8 @@ func TestCreateApp(t *testing.T) {
 	source, err := NewCodeAppSource(CodeSourceUpsert{
 		BaseImage: "python:3.11-slim",
 		Codebase: CodebaseSource{
-			UploadId: uuid.MustParse("019c7654-8b21-7abc-9123-abcdef123456"),
+			SourceId:  uuid.MustParse("019c7654-8b21-7abc-9123-abcdef123456"),
+			ModelFile: "model.py",
 		},
 	})
 	if err != nil {
