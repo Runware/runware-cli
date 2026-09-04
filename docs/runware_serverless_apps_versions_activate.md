@@ -23,10 +23,10 @@ runware serverless apps versions activate <appId> <versionNumber> [flags]
 ```
   # list versions, then activate one
   runware serverless apps versions list my-app
-  runware serverless apps versions activate my-app 1
+  runware serverless apps versions activate my-app 2
 
   # roll back to an older ready version
-  runware serverless apps versions activate my-app 2
+  runware serverless apps versions activate my-app 1
 ```
 
 ### Options

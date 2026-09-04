@@ -15,7 +15,7 @@ const (
 	colID            = "ID"
 	colName          = "Name"
 	colStatus        = "Status"
-	colActiveVersion = "Active version"
+	colActiveVersion = "Active version ID"
 	colCreated       = "Created"
 	colUpdated       = "Updated"
 	colType          = "Type"

@@ -120,10 +120,10 @@ A missing app is 404. A missing version, a version that is not ready, or an
 app that is deleting is 409.`,
 		Example: `  # list versions, then activate one
   runware serverless apps versions list my-app
-  runware serverless apps versions activate my-app 1
+  runware serverless apps versions activate my-app 2
 
   # roll back to an older ready version
-  runware serverless apps versions activate my-app 2`,
+  runware serverless apps versions activate my-app 1`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appID := args[0]
