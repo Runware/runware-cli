@@ -29,8 +29,9 @@ const defaultTimeout = 30 * time.Second
 const createAppTimeout = 5 * time.Minute
 
 // invokeSyncTimeout bounds startSyncTask. It must exceed the platform wait
-// window so a 504/202 with taskId is received; a client-side timeout would
-// lose the id and force a resubmit (a second billable run).
+// window so a 202 with the accepted task is received; a client-side timeout
+// would lose the response and force a resubmit (a second billable run unless
+// the same client task id is reused).
 const invokeSyncTimeout = 5 * time.Minute
 
 // GpuType is the public catalogue entry for a supported GPU type.
@@ -94,7 +95,8 @@ type Task = gen.Task
 type TaskStatus = gen.TaskStatus
 
 // TaskPayload is the JSON object forwarded to an endpoint handler.
-type TaskPayload = gen.TaskPayload
+// It is the TaskInvocation.payload member, not the request body itself.
+type TaskPayload = map[string]interface{}
 
 // ListTasksParams are optional filters for ListTasks.
 type ListTasksParams = gen.ListTasksParams

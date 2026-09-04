@@ -16,6 +16,10 @@ to poll until the task is completed or failed.
 expires, the command polls the returned task id; it never treats expiry as
 a failure and never resubmits.
 
+A client-generated task id is sent with every invoke. Omit --task-id to
+generate one. Resubmitting the same id returns the task it already names
+instead of starting a second run.
+
 ```
 runware serverless apps invoke <appId> <endpointPath> [flags]
 ```
@@ -32,6 +36,9 @@ runware serverless apps invoke <appId> <endpointPath> [flags]
 
   # async invoke and poll
   runware serverless apps invoke my-app infer --wait -f payload.json
+
+  # retry a lost response without starting a second task
+  runware serverless apps invoke my-app infer --task-id 7c9e6679-7425-40de-944b-e07fc1f90ae7 -f payload.json
 ```
 
 ### Options
@@ -41,6 +48,7 @@ runware serverless apps invoke <appId> <endpointPath> [flags]
   -h, --help                     help for invoke
       --poll-interval duration   Polling interval when waiting for a task (default 2s)
       --sync                     Use sync invocation and wait for a terminal task
+      --task-id string           Client task id (UUID); generated if omitted
       --wait                     Poll until the task is completed or failed
 ```
 
