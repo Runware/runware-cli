@@ -147,11 +147,11 @@ func TestExtraListCursorFlags(t *testing.T) {
 	}
 }
 
-func TestExtraCursorFlag(t *testing.T) {
-	if got := extraCursorFlag("--status", "ready"); got != "--status ready" {
+func TestExtraStatusCursorFlag(t *testing.T) {
+	if got := extraStatusCursorFlag("ready"); got != "--status ready" {
 		t.Fatalf("got %q", got)
 	}
-	if got := extraCursorFlag("--status", ""); got != "" {
+	if got := extraStatusCursorFlag(""); got != "" {
 		t.Fatalf("empty: got %q", got)
 	}
 }

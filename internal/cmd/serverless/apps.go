@@ -23,6 +23,8 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsListCmd(logger),
 		newAppsShowCmd(logger),
 		newAppsEndpointsCmd(logger),
+		newAppsInvokeCmd(logger),
+		newAppsTasksCmd(logger),
 		newAppsEnvCmd(logger),
 		newAppsVersionsCmd(logger),
 		newAppsBuildsCmd(logger),
@@ -241,7 +243,7 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraCursorFlag("--status", status))
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraStatusCursorFlag(status))
 		},
 	}
 
@@ -301,9 +303,9 @@ func extraListCursorFlags(query, gpuType, sort, status string) string {
 	return strings.Join(parts, " ")
 }
 
-// extraCursorFlag formats a single filter flag for a next-page --cursor hint.
-func extraCursorFlag(name, value string) string {
-	return strings.Join(appendFlag(nil, name, value), " ")
+// extraStatusCursorFlag formats --status for a next-page --cursor hint.
+func extraStatusCursorFlag(value string) string {
+	return strings.Join(appendFlag(nil, "--status", value), " ")
 }
 
 func appendFlag(parts []string, name, value string) []string {

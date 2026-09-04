@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -11,17 +12,19 @@ import (
 )
 
 const (
-	colID      = "ID"
-	colName    = "Name"
-	colStatus  = "Status"
-	colCreated = "Created"
-	colUpdated = "Updated"
-	colType    = "Type"
-	colField   = "Field"
-	colValue   = "Value"
-	colApp     = "App"
-	colKey     = "Key"
-	colEnvVar  = "Env var"
+	colID        = "ID"
+	colName      = "Name"
+	colStatus    = "Status"
+	colCreated   = "Created"
+	colUpdated   = "Updated"
+	colType      = "Type"
+	colField     = "Field"
+	colValue     = "Value"
+	colApp       = "App"
+	colKey       = "Key"
+	colEnvVar    = "Env var"
+	colError     = "Error"
+	colCompleted = "Completed"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -166,6 +169,68 @@ func (r workersResult) Rows() [][]any {
 	return rows
 }
 
+// tasksResult wraps task lists for table display. Output is omitted.
+type tasksResult []serverlessapi.Task
+
+func (r tasksResult) Headers() []string {
+	return []string{colID, colStatus, colError, colCreated, colCompleted}
+}
+
+func (r tasksResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		task := &r[i]
+		rows[i] = []any{
+			task.Id,
+			string(task.Status),
+			formatOptionalString(task.Error),
+			formatTaskTime(task.CreatedAt),
+			formatOptionalTime(task.CompletedAt),
+		}
+	}
+	return rows
+}
+
+// taskResult wraps a single task for table/json/yaml display.
+type taskResult serverlessapi.Task
+
+func (r taskResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r taskResult) Rows() [][]any {
+	rows := [][]any{
+		{colID, r.Id},
+		{colApp, r.AppId},
+		{colStatus, string(r.Status)},
+		{colCreated, formatTaskTime(r.CreatedAt)},
+		{colCompleted, formatOptionalTime(r.CompletedAt)},
+		{colError, formatOptionalString(r.Error)},
+	}
+	if r.Output != nil {
+		rows = append(rows, []any{"Output", formatJSONValue(*r.Output)})
+	}
+	return rows
+}
+
+func formatTaskTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
+func formatJSONValue(v any) string {
+	if v == nil {
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprint(v)
+	}
+	return string(b)
+}
+
 func formatOptionalInt32(v *int32) string {
 	if v == nil {
 		return ""
@@ -177,7 +242,7 @@ func formatOptionalInt32(v *int32) string {
 type buildsResult []serverlessapi.Build
 
 func (r buildsResult) Headers() []string {
-	return []string{colID, colStatus, "Error", colCreated}
+	return []string{colID, colStatus, colError, colCreated}
 }
 
 func (r buildsResult) Rows() [][]any {
@@ -206,7 +271,7 @@ func (r buildResult) Rows() [][]any {
 	return [][]any{
 		{colID, r.Id.String()},
 		{colStatus, string(r.Status)},
-		{"Error", formatOptionalString(r.Error)},
+		{colError, formatOptionalString(r.Error)},
 		{"Exit code", formatOptionalInt32(r.ExitCode)},
 		{colCreated, formatOptionalTime(r.CreatedAt)},
 	}
