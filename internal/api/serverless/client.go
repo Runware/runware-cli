@@ -97,6 +97,15 @@ type BuildStatus = gen.BuildStatus
 // ListWorkersParams are optional filters for ListWorkers.
 type ListWorkersParams = gen.ListWorkersParams
 
+// AppEvent is a deploy, scaling, audit, or error event on an app.
+type AppEvent = gen.AppEvent
+
+// AppEventType is an AppEvent.type value.
+type AppEventType = gen.AppEventType
+
+// ListAppEventsParams are optional filters for ListAppEvents.
+type ListAppEventsParams = gen.ListAppEventsParams
+
 // Task is a serverless invocation.
 type Task = gen.Task
 
@@ -695,6 +704,36 @@ func (c *Client) ListWorkers(ctx context.Context, appID string, params *ListWork
 		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
 		return Page[Worker]{}, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// ListAppEvents returns a page of deploy, scaling, audit, and error events for an app.
+func (c *Client) ListAppEvents(ctx context.Context, appID string, params *ListAppEventsParams) (Page[AppEvent], error) {
+	if c.apiKey == "" {
+		return Page[AppEvent]{}, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.ListAppEventsWithResponse(ctx, appID, params)
+	if err != nil {
+		return Page[AppEvent]{}, fmt.Errorf("list app events: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return pageOf[AppEvent](nil, nil), nil
+		}
+		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
+	case http.StatusUnauthorized:
+		return Page[AppEvent]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return Page[AppEvent]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return Page[AppEvent]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	default:
+		return Page[AppEvent]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 

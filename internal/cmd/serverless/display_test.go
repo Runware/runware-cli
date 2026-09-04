@@ -12,10 +12,11 @@ import (
 )
 
 const (
-	testAppID    = "my-app"
-	testEnvKey   = "MY_KEY"
-	testEnvValue = "hello"
-	testGPUType  = "h100"
+	testAppID     = "my-app"
+	testEnvKey    = "MY_KEY"
+	testEnvValue  = "hello"
+	testGPUType   = "h100"
+	testEventType = "error"
 )
 
 func TestListPageParams(t *testing.T) {
@@ -153,6 +154,85 @@ func TestExtraStatusCursorFlag(t *testing.T) {
 	}
 	if got := extraStatusCursorFlag(""); got != "" {
 		t.Fatalf("empty: got %q", got)
+	}
+}
+
+func TestParseAppEventType(t *testing.T) {
+	got, err := parseAppEventType("")
+	if err != nil || got != nil {
+		t.Fatalf("unset type: got=%v err=%v", got, err)
+	}
+
+	got, err = parseAppEventType(testEventType)
+	if err != nil || got == nil || *got != testEventType {
+		t.Fatalf("%s: got=%v err=%v", testEventType, got, err)
+	}
+
+	got, err = parseAppEventType("deploy")
+	if err != nil || got == nil || *got != "deploy" {
+		t.Fatalf("deploy: got=%v err=%v", got, err)
+	}
+
+	_, err = parseAppEventType("nope")
+	if err == nil {
+		t.Fatal("expected error for type nope")
+	}
+	if !strings.Contains(err.Error(), "invalid --type") {
+		t.Fatalf("error %q should mention invalid --type", err)
+	}
+}
+
+func TestExtraTypeCursorFlag(t *testing.T) {
+	if got := extraTypeCursorFlag(testEventType); got != "--type "+testEventType {
+		t.Fatalf("got %q", got)
+	}
+	if got := extraTypeCursorFlag(""); got != "" {
+		t.Fatalf("empty: got %q", got)
+	}
+}
+
+func TestEventsResult_Rows(t *testing.T) {
+	created := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	workerID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	endpointID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
+	r := eventsResult{
+		{
+			Id:         uuid.MustParse("55555555-5555-5555-5555-555555555555"),
+			AppId:      testAppID,
+			Type:       testEventType,
+			Message:    "worker failed to start",
+			WorkerId:   &workerID,
+			EndpointId: &endpointID,
+			CreatedAt:  &created,
+		},
+		{
+			Id:      uuid.MustParse("77777777-7777-7777-7777-777777777777"),
+			AppId:   testAppID,
+			Type:    "audit",
+			Message: "scale updated",
+		},
+	}
+
+	wantHeaders := []string{colTime, colType, colMessage, colWorker, colEndpoint}
+	if strings.Join(r.Headers(), ",") != strings.Join(wantHeaders, ",") {
+		t.Fatalf("headers = %v, want %v", r.Headers(), wantHeaders)
+	}
+
+	rows := r.Rows()
+	if len(rows) != 2 {
+		t.Fatalf("row count %d, want 2", len(rows))
+	}
+	if rows[0][0] != "2026-07-30T12:00:00Z" || rows[0][1] != testEventType || rows[0][2] != "worker failed to start" {
+		t.Errorf("first row = %v", rows[0])
+	}
+	if rows[0][3] != workerID.String() || rows[0][4] != endpointID.String() {
+		t.Errorf("first row ids = %v", rows[0])
+	}
+	if rows[1][0] != "" || rows[1][3] != "" || rows[1][4] != "" {
+		t.Errorf("optional fields should be blank when absent: %v", rows[1])
+	}
+	if rows[1][1] != "audit" || rows[1][2] != "scale updated" {
+		t.Errorf("second row = %v", rows[1])
 	}
 }
 

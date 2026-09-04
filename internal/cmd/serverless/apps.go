@@ -29,6 +29,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsVersionsCmd(logger),
 		newAppsBuildsCmd(logger),
 		newAppsLogsCmd(),
+		newAppsEventsCmd(logger),
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(logger),
 		newAppsUsageCmd(),
@@ -197,6 +198,66 @@ func newAppsLogsCmd() *cobra.Command {
 	)
 }
 
+func newAppsEventsCmd(logger *log.Logger) *cobra.Command {
+	var (
+		limit     int
+		cursor    string
+		eventType string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "events <appId>",
+		Short: "List events for a serverless application",
+		Long: `List deploy, scaling, audit, and error events for an application.
+
+Events are the control-plane audit trail, not worker stdout. Live log
+streaming is not available (apps logs is not implemented).`,
+		Example: `  # list events for an application
+  runware serverless apps events my-app
+
+  # errors only
+  runware serverless apps events my-app --type error --limit 20
+
+  # page through results
+  runware serverless apps events my-app --type error --limit 20 --cursor <nextCursor>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
+			id := args[0]
+			typeVal, err := parseAppEventType(eventType)
+			if err != nil {
+				return err
+			}
+			var params *serverlessapi.ListAppEventsParams
+			if limit > 0 || cursor != "" || eventType != "" {
+				params = &serverlessapi.ListAppEventsParams{}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
+				params.Type = typeVal
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching events for %s...", id))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			page, err := client.ListAppEvents(cmd.Context(), id, params)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return printPage(cmdutil.FormatFor(cmd), page, eventsResult(page.Data), cmd.ErrOrStderr(), extraTypeCursorFlag(eventType))
+		},
+	}
+
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of events to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.Flags().StringVar(&eventType, "type", "", "Filter by type (deploy, scaling, audit, or error)")
+	return cmd
+}
+
 func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 	var (
 		limit  int
@@ -293,6 +354,10 @@ func parseWorkerStatus(status string) (*serverlessapi.WorkerStatus, error) {
 	return parseValidFlag[serverlessapi.WorkerStatus]("--status", status, "pending, pulling, loading, ready, busy, unhealthy, draining, stopping, or stopped")
 }
 
+func parseAppEventType(value string) (*serverlessapi.AppEventType, error) {
+	return parseValidFlag[serverlessapi.AppEventType]("--type", value, "deploy, scaling, audit, or error")
+}
+
 // extraListCursorFlags repeats the apps-list filter flags a next-page --cursor is bound to.
 func extraListCursorFlags(query, gpuType, sort, status string) string {
 	parts := make([]string, 0, 4)
@@ -306,6 +371,10 @@ func extraListCursorFlags(query, gpuType, sort, status string) string {
 // extraStatusCursorFlag formats --status for a next-page --cursor hint.
 func extraStatusCursorFlag(value string) string {
 	return strings.Join(appendFlag(nil, "--status", value), " ")
+}
+
+func extraTypeCursorFlag(value string) string {
+	return strings.Join(appendFlag(nil, "--type", value), " ")
 }
 
 func appendFlag(parts []string, name, value string) []string {
