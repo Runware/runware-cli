@@ -686,3 +686,111 @@ func TestPackDirectory_IgnorePatternsAreNotTrimmed(t *testing.T) {
 		t.Errorf("an unrelated file with a space was dropped; archive = %v", names(packed))
 	}
 }
+
+const (
+	testDockerfile = "FROM python:3.11-slim\n"
+	testContainer  = "name: wrapper\n"
+)
+
+func TestPackContainerDirectory(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		containerDockerfile:   testDockerfile,
+		containerConfig:       testContainer,
+		"context/weights.bin": "weights",
+	})
+
+	encoded, err := packContainerDirectory(dir)
+	if err != nil {
+		t.Fatalf("packContainerDirectory: %v", err)
+	}
+	packed := unpack(t, encoded)
+	if packed[containerDockerfile] != testDockerfile {
+		t.Errorf("Dockerfile = %q", packed[containerDockerfile])
+	}
+	if packed[containerConfig] != testContainer {
+		t.Errorf("container.yaml = %q", packed[containerConfig])
+	}
+	if packed["context/weights.bin"] != "weights" {
+		t.Errorf("build context missing; archive = %v", names(packed))
+	}
+}
+
+func TestPackContainerDirectory_RequiredFilesAlwaysPacked(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		runwareIgnoreFile:   "Dockerfile\ncontainer.yaml\n*.md\n",
+		containerDockerfile: testDockerfile,
+		containerConfig:     testContainer,
+		"notes.md":          "drop",
+		"keep.txt":          "keep",
+	})
+
+	encoded, err := packContainerDirectory(dir)
+	if err != nil {
+		t.Fatalf("packContainerDirectory: %v", err)
+	}
+	packed := unpack(t, encoded)
+	for _, name := range []string{containerDockerfile, containerConfig, "keep.txt"} {
+		if _, ok := packed[name]; !ok {
+			t.Errorf("%s missing from archive; got %v", name, names(packed))
+		}
+	}
+	if _, ok := packed["notes.md"]; ok {
+		t.Errorf("notes.md should have been ignored; archive = %v", names(packed))
+	}
+}
+
+func TestPackContainerDirectory_MissingRequiredFile(t *testing.T) {
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{
+			name: "missing Dockerfile",
+			files: map[string]string{
+				containerConfig: testContainer,
+			},
+			want: containerDockerfile,
+		},
+		{
+			name: "missing container.yaml",
+			files: map[string]string{
+				containerDockerfile: testDockerfile,
+			},
+			want: containerConfig,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeTree(t, dir, tc.files)
+			_, err := packContainerDirectory(dir)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q does not mention %s", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestPackContainerDirectory_RequiredFileIsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		containerConfig: testContainer,
+	})
+	if err := os.Mkdir(filepath.Join(dir, containerDockerfile), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := packContainerDirectory(dir)
+	if err == nil {
+		t.Fatal("expected an error for a directory named Dockerfile")
+	}
+	if !strings.Contains(err.Error(), containerDockerfile) {
+		t.Errorf("error %q does not mention Dockerfile", err)
+	}
+}

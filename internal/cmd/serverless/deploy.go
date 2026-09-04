@@ -5,12 +5,93 @@ import (
 	"log/slog"
 
 	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+const deploySourceChoice = "pass an entry file or --container"
+
+var codeOnlyDeployFlags = []string{
+	"src-dir",
+	"base-image",
+	"requirement",
+}
+
+// deploySource is the packed archive's type plus the fields CreateApp needs
+// once the upload publishes a sourceId.
+type deploySource struct {
+	sourceType   serverlessapi.AppSourceType
+	baseImage    string
+	modelFile    string
+	requirements []string
+}
+
+func (s deploySource) appSource(sourceID uuid.UUID) (serverlessapi.AppSourceUpsert, error) {
+	switch s.sourceType {
+	case serverlessapi.AppSourceTypeContainer:
+		return serverlessapi.NewContainerAppSource(serverlessapi.ContainerSource{
+			SourceId: sourceID,
+		})
+	case serverlessapi.AppSourceTypeCode:
+		return serverlessapi.NewCodeAppSource(serverlessapi.CodeSourceUpsert{
+			BaseImage: s.baseImage,
+			Codebase: serverlessapi.CodebaseSource{
+				SourceId:  sourceID,
+				ModelFile: s.modelFile,
+			},
+			Requirements: optionalStringSlice(s.requirements),
+		})
+	default:
+		return serverlessapi.AppSourceUpsert{}, fmt.Errorf("unsupported source type %q", s.sourceType)
+	}
+}
+
+func validateDeployArgs(cmd *cobra.Command, args []string, containerDir string) error {
+	hasFile := len(args) == 1
+	hasContainer := containerDir != ""
+	if hasFile == hasContainer {
+		if hasFile {
+			return fmt.Errorf("%s, not both", deploySourceChoice)
+		}
+		return fmt.Errorf("%s", deploySourceChoice)
+	}
+	if !hasContainer {
+		return nil
+	}
+	for _, name := range codeOnlyDeployFlags {
+		if cmd.Flags().Changed(name) {
+			return fmt.Errorf("--%s applies to code deploys only; omit it when using --container", name)
+		}
+	}
+	return nil
+}
+
+func buildDeployArchive(srcDir, containerDir, baseImage string, requirements []string, args []string) ([]byte, deploySource, error) {
+	if containerDir != "" {
+		archive, err := packContainerDirectory(containerDir)
+		if err != nil {
+			return nil, deploySource{}, err
+		}
+		return archive, deploySource{
+			sourceType: serverlessapi.AppSourceTypeContainer,
+		}, nil
+	}
+
+	archive, modelFile, err := packDirectory(srcDir, args[0])
+	if err != nil {
+		return nil, deploySource{}, err
+	}
+	return archive, deploySource{
+		sourceType:   serverlessapi.AppSourceTypeCode,
+		baseImage:    baseImage,
+		modelFile:    modelFile,
+		requirements: requirements,
+	}, nil
+}
 
 func newDeployCmd(logger *log.Logger) *cobra.Command {
 	var (
@@ -25,22 +106,35 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		minWorkers    int32
 		gpusPerWorker int32
 		srcDir        string
+		containerDir  string
 		volumes       []string
 		envVars       []string
 		envFiles      []string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "deploy <file>",
+		Use:   "deploy [file]",
 		Short: "Deploy a new serverless application",
-		Long: `Create a new serverless application from a Python entry file.
+		Long: `Create a new serverless application from Python code or a container source.
 
-The whole source directory is zipped and submitted as the application source, so
-the entry file can import its own modules and read its own data files. That
-directory is the working directory unless --src-dir says otherwise.
+A code deploy takes a Python entry file. The whole source directory is zipped
+and submitted as the application source, so the entry file can import its own
+modules and read its own data files. That directory is the working directory
+unless --src-dir says otherwise.
 
 The entry file must live inside the source directory. A relative path is resolved
 inside it; an absolute path is taken as given.
+
+A container deploy takes --container pointing at a directory whose root contains
+Dockerfile and container.yaml (plus any build-context files the Dockerfile
+copies). The directory is zipped and uploaded as source type container. Runware
+builds a hosted wrapper image from that archive; the version records a buildId,
+not a customer image reference. Invalid container.yaml is rejected on create
+(400 if it cannot be parsed, 422 if it breaks a rule). The app stays
+initializing until that first build rolls out.
+
+--container cannot be combined with an entry file, --src-dir, --base-image, or
+--requirement.
 
 Exclude what the app does not need with a .runwareignore file at the root of the
 source directory; it takes gitignore syntax. A .gitignore is NOT consulted --
@@ -60,7 +154,8 @@ download is copied into every checkpoint and fetched again on every cold start.
 A volume keeps it out of both.
 
 Worker settings are supplied via flags (a local project config via 'runware
-serverless init' is planned). Endpoints are derived server-side from the SDK.`,
+serverless init' is planned). Endpoints are derived server-side from the SDK
+(code) or from container.yaml (container).`,
 		Example: `  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
 
@@ -81,15 +176,20 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
     --max-workers 2 --idle-ttl 120 --gpu-type h100 \
-    --base-image python:3.11-slim --requirement torch`,
-		Args: cobra.ExactArgs(1),
+    --base-image python:3.11-slim --requirement torch
+
+  # deploy a container source (Dockerfile + container.yaml at the directory root)
+  runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			entryFile := args[0]
+			if err := validateDeployArgs(cmd, args, containerDir); err != nil {
+				return err
+			}
 			if name == "" {
 				name = id
 			}
 
-			archive, modelFile, err := packDirectory(srcDir, entryFile)
+			archive, source, err := buildDeployArchive(srcDir, containerDir, baseImage, requirements, args)
 			if err != nil {
 				return err
 			}
@@ -108,20 +208,13 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Uploading source for %s...", id))
 			spin.Start()
-			sourceID, err := uploadSource(cmd.Context(), client, archive)
+			sourceID, err := uploadSource(cmd.Context(), client, archive, source.sourceType)
 			spin.Stop()
 			if err != nil {
 				return err
 			}
 
-			source, err := serverlessapi.NewCodeAppSource(serverlessapi.CodeSourceUpsert{
-				BaseImage: baseImage,
-				Codebase: serverlessapi.CodebaseSource{
-					SourceId:  sourceID,
-					ModelFile: modelFile,
-				},
-				Requirements: optionalStringSlice(requirements),
-			})
+			appSource, err := source.appSource(sourceID)
 			if err != nil {
 				return fmt.Errorf("build application source: %w", err)
 			}
@@ -129,7 +222,7 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 			body := serverlessapi.AppCreate{
 				AppId:                id,
 				AppName:              name,
-				AppSource:            source,
+				AppSource:            appSource,
 				Volumes:              appVolumes,
 				EnvironmentVariables: appEnv,
 				Configuration: serverlessapi.WorkerConfigCreate{
@@ -156,7 +249,8 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory)")
+	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
+	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, "env", nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
@@ -165,9 +259,9 @@ serverless init' is planned). Endpoints are derived server-side from the SDK.`,
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")
 	cmd.Flags().Int32Var(&idleTTL, "idle-ttl", 60, "Idle TTL in seconds before scaling down")
 	cmd.Flags().Int32Var(&scalingDelay, "scaling-delay", 10, "Scaling delay in seconds")
-	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.11-slim", "Builder base image")
+	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.11-slim", "Builder base image (code deploys only)")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus')")
-	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable)")
+	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
 	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker")
 
