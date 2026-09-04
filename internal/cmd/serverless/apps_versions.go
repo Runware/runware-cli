@@ -14,11 +14,12 @@ import (
 )
 
 func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
-	cmd := stubGroup("versions", "Inspect application versions")
-	cmd.Long = "List and inspect immutable versions of a serverless application."
+	cmd := stubGroup("versions", "Manage application versions")
+	cmd.Long = "List, inspect, and activate immutable versions of a serverless application."
 	cmd.AddCommand(
 		newAppsVersionsListCmd(logger),
 		newAppsVersionsShowCmd(logger),
+		newAppsVersionsActivateCmd(logger),
 	)
 	return cmd
 }
@@ -102,6 +103,49 @@ func newAppsVersionsShowCmd(logger *log.Logger) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func newAppsVersionsActivateCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "activate <appId> <versionNumber>",
+		Short: "Activate a ready application version",
+		Long: `Activate a ready version by number, including rollback to an older version.
+
+The server accepts the deploy and returns immediately with the updated app.
+Worker rollout is asynchronous; this command does not wait until workers are
+healthy. Re-activating the currently active version is permitted and re-applies
+it. On a stopped app the version is recorded and applied on resume.
+
+A missing app is 404. A missing version, a version that is not ready, or an
+app that is deleting is 409.`,
+		Example: `  # list versions, then activate one
+  runware serverless apps versions list my-app
+  runware serverless apps versions activate my-app 1
+
+  # roll back to an older ready version
+  runware serverless apps versions activate my-app 2`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			n, err := parseVersionNumber(args[1])
+			if err != nil {
+				return err
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Activating version %d on %s...", n, appID))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			app, err := client.DeployVersion(cmd.Context(), appID, n)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+		},
+	}
 }
 
 func parseVersionNumber(s string) (int32, error) {

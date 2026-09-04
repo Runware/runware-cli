@@ -12,19 +12,20 @@ import (
 )
 
 const (
-	colID        = "ID"
-	colName      = "Name"
-	colStatus    = "Status"
-	colCreated   = "Created"
-	colUpdated   = "Updated"
-	colType      = "Type"
-	colField     = "Field"
-	colValue     = "Value"
-	colApp       = "App"
-	colKey       = "Key"
-	colEnvVar    = "Env var"
-	colError     = "Error"
-	colCompleted = "Completed"
+	colID            = "ID"
+	colName          = "Name"
+	colStatus        = "Status"
+	colActiveVersion = "Active version"
+	colCreated       = "Created"
+	colUpdated       = "Updated"
+	colType          = "Type"
+	colField         = "Field"
+	colValue         = "Value"
+	colApp           = "App"
+	colKey           = "Key"
+	colEnvVar        = "Env var"
+	colError         = "Error"
+	colCompleted     = "Completed"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -52,6 +53,7 @@ func (r appResult) Rows() [][]any {
 		{colID, r.AppId},
 		{colName, r.AppName},
 		{colStatus, string(r.Status)},
+		{colActiveVersion, formatOptionalUUID(r.ActiveVersionId)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 		{colUpdated, r.UpdatedAt.Format(time.RFC3339)},
 		{colComputeType, string(cfg.ComputeType)},

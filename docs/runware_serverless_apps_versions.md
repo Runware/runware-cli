@@ -1,10 +1,10 @@
 ## runware serverless apps versions
 
-Inspect application versions
+Manage application versions
 
 ### Synopsis
 
-List and inspect immutable versions of a serverless application.
+List, inspect, and activate immutable versions of a serverless application.
 
 ```
 runware serverless apps versions [flags]
@@ -28,6 +28,7 @@ runware serverless apps versions [flags]
 ### SEE ALSO
 
 * [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
+* [runware serverless apps versions activate](runware_serverless_apps_versions_activate.md)	 - Activate a ready application version
 * [runware serverless apps versions list](runware_serverless_apps_versions_list.md)	 - List versions of a serverless application
 * [runware serverless apps versions show](runware_serverless_apps_versions_show.md)	 - Show a version of a serverless application
 

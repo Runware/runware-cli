@@ -159,12 +159,14 @@ func TestExtraStatusCursorFlag(t *testing.T) {
 func TestAppResult_IncludesConfiguration(t *testing.T) {
 	gpu := testGPUType
 	created := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	activeVersion := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	r := appResult{
-		AppId:     testAppID,
-		AppName:   "My App",
-		Status:    "active",
-		CreatedAt: created,
-		UpdatedAt: created,
+		AppId:           testAppID,
+		AppName:         "My App",
+		Status:          "active",
+		ActiveVersionId: &activeVersion,
+		CreatedAt:       created,
+		UpdatedAt:       created,
 		Configuration: serverlessapi.WorkerConfig{
 			ComputeType:      "gpu",
 			GpuType:          &gpu,
@@ -185,6 +187,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 		colID:                  testAppID,
 		colName:                "My App",
 		colStatus:              "active",
+		colActiveVersion:       activeVersion.String(),
 		colCreated:             createdAt,
 		colUpdated:             createdAt,
 		colComputeType:         "gpu",
