@@ -27,6 +27,10 @@ const (
 	colEnvVar        = "Env var"
 	colError         = "Error"
 	colCompleted     = "Completed"
+	colTime          = "Time"
+	colMessage       = "Message"
+	colWorker        = "Worker"
+	colEndpoint      = "Endpoint"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -179,6 +183,28 @@ func (r versionDeletedResult) Headers() []string {
 
 func (r versionDeletedResult) Rows() [][]any {
 	return [][]any{{r.AppID, r.VersionNumber}}
+}
+
+// eventsResult wraps app event lists for table display.
+type eventsResult []serverlessapi.AppEvent
+
+func (r eventsResult) Headers() []string {
+	return []string{colTime, colType, colMessage, colWorker, colEndpoint}
+}
+
+func (r eventsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		ev := &r[i]
+		rows[i] = []any{
+			formatOptionalTime(ev.CreatedAt),
+			string(ev.Type),
+			ev.Message,
+			formatOptionalUUID(ev.WorkerId),
+			formatOptionalUUID(ev.EndpointId),
+		}
+	}
+	return rows
 }
 
 // workersResult wraps worker lists for table display.

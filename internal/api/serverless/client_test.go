@@ -30,6 +30,8 @@ const (
 	testCursorPage3   = "page-3"
 	testStatusReady   = "ready"
 	testModelFile     = "model.py"
+	testEventID       = "55555555-5555-5555-5555-555555555555"
+	testEventType     = "error"
 )
 
 func TestListGpuTypes(t *testing.T) {
@@ -1523,6 +1525,90 @@ func TestGetWorker_NotFound(t *testing.T) {
 func TestGetWorker_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
 	if _, err := c.GetWorker(context.Background(), testAppID, uuid.MustParse(testWorkerID)); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
+	}
+}
+
+func TestListAppEvents(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1/apps/" + testAppID + "/events"
+		if r.Method != http.MethodGet || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("type"); got != testEventType {
+			t.Errorf("type query = %q, want %s", got, testEventType)
+		}
+		if got := r.URL.Query().Get("limit"); got != "20" {
+			t.Errorf("limit query = %q, want 20", got)
+		}
+		if got := r.URL.Query().Get("cursor"); got != testCursorPage2 {
+			t.Errorf("cursor query = %q, want %s", got, testCursorPage2)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{
+			"id":"` + testEventID + `",
+			"appId":"my-app",
+			"type":"` + testEventType + `",
+			"message":"worker failed to start",
+			"workerId":"` + testWorkerID + `",
+			"endpointId":"` + testEndpointID + `",
+			"createdAt":"2026-07-30T12:00:00Z"
+		}],"nextCursor":"` + testCursorPage3 + `"}`))
+	}))
+	defer srv.Close()
+
+	eventType := AppEventType(testEventType)
+	limit := Limit(20)
+	cursor := Cursor(testCursorPage2)
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	page, err := c.ListAppEvents(context.Background(), testAppID, &ListAppEventsParams{
+		Type:   &eventType,
+		Limit:  &limit,
+		Cursor: &cursor,
+	})
+	if err != nil {
+		t.Fatalf("ListAppEvents: %v", err)
+	}
+	if len(page.Data) != 1 {
+		t.Fatalf("unexpected events: %+v", page.Data)
+	}
+	ev := page.Data[0]
+	if ev.Id.String() != testEventID || string(ev.Type) != testEventType || ev.Message != "worker failed to start" {
+		t.Errorf("unexpected event: %+v", ev)
+	}
+	if ev.WorkerId == nil || ev.WorkerId.String() != testWorkerID {
+		t.Errorf("unexpected workerId: %+v", ev.WorkerId)
+	}
+	if ev.EndpointId == nil || ev.EndpointId.String() != testEndpointID {
+		t.Errorf("unexpected endpointId: %+v", ev.EndpointId)
+	}
+	if page.NextCursor == nil || *page.NextCursor != testCursorPage3 {
+		t.Errorf("unexpected nextCursor: %+v", page.NextCursor)
+	}
+}
+
+func TestListAppEvents_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No app exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.ListAppEvents(context.Background(), testAppID, nil)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+}
+
+func TestListAppEvents_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.ListAppEvents(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
