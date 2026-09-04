@@ -34,7 +34,9 @@ tags:
   - name: Apps
     description: Manage apps and their lifecycle
   - name: SourceUploads
-    description: Stage source archives for future app create and update integration
+    description: >
+      Stage a source archive, then read the immutable source a completed upload
+      publishes for app create and update
   - name: Builds
     description: Immutable builds
   - name: Versions
@@ -386,7 +388,12 @@ paths:
         `202` can carry a task that has already finished: read its `status` instead of
         assuming `pending`, and note it may name a different `appId`. Apps in
         `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
-        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`.
+        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An
+        organisation whose serverless tenancy is revoked, or has no tenancy receipt
+        at all, returns `403 Forbidden`, distinguishing that from an app that does
+        not exist. An organisation whose tenancy is still being provisioned
+        returns `503 Service Unavailable` instead — that state is retryable, not a
+        revocation, and clears once provisioning finishes.
         Endpoint membership is checked against the active version's endpoint set before
         the task is accepted: an endpoint the app does not declare returns `404` whose
         `endpointPath` extension member carries the rejected path, distinguishing it
@@ -434,7 +441,12 @@ paths:
         `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot
         attribute to an accepted task fails instead, with no task to poll. Apps in
         `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
-        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. Endpoint
+        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An
+        organisation whose serverless tenancy is revoked, or has no tenancy receipt
+        at all, returns `403 Forbidden`, distinguishing that from an app that does
+        not exist. An organisation whose tenancy is still being provisioned
+        returns `503 Service Unavailable` instead — that state is retryable, not a
+        revocation, and clears once provisioning finishes. Endpoint
         membership is checked against the active version's endpoint set before the task
         is accepted: an endpoint the app does not declare returns `404` whose
         `endpointPath` extension member carries the rejected path, distinguishing it
@@ -838,21 +850,21 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /v1/apps/{appId}/source-uploads:
+  /v1/source-uploads:
     post:
       tags:
         - SourceUploads
       summary: Create a source upload
       description: >
-        Creates an upload session for source intended for `appId`. The app does not need
-        to exist yet. The response contains a short-lived transfer instruction for one
-        exact staging object. Repeating the request with the same idempotency key and
-        declaration while the session is pending and unexpired returns the same upload
-        resource with a refreshed transfer instruction. Replays with a different declaration
-        or after the session becomes ready, rejected, consumed, expired, or deleted return `409`.
+        Creates an upload session for a source archive. The session belongs to the
+        authenticated organization and names no app: an upload precedes any app, and the
+        source it publishes may back several. The response contains a short-lived transfer
+        instruction for one exact staging object. Repeating the request with the same
+        idempotency key and declaration while the session is pending and unexpired returns
+        the same upload resource with a refreshed transfer instruction. Replays with a
+        different declaration, or after the session becomes ready, rejected, expired, or
+        deleted, return `409`.
       operationId: createSourceUpload
-      parameters:
-        - $ref: '#/components/parameters/AppId'
       requestBody:
         required: true
         content:
@@ -881,17 +893,17 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /v1/apps/{appId}/source-uploads/{uploadId}:
+  /v1/source-uploads/{uploadId}:
     get:
       tags:
         - SourceUploads
       summary: Get a source upload
       description: >
-        Returns the upload session belonging to the authenticated organization and
-        `appId`. An upload belonging to another organization or app returns `404`.
+        Returns the upload session belonging to the authenticated organization. Once the
+        upload is `ready` the session carries the `sourceId` it published. An upload
+        belonging to another organization returns `404`.
       operationId: getSourceUpload
       parameters:
-        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/SourceUploadId'
       responses:
         '200':
@@ -917,12 +929,13 @@ paths:
         - SourceUploads
       summary: Abort a source upload
       description: >
-        Aborts an unconsumed upload and removes its staging object. The session remains as
-        a deleted tombstone so its object key cannot be reused. Repeating a successful
-        abort is idempotent.
+        Aborts an upload that has not published its source and removes its staging object.
+        The session remains as a deleted tombstone so its staging key cannot be reused.
+        Repeating a successful abort is idempotent. A `ready` upload cannot be aborted: the
+        source it published is a resource in its own right, and the request answers `409`
+        with type `source-upload-completed`.
       operationId: deleteSourceUpload
       parameters:
-        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/SourceUploadId'
       responses:
         '204':
@@ -944,18 +957,20 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /v1/apps/{appId}/source-uploads/{uploadId}/complete:
+  /v1/source-uploads/{uploadId}/complete:
     post:
       tags:
         - SourceUploads
       summary: Complete a source upload
       description: >
         Verifies the staging object's length, content type, and SHA-256 digest against the
-        session declaration. A successful retry returns the existing ready resource. A
-        rejected upload keeps its rejection so later retries return the same result.
+        session declaration, applies the archive rules for the source type, and publishes
+        the verified bytes as an immutable source artifact. The first success creates the
+        source and returns the ready session carrying its `sourceId`; a retry returns the
+        same session and the same `sourceId`. A rejected upload keeps its rejection so later
+        retries return the same result.
       operationId: completeSourceUpload
       parameters:
-        - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/SourceUploadId'
       responses:
         '200':
@@ -978,6 +993,39 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '502':
           $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/sources/{sourceId}:
+    get:
+      tags:
+        - SourceUploads
+      summary: Get a source
+      description: >
+        Returns the immutable source artifact a completed upload published: its type and
+        the length and digest upload completion verified. A source is organization-scoped
+        and may be named by any number of apps and versions in that organization; one
+        belonging to another organization returns `404`. There is no list and no delete.
+      operationId: getSource
+      parameters:
+        - $ref: '#/components/parameters/SourceId'
+      responses:
+        '200':
+          description: Source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -1233,6 +1281,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /v1/apps/{appId}/builds/{buildId}:
     get:
@@ -1263,6 +1313,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
     delete:
       tags:
         - Builds
@@ -1342,6 +1394,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /v1/apps/{appId}/versions/{versionNumber}:
     get:
@@ -1372,6 +1426,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
     delete:
       tags:
         - Versions
@@ -1406,6 +1462,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   # ---------------------------------------------------------------------------
   # Endpoints
@@ -1752,16 +1810,28 @@ paths:
         organisation UUID, a Kubernetes service account `org-<uuid>` in the
         shared app namespace, and a decrypt IAM binding on that key for the
         KSA principal. `state: disabled` runs teardown: disable the key's
-        primary version, drop the decrypt binding, delete the KSA. The key
-        itself is not destroyed — a destroyed key makes every ciphertext
-        under it permanently unreadable. The local row stays as a tombstone
-        so a later Ensure converges on the same names.
+        primary version, drop the decrypt binding, delete the KSA. It then
+        stops the organisation's estate: every deployment that is `active`
+        moves to `stopping` and has its drain enqueued, and that stop is one
+        database transaction — the `200` is returned only once it has
+        committed, so it guarantees every deployment that was active is on
+        its way to `stopped`. The key itself is not destroyed — a destroyed
+        key makes every ciphertext under it permanently unreadable. The
+        local row stays as a tombstone so a later Ensure converges on the
+        same names; a later Ensure does not resume the deployments this
+        disable stopped — restoring the organisation's IAM is not the same
+        decision as restarting its workload, and this route does not conflate
+        them. A stopped deployment stays stopped until its own resume call,
+        the same as one the customer stopped directly.
 
 
         A retry after a partial failure converges rather than duplicating
         objects. `200` returns the resulting receipt. `503` when Cloud KMS
-        key-admin is rate-limited (60 writes/min) or otherwise unavailable;
-        the caller (admin-api Messenger) retries the same PUT.
+        key-admin is rate-limited (60 writes/min) or otherwise unavailable,
+        or when the tenancy was disabled but the deployment stop could not
+        be committed — the tenancy row is already `disabled` in that case,
+        and the same PUT retried stops whatever is still active; the caller
+        (admin-api Messenger) retries the same PUT either way.
       operationId: upsertOrgTenancy
       requestBody:
         required: true
@@ -1936,6 +2006,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /v1/apps/{appId}/environment-variables/{variableName}:
     put:
@@ -2056,6 +2128,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /v1/usage:
     get:
@@ -2301,6 +2375,13 @@ components:
         Immutable app identifier, unique among the authenticated organisation's live apps.
       schema:
         $ref: '#/components/schemas/AppId'
+    SourceId:
+      name: sourceId
+      in: path
+      required: true
+      description: Source artifact identifier.
+      schema:
+        $ref: '#/components/schemas/SourceId'
     SourceUploadId:
       name: uploadId
       in: path
@@ -2588,6 +2669,10 @@ components:
       type: string
       format: uuid
 
+    SourceId:
+      type: string
+      format: uuid
+
     AppSourceType:
       type: string
       enum: [code, container]
@@ -2597,12 +2682,11 @@ components:
 
     SourceUploadState:
       type: string
-      enum: [pending, ready, rejected, consumed, expired, deleted]
+      enum: [pending, ready, rejected, expired, deleted]
       x-enum-varnames:
         - SourceUploadStatePending
         - SourceUploadStateReady
         - SourceUploadStateRejected
-        - SourceUploadStateConsumed
         - SourceUploadStateExpired
         - SourceUploadStateDeleted
 
@@ -2633,29 +2717,12 @@ components:
           description: Lowercase SHA-256 digest of the complete archive.
         sourceType:
           $ref: '#/components/schemas/AppSourceType'
-        modelFile:
-          type: string
-          minLength: 1
-          maxLength: 512
-          pattern: '^[^/\\\s]\S*$'
-          description: >
-            Path of the MLflow model entry point inside the archive, relative to its root
-            (e.g. `model.py`). Required for a `code` upload and refused for a `container`
-            one, whose required files the contract names rather than the client.
-
-
-            It is declared here rather than at app creation because upload completion is
-            the last thing that opens the archive: `POST /v1/apps` consumes a ready upload
-            and never reads the object, so an entry point named there could only be proved
-            against the archive by reading it a second time. The pattern refuses a leading
-            separator; a path that escapes the archive root is refused by completion.
 
     SourceUpload:
       type: object
       additionalProperties: false
       required:
         - id
-        - appId
         - declaredByteLength
         - sha256
         - sourceType
@@ -2666,8 +2733,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/SourceUploadId'
-        appId:
-          $ref: '#/components/schemas/AppId'
+        sourceId:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/SourceId'
+          nullable: true
+          description: >
+            The immutable source this upload published. Set once the upload is `ready`; it
+            is what app create and source update name. Equal to `id`, so a retry of
+            completion returns the same value.
         declaredByteLength:
           type: integer
           format: int64
@@ -2746,6 +2820,37 @@ components:
           $ref: '#/components/schemas/SourceUpload'
         transfer:
           $ref: '#/components/schemas/SourceUploadTransfer'
+
+    Source:
+      type: object
+      additionalProperties: false
+      description: >
+        An immutable source artifact: the archive a completed upload published, with the
+        facts upload completion verified it under. It names no app, version, or entry point,
+        so any number of versions across the organization's apps may reference it.
+      required:
+        - id
+        - sourceType
+        - byteLength
+        - sha256
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/SourceId'
+        sourceType:
+          $ref: '#/components/schemas/AppSourceType'
+        byteLength:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Verified length of the archive in bytes.
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Verified lowercase SHA-256 digest of the archive.
+        createdAt:
+          type: string
+          format: date-time
 
     EndpointPath:
       type: string
@@ -4157,24 +4262,17 @@ components:
 
     ContainerSource:
       type: object
-      # Rejects the retired zipBase64 (and any other stray field) at the edge:
-      # without this, a payload carrying both a valid uploadId and the old
-      # inline archive would still be accepted.
       additionalProperties: false
       required:
-        - uploadId
+        - sourceId
       properties:
-        uploadId:
+        sourceId:
           allOf:
-            - $ref: '#/components/schemas/SourceUploadId'
-          # The pattern is what the request validator enforces on the body:
-          # kin-openapi treats `format` as advisory, so without it a non-uuid
-          # uploadId would pass the edge and fail deeper with a worse error.
-          # On the body only — a malformed *path* id stays the parse-time 400.
+            - $ref: '#/components/schemas/SourceId'
           pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
           description: >
-            Id of a ready, unexpired source upload created for this app via
-            `POST /v1/apps/{appId}/source-uploads` and completed. The archive
+            Id of a source published by a completed upload in this organization
+            (`POST /v1/source-uploads`, then `complete`). The archive
             it names carries a wrapper `Dockerfile` and a `container.yaml`
             config document at its root, plus any build-context files the
             Dockerfile copies in. Runware builds the image from it — resolving
@@ -4185,34 +4283,37 @@ components:
             create — `400` where the document could not be parsed, `422` where it
             parsed and broke a rule — with `errors[]` entries carrying
             `configPointer` into the document; the endpoint set it declares
-            becomes visible once the first build is ready and deployed. The
-            operation consumes the upload atomically with the version it
-            creates (version 1 on create, the next version on a source
-            update); a consumed upload cannot back a second app or version.
+            becomes visible once the first build is ready and deployed. A source
+            is immutable and reusable: the same `sourceId` may back any number of
+            apps and versions in the organization.
 
     CodebaseSource:
       type: object
-      # Same edge rejection of the retired zipBase64 (and modelFile, which now
-      # lives on the upload declaration) as ContainerSource.
       additionalProperties: false
       required:
-        - uploadId
+        - sourceId
+        - modelFile
       properties:
-        uploadId:
+        sourceId:
           allOf:
-            - $ref: '#/components/schemas/SourceUploadId'
-          # Same edge enforcement as the container source's uploadId: `format`
-          # alone is advisory to the request validator.
+            - $ref: '#/components/schemas/SourceId'
           pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
           description: >
-            Id of a ready, unexpired source upload created for this app via
-            `POST /v1/apps/{appId}/source-uploads` and completed. The archive
-            it names is the zip of the customer's code, and the upload's own
-            declaration carries the model entry point (`modelFile`), verified
-            against the archive at completion — it is not repeated here. The
-            operation consumes the upload atomically with the version it
-            creates (version 1 on create, the next version on a source
-            update); a consumed upload cannot back a second app or version.
+            Id of a source published by a completed upload in this organization
+            (`POST /v1/source-uploads`, then `complete`). The archive it names is the
+            zip of the customer's code. A source is immutable and reusable: the same
+            `sourceId` may back any number of apps and versions, each choosing its own
+            `modelFile`.
+        modelFile:
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: '^[^/\\\s]\S*$'
+          description: >
+            Path of the MLflow model entry point inside the archive, relative to its root
+            (e.g. `model.py`). Version execution configuration rather than archive
+            identity, so two apps may run one source with different entry points. The
+            build proves the file is in the archive and answers `422` when it is not.
 
     AppSourceUpsert:
       type: object

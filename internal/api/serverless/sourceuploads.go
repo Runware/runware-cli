@@ -39,12 +39,12 @@ const SourceUploadStateReady = gen.SourceUploadStateReady
 
 // CreateSourceUpload opens an upload session for appId, which need not exist
 // yet, and returns it with a short-lived instruction for staging the archive.
-func (c *Client) CreateSourceUpload(ctx context.Context, appID string, body SourceUploadCreate) (*SourceUploadCreation, error) {
+func (c *Client) CreateSourceUpload(ctx context.Context, body SourceUploadCreate) (*SourceUploadCreation, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.CreateSourceUploadWithResponse(ctx, appID, body)
+	resp, err := c.inner.CreateSourceUploadWithResponse(ctx, body)
 	if err != nil {
 		return nil, fmt.Errorf("create source upload: %w", err)
 	}
@@ -110,12 +110,12 @@ func (c *Client) StageSourceArchive(ctx context.Context, transfer SourceUploadTr
 
 // CompleteSourceUpload asks the API to verify the staged archive against the
 // session declaration and returns the session in its settled state.
-func (c *Client) CompleteSourceUpload(ctx context.Context, appID string, uploadID SourceUploadID) (*SourceUpload, error) {
+func (c *Client) CompleteSourceUpload(ctx context.Context, uploadID SourceUploadID) (*SourceUpload, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.CompleteSourceUploadWithResponse(ctx, appID, uploadID)
+	resp, err := c.inner.CompleteSourceUploadWithResponse(ctx, uploadID)
 	if err != nil {
 		return nil, fmt.Errorf("complete source upload: %w", err)
 	}
@@ -147,12 +147,12 @@ func (c *Client) CompleteSourceUpload(ctx context.Context, appID string, uploadI
 
 // DeleteSourceUpload aborts an unconsumed session and removes its staging
 // object. Repeating a successful abort is idempotent.
-func (c *Client) DeleteSourceUpload(ctx context.Context, appID string, uploadID SourceUploadID) error {
+func (c *Client) DeleteSourceUpload(ctx context.Context, uploadID SourceUploadID) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteSourceUploadWithResponse(ctx, appID, uploadID)
+	resp, err := c.inner.DeleteSourceUploadWithResponse(ctx, uploadID)
 	if err != nil {
 		return fmt.Errorf("delete source upload: %w", err)
 	}

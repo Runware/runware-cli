@@ -16,8 +16,6 @@ import (
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
-const uploadTestAppID = "my-app"
-
 // TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload walks the three steps
 // a deploy now takes before it can create an app, and pins what each one sends:
 // the declaration has to describe the archive the transfer then carries, or
@@ -54,7 +52,7 @@ func TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload(t *testing.T) {
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps/"+uploadTestAppID+"/source-uploads":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/source-uploads":
 			if err := json.NewDecoder(r.Body).Decode(&declaration); err != nil {
 				t.Fatalf("decode declaration: %v", err)
 			}
@@ -63,7 +61,6 @@ func TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload(t *testing.T) {
 			_, _ = w.Write([]byte(`{
 				"upload": {
 					"id": "019c7654-8b21-7abc-9123-abcdef123456",
-					"appId": "` + uploadTestAppID + `",
 					"declaredByteLength": 18,
 					"sha256": "` + wantSHA + `",
 					"sourceType": "code",
@@ -86,10 +83,10 @@ func TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
 				"id": "019c7654-8b21-7abc-9123-abcdef123456",
-				"appId": "` + uploadTestAppID + `",
 				"declaredByteLength": 18,
 				"sha256": "` + wantSHA + `",
 				"sourceType": "code",
+				"sourceId": "019c7654-8b21-7abc-9123-abcdef123456",
 				"state": "ready",
 				"expiresAt": "2026-09-02T12:00:00Z",
 				"createdAt": "2026-09-02T11:00:00Z",
@@ -103,13 +100,13 @@ func TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload(t *testing.T) {
 	defer api.Close()
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
-	id, err := uploadSource(context.Background(), client, uploadTestAppID, archive, "model.py")
+	id, err := uploadSource(context.Background(), client, archive)
 	if err != nil {
 		t.Fatalf("uploadSource: %v", err)
 	}
 
 	if id.String() != "019c7654-8b21-7abc-9123-abcdef123456" {
-		t.Errorf("upload id = %s, want the id completion settled", id)
+		t.Errorf("source id = %s, want the source completion published", id)
 	}
 	if !completed {
 		t.Error("the upload was never completed, so no create could consume it")
@@ -127,9 +124,6 @@ func TestUploadSource_StagesTheArchiveAndReturnsAReadyUpload(t *testing.T) {
 	}
 	if declaration.DeclaredByteLength != int64(len(archive)) {
 		t.Errorf("declared length = %d, want %d", declaration.DeclaredByteLength, len(archive))
-	}
-	if declaration.ModelFile == nil || *declaration.ModelFile != "model.py" {
-		t.Errorf("declared modelFile = %v, want model.py", declaration.ModelFile)
 	}
 	if declaration.SourceType != serverlessapi.AppSourceTypeCode {
 		t.Errorf("declared sourceType = %q, want code", declaration.SourceType)
@@ -153,7 +147,6 @@ func TestUploadSource_AbortsTheSessionWhenStagingFails(t *testing.T) {
 			_, _ = w.Write([]byte(`{
 				"upload": {
 					"id": "019c7654-8b21-7abc-9123-abcdef123456",
-					"appId": "` + uploadTestAppID + `",
 					"declaredByteLength": 3,
 					"sha256": "` + strings.Repeat("a", 64) + `",
 					"sourceType": "code",
@@ -180,7 +173,7 @@ func TestUploadSource_AbortsTheSessionWhenStagingFails(t *testing.T) {
 	defer api.Close()
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
-	if _, err := uploadSource(context.Background(), client, uploadTestAppID, []byte("zip"), "model.py"); err == nil {
+	if _, err := uploadSource(context.Background(), client, []byte("zip")); err == nil {
 		t.Fatal("uploadSource succeeded despite a refused transfer")
 	}
 	if !aborted {
@@ -202,7 +195,6 @@ func TestUploadSource_ReportsARejectedArchive(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
 				"id": "019c7654-8b21-7abc-9123-abcdef123456",
-				"appId": "` + uploadTestAppID + `",
 				"declaredByteLength": 3,
 				"sha256": "` + strings.Repeat("a", 64) + `",
 				"sourceType": "code",
@@ -218,7 +210,6 @@ func TestUploadSource_ReportsARejectedArchive(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"upload": {
 				"id": "019c7654-8b21-7abc-9123-abcdef123456",
-				"appId": "` + uploadTestAppID + `",
 				"declaredByteLength": 3,
 				"sha256": "` + strings.Repeat("a", 64) + `",
 				"sourceType": "code",
@@ -239,7 +230,7 @@ func TestUploadSource_ReportsARejectedArchive(t *testing.T) {
 	defer api.Close()
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
-	_, err := uploadSource(context.Background(), client, uploadTestAppID, []byte("zip"), "model.py")
+	_, err := uploadSource(context.Background(), client, []byte("zip"))
 	if err == nil {
 		t.Fatal("uploadSource accepted a rejected archive")
 	}
@@ -266,10 +257,10 @@ func TestUploadSource_UsesAFreshKeyPerInvocation(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
 				"id": "019c7654-8b21-7abc-9123-abcdef123456",
-				"appId": "` + uploadTestAppID + `",
 				"declaredByteLength": 18,
 				"sha256": "` + strings.Repeat("a", 64) + `",
 				"sourceType": "code",
+				"sourceId": "019c7654-8b21-7abc-9123-abcdef123456",
 				"state": "ready",
 				"expiresAt": "2026-09-02T12:00:00Z",
 				"createdAt": "2026-09-02T11:00:00Z",
@@ -286,7 +277,6 @@ func TestUploadSource_UsesAFreshKeyPerInvocation(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"upload": {
 				"id": "019c7654-8b21-7abc-9123-abcdef123456",
-				"appId": "` + uploadTestAppID + `",
 				"declaredByteLength": 18,
 				"sha256": "` + strings.Repeat("a", 64) + `",
 				"sourceType": "code",
@@ -308,7 +298,7 @@ func TestUploadSource_UsesAFreshKeyPerInvocation(t *testing.T) {
 
 	client := serverlessapi.NewClient("test-key", api.URL, slog.Default())
 	for range 2 {
-		if _, err := uploadSource(context.Background(), client, uploadTestAppID, archive, "model.py"); err != nil {
+		if _, err := uploadSource(context.Background(), client, archive); err != nil {
 			t.Fatalf("uploadSource: %v", err)
 		}
 	}
