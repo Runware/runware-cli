@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -191,7 +193,7 @@ func TestCreateApp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateApp: %v", err)
 	}
-	if app.AppId != testAppID || string(app.Status) != "initializing" {
+	if app.AppId != testAppID || app.Status != AppStatusInitializing {
 		t.Errorf("unexpected app: %+v", app)
 	}
 }
@@ -477,8 +479,91 @@ func TestGetApp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetApp: %v", err)
 	}
-	if app.AppId != testAppID || string(app.Status) != "initializing" {
+	if app.AppId != testAppID || app.Status != AppStatusInitializing {
 		t.Errorf("unexpected app: %+v", app)
+	}
+}
+
+func TestWaitApp_PollsUntilActive(t *testing.T) {
+	var gets atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/apps/"+testAppID {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		n := gets.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		status := AppStatusInitializing
+		if n > 1 {
+			status = AppStatusActive
+		}
+		_, _ = w.Write([]byte(testAppJSON(status)))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	app, err := c.WaitApp(context.Background(), testAppID, time.Millisecond)
+	if err != nil {
+		t.Fatalf("WaitApp: %v", err)
+	}
+	if app.Status != AppStatusActive {
+		t.Fatalf("unexpected app: %+v", app)
+	}
+	if gets.Load() < 2 {
+		t.Fatalf("expected at least 2 GETs, got %d", gets.Load())
+	}
+}
+
+func TestWaitApp_FailedIsTerminal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(testAppJSON(AppStatusFailed)))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	app, err := c.WaitApp(context.Background(), testAppID, time.Millisecond)
+	if err != nil {
+		t.Fatalf("WaitApp: %v", err)
+	}
+	if app.Status != AppStatusFailed {
+		t.Fatalf("unexpected app: %+v", app)
+	}
+}
+
+func TestAppDeployTerminal(t *testing.T) {
+	terminal := []AppStatus{
+		AppStatusActive,
+		AppStatusFailed,
+		AppStatusStopped,
+		AppStatusDeleting,
+		AppStatusDeleted,
+	}
+	for _, status := range terminal {
+		if !AppDeployTerminal(status) {
+			t.Errorf("%s should be terminal", status)
+		}
+	}
+	for _, status := range []AppStatus{AppStatusInitializing, AppStatusStopping} {
+		if AppDeployTerminal(status) {
+			t.Errorf("%s should keep polling", status)
+		}
+	}
+}
+
+func TestWaitApp_ContextCanceled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(testAppJSON(AppStatusInitializing)))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.WaitApp(ctx, testAppID, time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
 
@@ -1273,6 +1358,9 @@ func TestListWorkers(t *testing.T) {
 		if got := r.URL.Query().Get("status"); got != testStatusReady {
 			t.Errorf("status query = %q, want ready", got)
 		}
+		if got := r.URL.Query().Get("state"); got != string(WorkerStateFilterLive) {
+			t.Errorf("state query = %q, want live", got)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
 			"id":"` + testWorkerID + `",
@@ -1287,8 +1375,12 @@ func TestListWorkers(t *testing.T) {
 	defer srv.Close()
 
 	status := WorkerStatus(testStatusReady)
+	state := WorkerStateFilterLive
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListWorkers(context.Background(), testAppID, &ListWorkersParams{Status: &status})
+	page, err := c.ListWorkers(context.Background(), testAppID, &ListWorkersParams{
+		Status: &status,
+		State:  &state,
+	})
 	if err != nil {
 		t.Fatalf("ListWorkers: %v", err)
 	}
@@ -1360,4 +1452,17 @@ func TestGetWorker_NoAPIKey(t *testing.T) {
 	if _, err := c.GetWorker(context.Background(), testAppID, uuid.MustParse(testWorkerID)); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
+}
+
+func testAppJSON(status AppStatus) string {
+	return `{
+			"appId":"my-app",
+			"appName":"My App",
+			"status":"` + string(status) + `",
+			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
+			"environmentVariables":[],
+			"secrets":[],
+			"createdAt":"2026-07-30T12:00:00Z",
+			"updatedAt":"2026-07-30T12:00:00Z"
+		}`
 }

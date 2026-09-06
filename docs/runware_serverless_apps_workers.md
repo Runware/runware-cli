@@ -4,8 +4,12 @@ List and inspect workers for a serverless application
 
 ### Synopsis
 
-List workers observed for an application, including terminal stopped rows
-until they are purged.
+List workers observed for an application.
+
+The default state is all: terminal stopped rows stay in the page until they
+are purged. Pass --state live to drop them. --state live with --status stopped
+is refused by the API (422), because an empty page would read as "this app
+has never run".
 
 ```
 runware serverless apps workers <appId> [flags]
@@ -16,6 +20,9 @@ runware serverless apps workers <appId> [flags]
 ```
   # list workers for an application
   runware serverless apps workers my-app
+
+  # omit terminal stopped rows
+  runware serverless apps workers my-app --state live
 
   # filter by status
   runware serverless apps workers my-app --status ready
@@ -30,6 +37,7 @@ runware serverless apps workers <appId> [flags]
       --cursor string   Pagination cursor from a previous nextCursor
   -h, --help            help for workers
       --limit int       Maximum number of workers to return (1-100)
+      --state string    Include stopped rows (all, the API default) or drop them (live)
       --status string   Filter by status (ready, busy, pending, …)
 ```
 
