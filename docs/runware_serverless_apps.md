@@ -30,7 +30,7 @@ runware serverless apps [flags]
 * [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
 * [runware serverless apps builds](runware_serverless_apps_builds.md)	 - Inspect application builds
 * [runware serverless apps delete](runware_serverless_apps_delete.md)	 - Delete a serverless application
-* [runware serverless apps endpoints](runware_serverless_apps_endpoints.md)	 - List endpoints for a serverless application
+* [runware serverless apps endpoints](runware_serverless_apps_endpoints.md)	 - List and inspect endpoints for a serverless application
 * [runware serverless apps env](runware_serverless_apps_env.md)	 - Manage plain-text environment variables for an application
 * [runware serverless apps invoke](runware_serverless_apps_invoke.md)	 - Invoke an application endpoint
 * [runware serverless apps list](runware_serverless_apps_list.md)	 - List serverless applications
@@ -42,5 +42,5 @@ runware serverless apps [flags]
 * [runware serverless apps tasks](runware_serverless_apps_tasks.md)	 - List and inspect application tasks
 * [runware serverless apps usage](runware_serverless_apps_usage.md)	 - Show usage and cost for a serverless application
 * [runware serverless apps versions](runware_serverless_apps_versions.md)	 - Manage application versions
-* [runware serverless apps workers](runware_serverless_apps_workers.md)	 - List workers for a serverless application
+* [runware serverless apps workers](runware_serverless_apps_workers.md)	 - List and inspect workers for a serverless application
 

@@ -21,9 +21,12 @@ const (
 	testGPUType       = "h100"
 	testBuildID       = "33333333-3333-3333-3333-333333333333"
 	testVersionID     = "22222222-2222-2222-2222-222222222222"
+	testEndpointID    = "11111111-1111-1111-1111-111111111111"
+	testWorkerID      = "44444444-4444-4444-4444-444444444444"
 	testVersionNumber = int32(1)
 	testCursorPage2   = "page-2"
 	testCursorPage3   = "page-3"
+	testStatusReady   = "ready"
 )
 
 func TestListGpuTypes(t *testing.T) {
@@ -761,7 +764,7 @@ func TestListEndpoints(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
-			"id":"11111111-1111-1111-1111-111111111111",
+			"id":"` + testEndpointID + `",
 			"appId":"my-app",
 			"path":"/infer",
 			"createdAt":"2026-07-30T12:00:00Z"
@@ -779,6 +782,59 @@ func TestListEndpoints(t *testing.T) {
 	}
 	if page.NextCursor != nil {
 		t.Fatalf("expected nil nextCursor, got %+v", page.NextCursor)
+	}
+}
+
+func TestGetEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1/apps/" + testAppID + "/endpoints/" + testEndpointID
+		if r.Method != http.MethodGet || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"` + testEndpointID + `",
+			"appId":"` + testAppID + `",
+			"path":"generate",
+			"createdAt":"2026-07-30T12:00:00Z",
+			"updatedAt":"2026-07-30T12:00:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	e, err := c.GetEndpoint(context.Background(), testAppID, uuid.MustParse(testEndpointID))
+	if err != nil {
+		t.Fatalf("GetEndpoint: %v", err)
+	}
+	if e.Id.String() != testEndpointID || e.Path != "generate" || e.AppId != testAppID {
+		t.Errorf("unexpected endpoint: %+v", e)
+	}
+}
+
+func TestGetEndpoint_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No endpoint exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.GetEndpoint(context.Background(), testAppID, uuid.MustParse(testEndpointID))
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+}
+
+func TestGetEndpoint_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.GetEndpoint(context.Background(), testAppID, uuid.MustParse(testEndpointID)); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
 
@@ -857,7 +913,7 @@ func TestGetBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetBuild: %v", err)
 	}
-	if b.Id.String() != testBuildID || string(b.Status) != "ready" {
+	if b.Id.String() != testBuildID || string(b.Status) != testStatusReady {
 		t.Errorf("unexpected build: %+v", b)
 	}
 }
@@ -1214,12 +1270,12 @@ func TestListWorkers(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != want {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
-		if got := r.URL.Query().Get("status"); got != "ready" {
+		if got := r.URL.Query().Get("status"); got != testStatusReady {
 			t.Errorf("status query = %q, want ready", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{
-			"id":"44444444-4444-4444-4444-444444444444",
+			"id":"` + testWorkerID + `",
 			"appId":"my-app",
 			"versionId":"22222222-2222-2222-2222-222222222222",
 			"status":"ready",
@@ -1230,13 +1286,78 @@ func TestListWorkers(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	status := WorkerStatus("ready")
+	status := WorkerStatus(testStatusReady)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
 	page, err := c.ListWorkers(context.Background(), testAppID, &ListWorkersParams{Status: &status})
 	if err != nil {
 		t.Fatalf("ListWorkers: %v", err)
 	}
-	if len(page.Data) != 1 || string(page.Data[0].Status) != "ready" || page.Data[0].PodName != "worker-0" {
+	if len(page.Data) != 1 || string(page.Data[0].Status) != testStatusReady || page.Data[0].PodName != "worker-0" {
 		t.Fatalf("unexpected workers: %+v", page.Data)
+	}
+}
+
+func TestGetWorker(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1/apps/" + testAppID + "/workers/" + testWorkerID
+		if r.Method != http.MethodGet || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"` + testWorkerID + `",
+			"appId":"` + testAppID + `",
+			"versionId":"` + testVersionID + `",
+			"status":"ready",
+			"podName":"worker-0",
+			"nodeName":"node-a",
+			"gpuType":"h100",
+			"gpuCount":1,
+			"createdAt":"2026-07-30T12:00:00Z",
+			"statusOccurredAt":"2026-07-30T12:00:05Z",
+			"lastSeenAt":"2026-07-30T12:01:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	w, err := c.GetWorker(context.Background(), testAppID, uuid.MustParse(testWorkerID))
+	if err != nil {
+		t.Fatalf("GetWorker: %v", err)
+	}
+	if w.Id.String() != testWorkerID || w.AppId != testAppID || string(w.Status) != testStatusReady || w.PodName != "worker-0" {
+		t.Errorf("unexpected worker: %+v", w)
+	}
+	if w.GpuType == nil || *w.GpuType != testGPUType || w.GpuCount != 1 {
+		t.Errorf("unexpected gpu: type=%v count=%d", w.GpuType, w.GpuCount)
+	}
+	if w.VersionId.String() != testVersionID {
+		t.Errorf("unexpected versionId: %s", w.VersionId)
+	}
+}
+
+func TestGetWorker_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No worker exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.GetWorker(context.Background(), testAppID, uuid.MustParse(testWorkerID))
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+}
+
+func TestGetWorker_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if _, err := c.GetWorker(context.Background(), testAppID, uuid.MustParse(testWorkerID)); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
