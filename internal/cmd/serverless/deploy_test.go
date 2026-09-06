@@ -278,7 +278,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--gpu-type", "h100"}, wantErr: "apps scale"},
 		{flags: []string{"--max-workers", "2"}, wantErr: "apps scale"},
 		{flags: []string{"--env", "FOO=bar"}, wantErr: "apps env"},
-		{flags: []string{"--env-file", ".env"}, wantErr: "apps env"},
+		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env"},
 		{flags: []string{"--volume", "/data"}, wantErr: "volumes"},
 		{flags: []string{"--name", "My App"}, wantErr: "omit it"},
 		{flags: []string{"--requirement", testPipPackage}},
