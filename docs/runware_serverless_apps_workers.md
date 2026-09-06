@@ -1,6 +1,11 @@
 ## runware serverless apps workers
 
-List workers for a serverless application
+List and inspect workers for a serverless application
+
+### Synopsis
+
+List workers observed for an application, including terminal stopped rows
+until they are purged.
 
 ```
 runware serverless apps workers <appId> [flags]
@@ -40,4 +45,5 @@ runware serverless apps workers <appId> [flags]
 ### SEE ALSO
 
 * [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
+* [runware serverless apps workers show](runware_serverless_apps_workers_show.md)	 - Show a single application worker
 

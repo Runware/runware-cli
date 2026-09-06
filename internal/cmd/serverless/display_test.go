@@ -430,3 +430,51 @@ func TestWorkersResult_NilNodeName(t *testing.T) {
 		t.Fatalf("nil NodeName should render empty, got %#v", rows[0][3])
 	}
 }
+
+func TestEndpointResult(t *testing.T) {
+	created := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	rows := (endpointResult{
+		Id:        uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		AppId:     testAppID,
+		Path:      "generate",
+		CreatedAt: &created,
+	}).Rows()
+	if len(rows) != 5 {
+		t.Fatalf("expected 5 rows, got %d", len(rows))
+	}
+	if rows[0][1] != "generate" || rows[2][1] != testAppID {
+		t.Fatalf("unexpected rows %#v", rows)
+	}
+	if rows[4][1] != "" {
+		t.Fatalf("nil UpdatedAt should render empty, got %#v", rows[4][1])
+	}
+}
+
+func TestWorkerResult_NilOptionalFields(t *testing.T) {
+	created := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	rows := (workerResult{
+		Id:               uuid.MustParse("44444444-4444-4444-4444-444444444444"),
+		AppId:            testAppID,
+		Status:           "ready",
+		PodName:          "worker-0",
+		GpuCount:         1,
+		VersionId:        uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+		CreatedAt:        created,
+		StatusOccurredAt: created,
+	}).Rows()
+	if len(rows) != 12 {
+		t.Fatalf("expected 12 rows, got %d", len(rows))
+	}
+	if rows[4][1] != "" {
+		t.Fatalf("nil NodeName should render empty, got %#v", rows[4][1])
+	}
+	if rows[5][1] != "" {
+		t.Fatalf("nil GpuType should render empty, got %#v", rows[5][1])
+	}
+	if rows[8][1] != "" {
+		t.Fatalf("nil LastSeenAt should render empty, got %#v", rows[8][1])
+	}
+	if rows[11][1] != "" {
+		t.Fatalf("nil StatusReason should render empty, got %#v", rows[11][1])
+	}
+}
