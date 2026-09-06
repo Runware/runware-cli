@@ -1,8 +1,10 @@
 package serverless
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/google/uuid"
@@ -110,6 +112,8 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		volumes       []string
 		envVars       []string
 		envFiles      []string
+		wait          bool
+		pollInterval  time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -131,7 +135,9 @@ copies). The directory is zipped and uploaded as source type container. Runware
 builds a hosted wrapper image from that archive; the version records a buildId,
 not a customer image reference. Invalid container.yaml is rejected on create
 (400 if it cannot be parsed, 422 if it breaks a rule). The app stays
-initializing until that first build rolls out.
+initializing until that first build rolls out. Pass --wait to poll until the
+application is active or failed. A successful wait is not a live worker:
+minWorkers=0 stays scaled to zero until the first invoke.
 
 --container cannot be combined with an entry file, --src-dir, --base-image, or
 --requirement.
@@ -178,7 +184,10 @@ the SDK (code) or from container.yaml (container).`,
     --base-image python:3.11-slim --requirement torch
 
   # deploy a container source (Dockerfile + container.yaml at the directory root)
-  runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper`,
+  runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper
+
+  # wait until the first rollout is active or failed
+  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateDeployArgs(cmd, args, containerDir); err != nil {
@@ -242,9 +251,24 @@ the SDK (code) or from container.yaml (container).`,
 				spin.Stop()
 				return err
 			}
+			if wait && !serverlessapi.AppDeployTerminal(app.Status) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; waiting...\n", app.AppId, app.Status)
+				spin.SetMessage(fmt.Sprintf("Waiting for application %s...", app.AppId))
+				app, err = client.WaitApp(cmd.Context(), app.AppId, pollInterval)
+				if err != nil {
+					spin.Stop()
+					return err
+				}
+			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+			if err := output.Print(cmdutil.FormatFor(cmd), appResult(*app)); err != nil {
+				return err
+			}
+			if !wait {
+				return nil
+			}
+			return appFailedErr(cmd.Context(), client, app)
 		},
 	}
 
@@ -263,6 +287,8 @@ the SDK (code) or from container.yaml (container).`,
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
 	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker")
+	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the application is active or failed")
+	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
 
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		panic(err)
@@ -304,4 +330,34 @@ func optionalFlagStringPtr(cmd *cobra.Command, name, v string) *string {
 		return nil
 	}
 	return &v
+}
+
+func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *serverlessapi.App) error {
+	if app == nil {
+		return nil
+	}
+	switch app.Status {
+	case serverlessapi.AppStatusActive:
+		return nil
+	case serverlessapi.AppStatusFailed:
+		if msg := latestBuildError(ctx, client, app.AppId); msg != "" {
+			return fmt.Errorf("application %s failed: %s", app.AppId, msg)
+		}
+		return fmt.Errorf("application %s failed; inspect builds with 'runware serverless apps builds list %s'", app.AppId, app.AppId)
+	default:
+		return fmt.Errorf("application %s ended in status %s", app.AppId, app.Status)
+	}
+}
+
+func latestBuildError(ctx context.Context, client *serverlessapi.Client, appID string) string {
+	page, err := client.ListBuilds(ctx, appID, nil)
+	if err != nil {
+		return ""
+	}
+	for i := range page.Data {
+		if page.Data[i].Error != nil && *page.Data[i].Error != "" {
+			return *page.Data[i].Error
+		}
+	}
+	return ""
 }

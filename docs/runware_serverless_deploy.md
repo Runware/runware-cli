@@ -20,7 +20,9 @@ copies). The directory is zipped and uploaded as source type container. Runware
 builds a hosted wrapper image from that archive; the version records a buildId,
 not a customer image reference. Invalid container.yaml is rejected on create
 (400 if it cannot be parsed, 422 if it breaks a rule). The app stays
-initializing until that first build rolls out.
+initializing until that first build rolls out. Pass --wait to poll until the
+application is active or failed. A successful wait is not a live worker:
+minWorkers=0 stays scaled to zero until the first invoke.
 
 --container cannot be combined with an entry file, --src-dir, --base-image, or
 --requirement.
@@ -76,6 +78,9 @@ runware serverless deploy [file] [flags]
 
   # deploy a container source (Dockerfile + container.yaml at the directory root)
   runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper
+
+  # wait until the first rollout is active or failed
+  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait
 ```
 
 ### Options
@@ -93,10 +98,12 @@ runware serverless deploy [file] [flags]
       --max-workers int32         Maximum number of workers (default 1)
       --min-workers int32         Minimum number of workers
       --name string               Display name (defaults to --id)
+      --poll-interval duration    Polling interval when waiting for the application (default 2s)
       --requirement stringArray   Additional pip package to install (repeatable; code deploys only)
       --scaling-delay int32       Scaling delay in seconds (default 10)
       --src-dir string            Directory to package as the application source (default: the working directory; code deploys only)
       --volume stringArray        Absolute path inside the app backed by persistent node-local storage (repeatable)
+      --wait                      Poll until the application is active or failed
 ```
 
 ### Options inherited from parent commands
