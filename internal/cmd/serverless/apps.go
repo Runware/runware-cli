@@ -188,13 +188,18 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 }
 
 func newAppsLogsCmd() *cobra.Command {
-	return stubLeaf(
+	cmd := stubLeaf(
 		"logs <appId>",
 		"Show logs for a serverless application",
-		`  # fetch or stream logs for an application
+		`  # show application logs (not available yet)
   runware serverless apps logs my-app`,
 		cobra.ExactArgs(1),
 	)
+	cmd.Long = `Show application logs.
+
+This command is not implemented yet. The log-query route exists but currently
+answers 404 until a follow-up ADR; live tail is not supported.`
+	return cmd
 }
 
 func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
@@ -349,11 +354,17 @@ func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverless
 }
 
 func newAppsUsageCmd() *cobra.Command {
-	return stubLeaf(
+	cmd := stubLeaf(
 		"usage <appId>",
-		"Show usage for a serverless application",
-		`  # show usage events for an application
+		"Show usage and cost for a serverless application",
+		`  # show usage for an application (not available yet)
   runware serverless apps usage my-app`,
 		cobra.ExactArgs(1),
 	)
+	cmd.Long = `Show an aggregated usage and cost report for one application.
+
+This command is not implemented yet. Billing rollups are not in the API, so
+there is no per-app report to list. When the report API exists, this will be
+the account-wide usage command scoped to one appId.`
+	return cmd
 }
