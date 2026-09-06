@@ -42,9 +42,8 @@ sandbox whose filesystem is part of the checkpointed state, so an unmounted
 download is copied into every checkpoint and fetched again on every cold start.
 A volume keeps it out of both.
 
-Worker settings are supplied via flags (a local project config via 'runware
-serverless init' is planned). Endpoints are derived server-side from the SDK
-(code) or from container.yaml (container).
+Worker settings are supplied via flags. Endpoints are derived server-side from
+the SDK (code) or from container.yaml (container).
 
 ```
 runware serverless deploy [file] [flags]
