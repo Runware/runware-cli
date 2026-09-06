@@ -888,6 +888,73 @@ func TestGetBuild_NoAPIKey(t *testing.T) {
 	}
 }
 
+func TestDeleteBuild(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := "/v1/apps/" + testAppID + "/builds/" + testBuildID
+		if r.Method != http.MethodDelete || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	if err := c.DeleteBuild(context.Background(), testAppID, uuid.MustParse(testBuildID)); err != nil {
+		t.Fatalf("DeleteBuild: %v", err)
+	}
+}
+
+func TestDeleteBuild_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No build exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	err := c.DeleteBuild(context.Background(), testAppID, uuid.MustParse(testBuildID))
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+}
+
+func TestDeleteBuild_Conflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Build is still referenced by a live version"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	err := c.DeleteBuild(context.Background(), testAppID, uuid.MustParse(testBuildID))
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeValidation {
+		t.Errorf("expected CodeValidation, got %v", re.Code)
+	}
+	if re.StatusCode != http.StatusConflict {
+		t.Errorf("expected status 409, got %d", re.StatusCode)
+	}
+	if re.Message != "Build is still referenced by a live version" {
+		t.Errorf("unexpected message: %q", re.Message)
+	}
+}
+
+func TestDeleteBuild_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if err := c.DeleteBuild(context.Background(), testAppID, uuid.MustParse(testBuildID)); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
+	}
+}
+
 func TestListVersions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		want := "/v1/apps/" + testAppID + "/versions"
@@ -967,6 +1034,73 @@ func TestGetVersion_NotFound(t *testing.T) {
 func TestGetVersion_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
 	if _, err := c.GetVersion(context.Background(), testAppID, testVersionNumber); !errors.Is(err, transport.ErrNoAPIKey) {
+		t.Fatalf("expected ErrNoAPIKey, got %v", err)
+	}
+}
+
+func TestDeleteVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		want := fmt.Sprintf("/v1/apps/%s/versions/%d", testAppID, testVersionNumber)
+		if r.Method != http.MethodDelete || r.URL.Path != want {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	if err := c.DeleteVersion(context.Background(), testAppID, testVersionNumber); err != nil {
+		t.Fatalf("DeleteVersion: %v", err)
+	}
+}
+
+func TestDeleteVersion_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No version exists"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	err := c.DeleteVersion(context.Background(), testAppID, 99999)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", re.StatusCode)
+	}
+}
+
+func TestDeleteVersion_Conflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"Version is active"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	err := c.DeleteVersion(context.Background(), testAppID, testVersionNumber)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeValidation {
+		t.Errorf("expected CodeValidation, got %v", re.Code)
+	}
+	if re.StatusCode != http.StatusConflict {
+		t.Errorf("expected status 409, got %d", re.StatusCode)
+	}
+	if re.Message != "Version is active" {
+		t.Errorf("unexpected message: %q", re.Message)
+	}
+}
+
+func TestDeleteVersion_NoAPIKey(t *testing.T) {
+	c := NewClient("", "https://example.invalid", slog.Default())
+	if err := c.DeleteVersion(context.Background(), testAppID, testVersionNumber); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }

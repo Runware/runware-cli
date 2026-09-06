@@ -347,6 +347,17 @@ func TestVersionResult_NilBuildID(t *testing.T) {
 	}
 }
 
+func TestVersionDeletedResult(t *testing.T) {
+	r := versionDeletedResult{AppID: testAppID, VersionNumber: 2}
+	if got := r.Headers(); len(got) != 2 || got[0] != colApp || got[1] != colVersion {
+		t.Fatalf("headers: %v", got)
+	}
+	rows := r.Rows()
+	if len(rows) != 1 || rows[0][0] != testAppID || rows[0][1] != int32(2) {
+		t.Fatalf("unexpected row %#v", rows)
+	}
+}
+
 func TestParseVersionNumber(t *testing.T) {
 	got, err := parseVersionNumber("1")
 	if err != nil || got != 1 {
@@ -391,6 +402,18 @@ func TestBuildResult_NilOptionalFields(t *testing.T) {
 	}
 	if rows[3][1] != "" {
 		t.Fatalf("nil ExitCode should render empty, got %#v", rows[3][1])
+	}
+}
+
+func TestBuildDeletedResult(t *testing.T) {
+	id := "33333333-3333-3333-3333-333333333333"
+	r := buildDeletedResult{AppID: testAppID, BuildID: id}
+	if got := r.Headers(); len(got) != 2 || got[0] != colApp || got[1] != colID {
+		t.Fatalf("headers: %v", got)
+	}
+	rows := r.Rows()
+	if len(rows) != 1 || rows[0][0] != testAppID || rows[0][1] != id {
+		t.Fatalf("unexpected row %#v", rows)
 	}
 }
 
