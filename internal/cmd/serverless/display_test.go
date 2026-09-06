@@ -349,7 +349,7 @@ func TestVersionResult_NilBuildID(t *testing.T) {
 
 func TestVersionDeletedResult(t *testing.T) {
 	r := versionDeletedResult{AppID: testAppID, VersionNumber: 2}
-	if got := r.Headers(); len(got) != 2 || got[0] != colApp || got[1] != "Version" {
+	if got := r.Headers(); len(got) != 2 || got[0] != colApp || got[1] != colVersion {
 		t.Fatalf("headers: %v", got)
 	}
 	rows := r.Rows()

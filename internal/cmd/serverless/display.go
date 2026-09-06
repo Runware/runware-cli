@@ -16,6 +16,7 @@ const (
 	colName          = "Name"
 	colStatus        = "Status"
 	colActiveVersion = "Active version ID"
+	colVersion       = "Version"
 	colCreated       = "Created"
 	colUpdated       = "Updated"
 	colType          = "Type"
@@ -132,7 +133,7 @@ func (r endpointResult) Rows() [][]any {
 type versionsResult []serverlessapi.Version
 
 func (r versionsResult) Headers() []string {
-	return []string{"Version", colID, "Build", colCreated}
+	return []string{colVersion, colID, "Build", colCreated}
 }
 
 func (r versionsResult) Rows() [][]any {
@@ -158,7 +159,7 @@ func (r versionResult) Headers() []string {
 
 func (r versionResult) Rows() [][]any {
 	return [][]any{
-		{"Version", r.VersionNumber},
+		{colVersion, r.VersionNumber},
 		{colID, r.Id.String()},
 		{colApp, r.AppId},
 		{"Build", formatOptionalUUID(r.BuildId)},
@@ -173,7 +174,7 @@ type versionDeletedResult struct {
 }
 
 func (r versionDeletedResult) Headers() []string {
-	return []string{colApp, "Version"}
+	return []string{colApp, colVersion}
 }
 
 func (r versionDeletedResult) Rows() [][]any {
