@@ -244,15 +244,23 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 		limit  int
 		cursor string
 		status string
+		state  string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "workers <appId>",
 		Short: "List and inspect workers for a serverless application",
-		Long: `List workers observed for an application, including terminal stopped rows
-until they are purged.`,
+		Long: `List workers observed for an application.
+
+The default state is all: terminal stopped rows stay in the page until they
+are purged. Pass --state live to drop them. --state live with --status stopped
+is refused by the API (422), because an empty page would read as "this app
+has never run".`,
 		Example: `  # list workers for an application
   runware serverless apps workers my-app
+
+  # omit terminal stopped rows
+  runware serverless apps workers my-app --state live
 
   # filter by status
   runware serverless apps workers my-app --status ready
@@ -269,11 +277,16 @@ until they are purged.`,
 			if err != nil {
 				return err
 			}
+			stateVal, err := parseWorkerState(state)
+			if err != nil {
+				return err
+			}
 			var params *serverlessapi.ListWorkersParams
-			if limit > 0 || cursor != "" || status != "" {
+			if limit > 0 || cursor != "" || status != "" || state != "" {
 				params = &serverlessapi.ListWorkersParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
 				params.Status = statusVal
+				params.State = stateVal
 			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching workers for %s...", id))
@@ -287,13 +300,14 @@ until they are purged.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraStatusCursorFlag(status))
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraWorkersCursorFlags(state, status))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of workers to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (ready, busy, pending, …)")
+	cmd.Flags().StringVar(&state, "state", "", "Include stopped rows (all, the API default) or drop them (live)")
 	cmd.AddCommand(newAppsWorkersShowCmd(logger))
 	return cmd
 }
@@ -371,6 +385,10 @@ func parseWorkerStatus(status string) (*serverlessapi.WorkerStatus, error) {
 	return parseValidFlag[serverlessapi.WorkerStatus]("--status", status, "pending, pulling, loading, ready, busy, unhealthy, draining, stopping, or stopped")
 }
 
+func parseWorkerState(state string) (*serverlessapi.WorkerStateFilter, error) {
+	return parseValidFlag[serverlessapi.WorkerStateFilter]("--state", state, "live or all")
+}
+
 // extraListCursorFlags repeats the apps-list filter flags a next-page --cursor is bound to.
 func extraListCursorFlags(query, gpuType, sort, status string) string {
 	parts := make([]string, 0, 4)
@@ -384,6 +402,12 @@ func extraListCursorFlags(query, gpuType, sort, status string) string {
 // extraStatusCursorFlag formats --status for a next-page --cursor hint.
 func extraStatusCursorFlag(value string) string {
 	return strings.Join(appendFlag(nil, "--status", value), " ")
+}
+
+// extraWorkersCursorFlags repeats workers list filters a next-page --cursor is bound to.
+func extraWorkersCursorFlags(state, status string) string {
+	parts := appendFlag(nil, "--state", state)
+	return strings.Join(appendFlag(parts, "--status", status), " ")
 }
 
 func appendFlag(parts []string, name, value string) []string {

@@ -128,11 +128,29 @@ type Worker = gen.Worker
 // AppStatus is an app lifecycle status.
 type AppStatus = gen.AppStatus
 
+const (
+	AppStatusActive       AppStatus = gen.AppStatusActive
+	AppStatusDeleted      AppStatus = gen.AppStatusDeleted
+	AppStatusDeleting     AppStatus = gen.AppStatusDeleting
+	AppStatusFailed       AppStatus = gen.AppStatusFailed
+	AppStatusInitializing AppStatus = gen.AppStatusInitializing
+	AppStatusStopped      AppStatus = gen.AppStatusStopped
+	AppStatusStopping     AppStatus = gen.AppStatusStopping
+)
+
 // AppSort is a listApps ordering.
 type AppSort = gen.AppSort
 
 // WorkerStatus is a worker lifecycle status.
 type WorkerStatus = gen.WorkerStatus
+
+// WorkerStateFilter selects whether listWorkers includes terminal stopped rows.
+type WorkerStateFilter = gen.WorkerStateFilter
+
+const (
+	WorkerStateFilterAll  WorkerStateFilter = gen.WorkerStateFilterAll
+	WorkerStateFilterLive WorkerStateFilter = gen.WorkerStateFilterLive
+)
 
 // Limit is a page size for cursor-paginated list endpoints.
 type Limit = gen.Limit
@@ -357,6 +375,46 @@ func (c *Client) GetApp(ctx context.Context, appID string) (*App, error) {
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// defaultAppPollInterval is used when WaitApp is called with a non-positive interval.
+const defaultAppPollInterval = 2 * time.Second
+
+// WaitApp polls getApp until the application leaves initializing/stopping.
+// Active is success; failed, stopped, deleting, and deleted are also terminal
+// so a create or redeploy wait cannot spin forever. The caller inspects Status.
+func (c *Client) WaitApp(ctx context.Context, appID string, interval time.Duration) (*App, error) {
+	if interval <= 0 {
+		interval = defaultAppPollInterval
+	}
+
+	for {
+		app, err := c.GetApp(ctx, appID)
+		if err != nil {
+			return nil, err
+		}
+		if AppDeployTerminal(app.Status) {
+			return app, nil
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// AppDeployTerminal reports whether WaitApp would stop polling for status.
+func AppDeployTerminal(status AppStatus) bool {
+	switch status {
+	case AppStatusActive, AppStatusFailed, AppStatusStopped, AppStatusDeleting, AppStatusDeleted:
+		return true
+	default:
+		return false
 	}
 }
 
