@@ -185,7 +185,7 @@ func TestBuildEnvironmentVariables_StripsSurroundingQuotes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			path := filepath.Join(dir, ".env")
+			path := filepath.Join(dir, envDotfile)
 			if err := os.WriteFile(path, []byte(tc.line+"\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -206,7 +206,7 @@ func TestBuildEnvironmentVariables_StripsSurroundingQuotes(t *testing.T) {
 // would silently rewrite a token or an indented value.
 func TestBuildEnvironmentVariables_PreservesValueWhitespace(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, ".env")
+	path := filepath.Join(dir, envDotfile)
 	// A trailing space in the value, and a leading-space line that still parses.
 	if err := os.WriteFile(path, []byte("PADDED=value \n  INDENTED=x\n"), 0o600); err != nil {
 		t.Fatal(err)

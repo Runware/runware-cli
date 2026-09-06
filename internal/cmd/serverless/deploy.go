@@ -23,6 +23,21 @@ var codeOnlyDeployFlags = []string{
 	"requirement",
 }
 
+// createOnlyDeployFlags apply to CreateApp only. On an existing app they are
+// rejected so a leftover create invocation cannot wipe env or silently no-op.
+var createOnlyDeployFlags = []string{
+	"gpu-type",
+	"name",
+	"max-workers",
+	"idle-ttl",
+	"scaling-delay",
+	"min-workers",
+	"gpus-per-worker",
+	"volume",
+	"env",
+	"env-file",
+}
+
 // deploySource is the packed archive's type plus the fields CreateApp needs
 // once the upload publishes a sourceId.
 type deploySource struct {
@@ -118,8 +133,15 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "deploy [file]",
-		Short: "Deploy a new serverless application",
-		Long: `Create a new serverless application from Python code or a container source.
+		Short: "Create or update a serverless application",
+		Long: `Create or update a serverless application from Python code or a container source.
+
+A first deploy with a new --id creates the application. A later deploy with the
+same --id uploads a new source, records version N+1, and rolls it when the
+build is ready. Create-only flags (--gpu-type, worker settings, --volume,
+--env, --env-file, --name) apply only to create; passing them when the
+application already exists is an error. Change workers with 'apps scale' and
+environment with 'apps env'. A source update on a stopped application is 409.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -148,21 +170,25 @@ what a project keeps out of version control is a different question from what it
 ships. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv, node_modules or the usual build and tool caches.
 
-Environment variables must be supplied here with --env or --env-file. An app's
-environment is frozen into the version this command creates, which is what the
-worker is rendered from, so setting one afterwards with 'apps env set' stores it
-without it ever reaching a pod. Prefer --env-file for anything secret: a value
-passed as --env is visible in the process list and recorded in shell history.
+Environment variables must be supplied at create with --env or --env-file. An
+app's environment is frozen into the version this command creates, which is
+what the worker is rendered from, so setting one afterwards with 'apps env set'
+stores it without it ever reaching a pod. Prefer --env-file for anything secret:
+a value passed as --env is visible in the process list and recorded in shell
+history.
 
 Anything the app downloads at runtime belongs on a --volume. The app runs in a
 sandbox whose filesystem is part of the checkpointed state, so an unmounted
 download is copied into every checkpoint and fetched again on every cold start.
 A volume keeps it out of both.
 
-Worker settings are supplied via flags. Endpoints are derived server-side from
-the SDK (code) or from container.yaml (container).`,
+Worker settings are supplied via flags on create. Endpoints are derived
+server-side from the SDK (code) or from container.yaml (container).`,
 		Example: `  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
+
+  # update source on an existing application
+  runware serverless deploy ./app.py --id my-app --wait
 
   # deploy a project that lives elsewhere; app.py is resolved inside --src-dir
   runware serverless deploy app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
@@ -202,17 +228,34 @@ the SDK (code) or from container.yaml (container).`,
 				return err
 			}
 
-			appVolumes, err := buildVolumes(volumes)
-			if err != nil {
-				return err
-			}
-
-			appEnv, err := buildEnvironmentVariables(envFiles, envVars)
-			if err != nil {
-				return err
-			}
-
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+
+			update, err := existingApp(cmd.Context(), client, id)
+			if err != nil {
+				return err
+			}
+			if update {
+				if err := validateUpdateDeployFlags(cmd); err != nil {
+					return err
+				}
+			} else if err := validateCreateDeployGPU(gpuType); err != nil {
+				return err
+			}
+
+			var (
+				appVolumes *[]serverlessapi.AppVolume
+				appEnv     *map[string]string
+			)
+			if !update {
+				appVolumes, err = buildVolumes(volumes)
+				if err != nil {
+					return err
+				}
+				appEnv, err = buildEnvironmentVariables(envFiles, envVars)
+				if err != nil {
+					return err
+				}
+			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Uploading source for %s...", id))
 			spin.Start()
@@ -227,26 +270,37 @@ the SDK (code) or from container.yaml (container).`,
 				return fmt.Errorf("build application source: %w", err)
 			}
 
-			body := serverlessapi.AppCreate{
-				AppId:                id,
-				AppName:              name,
-				AppSource:            appSource,
-				Volumes:              appVolumes,
-				EnvironmentVariables: appEnv,
-				Configuration: serverlessapi.WorkerConfigCreate{
-					MaxWorkers:       maxWorkers,
-					IdleTtlSecs:      idleTTL,
-					ScalingDelaySecs: scalingDelay,
-					GpuType:          gpuType,
-					MinWorkers:       optionalInt32Ptr(cmd, "min-workers", minWorkers),
-					GpusPerWorker:    optionalInt32Ptr(cmd, "gpus-per-worker", gpusPerWorker),
-				},
+			var app *serverlessapi.App
+			if update {
+				spin = cmdutil.NewSpinner(fmt.Sprintf("Updating application %s...", id))
+				spin.Start()
+				app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
+					AppSource: &appSource,
+				})
+			} else {
+				spin = cmdutil.NewSpinner(fmt.Sprintf("Creating application %s...", id))
+				spin.Start()
+				app, err = client.CreateApp(cmd.Context(), serverlessapi.AppCreate{
+					AppId:                id,
+					AppName:              name,
+					AppSource:            appSource,
+					Volumes:              appVolumes,
+					EnvironmentVariables: appEnv,
+					Configuration: serverlessapi.WorkerConfigCreate{
+						MaxWorkers:       maxWorkers,
+						IdleTtlSecs:      idleTTL,
+						ScalingDelaySecs: scalingDelay,
+						GpuType:          gpuType,
+						MinWorkers:       optionalInt32Ptr(cmd, "min-workers", minWorkers),
+						GpusPerWorker:    optionalInt32Ptr(cmd, "gpus-per-worker", gpusPerWorker),
+					},
+				})
+				if isHTTPConflict(err) {
+					app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
+						AppSource: &appSource,
+					})
+				}
 			}
-
-			spin = cmdutil.NewSpinner(fmt.Sprintf("Creating application %s...", id))
-			spin.Start()
-
-			app, err := client.CreateApp(cmd.Context(), body)
 			if err != nil {
 				spin.Stop()
 				return err
@@ -283,7 +337,7 @@ the SDK (code) or from container.yaml (container).`,
 	cmd.Flags().Int32Var(&idleTTL, "idle-ttl", 60, "Idle TTL in seconds before scaling down")
 	cmd.Flags().Int32Var(&scalingDelay, "scaling-delay", 10, "Scaling delay in seconds")
 	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.11-slim", "Builder base image (code deploys only)")
-	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus')")
+	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
 	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker")
@@ -293,11 +347,48 @@ the SDK (code) or from container.yaml (container).`,
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		panic(err)
 	}
-	if err := cmd.MarkFlagRequired("gpu-type"); err != nil {
-		panic(err)
-	}
 
 	return cmd
+}
+
+func existingApp(ctx context.Context, client *serverlessapi.Client, id string) (bool, error) {
+	_, err := client.GetApp(ctx, id)
+	if err == nil {
+		return true, nil
+	}
+	if isHTTPNotFound(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func validateCreateDeployGPU(gpuType string) error {
+	if gpuType == "" {
+		return fmt.Errorf("--gpu-type is required when creating an application")
+	}
+	return nil
+}
+
+func validateUpdateDeployFlags(cmd *cobra.Command) error {
+	for _, name := range createOnlyDeployFlags {
+		if cmd.Flags().Changed(name) {
+			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name))
+		}
+	}
+	return nil
+}
+
+func createOnlyDeployHint(name string) string {
+	switch name {
+	case "gpu-type", "max-workers", "idle-ttl", "scaling-delay", "min-workers", "gpus-per-worker":
+		return "use 'runware serverless apps scale' to change worker configuration"
+	case "env", "env-file":
+		return "use 'runware serverless apps env' to change environment variables"
+	case "volume":
+		return "volumes are set at create time and cannot be changed here"
+	default:
+		return "omit it when updating an existing application"
+	}
 }
 
 func optionalStringSlice(vals []string) *[]string {

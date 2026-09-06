@@ -269,7 +269,7 @@ func TestPackDirectory_NeverPacksEnvFiles(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{
 		testModelFile:       "",
-		".env":              "SECRET=1",
+		envDotfile:          "SECRET=1",
 		".env.local":        "SECRET=2",
 		".env.production":   "SECRET=3",
 		"config/.env":       "SECRET=4",
@@ -289,7 +289,7 @@ func TestPackDirectory_NeverPacksEnvFiles(t *testing.T) {
 			t.Errorf("%q carries an env secret into the archive", name)
 		}
 	}
-	for _, absent := range []string{".env", ".env.local", ".env.production", "config/.env", "deep/nest/.env.ci"} {
+	for _, absent := range []string{envDotfile, ".env.local", ".env.production", "config/.env", "deep/nest/.env.ci"} {
 		if _, ok := packed[absent]; ok {
 			t.Errorf("%q was packed despite the absolute exclusion; archive = %v", absent, names(packed))
 		}

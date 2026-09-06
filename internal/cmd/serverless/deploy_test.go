@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 	testWrapperDir    = "./wrapper"
 	testPipPackage    = "torch"
 	testSourceID      = "019c7654-8b21-7abc-9123-abcdef123456"
+	testSrcDirFlag    = "--src-dir"
 )
 
 func TestValidateDeployArgs(t *testing.T) {
@@ -47,8 +49,8 @@ func TestValidateDeployArgs(t *testing.T) {
 		},
 		{
 			name:    "container with src-dir",
-			flags:   []string{testContainerFlag, testWrapperDir, "--src-dir", "."},
-			wantErr: "--src-dir",
+			flags:   []string{testContainerFlag, testWrapperDir, testSrcDirFlag, "."},
+			wantErr: testSrcDirFlag,
 		},
 		{
 			name:    "container with base-image",
@@ -63,7 +65,7 @@ func TestValidateDeployArgs(t *testing.T) {
 		{
 			name:  "code with src-dir",
 			args:  []string{testModelFile},
-			flags: []string{"--src-dir", "."},
+			flags: []string{testSrcDirFlag, "."},
 		},
 		{
 			name: "code with default base-image is allowed",
@@ -199,6 +201,108 @@ func TestNewDeployCmd_RegistersContainerFlag(t *testing.T) {
 	}
 	if cmd.Use != "deploy [file]" {
 		t.Errorf("Use = %q, want deploy [file]", cmd.Use)
+	}
+	if cmd.Short != "Create or update a serverless application" {
+		t.Errorf("Short = %q", cmd.Short)
+	}
+	if vals := cmd.Flags().Lookup("gpu-type").Annotations[cobra.BashCompOneRequiredFlag]; len(vals) > 0 {
+		t.Fatal("gpu-type should not be cobra-required")
+	}
+}
+
+func TestExistingApp(t *testing.T) {
+	missing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No app 'my-app' exists"}`))
+	}))
+	defer missing.Close()
+
+	ok, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", missing.URL, slog.Default()), testAppID)
+	if err != nil || ok {
+		t.Fatalf("404: ok=%v err=%v", ok, err)
+	}
+
+	found := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"appId":"my-app",
+			"appName":"My App",
+			"status":"active",
+			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
+			"environmentVariables":[],
+			"secrets":[],
+			"createdAt":"2026-07-30T12:00:00Z",
+			"updatedAt":"2026-07-30T12:00:00Z"
+		}`))
+	}))
+	defer found.Close()
+
+	ok, err = existingApp(context.Background(), serverlessapi.NewClient("test-key", found.URL, slog.Default()), testAppID)
+	if err != nil || !ok {
+		t.Fatalf("200: ok=%v err=%v", ok, err)
+	}
+
+	fail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer fail.Close()
+
+	if _, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", fail.URL, slog.Default()), testAppID); err == nil {
+		t.Fatal("expected an error for 500")
+	}
+}
+
+func TestValidateCreateDeployGPU(t *testing.T) {
+	if err := validateCreateDeployGPU(""); err == nil || !strings.Contains(err.Error(), "--gpu-type") {
+		t.Fatalf("empty: %v", err)
+	}
+	if err := validateCreateDeployGPU("h100"); err != nil {
+		t.Fatalf("h100: %v", err)
+	}
+}
+
+func TestValidateUpdateDeployFlags(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	if err := validateUpdateDeployFlags(cmd); err != nil {
+		t.Fatalf("no create flags: %v", err)
+	}
+
+	cases := []struct {
+		flags   []string
+		wantErr string
+	}{
+		{flags: []string{"--gpu-type", "h100"}, wantErr: "apps scale"},
+		{flags: []string{"--max-workers", "2"}, wantErr: "apps scale"},
+		{flags: []string{"--env", "FOO=bar"}, wantErr: "apps env"},
+		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env"},
+		{flags: []string{"--volume", "/data"}, wantErr: "volumes"},
+		{flags: []string{"--name", "My App"}, wantErr: "omit it"},
+		{flags: []string{"--requirement", testPipPackage}},
+		{flags: []string{"--base-image", "python:3.12-slim"}},
+		{flags: []string{testSrcDirFlag, "."}},
+		{flags: []string{"--wait"}},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.flags, " "), func(t *testing.T) {
+			cmd := newDeployCmd(nil)
+			if err := cmd.ParseFlags(tc.flags); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			err := validateUpdateDeployFlags(cmd)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want substring %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 

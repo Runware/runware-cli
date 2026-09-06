@@ -34,6 +34,10 @@ const maxPackTotalBytes int64 = 25 << 20 // 25 MiB
 // this file.
 const runwareIgnoreFile = ".runwareignore"
 
+// envDotfile is the dotenv basename. alwaysExcluded matches this name on every
+// path segment, plus any sibling that starts with ".env.".
+const envDotfile = ".env"
+
 // defaultIgnorePatterns are excluded when no rule says otherwise. They are
 // ordinary gitignore patterns evaluated before the project's own, so a later
 // `!*.pyc` re-includes what one of the file patterns here excluded. The
@@ -72,7 +76,7 @@ var defaultIgnorePatterns = []string{
 // the other rules exclude.
 func alwaysExcluded(segments []string) bool {
 	for _, s := range segments {
-		if s == ".git" || s == ".env" || strings.HasPrefix(s, ".env.") {
+		if s == ".git" || s == envDotfile || strings.HasPrefix(s, envDotfile+".") {
 			return true
 		}
 	}
