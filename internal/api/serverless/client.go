@@ -608,6 +608,37 @@ func (c *Client) GetVersion(ctx context.Context, appID string, versionNumber int
 	}
 }
 
+// DeleteVersion deletes an unused version. Returns 409 while the version is
+// active, is the app's only remaining version, has a non-stopped worker, is
+// targeted by a live rollout, or the app is deleting.
+func (c *Client) DeleteVersion(ctx context.Context, appID string, versionNumber int32) error {
+	if c.apiKey == "" {
+		return transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.DeleteVersionWithResponse(ctx, appID, versionNumber)
+	if err != nil {
+		return fmt.Errorf("delete version: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, nil)
+
+	switch resp.StatusCode() {
+	case http.StatusNoContent:
+		return nil
+	case http.StatusUnauthorized:
+		return problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusConflict:
+		return problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
+	default:
+		return problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
 // ListBuilds returns a page of builds for an app.
 func (c *Client) ListBuilds(ctx context.Context, appID string, params *ListBuildsParams) (Page[Build], error) {
 	if c.apiKey == "" {
@@ -665,6 +696,39 @@ func (c *Client) GetBuild(ctx context.Context, appID string, buildID uuid.UUID) 
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// DeleteBuild cancels a queued or running build (recorded as superseded) or
+// deletes a terminal build that no live version still needs. Returns 409 while
+// a live version still references a ready build.
+func (c *Client) DeleteBuild(ctx context.Context, appID string, buildID uuid.UUID) error {
+	if c.apiKey == "" {
+		return transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.DeleteBuildWithResponse(ctx, appID, buildID)
+	if err != nil {
+		return fmt.Errorf("delete build: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, nil)
+
+	switch resp.StatusCode() {
+	case http.StatusNoContent:
+		return nil
+	case http.StatusUnauthorized:
+		return problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusConflict:
+		return problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
+	case http.StatusUnprocessableEntity:
+		return problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+	default:
+		return problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 

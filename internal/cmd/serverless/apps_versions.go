@@ -15,11 +15,12 @@ import (
 
 func newAppsVersionsCmd(logger *log.Logger) *cobra.Command {
 	cmd := stubGroup("versions", "Manage application versions")
-	cmd.Long = "List, inspect, and activate immutable versions of a serverless application."
+	cmd.Long = "List, inspect, activate, and delete immutable versions of a serverless application."
 	cmd.AddCommand(
 		newAppsVersionsListCmd(logger),
 		newAppsVersionsShowCmd(logger),
 		newAppsVersionsActivateCmd(logger),
+		newAppsVersionsDeleteCmd(logger),
 	)
 	return cmd
 }
@@ -146,6 +147,68 @@ app that is deleting is 409.`,
 			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
 		},
 	}
+}
+
+func newAppsVersionsDeleteCmd(logger *log.Logger) *cobra.Command {
+	var (
+		yes   bool
+		force bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "delete <appId> <versionNumber>",
+		Short: "Delete an unused application version",
+		Long: `Delete an unused version while retaining its immutable history.
+
+Deleted versions are omitted from version lists, return 404 from version
+reads, and cannot be activated. Returns 409 while the app is deleting, or
+when the version is active, is the app's only remaining version, has a
+non-stopped worker, or is targeted by a live rollout. This does not remove
+the version's OCI image.
+
+Confirmation is required unless --yes or --force is passed.`,
+		Example: `  # delete an unused version (prompts for confirmation)
+  runware serverless apps versions delete my-app 2
+
+  # skip the confirmation prompt
+  runware serverless apps versions delete my-app 2 --yes`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			n, err := parseVersionNumber(args[1])
+			if err != nil {
+				return err
+			}
+			if err := confirmDelete(
+				fmt.Sprintf("version %d of application %s", n, appID),
+				yes || force,
+				cmd.InOrStdin(),
+				cmd.ErrOrStderr(),
+				stdinIsTerminal(cmd.InOrStdin()),
+				config.GetAPIKey(),
+			); err != nil {
+				return err
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Deleting version %d on %s...", n, appID))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			if err := client.DeleteVersion(cmd.Context(), appID, n); err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), versionDeletedResult{
+				AppID:         appID,
+				VersionNumber: n,
+			})
+		},
+	}
+
+	addDeleteConfirmFlags(cmd, &yes, &force)
+	return cmd
 }
 
 func parseVersionNumber(s string) (int32, error) {

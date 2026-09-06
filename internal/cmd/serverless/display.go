@@ -149,6 +149,20 @@ func (r versionResult) Rows() [][]any {
 	}
 }
 
+// versionDeletedResult is the success payload for deleting a version.
+type versionDeletedResult struct {
+	AppID         string `json:"appId" yaml:"appId"`
+	VersionNumber int32  `json:"versionNumber" yaml:"versionNumber"`
+}
+
+func (r versionDeletedResult) Headers() []string {
+	return []string{colApp, "Version"}
+}
+
+func (r versionDeletedResult) Rows() [][]any {
+	return [][]any{{r.AppID, r.VersionNumber}}
+}
+
 // workersResult wraps worker lists for table display.
 type workersResult []serverlessapi.Worker
 
@@ -277,6 +291,20 @@ func (r buildResult) Rows() [][]any {
 		{"Exit code", formatOptionalInt32(r.ExitCode)},
 		{colCreated, formatOptionalTime(r.CreatedAt)},
 	}
+}
+
+// buildDeletedResult is the success payload for deleting or cancelling a build.
+type buildDeletedResult struct {
+	AppID   string `json:"appId" yaml:"appId"`
+	BuildID string `json:"buildId" yaml:"buildId"`
+}
+
+func (r buildDeletedResult) Headers() []string {
+	return []string{colApp, colID}
+}
+
+func (r buildDeletedResult) Rows() [][]any {
+	return [][]any{{r.AppID, r.BuildID}}
 }
 
 func formatOptionalTime(t *time.Time) string {

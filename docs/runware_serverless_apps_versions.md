@@ -4,7 +4,7 @@ Manage application versions
 
 ### Synopsis
 
-List, inspect, and activate immutable versions of a serverless application.
+List, inspect, activate, and delete immutable versions of a serverless application.
 
 ```
 runware serverless apps versions [flags]
@@ -29,6 +29,7 @@ runware serverless apps versions [flags]
 
 * [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
 * [runware serverless apps versions activate](runware_serverless_apps_versions_activate.md)	 - Activate a ready application version
+* [runware serverless apps versions delete](runware_serverless_apps_versions_delete.md)	 - Delete an unused application version
 * [runware serverless apps versions list](runware_serverless_apps_versions_list.md)	 - List versions of a serverless application
 * [runware serverless apps versions show](runware_serverless_apps_versions_show.md)	 - Show a version of a serverless application
 
