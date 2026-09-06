@@ -419,7 +419,8 @@ func AppDeployTerminal(status AppStatus) bool {
 }
 
 // UpdateApp patches an app in place. Omitted fields are left unchanged.
-// Currently persisted: appName and configuration.
+// appSource starts a build and records version N+1; name and configuration
+// do not replace source.
 func (c *Client) UpdateApp(ctx context.Context, appID string, body AppUpdate) (*App, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
@@ -884,7 +885,7 @@ func (c *Client) GetWorker(ctx context.Context, appID string, workerID uuid.UUID
 	}
 }
 
-// NewCodeAppSource builds an appSource for a code-based create.
+// NewCodeAppSource builds an appSource for a code-based create or update.
 func NewCodeAppSource(src CodeSourceUpsert) (AppSourceUpsert, error) {
 	var source gen.AppSourceUpsert_Source
 	if err := source.FromCodeSourceUpsert(src); err != nil {
@@ -896,7 +897,7 @@ func NewCodeAppSource(src CodeSourceUpsert) (AppSourceUpsert, error) {
 	}, nil
 }
 
-// NewContainerAppSource builds an appSource for a container-based create.
+// NewContainerAppSource builds an appSource for a container-based create or update.
 func NewContainerAppSource(src ContainerSource) (AppSourceUpsert, error) {
 	var source gen.AppSourceUpsert_Source
 	if err := source.FromContainerSource(src); err != nil {
