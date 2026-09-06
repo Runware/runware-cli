@@ -19,7 +19,6 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		newUsageCmd(),
 		newGPUsCmd(logger),
 		newOpenCmd(),
-		newUseCmd(),
 		newSecretsCmd(logger),
 		newAppsCmd(logger),
 	)
