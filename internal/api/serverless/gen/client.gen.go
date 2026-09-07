@@ -198,9 +198,9 @@ func (e Currency) Valid() bool {
 
 // Defines values for GpuAvailability.
 const (
-	Available GpuAvailability = "available"
-	Custom    GpuAvailability = "custom"
-	Reserved  GpuAvailability = "reserved"
+	Available  GpuAvailability = "available"
+	Custom     GpuAvailability = "custom"
+	Restricted GpuAvailability = "restricted"
 )
 
 // Valid indicates whether the value is a known member of the GpuAvailability enum.
@@ -210,7 +210,7 @@ func (e GpuAvailability) Valid() bool {
 		return true
 	case Custom:
 		return true
-	case Reserved:
+	case Restricted:
 		return true
 	default:
 		return false
@@ -926,7 +926,7 @@ type EnvironmentVariableUpdate struct {
 	Value string `json:"value"`
 }
 
-// GpuAvailability Scheduler provisioning availability for this GPU type.
+// GpuAvailability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
 type GpuAvailability string
 
 // GpuPricing defines model for GpuPricing.
@@ -975,7 +975,7 @@ type GpuPricingUpdate struct {
 
 // GpuType defines model for GpuType.
 type GpuType struct {
-	// Availability Scheduler provisioning availability for this GPU type.
+	// Availability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
 	Availability GpuAvailability `json:"availability"`
 
 	// DeletedAt Retirement time, returned only in the Runware catalogue view.
@@ -998,7 +998,7 @@ type GpuType struct {
 
 // GpuTypeCreate defines model for GpuTypeCreate.
 type GpuTypeCreate struct {
-	// Availability Scheduler provisioning availability for this GPU type.
+	// Availability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
 	Availability GpuAvailability `json:"availability"`
 
 	// Id Immutable public catalogue code. Must be unique across the catalogue.
@@ -1039,7 +1039,7 @@ type GpuTypeList struct {
 
 // GpuTypeUpdate Partial update of a catalogue entry. Omitted fields are left unchanged. The catalogue code itself is immutable and addressed via the path parameter. At least one field must be supplied.
 type GpuTypeUpdate struct {
-	// Availability Scheduler provisioning availability for this GPU type.
+	// Availability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
 	Availability *GpuAvailability `json:"availability,omitempty"`
 	Memory       *string          `json:"memory,omitempty"`
 	Name         *string          `json:"name,omitempty"`

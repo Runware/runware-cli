@@ -3053,10 +3053,12 @@ components:
 
     GpuAvailability:
       type: string
-      description: Scheduler provisioning availability for this GPU type.
+      description: >
+        How the catalogue currently offers this GPU type. `restricted` means the
+        SKU is not generally available. It is not purchased reserved capacity.
       enum:
         - available
-        - reserved
+        - restricted
         - custom
 
     GpuPricing:
