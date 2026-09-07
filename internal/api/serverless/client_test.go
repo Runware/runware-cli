@@ -29,6 +29,7 @@ const (
 	testCursorPage2   = "page-2"
 	testCursorPage3   = "page-3"
 	testStatusReady   = "ready"
+	testModelFile     = "model.py"
 )
 
 func TestListGpuTypes(t *testing.T) {
@@ -171,7 +172,7 @@ func TestCreateApp(t *testing.T) {
 		BaseImage: "python:3.11-slim",
 		Codebase: CodebaseSource{
 			SourceId:  uuid.MustParse("019c7654-8b21-7abc-9123-abcdef123456"),
-			ModelFile: "model.py",
+			ModelFile: testModelFile,
 		},
 	})
 	if err != nil {
@@ -274,7 +275,7 @@ func TestNewCodeAppSource(t *testing.T) {
 		BaseImage: "python:3.11-slim",
 		Codebase: CodebaseSource{
 			SourceId:  id,
-			ModelFile: "model.py",
+			ModelFile: testModelFile,
 		},
 	})
 	if err != nil {
@@ -287,7 +288,7 @@ func TestNewCodeAppSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AsCodeSourceUpsert: %v", err)
 	}
-	if inner.Codebase.SourceId != id || inner.Codebase.ModelFile != "model.py" {
+	if inner.Codebase.SourceId != id || inner.Codebase.ModelFile != testModelFile {
 		t.Errorf("codebase = %+v", inner.Codebase)
 	}
 }
@@ -644,6 +645,78 @@ func TestUpdateApp(t *testing.T) {
 		t.Fatalf("UpdateApp: %v", err)
 	}
 	if app.AppId != testAppID || app.Configuration.MaxWorkers != maxWorkers {
+		t.Errorf("unexpected app: %+v", app)
+	}
+}
+
+func TestUpdateApp_AppSource(t *testing.T) {
+	sourceID := uuid.MustParse("019c7654-8b21-7abc-9123-abcdef123456")
+	appSource, err := NewCodeAppSource(CodeSourceUpsert{
+		BaseImage: "python:3.11-slim",
+		Codebase: CodebaseSource{
+			SourceId:  sourceID,
+			ModelFile: testModelFile,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewCodeAppSource: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/apps/"+testAppID {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		var body AppUpdate
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.AppSource == nil {
+			t.Fatalf("missing appSource: %s", raw)
+		}
+		if body.AppName != nil || body.Configuration != nil || body.Secrets != nil || body.EnvironmentVariables != nil {
+			t.Errorf("patch included out-of-scope fields: %s", raw)
+		}
+		var rawMap map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &rawMap); err != nil {
+			t.Fatalf("decode raw map: %v", err)
+		}
+		if len(rawMap) != 1 {
+			t.Errorf("expected only appSource in body, got %s", raw)
+		}
+		if body.AppSource.Type != AppSourceTypeCode {
+			t.Errorf("appSource.type = %q, want code", body.AppSource.Type)
+		}
+		inner, err := body.AppSource.Source.AsCodeSourceUpsert()
+		if err != nil {
+			t.Fatalf("AsCodeSourceUpsert: %v", err)
+		}
+		if inner.Codebase.SourceId != sourceID || inner.Codebase.ModelFile != testModelFile {
+			t.Errorf("unexpected codebase: %+v", inner.Codebase)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"appId":"my-app",
+			"appName":"My App",
+			"status":"initializing",
+			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"computeType":"gpu"},
+			"environmentVariables":[],
+			"secrets":[],
+			"createdAt":"2026-07-30T12:00:00Z",
+			"updatedAt":"2026-07-30T12:00:00Z"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	app, err := c.UpdateApp(context.Background(), testAppID, AppUpdate{AppSource: &appSource})
+	if err != nil {
+		t.Fatalf("UpdateApp: %v", err)
+	}
+	if app.AppId != testAppID || app.Status != AppStatusInitializing {
 		t.Errorf("unexpected app: %+v", app)
 	}
 }

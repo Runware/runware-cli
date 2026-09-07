@@ -1,10 +1,17 @@
 ## runware serverless deploy
 
-Deploy a new serverless application
+Create or update a serverless application
 
 ### Synopsis
 
-Create a new serverless application from Python code or a container source.
+Create or update a serverless application from Python code or a container source.
+
+A first deploy with a new --id creates the application. A later deploy with the
+same --id uploads a new source, records version N+1, and rolls it when the
+build is ready. Create-only flags (--gpu-type, worker settings, --volume,
+--env, --env-file, --name) apply only to create; passing them when the
+application already exists is an error. Change workers with 'apps scale' and
+environment with 'apps env'. A source update on a stopped application is 409.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -33,19 +40,20 @@ what a project keeps out of version control is a different question from what it
 ships. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv, node_modules or the usual build and tool caches.
 
-Environment variables must be supplied here with --env or --env-file. An app's
-environment is frozen into the version this command creates, which is what the
-worker is rendered from, so setting one afterwards with 'apps env set' stores it
-without it ever reaching a pod. Prefer --env-file for anything secret: a value
-passed as --env is visible in the process list and recorded in shell history.
+Environment variables must be supplied at create with --env or --env-file. An
+app's environment is frozen into the version this command creates, which is
+what the worker is rendered from, so setting one afterwards with 'apps env set'
+stores it without it ever reaching a pod. Prefer --env-file for anything secret:
+a value passed as --env is visible in the process list and recorded in shell
+history.
 
 Anything the app downloads at runtime belongs on a --volume. The app runs in a
 sandbox whose filesystem is part of the checkpointed state, so an unmounted
 download is copied into every checkpoint and fetched again on every cold start.
 A volume keeps it out of both.
 
-Worker settings are supplied via flags. Endpoints are derived server-side from
-the SDK (code) or from container.yaml (container).
+Worker settings are supplied via flags on create. Endpoints are derived
+server-side from the SDK (code) or from container.yaml (container).
 
 ```
 runware serverless deploy [file] [flags]
@@ -56,6 +64,9 @@ runware serverless deploy [file] [flags]
 ```
   # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
+
+  # update source on an existing application
+  runware serverless deploy ./app.py --id my-app --wait
 
   # deploy a project that lives elsewhere; app.py is resolved inside --src-dir
   runware serverless deploy app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
@@ -90,7 +101,7 @@ runware serverless deploy [file] [flags]
       --container string          Directory whose root contains Dockerfile and container.yaml
       --env stringArray           Environment variable as KEY=VALUE (repeatable)
       --env-file stringArray      File of KEY=VALUE lines to read environment variables from (repeatable)
-      --gpu-type string           GPU type ID (see 'serverless gpus')
+      --gpu-type string           GPU type ID (see 'serverless gpus'; required when creating)
       --gpus-per-worker int32     GPUs allocated per worker (default 1)
   -h, --help                      help for deploy
       --id string                 Application ID (immutable, lowercase slug)
