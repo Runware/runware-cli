@@ -1,6 +1,13 @@
 ## runware serverless apps endpoints
 
-List endpoints for a serverless application
+List and inspect endpoints for a serverless application
+
+### Synopsis
+
+List the endpoints of the application's active version.
+
+The set is written by the source itself and is replaced atomically whenever a
+version activates. Empty while the app is initializing.
 
 ```
 runware serverless apps endpoints <appId> [flags]
@@ -36,4 +43,5 @@ runware serverless apps endpoints <appId> [flags]
 ### SEE ALSO
 
 * [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
+* [runware serverless apps endpoints show](runware_serverless_apps_endpoints_show.md)	 - Show a single application endpoint
 

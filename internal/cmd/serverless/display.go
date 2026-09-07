@@ -112,6 +112,23 @@ func (r endpointsResult) Rows() [][]any {
 	return rows
 }
 
+// endpointResult wraps a single endpoint for table/json/yaml display.
+type endpointResult serverlessapi.Endpoint
+
+func (r endpointResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r endpointResult) Rows() [][]any {
+	return [][]any{
+		{"Path", r.Path},
+		{colID, r.Id.String()},
+		{colApp, r.AppId},
+		{colCreated, formatOptionalTime(r.CreatedAt)},
+		{colUpdated, formatOptionalTime(r.UpdatedAt)},
+	}
+}
+
 // versionsResult wraps version lists for table display.
 type versionsResult []serverlessapi.Version
 
@@ -184,6 +201,30 @@ func (r workersResult) Rows() [][]any {
 		}
 	}
 	return rows
+}
+
+// workerResult wraps a single worker for table/json/yaml display.
+type workerResult serverlessapi.Worker
+
+func (r workerResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r workerResult) Rows() [][]any {
+	return [][]any{
+		{colID, r.Id.String()},
+		{colApp, r.AppId},
+		{colStatus, string(r.Status)},
+		{"Pod", r.PodName},
+		{"Node", formatOptionalString(r.NodeName)},
+		{colGPUType, formatOptionalString(r.GpuType)},
+		{"GPU count", r.GpuCount},
+		{"Version ID", r.VersionId.String()},
+		{"Last seen", formatOptionalTime(r.LastSeenAt)},
+		{colCreated, r.CreatedAt.Format(time.RFC3339)},
+		{"Status occurred", r.StatusOccurredAt.Format(time.RFC3339)},
+		{"Status reason", formatOptionalString(r.StatusReason)},
+	}
 }
 
 // tasksResult wraps task lists for table display. Output is omitted.

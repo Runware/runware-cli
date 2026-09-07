@@ -548,6 +548,38 @@ func (c *Client) ListEndpoints(ctx context.Context, appID string, params *ListEn
 	}
 }
 
+// GetEndpoint returns a single endpoint by ID.
+func (c *Client) GetEndpoint(ctx context.Context, appID string, endpointID uuid.UUID) (*Endpoint, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.GetEndpointWithResponse(ctx, appID, endpointID)
+	if err != nil {
+		return nil, fmt.Errorf("get endpoint: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return nil, fmt.Errorf("get endpoint: empty 200 response")
+		}
+		return resp.JSON200, nil
+	case http.StatusUnauthorized:
+		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusUnprocessableEntity:
+		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+	default:
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
 // ListVersions returns a page of versions for an app.
 func (c *Client) ListVersions(ctx context.Context, appID string, params *ListVersionsParams) (Page[Version], error) {
 	if c.apiKey == "" {
@@ -759,6 +791,38 @@ func (c *Client) ListWorkers(ctx context.Context, appID string, params *ListWork
 		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
 		return Page[Worker]{}, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// GetWorker returns a single worker by ID (the Kubernetes pod UID).
+func (c *Client) GetWorker(ctx context.Context, appID string, workerID uuid.UUID) (*Worker, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.GetWorkerWithResponse(ctx, appID, workerID)
+	if err != nil {
+		return nil, fmt.Errorf("get worker: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return nil, fmt.Errorf("get worker: empty 200 response")
+		}
+		return resp.JSON200, nil
+	case http.StatusUnauthorized:
+		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusUnprocessableEntity:
+		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+	default:
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 

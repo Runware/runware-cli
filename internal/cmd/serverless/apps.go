@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
@@ -149,7 +150,11 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "endpoints <appId>",
-		Short: "List endpoints for a serverless application",
+		Short: "List and inspect endpoints for a serverless application",
+		Long: `List the endpoints of the application's active version.
+
+The set is written by the source itself and is replaced atomically whenever a
+version activates. Empty while the app is initializing.`,
 		Example: `  # list endpoints for an application
   runware serverless apps endpoints my-app
 
@@ -184,7 +189,39 @@ func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of endpoints to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.AddCommand(newAppsEndpointsShowCmd(logger))
 	return cmd
+}
+
+func newAppsEndpointsShowCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <appId> <endpointId>",
+		Short: "Show a single application endpoint",
+		Long:  "Show one endpoint of the application's active version by ID.",
+		Example: `  # show an endpoint
+  runware serverless apps endpoints show my-app 11111111-1111-1111-1111-111111111111`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			endpointID, err := uuid.Parse(args[1])
+			if err != nil {
+				return fmt.Errorf("invalid endpointId %q: %w", args[1], err)
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching endpoint %s...", endpointID))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			ep, err := client.GetEndpoint(cmd.Context(), appID, endpointID)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), endpointResult(*ep))
+		},
+	}
 }
 
 func newAppsLogsCmd() *cobra.Command {
@@ -211,7 +248,9 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "workers <appId>",
-		Short: "List workers for a serverless application",
+		Short: "List and inspect workers for a serverless application",
+		Long: `List workers observed for an application, including terminal stopped rows
+until they are purged.`,
 		Example: `  # list workers for an application
   runware serverless apps workers my-app
 
@@ -255,7 +294,41 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of workers to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (ready, busy, pending, …)")
+	cmd.AddCommand(newAppsWorkersShowCmd(logger))
 	return cmd
+}
+
+func newAppsWorkersShowCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <appId> <workerId>",
+		Short: "Show a single application worker",
+		Long: `Show one worker by ID within the application.
+
+The ID is the Kubernetes pod UID recorded by the reconciler.`,
+		Example: `  # show a worker
+  runware serverless apps workers show my-app 44444444-4444-4444-4444-444444444444`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			workerID, err := uuid.Parse(args[1])
+			if err != nil {
+				return fmt.Errorf("invalid workerId %q: %w", args[1], err)
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching worker %s...", workerID))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			w, err := client.GetWorker(cmd.Context(), appID, workerID)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), workerResult(*w))
+		},
+	}
 }
 
 // validateListLimit checks --limit when set. Zero means unset (API default).
