@@ -2,6 +2,13 @@
 
 Show logs for a serverless application
 
+### Synopsis
+
+Show application logs.
+
+This command is not implemented yet. The log-query route exists but currently
+answers 404 until a follow-up ADR; live tail is not supported.
+
 ```
 runware serverless apps logs <appId> [flags]
 ```
@@ -9,7 +16,7 @@ runware serverless apps logs <appId> [flags]
 ### Examples
 
 ```
-  # fetch or stream logs for an application
+  # show application logs (not available yet)
   runware serverless apps logs my-app
 ```
 

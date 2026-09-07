@@ -1,6 +1,14 @@
 ## runware serverless apps usage
 
-Show usage for a serverless application
+Show usage and cost for a serverless application
+
+### Synopsis
+
+Show an aggregated usage and cost report for one application.
+
+This command is not implemented yet. Billing rollups are not in the API, so
+there is no per-app report to list. When the report API exists, this will be
+the account-wide usage command scoped to one appId.
 
 ```
 runware serverless apps usage <appId> [flags]
@@ -9,7 +17,7 @@ runware serverless apps usage <appId> [flags]
 ### Examples
 
 ```
-  # show usage events for an application
+  # show usage for an application (not available yet)
   runware serverless apps usage my-app
 ```
 

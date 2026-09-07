@@ -1,6 +1,17 @@
 ## runware serverless usage
 
-Show serverless usage and billing events
+Show account-wide usage and cost
+
+### Synopsis
+
+Show an aggregated usage and cost report for the authenticated organisation.
+
+This command is not implemented yet. Billing rollups are not in the API, so
+there is no report to list. Raw worker-transition rows (GET /v1/usage) are
+not this command.
+
+When the report API exists, this will cover an account-wide window with the
+filters that endpoint exposes.
 
 ```
 runware serverless usage [flags]
@@ -9,7 +20,7 @@ runware serverless usage [flags]
 ### Examples
 
 ```
-  # list usage events for the authenticated organisation
+  # show account-wide usage (not available yet)
   runware serverless usage
 ```
 
