@@ -1,7 +1,11 @@
 package serverless
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -187,7 +191,66 @@ func TestNewDeployCmd_RegistersContainerFlag(t *testing.T) {
 	if cmd.Flags().Lookup("container") == nil {
 		t.Fatal("deploy is missing --container")
 	}
+	if cmd.Flags().Lookup("wait") == nil {
+		t.Fatal("deploy is missing --wait")
+	}
+	if cmd.Flags().Lookup("poll-interval") == nil {
+		t.Fatal("deploy is missing --poll-interval")
+	}
 	if cmd.Use != "deploy [file]" {
 		t.Errorf("Use = %q, want deploy [file]", cmd.Use)
+	}
+}
+
+func TestAppFailedErr(t *testing.T) {
+	if err := appFailedErr(context.Background(), nil, nil); err != nil {
+		t.Fatalf("nil app: %v", err)
+	}
+
+	active := &serverlessapi.App{
+		AppId:  testAppID,
+		Status: serverlessapi.AppStatusActive,
+	}
+	if err := appFailedErr(context.Background(), nil, active); err != nil {
+		t.Fatalf("active: %v", err)
+	}
+
+	stopped := &serverlessapi.App{
+		AppId:  testAppID,
+		Status: serverlessapi.AppStatusStopped,
+	}
+	err := appFailedErr(context.Background(), nil, stopped)
+	if err == nil || !strings.Contains(err.Error(), "stopped") {
+		t.Fatalf("stopped: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/apps/"+testAppID+"/builds" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"33333333-3333-3333-3333-333333333333","status":"failed","error":"pip install failed","createdAt":"2026-07-30T12:00:00Z"}]}`))
+	}))
+	defer srv.Close()
+
+	client := serverlessapi.NewClient("test-key", srv.URL, slog.Default())
+	failed := &serverlessapi.App{
+		AppId:  testAppID,
+		Status: serverlessapi.AppStatusFailed,
+	}
+	err = appFailedErr(context.Background(), client, failed)
+	if err == nil || !strings.Contains(err.Error(), "pip install failed") {
+		t.Fatalf("failed with build error: %v", err)
+	}
+
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer empty.Close()
+
+	err = appFailedErr(context.Background(), serverlessapi.NewClient("test-key", empty.URL, slog.Default()), failed)
+	if err == nil || !strings.Contains(err.Error(), "inspect builds") {
+		t.Fatalf("failed without build error: %v", err)
 	}
 }

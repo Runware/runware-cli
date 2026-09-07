@@ -99,6 +99,31 @@ func TestParseAppStatus(t *testing.T) {
 	}
 }
 
+func TestParseWorkerState(t *testing.T) {
+	got, err := parseWorkerState("")
+	if err != nil || got != nil {
+		t.Fatalf("unset state: got=%v err=%v", got, err)
+	}
+
+	got, err = parseWorkerState("live")
+	if err != nil || got == nil || *got != serverlessapi.WorkerStateFilterLive {
+		t.Fatalf("live: got=%v err=%v", got, err)
+	}
+
+	got, err = parseWorkerState("all")
+	if err != nil || got == nil || *got != serverlessapi.WorkerStateFilterAll {
+		t.Fatalf("all: got=%v err=%v", got, err)
+	}
+
+	_, err = parseWorkerState("nope")
+	if err == nil {
+		t.Fatal("expected error for state nope")
+	}
+	if !strings.Contains(err.Error(), "invalid --state") {
+		t.Fatalf("error %q should mention invalid --state", err)
+	}
+}
+
 func TestParseWorkerStatus(t *testing.T) {
 	got, err := parseWorkerStatus("")
 	if err != nil || got != nil {
@@ -152,6 +177,21 @@ func TestExtraStatusCursorFlag(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 	if got := extraStatusCursorFlag(""); got != "" {
+		t.Fatalf("empty: got %q", got)
+	}
+}
+
+func TestExtraWorkersCursorFlags(t *testing.T) {
+	if got := extraWorkersCursorFlags("live", "ready"); got != "--state live --status ready" {
+		t.Fatalf("both: got %q", got)
+	}
+	if got := extraWorkersCursorFlags("live", ""); got != "--state live" {
+		t.Fatalf("state only: got %q", got)
+	}
+	if got := extraWorkersCursorFlags("", "ready"); got != "--status ready" {
+		t.Fatalf("status only: got %q", got)
+	}
+	if got := extraWorkersCursorFlags("", ""); got != "" {
 		t.Fatalf("empty: got %q", got)
 	}
 }
