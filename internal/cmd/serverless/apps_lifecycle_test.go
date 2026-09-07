@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/runware/runware-cli/internal/api/transport"
+	"github.com/spf13/cobra"
 )
 
 const testDeleteKey = "k"
@@ -77,6 +78,11 @@ func TestStdinIsTerminal_NonFile(t *testing.T) {
 }
 
 func TestDeleteCmd_SkipFlags(t *testing.T) {
+	cmds := []*cobra.Command{
+		newAppsDeleteCmd(nil),
+		newAppsVersionsDeleteCmd(nil),
+		newAppsBuildsDeleteCmd(nil),
+	}
 	cases := []struct {
 		args  []string
 		yes   bool
@@ -95,21 +101,28 @@ func TestDeleteCmd_SkipFlags(t *testing.T) {
 			force: true,
 		},
 	}
-	for _, tc := range cases {
-		cmd := newAppsDeleteCmd(nil)
-		if err := cmd.ParseFlags(tc.args); err != nil {
-			t.Fatalf("%v: ParseFlags: %v", tc.args, err)
-		}
-		yes, err := cmd.Flags().GetBool("yes")
-		if err != nil {
-			t.Fatalf("%v: yes: %v", tc.args, err)
-		}
-		force, err := cmd.Flags().GetBool("force")
-		if err != nil {
-			t.Fatalf("%v: force: %v", tc.args, err)
-		}
-		if yes != tc.yes || force != tc.force {
-			t.Fatalf("%v: yes=%v force=%v, want yes=%v force=%v", tc.args, yes, force, tc.yes, tc.force)
+	for _, cmd := range cmds {
+		for _, tc := range cases {
+			if err := cmd.ParseFlags(tc.args); err != nil {
+				t.Fatalf("%s %v: ParseFlags: %v", cmd.Name(), tc.args, err)
+			}
+			yes, err := cmd.Flags().GetBool("yes")
+			if err != nil {
+				t.Fatalf("%s %v: yes: %v", cmd.Name(), tc.args, err)
+			}
+			force, err := cmd.Flags().GetBool("force")
+			if err != nil {
+				t.Fatalf("%s %v: force: %v", cmd.Name(), tc.args, err)
+			}
+			if yes != tc.yes || force != tc.force {
+				t.Fatalf("%s %v: yes=%v force=%v, want yes=%v force=%v", cmd.Name(), tc.args, yes, force, tc.yes, tc.force)
+			}
+			if err := cmd.Flags().Set("yes", "false"); err != nil {
+				t.Fatalf("reset yes: %v", err)
+			}
+			if err := cmd.Flags().Set("force", "false"); err != nil {
+				t.Fatalf("reset force: %v", err)
+			}
 		}
 	}
 }

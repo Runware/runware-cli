@@ -85,15 +85,14 @@ Confirmation is required unless --yes or --force is passed.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
-			if err := confirmDelete(id, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
+			if err := confirmDelete("application "+id, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
 				return err
 			}
 			return runLifecycle(cmd, logger, id, "Deleting", (*serverlessapi.Client).DeleteApp)
 		},
 	}
 
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip the confirmation prompt")
-	cmd.Flags().BoolVar(&force, "force", false, "Skip the confirmation prompt")
+	addDeleteConfirmFlags(cmd, &yes, &force)
 	return cmd
 }
 
@@ -114,9 +113,14 @@ func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, actio
 	return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
 }
 
+func addDeleteConfirmFlags(cmd *cobra.Command, yes, force *bool) {
+	cmd.Flags().BoolVarP(yes, "yes", "y", false, "Skip the confirmation prompt")
+	cmd.Flags().BoolVar(force, "force", false, "Skip the confirmation prompt")
+}
+
 // confirmDelete fails closed without an API key so a prompt cannot succeed
 // and then fail with ErrNoAPIKey. skip (--yes/--force) bypasses the prompt.
-func confirmDelete(appID string, skip bool, in io.Reader, out io.Writer, isTTY bool, apiKey string) error {
+func confirmDelete(subject string, skip bool, in io.Reader, out io.Writer, isTTY bool, apiKey string) error {
 	if apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
@@ -127,7 +131,7 @@ func confirmDelete(appID string, skip bool, in io.Reader, out io.Writer, isTTY b
 		return errDeleteNeedsConfirm
 	}
 
-	_, _ = fmt.Fprintf(out, "Delete application %s? [y/N] ", appID)
+	_, _ = fmt.Fprintf(out, "Delete %s? [y/N] ", subject)
 	scanner := bufio.NewScanner(in)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {

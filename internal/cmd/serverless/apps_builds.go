@@ -15,10 +15,11 @@ import (
 
 func newAppsBuildsCmd(logger *log.Logger) *cobra.Command {
 	cmd := stubGroup("builds", "Inspect application builds")
-	cmd.Long = "List and inspect code builds and container validations for a serverless application."
+	cmd.Long = "List, inspect, and delete code builds and container validations for a serverless application."
 	cmd.AddCommand(
 		newAppsBuildsListCmd(logger),
 		newAppsBuildsShowCmd(logger),
+		newAppsBuildsDeleteCmd(logger),
 	)
 	return cmd
 }
@@ -104,6 +105,67 @@ supported.`,
 			return printBuild(cmd, *b)
 		},
 	}
+	return cmd
+}
+
+func newAppsBuildsDeleteCmd(logger *log.Logger) *cobra.Command {
+	var (
+		yes   bool
+		force bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "delete <appId> <buildId>",
+		Short: "Delete or cancel an application build",
+		Long: `Cancel a queued or running build, or delete a terminal build.
+
+Cancelling a queued or running build records it as superseded and ends its
+current rollout without activating it, so any previous version keeps serving.
+A terminal build can be deleted once no live rollout still needs it. Ready
+builds remain while a version references them (409).
+
+Confirmation is required unless --yes or --force is passed.`,
+		Example: `  # cancel or delete a build (prompts for confirmation)
+  runware serverless apps builds delete my-app 33333333-3333-3333-3333-333333333333
+
+  # skip the confirmation prompt
+  runware serverless apps builds delete my-app 33333333-3333-3333-3333-333333333333 --yes`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			buildID, err := uuid.Parse(args[1])
+			if err != nil {
+				return fmt.Errorf("invalid buildId %q: %w", args[1], err)
+			}
+			if err := confirmDelete(
+				fmt.Sprintf("build %s of application %s", buildID, appID),
+				yes || force,
+				cmd.InOrStdin(),
+				cmd.ErrOrStderr(),
+				stdinIsTerminal(cmd.InOrStdin()),
+				config.GetAPIKey(),
+			); err != nil {
+				return err
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Deleting build %s...", buildID))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			if err := client.DeleteBuild(cmd.Context(), appID, buildID); err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), buildDeletedResult{
+				AppID:   appID,
+				BuildID: buildID.String(),
+			})
+		},
+	}
+
+	addDeleteConfirmFlags(cmd, &yes, &force)
 	return cmd
 }
 

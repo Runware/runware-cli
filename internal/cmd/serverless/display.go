@@ -16,6 +16,7 @@ const (
 	colName          = "Name"
 	colStatus        = "Status"
 	colActiveVersion = "Active version ID"
+	colVersion       = "Version"
 	colCreated       = "Created"
 	colUpdated       = "Updated"
 	colType          = "Type"
@@ -115,7 +116,7 @@ func (r endpointsResult) Rows() [][]any {
 type versionsResult []serverlessapi.Version
 
 func (r versionsResult) Headers() []string {
-	return []string{"Version", colID, "Build", colCreated}
+	return []string{colVersion, colID, "Build", colCreated}
 }
 
 func (r versionsResult) Rows() [][]any {
@@ -141,12 +142,26 @@ func (r versionResult) Headers() []string {
 
 func (r versionResult) Rows() [][]any {
 	return [][]any{
-		{"Version", r.VersionNumber},
+		{colVersion, r.VersionNumber},
 		{colID, r.Id.String()},
 		{colApp, r.AppId},
 		{"Build", formatOptionalUUID(r.BuildId)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 	}
+}
+
+// versionDeletedResult is the success payload for deleting a version.
+type versionDeletedResult struct {
+	AppID         string `json:"appId" yaml:"appId"`
+	VersionNumber int32  `json:"versionNumber" yaml:"versionNumber"`
+}
+
+func (r versionDeletedResult) Headers() []string {
+	return []string{colApp, colVersion}
+}
+
+func (r versionDeletedResult) Rows() [][]any {
+	return [][]any{{r.AppID, r.VersionNumber}}
 }
 
 // workersResult wraps worker lists for table display.
@@ -277,6 +292,20 @@ func (r buildResult) Rows() [][]any {
 		{"Exit code", formatOptionalInt32(r.ExitCode)},
 		{colCreated, formatOptionalTime(r.CreatedAt)},
 	}
+}
+
+// buildDeletedResult is the success payload for deleting or cancelling a build.
+type buildDeletedResult struct {
+	AppID   string `json:"appId" yaml:"appId"`
+	BuildID string `json:"buildId" yaml:"buildId"`
+}
+
+func (r buildDeletedResult) Headers() []string {
+	return []string{colApp, colID}
+}
+
+func (r buildDeletedResult) Rows() [][]any {
+	return [][]any{{r.AppID, r.BuildID}}
 }
 
 func formatOptionalTime(t *time.Time) string {
