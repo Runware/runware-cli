@@ -53,6 +53,34 @@ func (e *TailStreamError) Error() string {
 	return "log stream failed: " + e.Detail
 }
 
+// TailUnavailableError reports that a gateway answered the tail request instead
+// of the log store, so the stream never opened. No entry was delivered, which
+// makes a reconnect free of repeated output. An app that has not written an
+// entry yet answers this way: the store holds the request without writing its
+// response headers, and the edge times it out before the first entry arrives.
+type TailUnavailableError struct {
+	StatusCode int
+	Err        error
+}
+
+func (e *TailUnavailableError) Error() string {
+	return "log stream unavailable: " + e.Err.Error()
+}
+
+func (e *TailUnavailableError) Unwrap() error { return e.Err }
+
+// isGatewayStatus reports whether a proxy in front of the log store, rather
+// than the store itself, ended the request. These are transient, so a tail
+// reconnects on them instead of failing.
+func isGatewayStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
 // GetLogEntries returns one page of a named log query.
 func (c *Client) GetLogEntries(ctx context.Context, queryID string, params GetLogEntriesParams) (LogEntryPage, error) {
 	if c.apiKey == "" {
@@ -105,8 +133,9 @@ func (c *Client) GetLogEntries(ctx context.Context, queryID string, params GetLo
 
 // TailLogs follows a named log query for one app and hands every new entry to
 // emit. It returns ErrTailEnded when the server closes the stream cleanly, a
-// *TailStreamError when the server reports a failure, ctx.Err() when the
-// caller stops, and any error emit returns.
+// *TailStreamError when the server reports a failure, a *TailUnavailableError
+// when a gateway answers before the stream opens, ctx.Err() when the caller
+// stops, and any error emit returns.
 func (c *Client) TailLogs(ctx context.Context, queryID, appID string, emit func(LogEntry) error) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
@@ -127,7 +156,14 @@ func (c *Client) TailLogs(ctx context.Context, queryID, appID string, emit func(
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxSSEFrameBytes))
 		c.logResponse(ctx, resp, body)
-		return problemFromBody(body, resp.StatusCode)
+		problem := problemFromBody(body, resp.StatusCode)
+		if isGatewayStatus(resp.StatusCode) {
+			return &TailUnavailableError{
+				StatusCode: resp.StatusCode,
+				Err:        problem,
+			}
+		}
+		return problem
 	}
 	c.logResponse(ctx, resp, nil)
 	if mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mediaType != "text/event-stream" {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -227,6 +228,88 @@ func TestFollowLogs_WaitsBeforeReconnectingAfterStreamFailure(t *testing.T) {
 		}
 		if !strings.Contains(errOut.String(), "the log stream became unavailable; reconnecting") {
 			t.Fatalf("stderr = %q", errOut.String())
+		}
+	})
+}
+
+func TestFollowLogs_WaitsForTheStreamToOpenWhenAGatewayAnswers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		var attempts []time.Time
+		var emitted []string
+		tail := func(_ context.Context, emit func(serverlessapi.LogEntry) error) error {
+			attempts = append(attempts, time.Now())
+			// Three gateway answers, as a quiet application produces, then the
+			// stream opens and carries one entry.
+			if len(attempts) <= 3 {
+				return &serverlessapi.TailUnavailableError{
+					StatusCode: http.StatusGatewayTimeout,
+					Err:        errors.New("the origin did not respond in time"),
+				}
+			}
+			if err := emit(serverlessapi.LogEntry{Body: testLogBodyReady}); err != nil {
+				return err
+			}
+			cancel()
+			return context.Canceled
+		}
+		var errOut bytes.Buffer
+		emit := func(entry serverlessapi.LogEntry) error {
+			emitted = append(emitted, entry.Body)
+			return nil
+		}
+		if err := followLogs(ctx, tail, emit, &errOut); err != nil {
+			t.Fatalf("followLogs: %v", err)
+		}
+		if len(attempts) != 4 {
+			t.Fatalf("attempts = %v", attempts)
+		}
+		for i := 1; i < len(attempts); i++ {
+			if attempts[i].Sub(attempts[i-1]) != tailReconnectDelay {
+				t.Fatalf("attempt %d waited %v", i, attempts[i].Sub(attempts[i-1]))
+			}
+		}
+		if len(emitted) != 1 || emitted[0] != testLogBodyReady {
+			t.Fatalf("emitted = %v", emitted)
+		}
+		// The notice names the condition once, however long the wait lasts.
+		if got := strings.Count(errOut.String(), "waiting for the stream to open"); got != 1 {
+			t.Fatalf("notice count = %d, stderr = %q", got, errOut.String())
+		}
+		if !strings.Contains(errOut.String(), "log stream unavailable: the origin did not respond in time") {
+			t.Fatalf("stderr = %q", errOut.String())
+		}
+	})
+}
+
+func TestFollowLogs_NoticesTheGatewayAgainAfterAStreamOpened(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		attempts := 0
+		unavailable := func() error {
+			return &serverlessapi.TailUnavailableError{
+				StatusCode: http.StatusBadGateway,
+				Err:        errors.New("bad gateway"),
+			}
+		}
+		tail := func(context.Context, func(serverlessapi.LogEntry) error) error {
+			attempts++
+			switch attempts {
+			case 1, 3:
+				return unavailable()
+			case 2:
+				return serverlessapi.ErrTailEnded
+			default:
+				cancel()
+				return context.Canceled
+			}
+		}
+		var errOut bytes.Buffer
+		if err := followLogs(ctx, tail, func(serverlessapi.LogEntry) error { return nil }, &errOut); err != nil {
+			t.Fatalf("followLogs: %v", err)
+		}
+		if got := strings.Count(errOut.String(), "waiting for the stream to open"); got != 2 {
+			t.Fatalf("notice count = %d, stderr = %q", got, errOut.String())
 		}
 	})
 }
