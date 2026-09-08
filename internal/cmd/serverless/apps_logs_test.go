@@ -64,7 +64,7 @@ func TestLogEntriesParams_RejectsBadFlags(t *testing.T) {
 				window: "1h",
 				limit:  101,
 			},
-			want:  "--limit must be between 1 and 100",
+			want: "--limit must be between 1 and 100",
 		},
 		"nowindow": {
 			flags: logsFlags{window: ""},
