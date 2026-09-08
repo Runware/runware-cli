@@ -29,7 +29,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsEnvCmd(logger),
 		newAppsVersionsCmd(logger),
 		newAppsBuildsCmd(logger),
-		newAppsLogsCmd(),
+		newAppsLogsCmd(logger),
 		newAppsEventsCmd(logger),
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(logger),
@@ -223,21 +223,6 @@ func newAppsEndpointsShowCmd(logger *log.Logger) *cobra.Command {
 			return output.Print(cmdutil.FormatFor(cmd), endpointResult(*ep))
 		},
 	}
-}
-
-func newAppsLogsCmd() *cobra.Command {
-	cmd := stubLeaf(
-		"logs <appId>",
-		"Show logs for a serverless application",
-		`  # show application logs (not available yet)
-  runware serverless apps logs my-app`,
-		cobra.ExactArgs(1),
-	)
-	cmd.Long = `Show application logs.
-
-This command is not implemented yet. The log-query route exists but currently
-answers 404 until a follow-up ADR; live tail is not supported.`
-	return cmd
 }
 
 func newAppsEventsCmd(logger *log.Logger) *cobra.Command {
