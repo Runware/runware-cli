@@ -29,7 +29,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsEnvCmd(logger),
 		newAppsVersionsCmd(logger),
 		newAppsBuildsCmd(logger),
-		newAppsLogsCmd(),
+		newAppsLogsCmd(logger),
 		newAppsEventsCmd(logger),
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(logger),
@@ -225,21 +225,6 @@ func newAppsEndpointsShowCmd(logger *log.Logger) *cobra.Command {
 	}
 }
 
-func newAppsLogsCmd() *cobra.Command {
-	cmd := stubLeaf(
-		"logs <appId>",
-		"Show logs for a serverless application",
-		`  # show application logs (not available yet)
-  runware serverless apps logs my-app`,
-		cobra.ExactArgs(1),
-	)
-	cmd.Long = `Show application logs.
-
-This command is not implemented yet. The log-query route exists but currently
-answers 404 until a follow-up ADR; live tail is not supported.`
-	return cmd
-}
-
 func newAppsEventsCmd(logger *log.Logger) *cobra.Command {
 	var (
 		limit     int
@@ -252,8 +237,8 @@ func newAppsEventsCmd(logger *log.Logger) *cobra.Command {
 		Short: "List events for a serverless application",
 		Long: `List deploy, scaling, audit, and error events for an application.
 
-Events are the control-plane audit trail, not worker stdout. Live log
-streaming is not available (apps logs is not implemented).`,
+Events are the control-plane audit trail, not worker stdout; use apps logs
+for worker output.`,
 		Example: `  # list events for an application
   runware serverless apps events my-app
 

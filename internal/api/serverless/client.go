@@ -114,7 +114,7 @@ type TaskStatus = gen.TaskStatus
 
 // TaskPayload is the JSON object forwarded to an endpoint handler.
 // It is the TaskInvocation.payload member, not the request body itself.
-type TaskPayload = map[string]interface{}
+type TaskPayload = map[string]any
 
 // ListTasksParams are optional filters for ListTasks.
 type ListTasksParams = gen.ListTasksParams
@@ -252,14 +252,21 @@ func (c *Client) createInner() *gen.ClientWithResponses {
 // unchanged.
 func (c *Client) innerWithMinTimeout(minTimeout time.Duration) *gen.ClientWithResponses {
 	hc, ok := c.doer.(*http.Client)
+	if !ok || hc.Timeout == 0 || hc.Timeout >= minTimeout {
+		return c.inner
+	}
+	return c.innerWithTimeout(minTimeout)
+}
+
+// innerWithTimeout returns a generated client over a clone of the HTTP client
+// with the given whole-request timeout; zero removes the deadline.
+func (c *Client) innerWithTimeout(timeout time.Duration) *gen.ClientWithResponses {
+	hc, ok := c.doer.(*http.Client)
 	if !ok {
 		return c.inner
 	}
-	if hc.Timeout == 0 || hc.Timeout >= minTimeout {
-		return c.inner
-	}
 	cloned := *hc
-	cloned.Timeout = minTimeout
+	cloned.Timeout = timeout
 	return newGeneratedClient(c.apiKey, c.baseURL, &cloned)
 }
 

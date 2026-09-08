@@ -73,7 +73,7 @@ func validateMountPath(raw string, seen []string) (string, error) {
 		return "", fmt.Errorf("volume %q: contains unsupported character %q", raw, r)
 	}
 
-	for _, component := range strings.Split(strings.TrimPrefix(mount, "/"), "/") {
+	for component := range strings.SplitSeq(strings.TrimPrefix(mount, "/"), "/") {
 		if len(component) > maxVolumePathComponent {
 			return "", fmt.Errorf("volume %q: path component exceeds %d bytes", raw, maxVolumePathComponent)
 		}

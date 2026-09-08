@@ -282,11 +282,8 @@ func buildDestPath(outputDir, field, urlStr string, idx int, multi bool) string 
 
 		// Fallback: derive extension from URL path + generic stem.
 		ext := ""
-		if dot := strings.LastIndex(u.Path, "."); dot != -1 {
-			candidate := u.Path[dot:] // e.g. ".png"
-			if len(candidate) <= 6 {  // sanity: extensions are short
-				ext = candidate
-			}
+		if _, candidate, ok := strings.CutLast(u.Path, "."); ok && len(candidate) <= 5 { // extensions are short
+			ext = "." + candidate
 		}
 		base := fieldBaseName(field)
 		if multi {
