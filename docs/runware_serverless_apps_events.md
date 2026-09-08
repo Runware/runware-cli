@@ -6,8 +6,8 @@ List events for a serverless application
 
 List deploy, scaling, audit, and error events for an application.
 
-Events are the control-plane audit trail, not worker stdout. Live log
-streaming is not available (apps logs is not implemented).
+Events are the control-plane audit trail, not worker stdout; use apps logs
+for worker output.
 
 ```
 runware serverless apps events <appId> [flags]

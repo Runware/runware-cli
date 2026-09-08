@@ -21,7 +21,11 @@ const (
 )
 
 func TestLogEntriesParams_MapsFlags(t *testing.T) {
-	params, err := logEntriesParams(testAppID, logsFlags{window: testLogWindow6h, limit: 50, cursor: testLogCursor})
+	params, err := logEntriesParams(testAppID, logsFlags{
+		window: testLogWindow6h,
+		limit:  50,
+		cursor: testLogCursor,
+	})
 	if err != nil {
 		t.Fatalf("logEntriesParams: %v", err)
 	}
@@ -43,19 +47,33 @@ func TestLogEntriesParams_OmitsUnsetOptionalFlags(t *testing.T) {
 	}
 }
 
+// badFlagsCase pairs a rejected flag set with the error text it must produce.
+type badFlagsCase struct {
+	flags logsFlags
+	want  string
+}
+
 func TestLogEntriesParams_RejectsBadFlags(t *testing.T) {
-	cases := map[string]struct {
-		window string
-		limit  int
-		want   string
-	}{
-		"window":   {window: "2h", want: "invalid --window"},
-		"limit":    {window: "1h", limit: 101, want: "--limit must be between 1 and 100"},
-		"nowindow": {window: "", want: "--window is required"},
+	cases := map[string]badFlagsCase{
+		"window": {
+			flags: logsFlags{window: "2h"},
+			want:  "invalid --window",
+		},
+		"limit": {
+			flags: logsFlags{
+				window: "1h",
+				limit:  101,
+			},
+			want:  "--limit must be between 1 and 100",
+		},
+		"nowindow": {
+			flags: logsFlags{window: ""},
+			want:  "--window is required",
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := logEntriesParams(testAppID, logsFlags{window: tc.window, limit: tc.limit})
+			_, err := logEntriesParams(testAppID, tc.flags)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
@@ -65,12 +83,20 @@ func TestLogEntriesParams_RejectsBadFlags(t *testing.T) {
 
 func TestFormatLogLine(t *testing.T) {
 	level := "info"
-	got := formatLogLine(serverlessapi.LogEntry{Time: 1750000000, Level: &level, Body: testLogBodyReady})
+	got := formatLogLine(serverlessapi.LogEntry{
+		Time:  1750000000,
+		Level: &level,
+		Body:  testLogBodyReady,
+	})
 	if got != "2025-06-15T15:06:40Z INFO  ready" {
 		t.Errorf("line = %q", got)
 	}
 	fields := map[string]string{severityField: "ERROR"}
-	got = formatLogLine(serverlessapi.LogEntry{Time: 1750000000, Fields: &fields, Body: "from fields"})
+	got = formatLogLine(serverlessapi.LogEntry{
+		Time:   1750000000,
+		Fields: &fields,
+		Body:   "from fields",
+	})
 	if got != "2025-06-15T15:06:40Z ERROR from fields" {
 		t.Errorf("line = %q", got)
 	}
@@ -84,13 +110,23 @@ func TestPrintLogPage_TablePrintsOldestFirstAndCursorHint(t *testing.T) {
 	next := testLogCursor
 	page := serverlessapi.LogEntryPage{
 		Entries: []serverlessapi.LogEntry{
-			{Time: 1750000001, Body: testLogBodySlow},
-			{Time: 1750000000, Body: testLogBodyReady},
+			{
+				Time: 1750000001,
+				Body: testLogBodySlow,
+			},
+			{
+				Time: 1750000000,
+				Body: testLogBodyReady,
+			},
 		},
 		NextCursor: &next,
 	}
 	var out, errOut bytes.Buffer
-	if err := printLogPage(output.FormatTable, page, &out, &errOut, extraLogsCursorFlags(logsFlags{window: testLogWindow6h, limit: 50})); err != nil {
+	flags := logsFlags{
+		window: testLogWindow6h,
+		limit:  50,
+	}
+	if err := printLogPage(output.FormatTable, page, &out, &errOut, extraLogsCursorFlags(flags)); err != nil {
 		t.Fatalf("printLogPage: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
@@ -107,10 +143,17 @@ func TestLogEmitter_JSONWritesOneObjectPerLine(t *testing.T) {
 	var out bytes.Buffer
 	emit := logEmitter(output.FormatJSON, &out)
 	level := "warn"
-	if err := emit(serverlessapi.LogEntry{Time: 1, Level: &level, Body: testLogBodySlow}); err != nil {
+	if err := emit(serverlessapi.LogEntry{
+		Time:  1,
+		Level: &level,
+		Body:  testLogBodySlow,
+	}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	if err := emit(serverlessapi.LogEntry{Time: 2, Body: testLogBodyReady}); err != nil {
+	if err := emit(serverlessapi.LogEntry{
+		Time: 2,
+		Body: testLogBodyReady,
+	}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
@@ -205,5 +248,26 @@ func TestLogsCmd_RejectsCursorWithFollow(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "--cursor cannot be combined with --follow") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPrintLogPage_LeavesTheCallerPageUntouched(t *testing.T) {
+	page := serverlessapi.LogEntryPage{
+		Entries: []serverlessapi.LogEntry{
+			{
+				Time: 2,
+				Body: testLogBodySlow,
+			},
+			{
+				Time: 1,
+				Body: testLogBodyReady,
+			},
+		},
+	}
+	if err := printLogPage(output.FormatTable, page, &bytes.Buffer{}, &bytes.Buffer{}, ""); err != nil {
+		t.Fatalf("printLogPage: %v", err)
+	}
+	if page.Entries[0].Body != testLogBodySlow {
+		t.Fatalf("caller page was reordered: %#v", page.Entries)
 	}
 }
