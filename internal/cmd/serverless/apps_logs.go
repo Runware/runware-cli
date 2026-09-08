@@ -111,7 +111,7 @@ entry is printed as one JSON object per line.`,
 	}
 
 	cmd.Flags().StringVar(&flags.window, "window", "1h", "Time window for the recent page ("+logWindows+")")
-	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of entries on the recent page (1-100)")
+	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of entries on the recent page (1-100, default 20)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	cmd.Flags().BoolVarP(&flags.follow, "follow", "f", false, "Stream new log entries until interrupted")
 	return cmd

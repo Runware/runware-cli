@@ -44,7 +44,7 @@ runware serverless apps logs <appId> [flags]
       --cursor string   Pagination cursor from a previous nextCursor
   -f, --follow          Stream new log entries until interrupted
   -h, --help            help for logs
-      --limit int       Maximum number of entries on the recent page (1-100)
+      --limit int       Maximum number of entries on the recent page (1-100, default 20)
       --window string   Time window for the recent page (1h, 6h, 24h, 7d, or 30d) (default "1h")
 ```
 
