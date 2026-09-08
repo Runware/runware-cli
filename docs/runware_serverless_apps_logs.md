@@ -9,10 +9,12 @@ Show recent application logs, oldest first, and optionally follow new ones.
 The recent page is read from the runtime log query over --window (default 1h),
 and --limit and --cursor page through it. With --follow the command prints the
 recent page, then streams new entries until interrupted; the stream reconnects
-when the server ends it. The live stream has no window, so --window, --limit
-and --cursor apply to the recent page only, and --cursor cannot be combined
-with --follow. Entries written between the recent page and the start of the
-stream, or while the stream reconnects, can be missed or repeated.
+when the server ends it, and waits for the stream to open when a gateway
+answers first, which is what an application that has written nothing does. The
+live stream has no window, so --window, --limit and --cursor apply to the
+recent page only, and --cursor cannot be combined with --follow. Entries
+written between the recent page and the start of the stream, or while the
+stream reconnects, can be missed or repeated.
 
 In table format each entry is one line: time, level and message. In json or
 yaml format the recent page is printed as one document; with --follow every

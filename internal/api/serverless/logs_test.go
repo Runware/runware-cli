@@ -247,6 +247,53 @@ func TestTailLogs_NonStreamStatusIsAProblem(t *testing.T) {
 	}
 }
 
+func TestTailLogs_GatewayStatusIsRetryable(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				// What the edge answers with: plain text, not a problem document.
+				w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+				w.WriteHeader(status)
+				_, _ = fmt.Fprintf(w, "error code: %d", status)
+			}))
+			defer srv.Close()
+
+			c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+			err := c.TailLogs(context.Background(), LogQueryRuntimeTail, testAppID, func(LogEntry) error { return nil })
+			unavailable, ok := errors.AsType[*TailUnavailableError](err)
+			if !ok || unavailable.StatusCode != status {
+				t.Fatalf("err = %#v", err)
+			}
+			if !strings.HasPrefix(unavailable.Error(), "log stream unavailable: ") {
+				t.Fatalf("message = %q", unavailable.Error())
+			}
+			re, ok := errors.AsType[*transport.RunwareError](err)
+			if !ok || re.StatusCode != status {
+				t.Fatalf("unwrapped err = %#v", err)
+			}
+		})
+	}
+}
+
+func TestTailLogs_NonGatewayServerErrorStaysFatal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", testLogsProblemJSON)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"title":"Internal Server Error","status":500,"detail":"the log store failed"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	err := c.TailLogs(context.Background(), LogQueryRuntimeTail, testAppID, func(LogEntry) error { return nil })
+	if _, ok := errors.AsType[*TailUnavailableError](err); ok {
+		t.Fatalf("500 must not be retryable, err = %#v", err)
+	}
+	re, ok := errors.AsType[*transport.RunwareError](err)
+	if !ok || re.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("err = %#v", err)
+	}
+}
+
 func TestTailLogs_RejectsNonEventStreamBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

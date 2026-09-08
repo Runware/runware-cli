@@ -20,8 +20,9 @@ import (
 )
 
 // tailReconnectDelay separates two connection attempts after the server
-// reports a stream failure, or after a clean end of a stream that lived
-// shorter than this, so a server that closes at once is not hammered.
+// reports a stream failure, after a gateway answers before the stream opens,
+// or after a clean end of a stream that lived shorter than this, so a server
+// that closes at once is not hammered.
 const tailReconnectDelay = 2 * time.Second
 
 // logWindows lists the accepted --window values, in the order they are documented.
@@ -50,10 +51,12 @@ func newAppsLogsCmd(logger *log.Logger) *cobra.Command {
 The recent page is read from the runtime log query over --window (default 1h),
 and --limit and --cursor page through it. With --follow the command prints the
 recent page, then streams new entries until interrupted; the stream reconnects
-when the server ends it. The live stream has no window, so --window, --limit
-and --cursor apply to the recent page only, and --cursor cannot be combined
-with --follow. Entries written between the recent page and the start of the
-stream, or while the stream reconnects, can be missed or repeated.
+when the server ends it, and waits for the stream to open when a gateway
+answers first, which is what an application that has written nothing does. The
+live stream has no window, so --window, --limit and --cursor apply to the
+recent page only, and --cursor cannot be combined with --follow. Entries
+written between the recent page and the start of the stream, or while the
+stream reconnects, can be missed or repeated.
 
 In table format each entry is one line: time, level and message. In json or
 yaml format the recent page is printed as one document; with --follow every
@@ -187,10 +190,12 @@ func logEmitter(format output.Format, out io.Writer) func(serverlessapi.LogEntry
 }
 
 // followLogs keeps a live stream open until ctx is cancelled. A clean end of a
-// long-lived stream reconnects at once; a reported stream failure, or a clean
-// end of a short-lived stream, reconnects after tailReconnectDelay. Any other
-// error is returned. Cancellation is a normal exit.
+// long-lived stream reconnects at once; a reported stream failure, a gateway
+// answering before the stream opens, or a clean end of a short-lived stream,
+// reconnects after tailReconnectDelay. Any other error is returned.
+// Cancellation is a normal exit.
 func followLogs(ctx context.Context, tail logTailer, emit func(serverlessapi.LogEntry) error, errOut io.Writer) error {
+	reportedUnavailable := false
 	for {
 		started := time.Now()
 		err := tail(ctx, emit)
@@ -198,10 +203,21 @@ func followLogs(ctx context.Context, tail logTailer, emit func(serverlessapi.Log
 			return nil //nolint:nilerr // Cancellation is the normal way a follow ends.
 		}
 		_, streamFailed := errors.AsType[*serverlessapi.TailStreamError](err)
+		unavailable, gatewayAnswered := errors.AsType[*serverlessapi.TailUnavailableError](err)
 		switch {
 		case streamFailed:
+			reportedUnavailable = false
 			_, _ = fmt.Fprintf(errOut, "%v; reconnecting\n", err)
+		case gatewayAnswered:
+			// Every attempt on an app that has written nothing answers this
+			// way, so the notice would repeat for as long as the app stays
+			// quiet. Say it once, then wait in silence for the stream to open.
+			if !reportedUnavailable {
+				reportedUnavailable = true
+				_, _ = fmt.Fprintf(errOut, "%v; waiting for the stream to open\n", unavailable)
+			}
 		case errors.Is(err, serverlessapi.ErrTailEnded):
+			reportedUnavailable = false
 			if time.Since(started) >= tailReconnectDelay {
 				continue
 			}
