@@ -90,6 +90,9 @@ entry is printed as one JSON object per line.`,
 			page, err := client.GetLogEntries(cmd.Context(), serverlessapi.LogQueryRuntime, params)
 			spin.Stop()
 			if err != nil {
+				if flags.follow && cmd.Context().Err() != nil {
+					return nil //nolint:nilerr // Ctrl-C ends a follow normally, before the stream as well as during it.
+				}
 				return err
 			}
 
@@ -146,14 +149,16 @@ func extraLogsCursorFlags(flags logsFlags) string {
 	return strings.Join(parts, " ")
 }
 
-// printLogPage prints one page: as a document in json or yaml, as one line
-// per entry, oldest first, in table format.
+// printLogPage prints one page, oldest first: as a document in json or yaml,
+// as one line per entry in table format.
 func printLogPage(format output.Format, page serverlessapi.LogEntryPage, out, errOut io.Writer, extraCursorFlags string) error {
+	page.Entries = slices.Clone(page.Entries)
+	slices.Reverse(page.Entries)
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
 		return output.Print(format, page)
 	default:
-		for _, entry := range slices.Backward(page.Entries) {
+		for _, entry := range page.Entries {
 			if err := writeLogLine(out, entry); err != nil {
 				return err
 			}
