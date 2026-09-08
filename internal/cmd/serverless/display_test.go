@@ -2,6 +2,7 @@ package serverless
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -400,13 +401,7 @@ func TestEnvVarsResult_ShowsValue(t *testing.T) {
 		envVarResult(ev),
 	}
 	for _, table := range tables {
-		hasValue := false
-		for _, h := range table.Headers() {
-			if h == colValue {
-				hasValue = true
-				break
-			}
-		}
+		hasValue := slices.Contains(table.Headers(), colValue)
 		if !hasValue {
 			t.Fatalf("%T table must include a Value column: %v", table, table.Headers())
 		}

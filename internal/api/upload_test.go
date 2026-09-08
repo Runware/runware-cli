@@ -275,8 +275,7 @@ func TestModelUpload_StreamErrorPropagated(t *testing.T) {
 	}
 
 	_, err := NewClient(mock, slog.Default()).ModelUpload(context.Background(), minimalUploadRequest(), ModelUploadOptions{})
-	var re *transport.RunwareError
-	if !errors.As(err, &re) {
+	if _, ok := errors.AsType[*transport.RunwareError](err); !ok {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
 	}
 }

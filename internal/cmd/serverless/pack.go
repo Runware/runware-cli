@@ -297,7 +297,7 @@ func readIgnoreFile(path string) ([]string, error) {
 	// business; ParsePattern handles both, and a pattern that begins with an
 	// escaped `#` must not be mistaken for one here.
 	lines := []string{}
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		lines = append(lines, strings.TrimSuffix(line, "\r"))
 	}
 	return lines, nil

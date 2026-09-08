@@ -114,7 +114,7 @@ type TaskStatus = gen.TaskStatus
 
 // TaskPayload is the JSON object forwarded to an endpoint handler.
 // It is the TaskInvocation.payload member, not the request body itself.
-type TaskPayload = map[string]interface{}
+type TaskPayload = map[string]any
 
 // ListTasksParams are optional filters for ListTasks.
 type ListTasksParams = gen.ListTasksParams

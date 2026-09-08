@@ -1,6 +1,6 @@
 module github.com/runware/runware-cli
 
-go 1.26.4
+go 1.27.1
 
 require (
 	github.com/briandowns/spinner v1.23.2
