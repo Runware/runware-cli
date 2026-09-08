@@ -64,3 +64,15 @@ func TestReadSSEEvents_StopsOnHandlerError(t *testing.T) {
 		t.Fatalf("err=%v calls=%d", err, calls)
 	}
 }
+
+func TestReadSSEEvents_RejectsAnEventLargerThanTheCapAcrossLines(t *testing.T) {
+	line := "data: " + strings.Repeat("x", 1<<20) + "\n"
+	stream := strings.Repeat(line, maxSSEFrameBytes>>20+1) + "\n"
+	err := readSSEEvents(strings.NewReader(stream), func(sseEvent) error {
+		t.Fatal("an oversized event must not reach the handler")
+		return nil
+	})
+	if !errors.Is(err, ErrSSEEventTooLarge) {
+		t.Fatalf("err = %v", err)
+	}
+}

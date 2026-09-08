@@ -2,13 +2,19 @@ package serverless
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
-// maxSSEFrameBytes bounds one event; the server caps its frames at the same size.
+// maxSSEFrameBytes bounds one event, across all of its lines; the server caps
+// its frames at the same size.
 const maxSSEFrameBytes = 8 << 20
+
+// ErrSSEEventTooLarge reports an event whose lines together exceed maxSSEFrameBytes.
+var ErrSSEEventTooLarge = errors.New("log stream event exceeds " + strconv.Itoa(maxSSEFrameBytes) + " bytes")
 
 // The named events that end a log stream. Every other event carries an entry.
 const (
@@ -33,6 +39,7 @@ func readSSEEvents(r io.Reader, handle func(sseEvent) error) error {
 	var (
 		ev      sseEvent
 		data    []string
+		size    int
 		pending bool
 	)
 	dispatch := func() error {
@@ -41,7 +48,7 @@ func readSSEEvents(r io.Reader, handle func(sseEvent) error) error {
 		}
 		ev.Data = strings.Join(data, "\n")
 		err := handle(ev)
-		ev, data, pending = sseEvent{}, nil, false
+		ev, data, size, pending = sseEvent{}, nil, 0, false
 		return err
 	}
 
@@ -55,6 +62,10 @@ func readSSEEvents(r io.Reader, handle func(sseEvent) error) error {
 		case strings.HasPrefix(line, ":"):
 			// Comment: keepalive.
 		default:
+			size += len(line)
+			if size > maxSSEFrameBytes {
+				return ErrSSEEventTooLarge
+			}
 			field, value, _ := strings.Cut(line, ":")
 			value = strings.TrimPrefix(value, " ")
 			switch field {
