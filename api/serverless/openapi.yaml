@@ -52,7 +52,7 @@ tags:
   - name: EnvironmentVariables
     description: Plain-text environment variables scoped to an app
   - name: Observability
-    description: Usage, events and errors
+    description: Usage, metrics, events, and logs
   - name: Tenancy
     description: >
       Platform-only organisation tenancy (ADR-019). Restricted to the Runware
@@ -96,7 +96,9 @@ paths:
       summary: Add a GPU type to the catalogue
       description: >
         Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform
-        organization. The `id` (catalogue code) is immutable and remains reserved after retirement.
+        organization. The `id` (catalogue code) is immutable and remains reserved after retirement:
+        a retired code answers `409` here and is brought back with
+        `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
       operationId: createGpuType
       requestBody:
         required: true
@@ -194,13 +196,48 @@ paths:
       description: >
         Soft-deletes a GPU type while preserving its code and price history. Restricted to the
         Runware platform organization. Returns `409` if a worker configuration or GPU pool still
-        references the code. Retiring an already retired code returns `404`.
+        references the code. Retiring an already retired code returns `404`. Reversible with
+        `POST /v1/gpu-types/{gpuTypeId}/restore`.
       operationId: deleteGpuType
       parameters:
         - $ref: '#/components/parameters/GpuTypeId'
       responses:
         '204':
           description: GPU type retired
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/gpu-types/{gpuTypeId}/restore:
+    post:
+      tags:
+        - Compute
+      summary: Restore a retired GPU type
+      description: >
+        Returns a retired GPU type to the catalogue under the same code, with its price history
+        intact, so the reserved code is usable again for the hardware it already described.
+        Restricted to the Runware platform organization. A code that is not retired returns
+        `409`; a code no entry has ever held returns `404`. Whether customers can then select
+        the type still depends on pool admission, exactly as for any active type.
+      operationId: restoreGpuType
+      parameters:
+        - $ref: '#/components/parameters/GpuTypeId'
+      responses:
+        '200':
+          description: Restored GPU type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuType'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -387,11 +424,14 @@ paths:
         answered with the task it already names rather than starting a second one, so the
         `202` can carry a task that has already finished: read its `status` instead of
         assuming `pending`, and note it may name a different `appId`. Apps in
-        `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
-        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An
-        organisation whose serverless tenancy is revoked, or has no tenancy receipt
-        at all, returns `403 Forbidden`, distinguishing that from an app that does
-        not exist. An organisation whose tenancy is still being provisioned
+        `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an
+        `initializing` app whose first rollout has not produced a version returns
+        `409 Conflict`, and an `active` app the platform has observed to have no workload
+        able to serve returns `503 Service Unavailable` with no task minted. `stopped`,
+        `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return
+        `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no
+        tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app
+        that does not exist. An organisation whose tenancy is still being provisioned
         returns `503 Service Unavailable` instead — that state is retryable, not a
         revocation, and clears once provisioning finishes.
         Endpoint membership is checked against the active version's endpoint set before
@@ -440,11 +480,14 @@ paths:
         `appId` on a resubmission just as the `200` does. Poll
         `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot
         attribute to an accepted task fails instead, with no task to poll. Apps in
-        `initializing`, `active`, or `stopping` accept invocation. `stopped`, `deleting`, and
-        `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An
-        organisation whose serverless tenancy is revoked, or has no tenancy receipt
-        at all, returns `403 Forbidden`, distinguishing that from an app that does
-        not exist. An organisation whose tenancy is still being provisioned
+        `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an
+        `initializing` app whose first rollout has not produced a version returns
+        `409 Conflict`, and an `active` app the platform has observed to have no workload
+        able to serve returns `503 Service Unavailable` with no task minted. `stopped`,
+        `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return
+        `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no
+        tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app
+        that does not exist. An organisation whose tenancy is still being provisioned
         returns `503 Service Unavailable` instead — that state is retryable, not a
         revocation, and clears once provisioning finishes. Endpoint
         membership is checked against the active version's endpoint set before the task
@@ -765,10 +808,12 @@ paths:
         a container document's parser refused it, 422 where it parsed and broke
         a rule) leaves the app on its current version and writes no version row
         and no build row. After the builder accepts, version N+1 is recorded
-        even if a concurrent secret deactivation or env/secret collision
-        prevents this request's env/secrets overlay; in that case the previous
-        environmentVariables and attachment set stay in place and are what the
-        new version snapshots.
+        even if a concurrent secret deactivation, an env/secret collision, or
+        the 25-deployment attachment ceiling below prevents this request's
+        env/secrets overlay; in that case the previous environmentVariables
+        and attachment set stay in place and are what the new version
+        snapshots, and the `422` the standalone case below returns does not
+        apply here — the request still succeeds.
 
         `environmentVariables` replaces the whole set: a key absent from the map
         is deleted, and a null value omits that key from the new set. The
@@ -777,7 +822,9 @@ paths:
         `secrets` replaces the whole attachment set. An attachment absent from
         the array is detached. Injected names must not collide with a plain
         environment variable on the app; the combined set of plain variables and
-        attachments is capped at 100. This is a control-plane record only —
+        attachments is capped at 100, and each individual secret can be
+        attached to at most 25 deployments total — an entry that would push a
+        secret past that returns `422`. This is a control-plane record only —
         secret values do not reach a pod, and the version snapshot carries no
         secrets — so a secrets-only change does not roll the workload.
 
@@ -939,7 +986,10 @@ paths:
         - $ref: '#/components/parameters/SourceUploadId'
       responses:
         '204':
-          description: Source upload aborted
+          description: |
+            Source upload aborted. The upload can no longer supply a source, whether or
+            not its staging object went with it: a storage failure there leaves the object
+            to server-side cleanup rather than to the client.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -952,8 +1002,6 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
-        '502':
-          $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -1556,13 +1604,28 @@ paths:
       summary: List workers
       description: >
         Returns a newest-first page of workers observed for the app (including
-        terminal `stopped` rows until purged). Optional `state` and `status` narrow the
-        page; a cursor must be replayed under the same filters it was issued with.
+        terminal `stopped` rows until purged). Omitted `versionId` scopes the page
+        to the app's `activeVersionId`. An app with no active version therefore
+        answers an empty default page — not that it has no workers, only that
+        none are pinned. Optional `state` and `status` narrow the page further;
+        a cursor must be replayed under the same filters it was issued with.
       operationId: listWorkers
       parameters:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
+        - name: versionId
+          in: query
+          required: false
+          description: >
+            Scope the page to one version. The default is the app's `activeVersionId`.
+            When that field is unset the default page is empty: the app has no
+            active version, not that it has no workers. Send `all` (any case) to
+            include every version. An empty value is refused. A cursor must be
+            replayed under the same version scope it was issued with.
+          schema:
+            type: string
+            minLength: 1
         - name: state
           in: query
           required: false
@@ -1723,6 +1786,13 @@ paths:
       tags:
         - Secrets
       summary: Update a secret
+      description: >
+        Re-encrypts the value under the same name (no rename). Rolls every
+        live deployment that attaches this secret in place so a running
+        worker picks up the new value. If a rollout is already in progress
+        when this commits, this change is not guaranteed to land on it —
+        it reaches the worker on a later redeploy instead. A deployment
+        that is not live picks it up on its next deploy for another reason.
       operationId: updateSecret
       parameters:
         - $ref: '#/components/parameters/SecretName'
@@ -1757,19 +1827,19 @@ paths:
       summary: Delete a secret
       description: >
         Soft-deletes a secret: marks the row `pending_destroy` and bumps
-        revision. This API does not hard-delete the row. A background sweep
-        removes the row and releases the name once no running worker can still
-        hold the value — the value travels inside the worker's own environment,
-        which is fixed when the container starts, so a worker keeps it until it
-        stops. There is no deadline on that wait. Returns `409` while any
-        app still attaches it — cascade-detach is not performed here;
-        detach each holder with
-        `DELETE .../apps/{id}/secrets/{name}` first. Attach and detach change
-        the secret set for the next rollout. Neither operation rolls workers.
-        While the row remains `pending_destroy` the name stays reserved, so
-        create may return `409` even though list no longer shows the secret.
-        Retries on an already-pending name are safe when no attachments remain
-        (`204`); they still return `409` while attached.
+        revision. This API does not hard-delete the row. Returns `409` while
+        any app still attaches it — cascade-detach is not performed here;
+        detach each holder with `DELETE .../apps/{id}/secrets/{name}` first,
+        which rolls the deployments it names in place. A background sweep
+        removes the row and releases the name once no running worker can
+        still hold the value, rather than assuming every roll a detach
+        started actually landed — a deployment that was not live when
+        detached has nothing to roll until it resumes, so the sweep is the
+        actual backstop, not the detach. While the row remains
+        `pending_destroy` the name stays reserved, so create may return `409`
+        even though list no longer shows the secret. Retries on an
+        already-pending name are safe when no attachments remain (`204`);
+        they still return `409` while attached.
       operationId: deleteSecret
       parameters:
         - $ref: '#/components/parameters/SecretName'
@@ -1902,10 +1972,15 @@ paths:
       summary: Attach a secret to an app
       description: >
         Records that an organisation secret is attached to an app under a
-        resolved env-var name. The next rollout injects the value into the
-        worker. This operation does not roll workers. Returns `409` if the
-        secret is already attached, or if another attach would use the same
-        env-var name.
+        resolved env-var name, and rolls the app's live deployment in place
+        so a running worker picks up the value without waiting for an
+        unrelated deploy. If a rollout is already in progress when this
+        commits, this attach is not guaranteed to land on it — it reaches
+        the worker on a later redeploy instead. A deployment that is not
+        live records the attachment only — the next resume reads the
+        attach set fresh.
+        Returns `409` if the secret is already attached, or if another
+        attach would use the same env-var name.
 
         The resolved name (`envVarName`, or `secretName` when omitted) must not
         already exist as a plain environment variable on this app
@@ -1918,6 +1993,11 @@ paths:
         environment variables plus attached secrets — the same combined ceiling
         as create and the single-key env-var route. Attaching when the
         app is already at that limit returns `422`.
+
+        A secret can be attached to at most 25 deployments — rolling every
+        attached deployment is what an update or detach costs, so the ceiling
+        bounds that cost rather than the app side of the binding. Attaching
+        past it returns `422`.
       operationId: attachAppSecret
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1951,8 +2031,12 @@ paths:
         - Secrets
       summary: Detach a secret from an app
       description: >
-        Removes the attachment from the next rollout. This operation does not
-        roll workers. Existing workers keep the value until they stop.
+        Removes the attachment and rolls the app's live deployment in place
+        so a running worker stops receiving the value. If a rollout is
+        already in progress when this commits, this detach is not
+        guaranteed to land on it — the worker stops receiving the value on
+        a later redeploy instead. A deployment that is not live has the
+        removal recorded only — there is nothing to roll until it resumes.
       operationId: detachAppSecret
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2131,6 +2215,57 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /v1/apps/{appId}/errors:
+    get:
+      tags:
+        - Observability
+      summary: List request errors for an app
+      description: >
+        One page of failed inference requests for this app, newest first.
+        Omit `statusClass` for both 4xx and 5xx. The cursor is opaque and is
+        only valid with the same `window` and `statusClass` it was issued under.
+      operationId: listAppErrors
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/AppErrorWindow'
+        - $ref: '#/components/parameters/AppErrorStatusClass'
+      responses:
+        '200':
+          description: A page of errors
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
   /v1/usage:
     get:
       tags:
@@ -2247,24 +2382,37 @@ paths:
         series rather than an error.
 
 
-        `apps_request_volume` returns one series per app: 24 hourly request counts over
-        `window=24h` (`step_s` 3600, unit `requests`). Repeat `appId` once per id on the
-        current list page to pad idle apps with all-null series, in request order. Hours
-        that started before that live app's `createdAt` are null, so a reused app id does
-        not inherit the previous generation's traffic still in the 24h store. The same
-        `appId` pad applies to the list-scoped `apps_error_volume` and
-        `apps_request_duration` queries. Other queries reject `appId`. Other windows
-        are not available for these queries.
+        `apps_request_volume` returns one series per app: 96 quarter-hour request counts
+        over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on
+        the current list page to pad idle apps with all-null series, in request order.
+        A series is named for the live app behind it, so a reused app id reports its own
+        generation's traffic and not the one before it. The same `appId` pad applies to
+        the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other
+        queries reject `appId`. Other windows are not available for these queries.
 
 
-        `endpoints_request_volume` is the endpoints-list counterpart: 24 hourly request
-        counts per endpoint over `window=24h` (`step_s` 3600, unit `requests`). It
-        requires `deployment` (the public app id, rewritten to the live deployment
+        `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour
+        request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`).
+        It requires `deployment` (the public app id, rewritten to the live deployment
         UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to
-        pad idle endpoints with all-null series, in request order. Hours that started
+        pad idle endpoints with all-null series, in request order. Buckets that started
         before that endpoint row's `createdAt` are null, so a removed-then-readded path
         does not inherit the previous row's traffic. Other queries reject `endpointId`.
         Other windows are not available for this query.
+
+
+        Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and
+        all requiring `deployment` (the public app id, rewritten to the live deployment
+        UUID): `app_traffic_24h` returns `requests`, `client_errors` (4xx) and
+        `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns
+        `startup`, `execution` and `idle` as worker-seconds, whose three values in a
+        bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns
+        `cold_starts` as a count. They report counts and totals rather than rates or
+        ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a
+        24h ratio is one summed axis over another — summing first and dividing once,
+        because averaging a per-bucket ratio across the axis does not give the 24h
+        ratio. These queries are absent from `listInsightsQueries`: they back the
+        overview rather than the Metrics tab. Other windows are not available for them.
       operationId: getMetricSeries
       parameters:
         - $ref: '#/components/parameters/QueryId'
@@ -2309,12 +2457,8 @@ paths:
       summary: Read one page of a named log query
       description: >
         Returns one page of log entries, newest first, with an opaque cursor for the next
-        page when one exists.
-
-
-        No query is registered yet: live tail, retention tiers and log quotas are decided
-        in a follow-up ADR, so every request currently answers `404`. The route exists so
-        the contract is fixed before the templates land.
+        page when one exists. Query ids and their supported selectors are listed by the
+        insights catalogue.
       operationId: getLogEntries
       parameters:
         - $ref: '#/components/parameters/QueryId'
@@ -2342,6 +2486,51 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /v1/logs/queries/{queryId}/tail:
+    get:
+      tags:
+        - Observability
+      summary: Follow a named application log query
+      description: >
+        Streams new application log entries as Server-Sent Events. The stream sends
+        keepalive comments while quiet and ends with an `end` event when its connection
+        lifetime expires or the service shuts down. Clients should reconnect after an
+        `end` event. Use the `runtime_tail` query id; queries that sort or aggregate are
+        rejected because they cannot be followed live.
+      operationId: tailLogEntries
+      parameters:
+        - $ref: '#/components/parameters/QueryId'
+        - $ref: '#/components/parameters/RequiredLogDeployment'
+      responses:
+        '200':
+          description: >
+            Live SSE log stream. Default message events carry one `LogEntry` JSON object.
+            Named `end` and `error` events terminate the stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
         '502':
           $ref: '#/components/responses/BadGateway'
         '503':
@@ -2481,6 +2670,13 @@ components:
       description: Narrow to one app.
       schema:
         $ref: '#/components/schemas/AppId'
+    RequiredLogDeployment:
+      name: deployment
+      in: query
+      required: true
+      description: App whose new log entries are streamed.
+      schema:
+        $ref: '#/components/schemas/AppId'
     SelectorEndpoint:
       name: endpoint
       in: query
@@ -2500,6 +2696,26 @@ components:
       schema:
         type: string
         enum: ['2xx', '4xx', '5xx']
+    AppErrorWindow:
+      name: window
+      in: query
+      required: false
+      description: >
+        The range to search. Same closed ladder as the metrics queries. Defaults
+        to the last 24 hours.
+      schema:
+        type: string
+        enum: [1h, 6h, 24h, 7d, 30d]
+        default: 24h
+    AppErrorStatusClass:
+      name: statusClass
+      in: query
+      required: false
+      description: >
+        Narrow to one error class. Omit for both 4xx and 5xx.
+      schema:
+        type: string
+        enum: [4xx, 5xx]
     SelectorRegion:
       name: region
       in: query
@@ -2517,15 +2733,16 @@ components:
       style: form
       explode: true
       description: >
-        Restrict expand-by-`app_id` queries (`apps_request_volume`,
+        Restrict the list-scoped queries (`apps_request_volume`,
         `apps_error_volume`, `apps_request_duration`) to these app ids: one series
         per id, in request order, with all-null series for apps that had no samples.
-        Values are hourly over `window=24h`. Hours that started before that live
-        app's `createdAt` are null. Repeat the parameter once per id on the current
-        list page (at most 100, matching `listApps`). Omit it to receive every app
-        in the organisation that had data, unless that set is larger than this
-        query will expand: then the call is a `422` on `appId` and the list page
-        should name the apps it is showing. Other queries reject this parameter.
+        Values are quarter-hourly over `window=24h`. An id with no live app is
+        dropped rather than refused: a deleted app has no traffic to pad. Repeat the
+        parameter once per id on the current list page (at most 100, matching
+        `listApps`). Omit it to receive every app in the organisation that had data,
+        unless that set is larger than this query will expand: then the call is a
+        `422` on `appId` and the list page should name the apps it is showing. Other
+        queries reject this parameter.
       schema:
         type: array
         maxItems: 100
@@ -2540,8 +2757,8 @@ components:
       description: >
         Restrict `endpoints_request_volume` to these endpoint ids: one series per id,
         in request order, with all-null series for endpoints that had no traffic.
-        Values are hourly request counts over `window=24h`. Hours that started
-        before that endpoint row's `createdAt` are null. Repeat the parameter once
+        Values are quarter-hourly request counts over `window=24h`. Buckets that
+        started before that endpoint row's `createdAt` are null. Repeat the parameter once
         per id on the current list page (at most 100, matching `listEndpoints`).
         Omit it to receive every endpoint on the selected app that had data, unless
         that set is larger than this query will expand: then the call is a `422`
@@ -2638,6 +2855,12 @@ components:
           schema:
             type: integer
             format: int32
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    InternalServerError:
+      description: Unexpected server error
       content:
         application/problem+json:
           schema:
@@ -2864,13 +3087,14 @@ components:
     AppName:
       type: string
       description: >
-        Mutable display name. Must contain at least one non-whitespace character:
-        it is what the console renders and what `sort=name` orders on, and it is
-        not required to be unique. Unlike `appId` the pattern is
-        unanchored, so interior spaces are allowed — only an entirely blank name
-        is rejected.
+        Mutable display name. Must start and end with a non-whitespace
+        character: it is what the console renders and what `sort=name` orders
+        on, and it is not required to be unique. Interior spaces are allowed
+        ("Sentiment Analysis"); leading or trailing whitespace is rejected,
+        because a padded name is indistinguishable from its trimmed form in
+        the console and breaks a name-confirm delete.
       minLength: 1
-      pattern: '\S'
+      pattern: '^\S(.*\S)?$'
 
     EnvironmentVariableName:
       type: string
@@ -3419,8 +3643,8 @@ components:
       additionalProperties: false
       description: >
         Observed state for one app at `calculatedAt`. Desired worker scale remains
-        in `configuration`. Worker and GPU counts are always present; traffic and
-        duration fields are omitted when their backing data is unavailable.
+        in `configuration`. Worker and GPU counts are always present; traffic, duration,
+        and queue fields are omitted when their backing data is unavailable.
       required:
         - activeWorkers
         - provisionedGpuCount
@@ -3467,6 +3691,14 @@ components:
             (all requests; the duration histogram has no status class). Omitted
             when metrics cannot be read, when the app had no requests, or when
             the duration series has no samples for the app in the window.
+        queueDepth:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Ready plus unacknowledged messages on this app's live inference
+            queue. Omitted when the app is not live or the gauge cannot be
+            read. Zero when the queue is live and empty.
 
     App:
       type: object
@@ -3592,7 +3824,10 @@ components:
             does not create one, and an unknown or inactive name returns `404`.
             Shape matches `POST /apps/{appId}/secrets` so create and attach
             share one contract. Each injected name must not collide with a key
-            in `environmentVariables` — see `SecretAttach`.
+            in `environmentVariables` — see `SecretAttach`. Each secret can
+            also be attached to at most 25 deployments total, shared with every
+            other route that attaches it; an entry that would push a secret
+            past that returns `422`.
           items:
             $ref: '#/components/schemas/SecretAttach'
         environmentVariables:
@@ -3657,8 +3892,8 @@ components:
             - $ref: '#/components/schemas/AppName'
           description: >
             Mutable display name; does not affect app identity or routing.
-            Omit to leave unchanged — an explicit blank value is rejected, not
-            treated as a clear.
+            Omit to leave unchanged — an explicit blank or padded value is
+            rejected, not treated as a clear.
         configuration:
           $ref: '#/components/schemas/WorkerConfigPatch'
         appSource:
@@ -3688,7 +3923,9 @@ components:
             only — secret values do not reach a pod, and the version snapshot
             carries no secrets — so this field does not roll the workload.
             An app holds at most 100 environment bindings in total; this
-            array cannot exceed that ceiling on its own.
+            array cannot exceed that ceiling on its own. Each individual
+            secret can also be attached to at most 25 deployments total,
+            shared with every other route that attaches it.
           maxItems: 100
           items:
             $ref: '#/components/schemas/SecretAttach'
@@ -4448,23 +4685,33 @@ components:
           type: integer
           format: int32
           minimum: 0
-          description: GPUs attached to this worker at observation time.
+          description: >
+            GPUs attached to this worker at observation time. Zero means the
+            snapshot is unknown: the worker is still unscheduled, or a terminal
+            observation could not read a GPU pair. A known snapshot is `>= 1`
+            and travels with `gpuType`. An empty pair is incomplete, not a CPU
+            worker. CPU workloads are not supported.
         gpuType:
           type: string
           allOf:
             - $ref: '#/components/schemas/GpuTypeId'
           nullable: true
-          description: GPU catalogue code snapshotted at observation time; omitted for CPU workers.
+          description: >
+            GPU catalogue code snapshotted at observation time. Omitted until a
+            GPU snapshot exists (the worker is still unscheduled, or the
+            observation could not read a type). Not a CPU-worker marker; CPU
+            workloads are not supported.
         gpuAvailability:
           type: string
           allOf:
             - $ref: '#/components/schemas/GpuAvailability'
           nullable: true
           description: >
-            How the catalogue currently provisions this worker's `gpuType`. Omitted for a
-            CPU worker and for a code the catalogue no longer holds. Unlike `gpuType` this
-            is read now rather than snapshotted, so it tells you how that GPU is supplied
-            today, not how it was supplied when the worker started.
+            How the catalogue currently provisions this worker's `gpuType`.
+            Omitted when there is no `gpuType`, or when the catalogue no longer
+            holds the code. Unlike `gpuType` this is read now rather than
+            snapshotted, so it tells you how that GPU is supplied today, not how
+            it was supplied when the worker started.
         lastSeenAt:
           type: string
           format: date-time
