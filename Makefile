@@ -11,7 +11,7 @@ GOFLAGS = -trimpath
 
 BINARY=runware
 
-.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint clean install snapshot docs go-tidy
+.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix clean install snapshot docs go-tidy
 
 build:
 	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
@@ -46,6 +46,9 @@ test:
 
 lint:
 	golangci-lint run
+
+fix:
+	go fix ./...
 
 clean:
 	rm -rf bin dist
