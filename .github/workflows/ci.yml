@@ -18,7 +18,11 @@ jobs:
       - name: Check Go code is modernized
         run: |
           make fix
-          git diff --exit-code
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Go code is not modernized. Run 'make fix' and commit the result."
+            git status --porcelain
+            exit 1
+          fi
 
       - name: Build
         run: make build-all
