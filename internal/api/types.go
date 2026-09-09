@@ -137,7 +137,7 @@ type TeamMember struct {
 	Name     string    `json:"name"`
 	Email    string    `json:"email"`
 	Roles    []string  `json:"roles"`
-	JoinedAt time.Time `json:"joinedAt"`
+	JoinedAt time.Time `json:"joinedAt,omitzero" yaml:"joinedat,omitempty"`
 }
 
 // APIKeyInfo describes a single API key on the account.
@@ -147,7 +147,7 @@ type APIKeyInfo struct {
 	Description string    `json:"description,omitempty"`
 	Enabled     bool      `json:"enabled"`
 	CreatedAt   time.Time `json:"createdAt"`
-	LastUsedAt  time.Time `json:"lastUsedAt"`
+	LastUsedAt  time.Time `json:"lastUsedAt,omitzero" yaml:"lastusedat,omitempty"`
 	Requests    int       `json:"requests,omitempty"`
 }
 
