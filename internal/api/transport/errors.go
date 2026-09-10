@@ -474,8 +474,7 @@ func IsAuthError(err error) bool {
 	if errors.Is(err, ErrNoAPIKey) {
 		return true
 	}
-	var re *RunwareError
-	if errors.As(err, &re) {
+	if re, ok := errors.AsType[*RunwareError](err); ok {
 		return re.Code == CodeAuth
 	}
 	return false

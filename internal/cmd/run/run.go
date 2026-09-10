@@ -218,9 +218,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 // so that --preset runs fail consistently with non-preset runs.
 func mergePresetParams(presetParams map[string]string, kvArgs []string) (map[string]string, error) {
 	merged := make(map[string]string, len(presetParams)+len(kvArgs))
-	for k, v := range presetParams {
-		merged[k] = v
-	}
+	maps.Copy(merged, presetParams)
 	for _, kv := range kvArgs {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {

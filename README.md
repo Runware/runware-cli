@@ -265,7 +265,9 @@ make build-all      # Build all platforms → ./bin/
 make install        # go install for current platform
 make run ARGS="..." # Run without building (e.g. make run ARGS="ping")
 make test           # Run all tests
-make lint           # Run golangci-lint
+make fix            # Apply go fix modernizations
+make check-go-fix   # Fail when go fix would change Go source
+make lint           # Check go fix, then run golangci-lint
 make docs           # Regenerate ./docs/ command reference
 make snapshot       # GoReleaser snapshot build
 make clean          # Remove ./bin and ./dist

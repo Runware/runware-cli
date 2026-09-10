@@ -44,8 +44,7 @@ func PrintErrorTo(logger *log.Logger, w io.Writer, format output.Format, err err
 		return
 	}
 
-	var re *transport.RunwareError
-	if errors.As(err, &re) {
+	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
 		if isStructuredFormat(format) {
 			writeStructuredError(w, format, structuredErrors(re.APIFields()))
 			return
@@ -78,8 +77,7 @@ func PrintErrorMsg(logger *log.Logger, format output.Format, message string, err
 
 // PrintErrorMsgTo logs a custom message and writes structured output to w.
 func PrintErrorMsgTo(logger *log.Logger, w io.Writer, format output.Format, message string, err error) {
-	var re *transport.RunwareError
-	if errors.As(err, &re) {
+	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
 		if isStructuredFormat(format) {
 			writeStructuredError(w, format, map[string]any{
 				fieldMessage: message,

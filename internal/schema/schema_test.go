@@ -1257,13 +1257,11 @@ const (
 	testTypeNumber    = "number"
 )
 
-func f64(v float64) *float64 { return &v }
-
 // boundedWidthNode mirrors a real image model's width: [512, 2048], step 16.
 func boundedWidthNode() schema.Node {
 	return schema.Node{
 		Properties: map[string]schema.Node{
-			testFieldWidth: {Type: schema.TypeInteger, Minimum: f64(512), Maximum: f64(2048), MultipleOf: f64(16)},
+			testFieldWidth: {Type: schema.TypeInteger, Minimum: new(float64(512)), Maximum: new(float64(2048)), MultipleOf: new(float64(16))},
 		},
 	}
 }
@@ -1318,7 +1316,7 @@ func TestValidateNumericConstraints_NoConstraint_Passes(t *testing.T) {
 func TestValidateNumericConstraints_NegativeMinimumAllowed(t *testing.T) {
 	node := schema.Node{
 		Properties: map[string]schema.Node{
-			testFieldWeight: {Type: testTypeNumber, Minimum: f64(-4), Maximum: f64(4), MultipleOf: f64(0.01)},
+			testFieldWeight: {Type: testTypeNumber, Minimum: new(float64(-4)), Maximum: new(float64(4)), MultipleOf: new(0.01)},
 		},
 	}
 	if err := schema.ValidateConstraints(node, map[string]any{testFieldWeight: -3.5}); err != nil {
@@ -1332,7 +1330,7 @@ func TestValidateNumericConstraints_NestedObject(t *testing.T) {
 			testFieldAccel: {
 				Type: schema.TypeObject,
 				Properties: map[string]schema.Node{
-					testFieldCachePct: {Type: schema.TypeInteger, Minimum: f64(1), Maximum: f64(100)},
+					testFieldCachePct: {Type: schema.TypeInteger, Minimum: new(float64(1)), Maximum: new(float64(100))},
 				},
 			},
 		},
@@ -1355,7 +1353,7 @@ func TestValidateNumericConstraints_ArrayItems(t *testing.T) {
 				Items: &schema.Node{
 					Type: schema.TypeObject,
 					Properties: map[string]schema.Node{
-						testFieldWeight: {Type: testTypeNumber, Minimum: f64(-4), Maximum: f64(4)},
+						testFieldWeight: {Type: testTypeNumber, Minimum: new(float64(-4)), Maximum: new(float64(4))},
 					},
 				},
 			},
@@ -1374,7 +1372,7 @@ func TestValidateNumericConstraints_ArrayItems(t *testing.T) {
 func TestValidateNumericConstraints_FloatMultipleOf(t *testing.T) {
 	node := schema.Node{
 		Properties: map[string]schema.Node{
-			testFieldCFGScale: {Type: testTypeNumber, Minimum: f64(1), Maximum: f64(20), MultipleOf: f64(0.01)},
+			testFieldCFGScale: {Type: testTypeNumber, Minimum: new(float64(1)), Maximum: new(float64(20)), MultipleOf: new(0.01)},
 		},
 	}
 	if err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 4.5}); err != nil {
@@ -1391,8 +1389,6 @@ func TestValidateNumericConstraints_FloatMultipleOf(t *testing.T) {
 
 // ---- ValidateConstraints: NaN / Inf / exclusive bounds / string / array ----
 
-func iptr(v int) *int { return &v }
-
 const (
 	testFieldImageURL  = "imageURL"
 	testFieldTaskUUID  = "taskUUID"
@@ -1403,7 +1399,7 @@ const (
 
 func TestValidateConstraints_RejectsNaN(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldCFGScale: {Type: testTypeNumber, Minimum: f64(1), Maximum: f64(20)},
+		testFieldCFGScale: {Type: testTypeNumber, Minimum: new(float64(1)), Maximum: new(float64(20))},
 	}}
 	err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: math.NaN()})
 	if err == nil {
@@ -1416,7 +1412,7 @@ func TestValidateConstraints_RejectsNaN(t *testing.T) {
 
 func TestValidateConstraints_RejectsInf(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldCFGScale: {Type: testTypeNumber, Minimum: f64(1), Maximum: f64(20)},
+		testFieldCFGScale: {Type: testTypeNumber, Minimum: new(float64(1)), Maximum: new(float64(20))},
 	}}
 	err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: math.Inf(1)})
 	if err == nil {
@@ -1429,7 +1425,7 @@ func TestValidateConstraints_RejectsInf(t *testing.T) {
 
 func TestValidateConstraints_ExclusiveMinimum(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldCFGScale: {Type: testTypeNumber, ExclusiveMinimum: f64(0)},
+		testFieldCFGScale: {Type: testTypeNumber, ExclusiveMinimum: new(float64(0))},
 	}}
 	if err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 0.0}); err == nil {
 		t.Fatal("expected error for value equal to the exclusive minimum")
@@ -1441,7 +1437,7 @@ func TestValidateConstraints_ExclusiveMinimum(t *testing.T) {
 
 func TestValidateConstraints_ExclusiveMaximum(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldCFGScale: {Type: testTypeNumber, ExclusiveMaximum: f64(1)},
+		testFieldCFGScale: {Type: testTypeNumber, ExclusiveMaximum: new(float64(1))},
 	}}
 	if err := schema.ValidateConstraints(node, map[string]any{testFieldCFGScale: 1.0}); err == nil {
 		t.Fatal("expected error for value equal to the exclusive maximum")
@@ -1450,7 +1446,7 @@ func TestValidateConstraints_ExclusiveMaximum(t *testing.T) {
 
 func TestValidateConstraints_MinLength(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldPositivePrompt: {Type: schema.TypeString, MinLength: iptr(3)},
+		testFieldPositivePrompt: {Type: schema.TypeString, MinLength: new(3)},
 	}}
 	if err := schema.ValidateConstraints(node, map[string]any{testFieldPositivePrompt: "ab"}); err == nil {
 		t.Fatal("expected error for a string below minLength")
@@ -1462,7 +1458,7 @@ func TestValidateConstraints_MinLength(t *testing.T) {
 
 func TestValidateConstraints_MaxLength(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldPositivePrompt: {Type: schema.TypeString, MaxLength: iptr(5)},
+		testFieldPositivePrompt: {Type: schema.TypeString, MaxLength: new(5)},
 	}}
 	err := schema.ValidateConstraints(node, map[string]any{testFieldPositivePrompt: "abcdef"})
 	if err == nil {
@@ -1536,7 +1532,7 @@ func TestValidateConstraints_UnknownFormatPasses(t *testing.T) {
 
 func TestValidateConstraints_MinItems(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldTags: {Type: schema.TypeArray, MinItems: iptr(2)},
+		testFieldTags: {Type: schema.TypeArray, MinItems: new(2)},
 	}}
 	err := schema.ValidateConstraints(node, map[string]any{testFieldTags: []any{"a"}})
 	if err == nil {
@@ -1549,7 +1545,7 @@ func TestValidateConstraints_MinItems(t *testing.T) {
 
 func TestValidateConstraints_MaxItems(t *testing.T) {
 	node := schema.Node{Properties: map[string]schema.Node{
-		testFieldTags: {Type: schema.TypeArray, MaxItems: iptr(2)},
+		testFieldTags: {Type: schema.TypeArray, MaxItems: new(2)},
 	}}
 	if err := schema.ValidateConstraints(node, map[string]any{testFieldTags: []any{"a", "b", "c"}}); err == nil {
 		t.Fatal("expected error for an array above maxItems")

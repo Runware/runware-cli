@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -165,9 +166,7 @@ func TestSend_NoAPIKey(t *testing.T) {
 func successItem(t *testing.T, extra map[string]any) json.RawMessage {
 	t.Helper()
 	m := map[string]any{fieldStatus: "success"}
-	for k, v := range extra {
-		m[k] = v
-	}
+	maps.Copy(m, extra)
 	return rawJSON(t, m)
 }
 
