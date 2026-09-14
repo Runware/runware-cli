@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -104,6 +105,9 @@ organisation-wide allocation.
   runware serverless apps usage my-app --for last-month --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateUsageAppID(args[0]); err != nil {
+				return err
+			}
 			return runUsage(cmd, logger, args[0], flags)
 		},
 	}
@@ -193,6 +197,15 @@ func usageParamsFromFlags(flags usageFlags, appID string, now time.Time) (*serve
 	return params, nil
 }
 
+// validateUsageAppID rejects a blank appId. An empty one drops the filter, and
+// the per-app command then reports the whole organisation.
+func validateUsageAppID(appID string) error {
+	if strings.TrimSpace(appID) == "" {
+		return fmt.Errorf("appId is required")
+	}
+	return nil
+}
+
 // usageRange resolves a --for name to a UTC calendar window anchored at now.
 // Ranges that end now leave the upper bound unset so the API resolves "now"
 // itself and reports it back as the window end.
@@ -247,7 +260,7 @@ func parseUsageDimensions(values []string) ([]serverlessapi.UsageDimension, erro
 			return nil, err
 		}
 		if dim == nil {
-			continue
+			return nil, fmt.Errorf("invalid --group-by %q (want %s)", value, usageDimensions)
 		}
 		if _, dup := seen[*dim]; dup {
 			return nil, fmt.Errorf("--group-by %q given more than once", value)

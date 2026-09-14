@@ -133,12 +133,34 @@ func TestUsageParamsFromFlags_Errors(t *testing.T) {
 		{"from after to", usageFlags{from: "2026-09-02", to: testUsageDate}, "--from must be before --to"},
 		{"from equals to", usageFlags{from: testUsageDate, to: testUsageDate}, "--from must be before --to"},
 		{"unknown dimension", usageFlags{groupBy: []string{"region"}}, `invalid --group-by "region"`},
+		{"trailing comma in dimensions", usageFlags{groupBy: []string{"app", ""}}, `invalid --group-by ""`},
 		{"repeated dimension", usageFlags{groupBy: []string{"app", "day", "app"}}, `--group-by "app" given more than once`},
 	}
 	for _, tc := range cases {
 		_, err := usageParamsFromFlags(tc.flags, "", testUsageNow)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want containing %q", tc.name, err, tc.want)
+		}
+	}
+}
+
+func TestValidateUsageAppID(t *testing.T) {
+	cases := []struct {
+		appID   string
+		wantErr bool
+	}{
+		{testAppID, false},
+		{"", true},
+		{" ", true},
+		{"\t\n", true},
+	}
+	for _, tc := range cases {
+		err := validateUsageAppID(tc.appID)
+		if tc.wantErr && err == nil {
+			t.Errorf("validateUsageAppID(%q) = nil, want an error", tc.appID)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("validateUsageAppID(%q) = %v, want nil", tc.appID, err)
 		}
 	}
 }
