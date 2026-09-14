@@ -286,12 +286,15 @@ func TestFormatGPUTime(t *testing.T) {
 		{3723500, "1h2m3.5s"},
 		{3599999, "59m59.999s"},
 		{14400000, "4h0m0s"},
+		{86399999, "23h59m59.999s"},
+		{86400000, "1d0h0m0s"},
+		{16840000000, "194d21h46m40s"},
 		// GPU time is summed per GPU, so an account-wide month reaches the
 		// nanosecond range of time.Duration at a few thousand concurrent GPUs.
 		// Past 9223372036854ms it wrapped negative and reported ~0 usage.
-		{9223372036854, "2562047h47m16.854s"},
-		{9223372036855, "2562047h47m16.855s"},
-		{18446744073708, "5124095h34m33.708s"},
+		{9223372036854, "106751d23h47m16.854s"},
+		{9223372036855, "106751d23h47m16.855s"},
+		{18446744073708, "213503d23h34m33.708s"},
 	}
 	for _, tc := range cases {
 		if got := formatGPUTime(tc.ms); got != tc.want {

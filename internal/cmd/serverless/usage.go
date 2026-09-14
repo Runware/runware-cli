@@ -404,19 +404,24 @@ const (
 	msPerSecond = 1000
 	msPerMinute = 60 * msPerSecond
 	msPerHour   = 60 * msPerMinute
+	msPerDay    = 24 * msPerHour
 )
 
-// formatGPUTime renders GPU-milliseconds as an exact duration (e.g. 20m35s,
-// 1h2m3.5s), so nothing is rounded away from a billed figure. Hours come from
-// the integer rather than time.Duration, which counts nanoseconds and wraps
-// negative past 292 GPU-years: time is summed per GPU, so one 31-day window
-// reaches that at about 3,400 concurrent GPUs.
+// formatGPUTime renders GPU-milliseconds as an exact duration, in days once a
+// span reaches one (e.g. 20m35s, 1h2m3.5s, 194d21h46m40s), so nothing is
+// rounded away from a billed figure. Days and hours come from the integer
+// rather than time.Duration, which counts nanoseconds and wraps negative past
+// 292 GPU-years: time is summed per GPU, so one 31-day window reaches that at
+// about 3,400 concurrent GPUs.
 func formatGPUTime(ms int64) string {
 	if ms < msPerHour {
 		return (time.Duration(ms) * time.Millisecond).String()
 	}
-	hours, rem := ms/msPerHour, ms%msPerHour
-	return fmt.Sprintf("%dh%dm%s", hours, rem/msPerMinute, formatGPUSeconds(rem%msPerMinute))
+	withinDay := fmt.Sprintf("%dh%dm%s", (ms%msPerDay)/msPerHour, (ms%msPerHour)/msPerMinute, formatGPUSeconds(ms%msPerMinute))
+	if ms < msPerDay {
+		return withinDay
+	}
+	return fmt.Sprintf("%dd%s", ms/msPerDay, withinDay)
 }
 
 // formatGPUSeconds renders sub-minute milliseconds the way time.Duration does:
