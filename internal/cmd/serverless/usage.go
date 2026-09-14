@@ -399,10 +399,34 @@ func usageDimensionValue(d serverlessapi.UsageDimension, b *serverlessapi.UsageB
 	}
 }
 
+// Millisecond spans of the units formatGPUTime prints.
+const (
+	msPerSecond = 1000
+	msPerMinute = 60 * msPerSecond
+	msPerHour   = 60 * msPerMinute
+)
+
 // formatGPUTime renders GPU-milliseconds as an exact duration (e.g. 20m35s,
-// 1h2m3.5s), so nothing is rounded away from a billed figure.
+// 1h2m3.5s), so nothing is rounded away from a billed figure. Hours come from
+// the integer rather than time.Duration, which counts nanoseconds and wraps
+// negative past 292 GPU-years: time is summed per GPU, so one 31-day window
+// reaches that at about 3,400 concurrent GPUs.
 func formatGPUTime(ms int64) string {
-	return (time.Duration(ms) * time.Millisecond).String()
+	if ms < msPerHour {
+		return (time.Duration(ms) * time.Millisecond).String()
+	}
+	hours, rem := ms/msPerHour, ms%msPerHour
+	return fmt.Sprintf("%dh%dm%s", hours, rem/msPerMinute, formatGPUSeconds(rem%msPerMinute))
+}
+
+// formatGPUSeconds renders sub-minute milliseconds the way time.Duration does:
+// whole seconds bare, a fraction with its trailing zeros trimmed.
+func formatGPUSeconds(ms int64) string {
+	secs, frac := ms/msPerSecond, ms%msPerSecond
+	if frac == 0 {
+		return fmt.Sprintf("%ds", secs)
+	}
+	return fmt.Sprintf("%d.%ss", secs, strings.TrimRight(fmt.Sprintf("%03d", frac), "0"))
 }
 
 func formatMoney(m serverlessapi.MoneyAmount) string {
