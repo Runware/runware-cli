@@ -21,8 +21,8 @@ info:
     key identifies the organisation. An org-scoped JWT (web app) is minted by the Runware
     platform for one user acting in one organisation and verified locally against the
     platform's published JWKS. Resources are always scoped to the authenticated
-    organisation, whichever scheme carried it. Task ingestion and task reads accept the
-    API key only.
+    organisation, whichever scheme carried it. Task ingestion and task reads accept both
+    schemes too.
 
 security:
   - ApiKeyAuth: []
@@ -53,10 +53,6 @@ tags:
     description: Plain-text environment variables scoped to an app
   - name: Observability
     description: Usage, metrics, events, and logs
-  - name: Tenancy
-    description: >
-      Platform-only organisation tenancy (ADR-019). Restricted to the Runware
-      platform organisation. Admin-api calls these when serverlessAccess changes.
 
 paths:
   # ---------------------------------------------------------------------------
@@ -72,10 +68,7 @@ paths:
          Customer principals receive only GPU types with capacity currently offered to customers;
          a type whose hardware is not yet cleared for customer workloads is omitted. The Runware
          principal receives the full catalogue, including retired types and types not yet offered.
-         Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect;
-         the Runware principal can read the full price
-         history, including scheduled future changes, from
-         `GET /v1/gpu-types/{gpuTypeId}/prices`.
+         Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
       operationId: listGpuTypes
       responses:
         '200':
@@ -90,41 +83,6 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '403':
           $ref: '#/components/responses/Forbidden'
-    post:
-      tags:
-        - Compute
-      summary: Add a GPU type to the catalogue
-      description: >
-        Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform
-        organization. The `id` (catalogue code) is immutable and remains reserved after retirement:
-        a retired code answers `409` here and is brought back with
-        `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-      operationId: createGpuType
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GpuTypeCreate'
-      responses:
-        '201':
-          description: GPU type created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GpuType'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/ValidationError'
 
   /v1/gpu-types/{gpuTypeId}:
     get:
@@ -152,260 +110,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-    patch:
-      tags:
-        - Compute
-      summary: Update a GPU type in the catalogue
-      description: >
-        Updates mutable fields of an active GPU type. Restricted to the Runware platform organization.
-        The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-      operationId: updateGpuType
-      parameters:
-        - $ref: '#/components/parameters/GpuTypeId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GpuTypeUpdate'
-      responses:
-        '200':
-          description: Updated GPU type
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GpuType'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-    delete:
-      tags:
-        - Compute
-      summary: Retire a GPU type from the catalogue
-      description: >
-        Soft-deletes a GPU type while preserving its code and price history. Restricted to the
-        Runware platform organization. Returns `409` if a worker configuration or GPU pool still
-        references the code. Retiring an already retired code returns `404`. Reversible with
-        `POST /v1/gpu-types/{gpuTypeId}/restore`.
-      operationId: deleteGpuType
-      parameters:
-        - $ref: '#/components/parameters/GpuTypeId'
-      responses:
-        '204':
-          description: GPU type retired
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-
-  /v1/gpu-types/{gpuTypeId}/restore:
-    post:
-      tags:
-        - Compute
-      summary: Restore a retired GPU type
-      description: >
-        Returns a retired GPU type to the catalogue under the same code, with its price history
-        intact, so the reserved code is usable again for the hardware it already described.
-        Restricted to the Runware platform organization. A code that is not retired returns
-        `409`; a code no entry has ever held returns `404`. Whether customers can then select
-        the type still depends on pool admission, exactly as for any active type.
-      operationId: restoreGpuType
-      parameters:
-        - $ref: '#/components/parameters/GpuTypeId'
-      responses:
-        '200':
-          description: Restored GPU type
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GpuType'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-
-  /v1/gpu-types/{gpuTypeId}/prices:
-    get:
-      tags:
-        - Compute
-      summary: List historical and future prices of a GPU type
-      description: >
-        Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware
-        platform organization: the page includes retired types and prices that are scheduled but not yet in effect.
-        Customers read the price currently in effect from `GET /v1/gpu-types`.
-      operationId: listGpuTypePrices
-      parameters:
-        - $ref: '#/components/parameters/GpuTypeId'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
-      responses:
-        '200':
-          description: A page of prices for the GPU type
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Page'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/GpuPricingListItem'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-    post:
-      tags:
-        - Compute
-      summary: Schedule a new price for a GPU type
-      description: >
-        Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform
-        organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU
-        type is admitted or used, a later price can be added inside that window to correct its initial
-        price. This preserves the original row and records the correction as a superseding price.
-        Retired types return `404`; other values inside the notice window return `422`.
-        Returns `409` if the GPU type already has a price scheduled at that exact instant.
-      operationId: createGpuTypePrice
-      parameters:
-        - $ref: '#/components/parameters/GpuTypeId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GpuPricingCreate'
-      responses:
-        '201':
-          description: Price scheduled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GpuPricing'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-
-  /v1/gpu-types/{gpuTypeId}/prices/{priceId}:
-    patch:
-      tags:
-        - Compute
-      summary: Update a scheduled price for a GPU type
-      description: >
-        Partially updates a scheduled price. Restricted to the Runware platform organization.
-        Only a price whose current `effectiveFrom` is still more than 7 days in the future can be
-        edited — once inside that window the price is locked in and this returns `409`. A
-        supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422`
-        otherwise. Retired GPU types return `404`. Returns `409` if the update collides with
-        another price already scheduled at that exact instant.
-      operationId: updateGpuTypePrice
-      parameters:
-        - $ref: '#/components/parameters/GpuTypeId'
-        - name: priceId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GpuPricingUpdate'
-      responses:
-        '200':
-          description: Price updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GpuPricing'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-    delete:
-      tags:
-        - Compute
-      summary: Remove a scheduled price for a GPU type
-      description: >
-        Deletes a scheduled price. Restricted to the Runware platform organization. Only a price
-        whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that
-        window the price is locked in (about to take effect, or already has) and this returns
-        `409`. Retired GPU types return `404`.
-      operationId: deleteGpuTypePrice
-      parameters:
-        - $ref: '#/components/parameters/GpuTypeId'
-        - name: priceId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: Price deleted
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '400':
-          $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -439,8 +143,6 @@ paths:
         `endpointPath` extension member carries the rejected path, distinguishing it
         from an unknown app, and the task never enters the queue.
       operationId: startAsyncTask
-      security:
-        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/EndpointPath'
@@ -495,8 +197,6 @@ paths:
         `endpointPath` extension member carries the rejected path, distinguishing it
         from an unknown app, and the task never enters the queue.
       operationId: startSyncTask
-      security:
-        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/EndpointPath'
@@ -537,8 +237,6 @@ paths:
         `404`; retry it within the normal polling window. Unknown or deleted apps also
         return `404 Not Found`.
       operationId: getTask
-      security:
-        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/AppId'
         - name: taskId
@@ -575,8 +273,6 @@ paths:
         does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`,
         recovery stays available. Unknown or deleted apps return `404 Not Found`.
       operationId: listTasks
-      security:
-        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/Limit'
@@ -1110,6 +806,8 @@ paths:
         Errors:
         - Deploy to a `deleting` app returns `409 Conflict`
         - `versionNumber` not found or not `ready` returns `409 Conflict`
+        - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+          one app rolls to one version at a time. Retry once it completes.
         - Deploy to a non-existent or `deleted` app returns `404 Not Found`
       operationId: deployVersion
       parameters:
@@ -1154,7 +852,9 @@ paths:
         platform-managed grace period to complete; workers that exceed it are force-terminated
         and their tasks return to the queue per delivery guarantees. New task submissions remain
         accepted while `stopping`; after the app reaches `stopped`, submissions return
-        `409 Conflict`. Precondition: `status = active`.
+        `409 Conflict`. Precondition: `status` is `active` or `failed` — a rollout that
+        failed can leave a workload running, and a stop is what takes it away without
+        deleting the app.
       operationId: stopApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1273,7 +973,8 @@ paths:
         Aggregate dashboard metrics across all apps owned by the authenticated organisation.
         App and worker tallies are always present. Request and error-rate totals come from
         the metrics store and are omitted when that hop cannot answer rather than reported
-        as zero. Spend is omitted until billing rollups exist.
+        as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot
+        be priced.
       operationId: getAppSummary
       responses:
         '200':
@@ -1528,6 +1229,11 @@ paths:
         deploy of a newer version or a rollback to an older one is immediately
         reflected here. Empty while the app is `initializing`: nothing is routable
         until its first build is ready and deployed.
+
+
+        Each row may include `runtime` (status, req/min, p95, p99) from the latest
+        5-minute Insights window. Those fields are omitted when metrics cannot be
+        read or the endpoint has no samples; identity always comes from Postgres.
       operationId: listEndpoints
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1565,6 +1271,10 @@ paths:
       tags:
         - Endpoints
       summary: Get an endpoint
+      description: >
+        Returns one live endpoint on the app. `runtime` is the same optional
+        latest-window traffic as `listEndpoints` and is omitted when metrics
+        cannot be read or the endpoint has no samples.
       operationId: getEndpoint
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1754,6 +1464,12 @@ paths:
         there is no deadline on that wait, so a continuously busy app can hold
         a name for as long as it runs. Recreate-while-deleting may later
         reuse the pending row with the new value (same name, new ciphertext).
+        An organisation whose serverless tenancy is revoked, or has no
+        tenancy receipt at all, returns `403 Forbidden` — the per-organisation
+        CryptoKey that seals the value is only minted when the tenancy is
+        active. An organisation whose tenancy is still being provisioned
+        returns `503 Service Unavailable` instead — that state is retryable,
+        not a revocation, and clears once provisioning finishes.
       operationId: createSecret
       requestBody:
         required: true
@@ -1793,6 +1509,12 @@ paths:
         when this commits, this change is not guaranteed to land on it —
         it reaches the worker on a later redeploy instead. A deployment
         that is not live picks it up on its next deploy for another reason.
+        An organisation whose serverless tenancy is revoked, or has no
+        tenancy receipt at all, returns `403 Forbidden` — the per-organisation
+        CryptoKey that seals the value is only minted when the tenancy is
+        active. An organisation whose tenancy is still being provisioned
+        returns `503 Service Unavailable` instead — that state is retryable,
+        not a revocation, and clears once provisioning finishes.
       operationId: updateSecret
       parameters:
         - $ref: '#/components/parameters/SecretName'
@@ -1858,72 +1580,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-
-  # ---------------------------------------------------------------------------
-  # Organisation tenancy (ADR-019 Option 2b)
-  # ---------------------------------------------------------------------------
-  /v1/org-tenancies:
-    put:
-      tags:
-        - Tenancy
-      summary: Set an organisation's serverless tenancy state
-      description: >
-        Idempotent upsert for one customer organisation. The customer UUID
-        is in the body — public paths never carry an organisation identifier
-        (the authenticated API key names the *caller*, which for this route
-        must be the Runware platform organisation).
-
-
-        `state: active` runs Ensure: a Cloud KMS CryptoKey named after the
-        organisation UUID, a Kubernetes service account `org-<uuid>` in the
-        shared app namespace, and a decrypt IAM binding on that key for the
-        KSA principal. `state: disabled` runs teardown: disable the key's
-        primary version, drop the decrypt binding, delete the KSA. It then
-        stops the organisation's estate: every deployment that is `active`
-        moves to `stopping` and has its drain enqueued, and that stop is one
-        database transaction — the `200` is returned only once it has
-        committed, so it guarantees every deployment that was active is on
-        its way to `stopped`. The key itself is not destroyed — a destroyed
-        key makes every ciphertext under it permanently unreadable. The
-        local row stays as a tombstone so a later Ensure converges on the
-        same names; a later Ensure does not resume the deployments this
-        disable stopped — restoring the organisation's IAM is not the same
-        decision as restarting its workload, and this route does not conflate
-        them. A stopped deployment stays stopped until its own resume call,
-        the same as one the customer stopped directly.
-
-
-        A retry after a partial failure converges rather than duplicating
-        objects. `200` returns the resulting receipt. `503` when Cloud KMS
-        key-admin is rate-limited (60 writes/min) or otherwise unavailable,
-        or when the tenancy was disabled but the deployment stop could not
-        be committed — the tenancy row is already `disabled` in that case,
-        and the same PUT retried stops whatever is still active; the caller
-        (admin-api Messenger) retries the same PUT either way.
-      operationId: upsertOrgTenancy
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OrgTenancyUpsert'
-      responses:
-        '200':
-          description: Tenancy is in the requested state (created, already present, or disabled)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrgTenancy'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '400':
-          $ref: '#/components/responses/BadRequest'
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -2103,6 +1759,23 @@ paths:
         the serving container itself are rejected with `422`, as they are on create.
 
 
+        A write that changes the stored value records a new version carrying the
+        live environment set and the same image. If that image is deployable, the
+        write pins it as `activeVersionId` and rolls the workload when the app can
+        take one (`active`, `initializing`, or `failed` which becomes
+        `initializing`). A `stopped` or `stopping` app pins the version and rolls
+        it on `resume`. A write that leaves the stored value unchanged records no
+        version and does not roll.
+
+
+        A write while a rollout of this app is still in flight returns
+        `409 Conflict` and does not store the value. Each changing write is
+        serialised behind that rollout, so setting several variables one at a
+        time is that many sequential rolls with `409`s between them. Replace the
+        whole set in one request with `PATCH /v1/apps/{appId}`
+        `environmentVariables`.
+
+
         An app holds at most 100 environment bindings in total — plain
         variables plus attached secrets — the same combined ceiling
         `AppCreate.environmentVariables` declares (create rejects secrets
@@ -2146,12 +1819,24 @@ paths:
           $ref: '#/components/responses/NotFound'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
     delete:
       tags:
         - EnvironmentVariables
       summary: Delete an app environment variable
+      description: >-
+        Removes one environment variable. A successful delete records a new
+        version carrying the remaining environment set and the same image. If
+        that image is deployable, the delete pins it as `activeVersionId` and
+        rolls the workload when the app can take one (`active`, `initializing`,
+        or `failed` which becomes `initializing`). A `stopped` or `stopping`
+        app pins the version and rolls it on `resume`. A delete of a key that
+        is present while a rollout of this app is still in flight returns
+        `409 Conflict` and does not remove the value. A name that is not
+        present returns `404` even during that window.
       operationId: deleteAppEnvironmentVariable
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2171,6 +1856,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   # ---------------------------------------------------------------------------
   # Observability
@@ -2318,6 +2005,183 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+
+  /v1/usage/summary:
+    get:
+      tags:
+        - Observability
+      summary: Summarise usage over a time range
+      description: >
+        GPU time and spend for the authenticated organisation, aggregated over a
+        half-open window and grouped by the dimensions asked for.
+
+
+        Every figure is derived on read from the immutable usage ledger, the
+        effective-dated price catalogue and the organisation's capacity commitments.
+        Two consequences follow. The window is bounded, because the read folds every
+        event of every worker in it. And a worker whose recorded life cannot be
+        priced fails the request rather than being left out of the totals, because a
+        total that silently omits usage is a wrong number a caller cannot see is
+        wrong. These failures return `500`, with no partial totals.
+
+
+        `paygSpend` is provisional pay-as-you-go accrual, not a settled charge.
+        It excludes whole-second finalisation rounding and ledger adjustments.
+        `paygEquivalentValue` prices the
+        same time at the catalogue rate whatever covered it, so the difference between
+        them is what a capacity commitment saved. While commitment coverage is not yet
+        applied by settlement, an organisation holding a commitment sees a split here
+        that the credit ledger has not yet applied.
+      operationId: getUsageSummary
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: >
+            Inclusive lower bound on billable time (RFC 3339). Defaults to 24 hours
+            before `to`. The maximum window is 31 days. An explicit zero timestamp
+            (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: >
+            Exclusive upper bound on billable time (RFC 3339). Defaults to now, and a
+            value in the future is read as now. An explicit zero timestamp
+            (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+          schema:
+            type: string
+            format: date-time
+        - name: appId
+          in: query
+          required: false
+          description: >
+            Report only this app's usage. A filter on what is reported, not on what is
+            measured: coverage depends on every app's concurrent GPUs.
+          schema:
+            $ref: '#/components/schemas/AppId'
+        - name: gpuType
+          in: query
+          required: false
+          description: >
+            Report only usage of this GPU type. A retired type is accepted, because
+            usage recorded before it was withdrawn is still reportable. A type the
+            catalogue has never carried returns `422`.
+          schema:
+            $ref: '#/components/schemas/GpuTypeId'
+        - name: groupBy
+          in: query
+          required: false
+          description: >
+            Dimensions to group by. An empty list returns one bucket for the whole
+            window. Each dimension appears on the bucket it was requested with and is
+            absent otherwise.
+          style: form
+          explode: false
+          schema:
+            type: array
+            maxItems: 4
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/UsageDimension'
+      responses:
+        '200':
+          description: Usage for the window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/reserved-capacity:
+    get:
+      tags:
+        - Observability
+      summary: Report reserved capacity and its use
+      description: >
+        What the authenticated organisation has reserved, what it is using of it now,
+        and what overflowed to pay-as-you-go.
+
+
+        One entry per commitment scope — one GPU type in one region — because
+        compatible terms add together and cover an allocation between them. The terms
+        that make up the scope are listed with their own dates and quantities.
+
+
+        Counts describe recorded billable state at the window end, so a report of a past period
+        describes that period rather than mixing it with the present. A scope with an
+        effective commitment appears even when nothing is using it: an idle
+        reservation is still charged for, and is what the customer most needs to see.
+        Scopes whose terms expired during the period remain with their historical
+        usage and zero committed capacity at the window end.
+
+
+        The fixed commitment charge is not here. Serverless meters usage and does not
+        own that charge; the commerce system invoices it from the contract schedule.
+        Usage that cannot be priced returns `500`, with no partial report.
+      operationId: listReservedCapacity
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: >
+            Inclusive lower bound of the reporting period (RFC 3339). Defaults to 24
+            hours before `to`. The maximum window is 31 days. An explicit zero timestamp
+            (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: >
+            Exclusive upper bound of the reporting period (RFC 3339). Defaults to now,
+            and a value in the future is read as now. An explicit zero timestamp
+            (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Reserved capacity for the period
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReservedCapacity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   # ---------------------------------------------------------------------------
   # Insights: customer-facing metrics and logs
   #
@@ -2393,18 +2257,25 @@ paths:
 
         `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour
         request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`).
-        It requires `deployment` (the public app id, rewritten to the live deployment
-        UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to
-        pad idle endpoints with all-null series, in request order. Buckets that started
-        before that endpoint row's `createdAt` are null, so a removed-then-readded path
-        does not inherit the previous row's traffic. Other queries reject `endpointId`.
-        Other windows are not available for this query.
+        It requires the public app id. Repeat `endpointId` once per id on the current
+        `listEndpoints` page to pad idle endpoints with all-null series, in request
+        order. Buckets that started before that endpoint row's `createdAt` are null,
+        so a removed-then-readded path does not inherit the previous row's traffic.
+
+
+        The same app + `endpointId` pad and `createdAt` clip apply to the
+        list-scoped `endpoints_request_rate`, `endpoints_latency_p95`,
+        `endpoints_latency_p99`, `endpoints_error_volume` and
+        `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those
+        feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the
+        catalogue. Other queries reject `endpointId`. Other windows are not
+        available for these queries.
 
 
         Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and
-        all requiring `deployment` (the public app id, rewritten to the live deployment
-        UUID): `app_traffic_24h` returns `requests`, `client_errors` (4xx) and
-        `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns
+        all requiring the public app id: `app_traffic_24h` returns `requests`,
+        `client_errors` (4xx) and `server_errors` (5xx) as request counts;
+        `app_worker_seconds_24h` returns
         `startup`, `execution` and `idle` as worker-seconds, whose three values in a
         bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns
         `cold_starts` as a count. They report counts and totals rather than rates or
@@ -2682,7 +2553,7 @@ components:
       in: query
       required: false
       description: >
-        Narrow to one endpoint within a deployment. The value is the allocated
+        Narrow to one endpoint within an app. The value is the allocated
         `endpoints.id` (UUID), never the customer-authored path. A query that
         does not declare this selector rejects it rather than ignoring it.
       schema:
@@ -2755,15 +2626,19 @@ components:
       style: form
       explode: true
       description: >
-        Restrict `endpoints_request_volume` to these endpoint ids: one series per id,
-        in request order, with all-null series for endpoints that had no traffic.
-        Values are quarter-hourly request counts over `window=24h`. Buckets that
-        started before that endpoint row's `createdAt` are null. Repeat the parameter once
-        per id on the current list page (at most 100, matching `listEndpoints`).
-        Omit it to receive every endpoint on the selected app that had data, unless
-        that set is larger than this query will expand: then the call is a `422`
-        on `endpointId` and the list page should name the endpoints it is showing.
-        Other queries reject this parameter. Requires `deployment`.
+        Restrict expand-by-`endpoint_id` queries (`endpoints_request_volume`,
+        `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`,
+        `endpoints_error_volume`, `endpoints_request_count`) to these endpoint ids:
+        one series per id, in request order, with all-null series for endpoints
+        that had no traffic. `endpoints_request_volume` is quarter-hourly request
+        counts over `window=24h`; the others are latest-window scalars over
+        `window=1h`. Buckets that started before that endpoint row's `createdAt`
+        are null. Repeat the parameter once per id on the current list page (at
+        most 100, matching `listEndpoints`). Omit it to receive every endpoint on
+        the selected app that had data, unless that set is larger than this query
+        will expand: then the call is a `422` on `endpointId` and the list page
+        should name the endpoints it is showing. Other queries reject this
+        parameter. Requires the public app id.
       schema:
         type: array
         maxItems: 100
@@ -3310,86 +3185,6 @@ components:
           format: date-time
           description: From when this price is effective.
 
-    GpuPricingListItem:
-      type: object
-      additionalProperties: false
-      required:
-        - pricing
-        - immutableFrom
-      properties:
-        pricing:
-          $ref: '#/components/schemas/GpuPricing'
-        immutableFrom:
-          type: string
-          format: date-time
-          nullable: true
-          description: >
-            The instant this price locks (effectiveFrom minus the 7-day minimum
-            notice window), while that instant is still in the future — the
-            price can still be updated or deleted until then. `null` once that
-            instant has passed: the price is permanently locked and can no
-            longer be modified or deleted.
-
-    GpuPricingUpdate:
-      type: object
-      minProperties: 1
-      description: >
-        Partial update of a scheduled price. Omitted fields are left unchanged. Only a price
-        whose current effectiveFrom is still more than 7 days away can be edited. At least one
-        field must be supplied.
-      additionalProperties: false
-      properties:
-        perSecond:
-          type: string
-          minLength: 1
-          pattern: '^\d+\.\d+$'
-          description: >
-            Price per GPU per second in USD major units as an exact decimal
-            string (e.g. "0.000767"). Stored and billed from nanodollars
-            internally; the platform bills in USD only.
-          example: "0.000767"
-        effectiveFrom:
-          type: string
-          format: date-time
-          description: From when this price is effective.
-
-    GpuTypeCreatePricing:
-      type: object
-      additionalProperties: false
-      required:
-        - perSecond
-      properties:
-        perSecond:
-          type: string
-          minLength: 1
-          pattern: '^\d+\.\d+$'
-          description: >
-            Price per GPU per second in USD major units as an exact decimal
-            string (e.g. "0.000767"). Stored and billed from nanodollars
-            internally; the platform bills in USD only.
-          example: "0.000767"
-
-    GpuPricingCreate:
-      type: object
-      additionalProperties: false
-      required:
-        - perSecond
-        - effectiveFrom
-      properties:
-        perSecond:
-          type: string
-          minLength: 1
-          pattern: '^\d+\.\d+$'
-          description: >
-            Price per GPU per second in USD major units as an exact decimal
-            string (e.g. "0.000767"). Stored and billed from nanodollars
-            internally; the platform bills in USD only.
-          example: "0.000767"
-        effectiveFrom:
-          type: string
-          format: date-time
-          description: From when this price is effective.
-
     GpuType:
       type: object
       required:
@@ -3431,68 +3226,6 @@ components:
             effectiveFrom is not in the future. The Runware principal can
             read the full price history, including scheduled future
             changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
-
-    GpuTypeCreate:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - name
-        - memory
-        - availability
-        - pricing
-        - sortOrder
-      properties:
-        id:
-          allOf:
-            - $ref: '#/components/schemas/GpuTypeId'
-          description: >
-            Immutable public catalogue code. Must be unique across the catalogue.
-        name:
-          type: string
-          minLength: 1
-          pattern: '^\S(.*\S)?$'
-          example: H100
-        memory:
-          type: string
-          minLength: 1
-          pattern: '^\S(.*\S)?$'
-          description: Human-readable memory capacity.
-          example: 80 GB HBM
-        availability:
-          $ref: '#/components/schemas/GpuAvailability'
-        pricing:
-          $ref: '#/components/schemas/GpuTypeCreatePricing'
-        sortOrder:
-          type: integer
-          format: int32
-          minimum: 0
-          description: >
-            Display / catalogue ordering. Lower values sort first in `GET /v1/gpu-types`.
-
-    GpuTypeUpdate:
-      type: object
-      minProperties: 1
-      description: >
-        Partial update of a catalogue entry. Omitted fields are left unchanged. The catalogue
-        code itself is immutable and addressed via the path parameter. At least one field must
-        be supplied.
-      additionalProperties: false
-      properties:
-        name:
-          type: string
-          minLength: 1
-          pattern: '^\S(.*\S)?$'
-        memory:
-          type: string
-          minLength: 1
-          pattern: '^\S(.*\S)?$'
-        availability:
-          $ref: '#/components/schemas/GpuAvailability'
-        sortOrder:
-          type: integer
-          format: int32
-          minimum: 0
 
     GpuTypeList:
       type: object
@@ -3587,8 +3320,8 @@ components:
         Aggregate dashboard metrics for every app in the authenticated
         organisation. App and worker tallies are always present (zero when
         empty). Request and error-rate totals are omitted when the metrics
-        store cannot be read, rather than reported as zero. Spend is omitted
-        until billing rollups exist.
+        store cannot be read, rather than reported as zero. Spend covers a
+        rolling 24 hours and is omitted when the usage cannot be priced.
       required:
         - totalApps
         - activeApps
@@ -3631,8 +3364,16 @@ components:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
-            Estimated spend since 00:00 UTC. Omitted until billing rollups are
-            available.
+            Provisional pay-as-you-go accrual over the last 24 hours, across every app.
+            Excludes finalisation rounding and ledger adjustments. A
+            rolling window rather than a calendar day, so the figure does not reset at
+            a boundary the customer did not choose.
+
+
+            What has accrued, not a projection: an app that has just started shows
+            what it has run so far. Time a capacity commitment covered is excluded,
+            because it collects nothing. Omitted when the usage cannot be priced,
+            which a zero would misreport as having run for free.
         calculatedAt:
           type: string
           format: date-time
@@ -3997,12 +3738,23 @@ components:
           format: int32
           nullable: true
           minimum: 0
-          description: Reserved for future idle-worker buffer support.
+          description: >-
+            Idle workers held above current demand, so a burst does not wait for a
+            cold start. Null or 0 means no buffer. The buffer applies only while the
+            queue is non-empty: an idle app still scales to `minWorkers`. A buffer
+            below about a tenth of current demand is not added while demand holds
+            steady; `availableWorkersPct` is not subject to that.
         availableWorkersPct:
           type: integer
           format: int32
           nullable: true
-          description: Reserved for future percentage-based buffer support.
+          minimum: 0
+          maximum: 100
+          description: >-
+            Idle workers held above current demand, as a percentage of that demand,
+            rounded up. Null or 0 means no buffer. When both buffers are set the
+            larger of the two applies. The buffer applies only while the queue is
+            non-empty: an idle app still scales to `minWorkers`.
         idleTtlSecs:
           type: integer
           format: int32
@@ -4083,14 +3835,23 @@ components:
           format: int32
           minimum: 0
           nullable: true
-          description: A non-null value returns 422 because this setting is not supported yet.
+          description: >-
+            Idle workers held above current demand. Omit, or send null or 0, for no
+            buffer. Must be lower than `maxWorkers`. The buffer applies only while the
+            queue is non-empty, so it does not stop an idle app scaling to `minWorkers`.
+            A buffer below about a tenth of current demand is not added while demand
+            holds steady; `availableWorkersPct` is not subject to that.
         availableWorkersPct:
           type: integer
           format: int32
           minimum: 0
           maximum: 100
           nullable: true
-          description: A non-null value returns 422 because this setting is not supported yet.
+          description: >-
+            Idle workers held above current demand, as a percentage of that demand,
+            rounded up. Omit, or send null or 0, for no buffer. When both buffers are
+            set the larger of the two applies. The buffer applies only while the queue
+            is non-empty, so it does not stop an idle app scaling to `minWorkers`.
         idleTtlSecs:
           type: integer
           format: int32
@@ -4152,13 +3913,21 @@ components:
           type: integer
           format: int32
           minimum: 0
-          description: Reserved for future use. Supplying it returns 422.
+          description: >-
+            Idle workers held above current demand. Omit to leave unchanged; send 0
+            to remove the buffer. Null is refused, because omitting a field and
+            clearing it mean different things here. Must be lower than the resolved
+            `maxWorkers`.
         availableWorkersPct:
           type: integer
           format: int32
           minimum: 0
           maximum: 100
-          description: Reserved for future use. Supplying it returns 422.
+          description: >-
+            Idle workers held above current demand, as a percentage of that demand,
+            rounded up. Omit to leave unchanged; send 0 to remove the buffer. Null is
+            refused, because omitting a field and clearing it mean different things
+            here.
         idleTtlSecs:
           type: integer
           format: int32
@@ -4601,6 +4370,57 @@ components:
             Version number to deploy. Must reference a `ready` version on this app.
             Any in-progress or queued builds are cancelled. Use an older version number to roll back.
 
+    EndpointTrafficStatus:
+      type: string
+      description: >
+        Badge derived from the latest-window error ratio (4xx + 5xx over
+        requests). Not stored: there is no endpoint status column. Omitted when
+        metrics cannot be read or the endpoint had no requests in the window.
+        `healthy` is a zero ratio, `degraded` is below 0.05, `unhealthy` is
+        0.05 and above.
+      enum:
+        - healthy
+        - degraded
+        - unhealthy
+      x-enum-varnames:
+        - EndpointTrafficStatusHealthy
+        - EndpointTrafficStatusDegraded
+        - EndpointTrafficStatusUnhealthy
+
+    EndpointRuntime:
+      type: object
+      additionalProperties: false
+      description: >
+        Latest-window traffic for one endpoint. Identity stays on the parent
+        `Endpoint`; these fields come from Insights and are omitted independently
+        when their backing series has no samples. The whole object is omitted
+        when Insights is unset, times out, or the endpoint had no request
+        samples. Zero is a reading, not an absence.
+      properties:
+        status:
+          $ref: '#/components/schemas/EndpointTrafficStatus'
+        requestsPerMinute:
+          type: number
+          format: double
+          minimum: 0
+          description: >
+            5-minute request rate (`rate(rw_requests_total[5m]) * 60`), in
+            req/min. Not derived from the 24h sparkline counts.
+        p95RequestDuration:
+          type: number
+          format: double
+          minimum: 0
+          description: >
+            Latest-window p95 request duration in seconds (all requests; the
+            duration histogram has no status class).
+        p99RequestDuration:
+          type: number
+          format: double
+          minimum: 0
+          description: >
+            Latest-window p99 request duration in seconds (all requests; the
+            duration histogram has no status class).
+
     Endpoint:
       type: object
       required:
@@ -4625,6 +4445,8 @@ components:
         updatedAt:
           type: string
           format: date-time
+        runtime:
+          $ref: '#/components/schemas/EndpointRuntime'
 
     Worker:
       type: object
@@ -4728,58 +4550,6 @@ components:
         updatedAt:
           type: string
           format: date-time
-
-    OrgTenancyDesiredState:
-      type: string
-      description: >
-        Client-writable tenancy state. `active` runs Ensure; `disabled` runs
-        teardown. `pending` is server-only on the receipt and is rejected.
-      enum:
-        - active
-        - disabled
-    OrgTenancyUpsert:
-      type: object
-      additionalProperties: false
-      description: >
-        Desired serverless tenancy for a customer organisation. The UUID is
-        the organisation being provisioned, not the authenticated caller.
-      required:
-        - organizationUuid
-        - state
-      properties:
-        organizationUuid:
-          type: string
-          format: uuid
-        state:
-          $ref: '#/components/schemas/OrgTenancyDesiredState'
-    OrgTenancy:
-      type: object
-      description: >
-        Receipt that an organisation has been provisioned for serverless
-        (ADR-019). Names are derived from the organisation UUID; this object
-        is the state machine, not a directory.
-      required:
-        - organizationUuid
-        - state
-        - ksaName
-      properties:
-        organizationUuid:
-          type: string
-          format: uuid
-        state:
-          type: string
-          description: >
-            `pending` while Ensure is in flight, `active` when key, KSA and
-            bindings have converged, `disabled` after teardown. Rows are
-            tombstones — disable does not delete.
-          enum:
-            - pending
-            - active
-            - disabled
-        ksaName:
-          type: string
-          description: Kubernetes service account in the shared app namespace (`org-<uuid>`).
-          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
 
     Secret:
       type: object
@@ -5009,6 +4779,239 @@ components:
           format: date-time
           nullable: true
 
+    UsageDimension:
+      type: string
+      description: >
+        One grouping a usage summary can be aggregated by.
+      enum: [app, gpuType, day, coverage]
+
+    UsageCoverage:
+      type: string
+      description: >
+        Which commercial capacity paid for a span of GPU time. `commitment` is covered
+        by reserved capacity and collects nothing from pay-as-you-go; `payg` is
+        concurrency above the commitment, or usage with no commitment behind it.
+      enum: [commitment, payg]
+
+    UsageRegion:
+      type: string
+      description: >
+        The region a capacity commitment applies to. One value until app placement
+        selects a region.
+      enum: [default]
+
+    UsageBucket:
+      type: object
+      additionalProperties: false
+      description: >
+        Usage that fell into one grouping key. A dimension appears only when it was
+        requested, so a bucket never implies a grouping the caller did not ask for.
+      required:
+        - gpuMilliseconds
+        - paygSpend
+        - paygEquivalentValue
+      properties:
+        appId:
+          allOf:
+            - $ref: '#/components/schemas/AppId'
+          description: Present when grouped by `app`.
+        gpuType:
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          description: Present when grouped by `gpuType`.
+        day:
+          type: string
+          format: date
+          description: >
+            UTC calendar day. Present when grouped by `day`. A span crossing midnight
+            is divided between the two days it ran on.
+        coverage:
+          allOf:
+            - $ref: '#/components/schemas/UsageCoverage'
+          description: Present when grouped by `coverage`.
+        gpuMilliseconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Billable GPU time, summed over each GPU separately. A worker holding four
+            GPUs for one second contributes four thousand.
+        paygSpend:
+          allOf:
+            - $ref: '#/components/schemas/MoneyAmount'
+          description: >
+            Provisional pay-as-you-go accrual for this time, excluding finalisation
+            rounding and ledger adjustments. Zero for time a commitment covered.
+        paygEquivalentValue:
+          allOf:
+            - $ref: '#/components/schemas/MoneyAmount'
+          description: >
+            The same time priced at the catalogue rate, whatever covered it. The
+            difference from `paygSpend` is what reserved capacity saved.
+
+    UsageSummary:
+      type: object
+      additionalProperties: false
+      description: >
+        Aggregated usage for one half-open window.
+        Display amounts carry fractions smaller than one ledger unit across buckets
+        in response order, so their sum equals `total`.
+      required:
+        - from
+        - to
+        - buckets
+        - total
+        - calculatedAt
+      properties:
+        from:
+          type: string
+          format: date-time
+          description: Inclusive start of the reported window, as resolved.
+        to:
+          type: string
+          format: date-time
+          description: Exclusive end of the reported window, as resolved.
+        buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageBucket'
+        total:
+          allOf:
+            - $ref: '#/components/schemas/UsageBucket'
+          description: >
+            The whole window with no grouping. It carries no dimension fields, and it
+            always equals the sum of `buckets`.
+        calculatedAt:
+          type: string
+          format: date-time
+          description: The instant the figures describe.
+
+    CommitmentTerm:
+      type: object
+      additionalProperties: false
+      description: >
+        One purchased term of reserved capacity. Terms in the same scope add together
+        while they overlap.
+      required:
+        - id
+        - gpuCount
+        - startsAt
+        - endsAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        gpuCount:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Concurrent GPUs this term reserves.
+        startsAt:
+          type: string
+          format: date-time
+          description: Inclusive start of the term.
+        endsAt:
+          type: string
+          format: date-time
+          description: >
+            Exclusive end of the term. An amended term ends where its replacement
+            starts, so the two never both apply.
+
+    ReservedCapacity:
+      type: object
+      additionalProperties: false
+      description: >
+        One commitment scope — a GPU type in a region — with what it reserves, what is
+        using it and what overflowed past it.
+
+
+        The counts belong to the scope rather than to a term, because two overlapping
+        terms cover an allocation between them and neither can claim it alone.
+
+
+        The fixed commitment charge is not reported here. Serverless meters usage; the
+        commerce system invoices that charge from the contract schedule.
+      required:
+        - gpuType
+        - region
+        - terms
+        - committedGpuCount
+        - coveredGpuCount
+        - unusedGpuCount
+        - paygOverflowGpuCount
+        - from
+        - to
+        - coveredGpuMilliseconds
+        - paygGpuMilliseconds
+        - paygSpend
+        - coveredValue
+        - calculatedAt
+      properties:
+        gpuType:
+          $ref: '#/components/schemas/GpuTypeId'
+        region:
+          $ref: '#/components/schemas/UsageRegion'
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommitmentTerm'
+        committedGpuCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Concurrent GPUs reserved at `calculatedAt`, across every effective term.
+        coveredGpuCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Reserved GPUs in use at `calculatedAt`.
+        unusedGpuCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: >
+            Reserved GPUs idle at `calculatedAt`. Charged for, because reserved
+            capacity is a promise of access rather than a quantity of GPU time.
+        paygOverflowGpuCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: >
+            Matching GPUs in use at `calculatedAt` above the reserved quantity. These
+            are what a pay-as-you-go charge in this scope can be traced to.
+        from:
+          type: string
+          format: date-time
+          description: Inclusive start of the reported period, as resolved.
+        to:
+          type: string
+          format: date-time
+          description: Exclusive end of the reported period, as resolved.
+        coveredGpuMilliseconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Reserved GPU time used over the period.
+        paygGpuMilliseconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: GPU time in this scope over the period that the reservation did not cover.
+        paygSpend:
+          allOf:
+            - $ref: '#/components/schemas/MoneyAmount'
+          description: Provisional overflow accrual, excluding finalisation rounding and ledger adjustments.
+        coveredValue:
+          allOf:
+            - $ref: '#/components/schemas/MoneyAmount'
+          description: >
+            The covered time priced at the catalogue rate. What pay-as-you-go would
+            have charged for it, and so what the reservation saved.
+        calculatedAt:
+          type: string
+          format: date-time
+          description: The instant the counts describe.
+
     UsageEvent:
       type: object
       required:
@@ -5038,6 +5041,24 @@ components:
         gpuCount:
           type: integer
           format: int32
+        gpuType:
+          allOf:
+            - $ref: '#/components/schemas/GpuTypeId'
+          description: >
+            GPU type the worker held at the transition. Absent when the worker held no
+            GPU.
+        pricePerSecond:
+          allOf:
+            - $ref: '#/components/schemas/MoneyAmount'
+          description: >
+            Catalogue price per GPU per second in force at `occurredAt`, resolved from
+            the catalogue history. Absent when `gpuType` is absent or the catalogue
+            history has no applicable price.
+
+
+            This is the positive pay-as-you-go rate whatever covered the time.
+            Reserved capacity is not a discount on it: coverage is reported by
+            `GET /v1/usage/summary` and never by a rate of zero.
         occurredAt:
           type: string
           format: date-time

@@ -16,7 +16,7 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newDeployCmd(logger),
-		newUsageCmd(),
+		newUsageCmd(logger),
 		newGPUsCmd(logger),
 		newOpenCmd(),
 		newSecretsCmd(logger),

@@ -33,7 +33,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsEventsCmd(logger),
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(logger),
-		newAppsUsageCmd(),
+		newAppsUsageCmd(logger),
 		newAppsStopCmd(logger),
 		newAppsResumeCmd(logger),
 		newAppsDeleteCmd(logger),
@@ -502,20 +502,4 @@ func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverless
 		cursorOut = &c
 	}
 	return limitOut, cursorOut
-}
-
-func newAppsUsageCmd() *cobra.Command {
-	cmd := stubLeaf(
-		"usage <appId>",
-		"Show usage and cost for a serverless application",
-		`  # show usage for an application (not available yet)
-  runware serverless apps usage my-app`,
-		cobra.ExactArgs(1),
-	)
-	cmd.Long = `Show an aggregated usage and cost report for one application.
-
-This command is not implemented yet. Billing rollups are not in the API, so
-there is no per-app report to list. When the report API exists, this will be
-the account-wide usage command scoped to one appId.`
-	return cmd
 }
