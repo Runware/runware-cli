@@ -196,6 +196,27 @@ func (e Currency) Valid() bool {
 	}
 }
 
+// Defines values for EndpointTrafficStatus.
+const (
+	EndpointTrafficStatusDegraded  EndpointTrafficStatus = "degraded"
+	EndpointTrafficStatusHealthy   EndpointTrafficStatus = "healthy"
+	EndpointTrafficStatusUnhealthy EndpointTrafficStatus = "unhealthy"
+)
+
+// Valid indicates whether the value is a known member of the EndpointTrafficStatus enum.
+func (e EndpointTrafficStatus) Valid() bool {
+	switch e {
+	case EndpointTrafficStatusDegraded:
+		return true
+	case EndpointTrafficStatusHealthy:
+		return true
+	case EndpointTrafficStatusUnhealthy:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GpuAvailability.
 const (
 	Available  GpuAvailability = "available"
@@ -211,45 +232,6 @@ func (e GpuAvailability) Valid() bool {
 	case Custom:
 		return true
 	case Restricted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for OrgTenancyState.
-const (
-	OrgTenancyStateActive   OrgTenancyState = "active"
-	OrgTenancyStateDisabled OrgTenancyState = "disabled"
-	OrgTenancyStatePending  OrgTenancyState = "pending"
-)
-
-// Valid indicates whether the value is a known member of the OrgTenancyState enum.
-func (e OrgTenancyState) Valid() bool {
-	switch e {
-	case OrgTenancyStateActive:
-		return true
-	case OrgTenancyStateDisabled:
-		return true
-	case OrgTenancyStatePending:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for OrgTenancyDesiredState.
-const (
-	OrgTenancyDesiredStateActive   OrgTenancyDesiredState = "active"
-	OrgTenancyDesiredStateDisabled OrgTenancyDesiredState = "disabled"
-)
-
-// Valid indicates whether the value is a known member of the OrgTenancyDesiredState enum.
-func (e OrgTenancyDesiredState) Valid() bool {
-	switch e {
-	case OrgTenancyDesiredStateActive:
-		return true
-	case OrgTenancyDesiredStateDisabled:
 		return true
 	default:
 		return false
@@ -361,6 +343,63 @@ func (e TriggeredByKind) Valid() bool {
 	case ApiKey:
 		return true
 	case User:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UsageCoverage.
+const (
+	Commitment UsageCoverage = "commitment"
+	Payg       UsageCoverage = "payg"
+)
+
+// Valid indicates whether the value is a known member of the UsageCoverage enum.
+func (e UsageCoverage) Valid() bool {
+	switch e {
+	case Commitment:
+		return true
+	case Payg:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UsageDimension.
+const (
+	UsageDimensionApp      UsageDimension = "app"
+	UsageDimensionCoverage UsageDimension = "coverage"
+	UsageDimensionDay      UsageDimension = "day"
+	UsageDimensionGpuType  UsageDimension = "gpuType"
+)
+
+// Valid indicates whether the value is a known member of the UsageDimension enum.
+func (e UsageDimension) Valid() bool {
+	switch e {
+	case UsageDimensionApp:
+		return true
+	case UsageDimensionCoverage:
+		return true
+	case UsageDimensionDay:
+		return true
+	case UsageDimensionGpuType:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UsageRegion.
+const (
+	Default UsageRegion = "default"
+)
+
+// Valid indicates whether the value is a known member of the UsageRegion enum.
+func (e UsageRegion) Valid() bool {
+	switch e {
+	case Default:
 		return true
 	default:
 		return false
@@ -774,7 +813,7 @@ type AppSourceUpsert_Source struct {
 // AppStatus defines model for AppStatus.
 type AppStatus string
 
-// AppSummary Aggregate dashboard metrics for every app in the authenticated organisation. App and worker tallies are always present (zero when empty). Request and error-rate totals are omitted when the metrics store cannot be read, rather than reported as zero. Spend is omitted until billing rollups exist.
+// AppSummary Aggregate dashboard metrics for every app in the authenticated organisation. App and worker tallies are always present (zero when empty). Request and error-rate totals are omitted when the metrics store cannot be read, rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 type AppSummary struct {
 	// ActiveApps Apps currently in the `active` status.
 	ActiveApps int64 `json:"activeApps"`
@@ -794,7 +833,9 @@ type AppSummary struct {
 	// Requests24h Requests served in the last 24 hours across every app. Omitted when metrics cannot be read. Zero when the organisation had no traffic.
 	Requests24h *int64 `json:"requests24h,omitempty"`
 
-	// SpendToday Estimated spend since 00:00 UTC. Omitted until billing rollups are available.
+	// SpendToday Provisional pay-as-you-go accrual over the last 24 hours, across every app. Excludes finalisation rounding and ledger adjustments. A rolling window rather than a calendar day, so the figure does not reset at a boundary the customer did not choose.
+	//
+	// What has accrued, not a projection: an app that has just started shows what it has run so far. Time a capacity commitment covered is excluded, because it collects nothing. Omitted when the usage cannot be priced, which a zero would misreport as having run for free.
 	SpendToday *MoneyAmount `json:"spendToday,omitempty"`
 
 	// TotalApps All apps in the organisation excluding soft-deleted ones.
@@ -964,6 +1005,19 @@ type CodebaseSource struct {
 	SourceId SourceId `json:"sourceId"`
 }
 
+// CommitmentTerm One purchased term of reserved capacity. Terms in the same scope add together while they overlap.
+type CommitmentTerm struct {
+	// EndsAt Exclusive end of the term. An amended term ends where its replacement starts, so the two never both apply.
+	EndsAt time.Time `json:"endsAt"`
+
+	// GpuCount Concurrent GPUs this term reserves.
+	GpuCount int32              `json:"gpuCount"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// StartsAt Inclusive start of the term.
+	StartsAt time.Time `json:"startsAt"`
+}
+
 // ComputeType Worker compute class. GPU is the only supported value. CPU workloads are not supported.
 type ComputeType string
 
@@ -990,12 +1044,33 @@ type Endpoint struct {
 	Id        openapi_types.UUID `json:"id"`
 
 	// Path The endpoint's identity within the app: a bare lowercase URL segment, e.g. `generate`, with no leading slash. Unique within the app, so it identifies the endpoint on its own.
-	Path      string     `json:"path"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	Path string `json:"path"`
+
+	// Runtime Latest-window traffic for one endpoint. Identity stays on the parent `Endpoint`; these fields come from Insights and are omitted independently when their backing series has no samples. The whole object is omitted when Insights is unset, times out, or the endpoint had no request samples. Zero is a reading, not an absence.
+	Runtime   *EndpointRuntime `json:"runtime,omitempty"`
+	UpdatedAt *time.Time       `json:"updatedAt,omitempty"`
 }
 
 // EndpointPath Path of the endpoint to route the task to: a bare lowercase segment such as `generate`, with no leading slash.
 type EndpointPath = string
+
+// EndpointRuntime Latest-window traffic for one endpoint. Identity stays on the parent `Endpoint`; these fields come from Insights and are omitted independently when their backing series has no samples. The whole object is omitted when Insights is unset, times out, or the endpoint had no request samples. Zero is a reading, not an absence.
+type EndpointRuntime struct {
+	// P95RequestDuration Latest-window p95 request duration in seconds (all requests; the duration histogram has no status class).
+	P95RequestDuration *float64 `json:"p95RequestDuration,omitempty"`
+
+	// P99RequestDuration Latest-window p99 request duration in seconds (all requests; the duration histogram has no status class).
+	P99RequestDuration *float64 `json:"p99RequestDuration,omitempty"`
+
+	// RequestsPerMinute 5-minute request rate (`rate(rw_requests_total[5m]) * 60`), in req/min. Not derived from the 24h sparkline counts.
+	RequestsPerMinute *float64 `json:"requestsPerMinute,omitempty"`
+
+	// Status Badge derived from the latest-window error ratio (4xx + 5xx over requests). Not stored: there is no endpoint status column. Omitted when metrics cannot be read or the endpoint had no requests in the window. `healthy` is a zero ratio, `degraded` is below 0.05, `unhealthy` is 0.05 and above.
+	Status *EndpointTrafficStatus `json:"status,omitempty"`
+}
+
+// EndpointTrafficStatus Badge derived from the latest-window error ratio (4xx + 5xx over requests). Not stored: there is no endpoint status column. Omitted when metrics cannot be read or the endpoint had no requests in the window. `healthy` is a zero ratio, `degraded` is below 0.05, `unhealthy` is 0.05 and above.
+type EndpointTrafficStatus string
 
 // EnvironmentVariable defines model for EnvironmentVariable.
 type EnvironmentVariable struct {
@@ -1035,37 +1110,6 @@ type GpuPricing struct {
 	PerSecond string `json:"perSecond"`
 }
 
-// GpuPricingCreate defines model for GpuPricingCreate.
-type GpuPricingCreate struct {
-	// EffectiveFrom From when this price is effective.
-	EffectiveFrom time.Time `json:"effectiveFrom"`
-
-	// PerSecond Price per GPU per second in USD major units as an exact decimal string (e.g. "0.000767"). Stored and billed from nanodollars internally; the platform bills in USD only.
-	//
-	//
-	// Example: 0.000767
-	PerSecond string `json:"perSecond"`
-}
-
-// GpuPricingListItem defines model for GpuPricingListItem.
-type GpuPricingListItem struct {
-	// ImmutableFrom The instant this price locks (effectiveFrom minus the 7-day minimum notice window), while that instant is still in the future — the price can still be updated or deleted until then. `null` once that instant has passed: the price is permanently locked and can no longer be modified or deleted.
-	ImmutableFrom *time.Time `json:"immutableFrom"`
-	Pricing       GpuPricing `json:"pricing"`
-}
-
-// GpuPricingUpdate Partial update of a scheduled price. Omitted fields are left unchanged. Only a price whose current effectiveFrom is still more than 7 days away can be edited. At least one field must be supplied.
-type GpuPricingUpdate struct {
-	// EffectiveFrom From when this price is effective.
-	EffectiveFrom *time.Time `json:"effectiveFrom,omitempty"`
-
-	// PerSecond Price per GPU per second in USD major units as an exact decimal string (e.g. "0.000767"). Stored and billed from nanodollars internally; the platform bills in USD only.
-	//
-	//
-	// Example: 0.000767
-	PerSecond *string `json:"perSecond,omitempty"`
-}
-
 // GpuType defines model for GpuType.
 type GpuType struct {
 	// Availability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
@@ -1089,36 +1133,6 @@ type GpuType struct {
 	Pricing GpuPricing `json:"pricing"`
 }
 
-// GpuTypeCreate defines model for GpuTypeCreate.
-type GpuTypeCreate struct {
-	// Availability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
-	Availability GpuAvailability `json:"availability"`
-
-	// Id Immutable public catalogue code. Must be unique across the catalogue.
-	Id GpuTypeId `json:"id"`
-
-	// Memory Human-readable memory capacity.
-	//
-	// Example: 80 GB HBM
-	Memory string `json:"memory"`
-
-	// Name Example: H100
-	Name    string               `json:"name"`
-	Pricing GpuTypeCreatePricing `json:"pricing"`
-
-	// SortOrder Display / catalogue ordering. Lower values sort first in `GET /v1/gpu-types`.
-	SortOrder int32 `json:"sortOrder"`
-}
-
-// GpuTypeCreatePricing defines model for GpuTypeCreatePricing.
-type GpuTypeCreatePricing struct {
-	// PerSecond Price per GPU per second in USD major units as an exact decimal string (e.g. "0.000767"). Stored and billed from nanodollars internally; the platform bills in USD only.
-	//
-	//
-	// Example: 0.000767
-	PerSecond string `json:"perSecond"`
-}
-
 // GpuTypeId Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalogue). This is not the internal database row UUID.
 type GpuTypeId = string
 
@@ -1128,15 +1142,6 @@ type GpuTypeIdOrEmpty = string
 // GpuTypeList defines model for GpuTypeList.
 type GpuTypeList struct {
 	Data []GpuType `json:"data"`
-}
-
-// GpuTypeUpdate Partial update of a catalogue entry. Omitted fields are left unchanged. The catalogue code itself is immutable and addressed via the path parameter. At least one field must be supplied.
-type GpuTypeUpdate struct {
-	// Availability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
-	Availability *GpuAvailability `json:"availability,omitempty"`
-	Memory       *string          `json:"memory,omitempty"`
-	Name         *string          `json:"name,omitempty"`
-	SortOrder    *int32           `json:"sortOrder,omitempty"`
 }
 
 // ListSummary Collection totals for a paged list. Independent of the page: `total` is the COUNT of items in the collection and is the same value on every page, including a cursor that seeks past the last row.
@@ -1208,30 +1213,6 @@ type MoneyAmount struct {
 
 	// Currency ISO 4217 alphabetic code. The platform bills in USD only.
 	Currency Currency `json:"currency"`
-}
-
-// OrgTenancy Receipt that an organisation has been provisioned for serverless (ADR-019). Names are derived from the organisation UUID; this object is the state machine, not a directory.
-type OrgTenancy struct {
-	// KsaName Kubernetes service account in the shared app namespace (`org-<uuid>`).
-	KsaName          string             `json:"ksaName"`
-	OrganizationUuid openapi_types.UUID `json:"organizationUuid"`
-
-	// State `pending` while Ensure is in flight, `active` when key, KSA and bindings have converged, `disabled` after teardown. Rows are tombstones — disable does not delete.
-	State OrgTenancyState `json:"state"`
-}
-
-// OrgTenancyState `pending` while Ensure is in flight, `active` when key, KSA and bindings have converged, `disabled` after teardown. Rows are tombstones — disable does not delete.
-type OrgTenancyState string
-
-// OrgTenancyDesiredState Client-writable tenancy state. `active` runs Ensure; `disabled` runs teardown. `pending` is server-only on the receipt and is rejected.
-type OrgTenancyDesiredState string
-
-// OrgTenancyUpsert Desired serverless tenancy for a customer organisation. The UUID is the organisation being provisioned, not the authenticated caller.
-type OrgTenancyUpsert struct {
-	OrganizationUuid openapi_types.UUID `json:"organizationUuid"`
-
-	// State Client-writable tenancy state. `active` runs Ensure; `disabled` runs teardown. `pending` is server-only on the receipt and is rejected.
-	State OrgTenancyDesiredState `json:"state"`
 }
 
 // Page defines model for Page.
@@ -1306,6 +1287,53 @@ type ProblemError struct {
 type QueryCatalogue struct {
 	Logs    []CatalogueEntry `json:"logs"`
 	Metrics []CatalogueEntry `json:"metrics"`
+}
+
+// ReservedCapacity One commitment scope — a GPU type in a region — with what it reserves, what is using it and what overflowed past it.
+//
+// The counts belong to the scope rather than to a term, because two overlapping terms cover an allocation between them and neither can claim it alone.
+//
+// The fixed commitment charge is not reported here. Serverless meters usage; the commerce system invoices that charge from the contract schedule.
+type ReservedCapacity struct {
+	// CalculatedAt The instant the counts describe.
+	CalculatedAt time.Time `json:"calculatedAt"`
+
+	// CommittedGpuCount Concurrent GPUs reserved at `calculatedAt`, across every effective term.
+	CommittedGpuCount int32 `json:"committedGpuCount"`
+
+	// CoveredGpuCount Reserved GPUs in use at `calculatedAt`.
+	CoveredGpuCount int32 `json:"coveredGpuCount"`
+
+	// CoveredGpuMilliseconds Reserved GPU time used over the period.
+	CoveredGpuMilliseconds int64 `json:"coveredGpuMilliseconds"`
+
+	// CoveredValue The covered time priced at the catalogue rate. What pay-as-you-go would have charged for it, and so what the reservation saved.
+	CoveredValue MoneyAmount `json:"coveredValue"`
+
+	// From Inclusive start of the reported period, as resolved.
+	From time.Time `json:"from"`
+
+	// GpuType Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalogue). This is not the internal database row UUID.
+	GpuType GpuTypeId `json:"gpuType"`
+
+	// PaygGpuMilliseconds GPU time in this scope over the period that the reservation did not cover.
+	PaygGpuMilliseconds int64 `json:"paygGpuMilliseconds"`
+
+	// PaygOverflowGpuCount Matching GPUs in use at `calculatedAt` above the reserved quantity. These are what a pay-as-you-go charge in this scope can be traced to.
+	PaygOverflowGpuCount int32 `json:"paygOverflowGpuCount"`
+
+	// PaygSpend Provisional overflow accrual, excluding finalisation rounding and ledger adjustments.
+	PaygSpend MoneyAmount `json:"paygSpend"`
+
+	// Region The region a capacity commitment applies to. One value until app placement selects a region.
+	Region UsageRegion      `json:"region"`
+	Terms  []CommitmentTerm `json:"terms"`
+
+	// To Exclusive end of the reported period, as resolved.
+	To time.Time `json:"to"`
+
+	// UnusedGpuCount Reserved GPUs idle at `calculatedAt`. Charged for, because reserved capacity is a promise of access rather than a quantity of GPU time.
+	UnusedGpuCount int32 `json:"unusedGpuCount"`
 }
 
 // Secret Secret metadata. The encrypted value is never returned.
@@ -1518,6 +1546,36 @@ type TriggeredBy struct {
 // TriggeredByKind Whether the actor is a user (JWT) or an API key.
 type TriggeredByKind string
 
+// UsageBucket Usage that fell into one grouping key. A dimension appears only when it was requested, so a bucket never implies a grouping the caller did not ask for.
+type UsageBucket struct {
+	// AppId Present when grouped by `app`.
+	AppId *AppId `json:"appId,omitempty"`
+
+	// Coverage Present when grouped by `coverage`.
+	Coverage *UsageCoverage `json:"coverage,omitempty"`
+
+	// Day UTC calendar day. Present when grouped by `day`. A span crossing midnight is divided between the two days it ran on.
+	Day *openapi_types.Date `json:"day,omitempty"`
+
+	// GpuMilliseconds Billable GPU time, summed over each GPU separately. A worker holding four GPUs for one second contributes four thousand.
+	GpuMilliseconds int64 `json:"gpuMilliseconds"`
+
+	// GpuType Present when grouped by `gpuType`.
+	GpuType *GpuTypeId `json:"gpuType,omitempty"`
+
+	// PaygEquivalentValue The same time priced at the catalogue rate, whatever covered it. The difference from `paygSpend` is what reserved capacity saved.
+	PaygEquivalentValue MoneyAmount `json:"paygEquivalentValue"`
+
+	// PaygSpend Provisional pay-as-you-go accrual for this time, excluding finalisation rounding and ledger adjustments. Zero for time a commitment covered.
+	PaygSpend MoneyAmount `json:"paygSpend"`
+}
+
+// UsageCoverage Which commercial capacity paid for a span of GPU time. `commitment` is covered by reserved capacity and collects nothing from pay-as-you-go; `payg` is concurrency above the commitment, or usage with no commitment behind it.
+type UsageCoverage string
+
+// UsageDimension One grouping a usage summary can be aggregated by.
+type UsageDimension string
+
 // UsageEvent defines model for UsageEvent.
 type UsageEvent struct {
 	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
@@ -1527,13 +1585,41 @@ type UsageEvent struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty"`
 
 	// EventType Status the worker transitioned into. The ledger emits a subset of `WorkerStatus` — `busy` never appears (queue occupancy, not a pod lifecycle transition).
-	EventType WorkerStatus       `json:"eventType"`
-	GpuCount  int32              `json:"gpuCount"`
-	Id        openapi_types.UUID `json:"id"`
+	EventType WorkerStatus `json:"eventType"`
+	GpuCount  int32        `json:"gpuCount"`
+
+	// GpuType GPU type the worker held at the transition. Absent when the worker held no GPU.
+	GpuType *GpuTypeId         `json:"gpuType,omitempty"`
+	Id      openapi_types.UUID `json:"id"`
 
 	// OccurredAt When the transition happened. This is the event time the `from` and `to` filters apply to, and the field to bill on.
-	OccurredAt time.Time          `json:"occurredAt"`
-	WorkerId   openapi_types.UUID `json:"workerId"`
+	OccurredAt time.Time `json:"occurredAt"`
+
+	// PricePerSecond Catalogue price per GPU per second in force at `occurredAt`, resolved from the catalogue history. Absent when `gpuType` is absent or the catalogue history has no applicable price.
+	//
+	// This is the positive pay-as-you-go rate whatever covered the time. Reserved capacity is not a discount on it: coverage is reported by `GET /v1/usage/summary` and never by a rate of zero.
+	PricePerSecond *MoneyAmount       `json:"pricePerSecond,omitempty"`
+	WorkerId       openapi_types.UUID `json:"workerId"`
+}
+
+// UsageRegion The region a capacity commitment applies to. One value until app placement selects a region.
+type UsageRegion string
+
+// UsageSummary Aggregated usage for one half-open window. Display amounts carry fractions smaller than one ledger unit across buckets in response order, so their sum equals `total`.
+type UsageSummary struct {
+	Buckets []UsageBucket `json:"buckets"`
+
+	// CalculatedAt The instant the figures describe.
+	CalculatedAt time.Time `json:"calculatedAt"`
+
+	// From Inclusive start of the reported window, as resolved.
+	From time.Time `json:"from"`
+
+	// To Exclusive end of the reported window, as resolved.
+	To time.Time `json:"to"`
+
+	// Total The whole window with no grouping. It carries no dimension fields, and it always equals the sum of `buckets`.
+	Total UsageBucket `json:"total"`
 }
 
 // Version An immutable record of what to deploy. One is created with the app and one on every update, so a rollout always names a version rather than reading configuration that may since have changed. `listVersions` and `getVersion` return this same shape. The version internally pins the exact image digest its build pushed, and everything the version references — the built image and the submitted source — is retained for the life of the version.
@@ -1647,7 +1733,7 @@ type WorkerConfig struct {
 	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
-	// AvailableWorkersPct Reserved for future percentage-based buffer support.
+	// AvailableWorkersPct Idle workers held above current demand, as a percentage of that demand, rounded up. Null or 0 means no buffer. When both buffers are set the larger of the two applies. The buffer applies only while the queue is non-empty: an idle app still scales to `minWorkers`.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
 
 	// ComputeType Worker compute class. GPU is the only supported value. CPU workloads are not supported.
@@ -1671,7 +1757,7 @@ type WorkerConfig struct {
 	IdleTtlSecs int32 `json:"idleTtlSecs"`
 	MaxWorkers  int32 `json:"maxWorkers"`
 
-	// MinAvailableWorkers Reserved for future idle-worker buffer support.
+	// MinAvailableWorkers Idle workers held above current demand, so a burst does not wait for a cold start. Null or 0 means no buffer. The buffer applies only while the queue is non-empty: an idle app still scales to `minWorkers`. A buffer below about a tenth of current demand is not added while demand holds steady; `availableWorkersPct` is not subject to that.
 	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
 
 	// MinWorkers Floor for scale-down; 0 = scale to zero.
@@ -1684,7 +1770,7 @@ type WorkerConfig struct {
 
 // WorkerConfigCreate defines model for WorkerConfigCreate.
 type WorkerConfigCreate struct {
-	// AvailableWorkersPct A non-null value returns 422 because this setting is not supported yet.
+	// AvailableWorkersPct Idle workers held above current demand, as a percentage of that demand, rounded up. Omit, or send null or 0, for no buffer. When both buffers are set the larger of the two applies. The buffer applies only while the queue is non-empty, so it does not stop an idle app scaling to `minWorkers`.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
 
 	// ComputeType GPU is the only supported compute type. Omitting the field selects GPU. CPU workloads are not supported; a request that names `cpu` is rejected with 422 before a build or deploy starts.
@@ -1702,7 +1788,7 @@ type WorkerConfigCreate struct {
 	IdleTtlSecs   int32  `json:"idleTtlSecs"`
 	MaxWorkers    int32  `json:"maxWorkers"`
 
-	// MinAvailableWorkers A non-null value returns 422 because this setting is not supported yet.
+	// MinAvailableWorkers Idle workers held above current demand. Omit, or send null or 0, for no buffer. Must be lower than `maxWorkers`. The buffer applies only while the queue is non-empty, so it does not stop an idle app scaling to `minWorkers`. A buffer below about a tenth of current demand is not added while demand holds steady; `availableWorkersPct` is not subject to that.
 	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
 	MinWorkers          *int32 `json:"minWorkers,omitempty"`
 	ScalingDelaySecs    int32  `json:"scalingDelaySecs"`
@@ -1710,7 +1796,7 @@ type WorkerConfigCreate struct {
 
 // WorkerConfigPatch Partial worker configuration. Any field present overwrites the live value; omitted fields are left unchanged. Clearing a nullable live field (setting it to null) is not supported — omit the field to leave it unchanged. `fallbackGpuType` is the exception: send an empty string to clear it. `computeType` is create-time only and cannot be patched. Changing `gpuType` affects only newly created workers.
 type WorkerConfigPatch struct {
-	// AvailableWorkersPct Reserved for future use. Supplying it returns 422.
+	// AvailableWorkersPct Idle workers held above current demand, as a percentage of that demand, rounded up. Omit to leave unchanged; send 0 to remove the buffer. Null is refused, because omitting a field and clearing it mean different things here.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
 	Concurrency         *int32 `json:"concurrency,omitempty"`
 
@@ -1725,7 +1811,7 @@ type WorkerConfigPatch struct {
 	IdleTtlSecs   *int32 `json:"idleTtlSecs,omitempty"`
 	MaxWorkers    *int32 `json:"maxWorkers,omitempty"`
 
-	// MinAvailableWorkers Reserved for future use. Supplying it returns 422.
+	// MinAvailableWorkers Idle workers held above current demand. Omit to leave unchanged; send 0 to remove the buffer. Null is refused, because omitting a field and clearing it mean different things here. Must be lower than the resolved `maxWorkers`.
 	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
 	MinWorkers          *int32 `json:"minWorkers,omitempty"`
 	ScalingDelaySecs    *int32 `json:"scalingDelaySecs,omitempty"`
@@ -1941,15 +2027,6 @@ type ListWorkersParams struct {
 	Status *WorkerStatus      `form:"status,omitempty" json:"status,omitempty"`
 }
 
-// ListGpuTypePricesParams defines parameters for ListGpuTypePrices.
-type ListGpuTypePricesParams struct {
-	// Limit Maximum number of items to return.
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
-}
-
 // GetLogEntriesParams defines parameters for GetLogEntries.
 type GetLogEntriesParams struct {
 	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalogue can be asked of it.
@@ -1964,7 +2041,7 @@ type GetLogEntriesParams struct {
 	// Deployment Narrow to one app.
 	Deployment *SelectorDeployment `form:"deployment,omitempty" json:"deployment,omitempty"`
 
-	// Endpoint Narrow to one endpoint within a deployment. The value is the allocated `endpoints.id` (UUID), never the customer-authored path. A query that does not declare this selector rejects it rather than ignoring it.
+	// Endpoint Narrow to one endpoint within an app. The value is the allocated `endpoints.id` (UUID), never the customer-authored path. A query that does not declare this selector rejects it rather than ignoring it.
 	Endpoint *SelectorEndpoint `form:"endpoint,omitempty" json:"endpoint,omitempty"`
 }
 
@@ -1988,7 +2065,7 @@ type GetMetricSeriesParams struct {
 	// Deployment Narrow to one app.
 	Deployment *SelectorDeployment `form:"deployment,omitempty" json:"deployment,omitempty"`
 
-	// Endpoint Narrow to one endpoint within a deployment. The value is the allocated `endpoints.id` (UUID), never the customer-authored path. A query that does not declare this selector rejects it rather than ignoring it.
+	// Endpoint Narrow to one endpoint within an app. The value is the allocated `endpoints.id` (UUID), never the customer-authored path. A query that does not declare this selector rejects it rather than ignoring it.
 	Endpoint *SelectorEndpoint `form:"endpoint,omitempty" json:"endpoint,omitempty"`
 
 	// StatusClass Narrow to one response class.
@@ -2000,7 +2077,7 @@ type GetMetricSeriesParams struct {
 	// AppId Restrict the list-scoped queries (`apps_request_volume`, `apps_error_volume`, `apps_request_duration`) to these app ids: one series per id, in request order, with all-null series for apps that had no samples. Values are quarter-hourly over `window=24h`. An id with no live app is dropped rather than refused: a deleted app has no traffic to pad. Repeat the parameter once per id on the current list page (at most 100, matching `listApps`). Omit it to receive every app in the organisation that had data, unless that set is larger than this query will expand: then the call is a `422` on `appId` and the list page should name the apps it is showing. Other queries reject this parameter.
 	AppId *SeriesAppId `form:"appId,omitempty" json:"appId,omitempty"`
 
-	// EndpointId Restrict `endpoints_request_volume` to these endpoint ids: one series per id, in request order, with all-null series for endpoints that had no traffic. Values are quarter-hourly request counts over `window=24h`. Buckets that started before that endpoint row's `createdAt` are null. Repeat the parameter once per id on the current list page (at most 100, matching `listEndpoints`). Omit it to receive every endpoint on the selected app that had data, unless that set is larger than this query will expand: then the call is a `422` on `endpointId` and the list page should name the endpoints it is showing. Other queries reject this parameter. Requires `deployment`.
+	// EndpointId Restrict expand-by-`endpoint_id` queries (`endpoints_request_volume`, `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume`, `endpoints_request_count`) to these endpoint ids: one series per id, in request order, with all-null series for endpoints that had no traffic. `endpoints_request_volume` is quarter-hourly request counts over `window=24h`; the others are latest-window scalars over `window=1h`. Buckets that started before that endpoint row's `createdAt` are null. Repeat the parameter once per id on the current list page (at most 100, matching `listEndpoints`). Omit it to receive every endpoint on the selected app that had data, unless that set is larger than this query will expand: then the call is a `422` on `endpointId` and the list page should name the endpoints it is showing. Other queries reject this parameter. Requires the public app id.
 	EndpointId *SeriesEndpointId `form:"endpointId,omitempty" json:"endpointId,omitempty"`
 }
 
@@ -2009,6 +2086,15 @@ type GetMetricSeriesParamsWindow string
 
 // GetMetricSeriesParamsStatusClass defines parameters for GetMetricSeries.
 type GetMetricSeriesParamsStatusClass string
+
+// ListReservedCapacityParams defines parameters for ListReservedCapacity.
+type ListReservedCapacityParams struct {
+	// From Inclusive lower bound of the reporting period (RFC 3339). Defaults to 24 hours before `to`. The maximum window is 31 days. An explicit zero timestamp (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Exclusive upper bound of the reporting period (RFC 3339). Defaults to now, and a value in the future is read as now. An explicit zero timestamp (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+}
 
 // ListSecretsParams defines parameters for ListSecrets.
 type ListSecretsParams struct {
@@ -2035,6 +2121,24 @@ type ListUsageEventsParams struct {
 	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// GetUsageSummaryParams defines parameters for GetUsageSummary.
+type GetUsageSummaryParams struct {
+	// From Inclusive lower bound on billable time (RFC 3339). Defaults to 24 hours before `to`. The maximum window is 31 days. An explicit zero timestamp (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Exclusive upper bound on billable time (RFC 3339). Defaults to now, and a value in the future is read as now. An explicit zero timestamp (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the default.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// AppId Report only this app's usage. A filter on what is reported, not on what is measured: coverage depends on every app's concurrent GPUs.
+	AppId *AppId `form:"appId,omitempty" json:"appId,omitempty"`
+
+	// GpuType Report only usage of this GPU type. A retired type is accepted, because usage recorded before it was withdrawn is still reportable. A type the catalogue has never carried returns `422`.
+	GpuType *GpuTypeId `form:"gpuType,omitempty" json:"gpuType,omitempty"`
+
+	// GroupBy Dimensions to group by. An empty list returns one bucket for the whole window. Each dimension appears on the bucket it was requested with and is absent otherwise.
+	GroupBy *[]UsageDimension `form:"groupBy,omitempty" json:"groupBy,omitempty"`
+}
+
 // CreateAppJSONRequestBody defines body for CreateApp for application/json ContentType.
 type CreateAppJSONRequestBody = AppCreate
 
@@ -2055,21 +2159,6 @@ type StartSyncTaskJSONRequestBody = TaskInvocation
 
 // AttachAppSecretJSONRequestBody defines body for AttachAppSecret for application/json ContentType.
 type AttachAppSecretJSONRequestBody = SecretAttach
-
-// CreateGpuTypeJSONRequestBody defines body for CreateGpuType for application/json ContentType.
-type CreateGpuTypeJSONRequestBody = GpuTypeCreate
-
-// UpdateGpuTypeJSONRequestBody defines body for UpdateGpuType for application/json ContentType.
-type UpdateGpuTypeJSONRequestBody = GpuTypeUpdate
-
-// CreateGpuTypePriceJSONRequestBody defines body for CreateGpuTypePrice for application/json ContentType.
-type CreateGpuTypePriceJSONRequestBody = GpuPricingCreate
-
-// UpdateGpuTypePriceJSONRequestBody defines body for UpdateGpuTypePrice for application/json ContentType.
-type UpdateGpuTypePriceJSONRequestBody = GpuPricingUpdate
-
-// UpsertOrgTenancyJSONRequestBody defines body for UpsertOrgTenancy for application/json ContentType.
-type UpsertOrgTenancyJSONRequestBody = OrgTenancyUpsert
 
 // CreateSecretJSONRequestBody defines body for CreateSecret for application/json ContentType.
 type CreateSecretJSONRequestBody = SecretCreate
@@ -2283,7 +2372,7 @@ type ClientInterface interface {
 
 	// GetAppSummary App summary metrics for the authenticated organisation
 	//
-	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
+	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 	//
 	// Corresponds with GET /v1/app-summary (the `GetAppSummary` operationId).
 	GetAppSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2417,7 +2506,9 @@ type ClientInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+	//   one app rolls to one version at a time. Retry once it completes.
+	// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2431,7 +2522,9 @@ type ClientInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+	//   one app rolls to one version at a time. Retry once it completes.
+	// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2442,10 +2535,14 @@ type ClientInterface interface {
 	//
 	// Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 	//
+	// Each row may include `runtime` (status, req/min, p95, p99) from the latest 5-minute Insights window. Those fields are omitted when metrics cannot be read or the endpoint has no samples; identity always comes from Postgres.
+	//
 	// Corresponds with GET /v1/apps/{appId}/endpoints (the `ListEndpoints` operationId).
 	ListEndpoints(ctx context.Context, appId AppId, params *ListEndpointsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetEndpoint Get an endpoint
+	//
+	// Returns one live endpoint on the app. `runtime` is the same optional latest-window traffic as `listEndpoints` and is omitted when metrics cannot be read or the endpoint has no samples.
 	//
 	// Corresponds with GET /v1/apps/{appId}/endpoints/{endpointId} (the `GetEndpoint` operationId).
 	GetEndpoint(ctx context.Context, appId AppId, endpointId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2457,12 +2554,18 @@ type ClientInterface interface {
 
 	// DeleteAppEnvironmentVariable Delete an app environment variable
 	//
+	// Removes one environment variable. A successful delete records a new version carrying the remaining environment set and the same image. If that image is deployable, the delete pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A delete of a key that is present while a rollout of this app is still in flight returns `409 Conflict` and does not remove the value. A name that is not present returns `404` even during that window.
+	//
 	// Corresponds with DELETE /v1/apps/{appId}/environment-variables/{variableName} (the `DeleteAppEnvironmentVariable` operationId).
 	DeleteAppEnvironmentVariable(ctx context.Context, appId AppId, variableName EnvironmentVariableName, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateAppEnvironmentVariableWithBody Update an app environment variable
 	//
 	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+	//
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -2476,6 +2579,10 @@ type ClientInterface interface {
 	// UpdateAppEnvironmentVariable Update an app environment variable
 	//
 	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+	//
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -2593,7 +2700,7 @@ type ClientInterface interface {
 
 	// StopApp Stop an app
 	//
-	// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
+	// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status` is `active` or `failed` — a rollout that failed can leave a workload running, and a stop is what takes it away without deleting the app.
 	//
 	// Corresponds with POST /v1/apps/{appId}/stop (the `StopApp` operationId).
 	StopApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2645,35 +2752,10 @@ type ClientInterface interface {
 
 	// ListGpuTypes List supported GPU types and their pricing
 	//
-	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
+	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 	//
 	// Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 	ListGpuTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateGpuTypeWithBody Add a GPU type to the catalogue
-	//
-	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-	CreateGpuTypeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateGpuType Add a GPU type to the catalogue
-	//
-	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-	CreateGpuType(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteGpuType Retire a GPU type from the catalogue
-	//
-	// Soft-deletes a GPU type while preserving its code and price history. Restricted to the Runware platform organization. Returns `409` if a worker configuration or GPU pool still references the code. Retiring an already retired code returns `404`. Reversible with `POST /v1/gpu-types/{gpuTypeId}/restore`.
-	//
-	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
-	DeleteGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetGpuType Get a GPU type from the catalogue
 	//
@@ -2681,81 +2763,6 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
 	GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// UpdateGpuTypeWithBody Update a GPU type in the catalogue
-	//
-	// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-	UpdateGpuTypeWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// UpdateGpuType Update a GPU type in the catalogue
-	//
-	// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-	UpdateGpuType(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ListGpuTypePrices List historical and future prices of a GPU type
-	//
-	// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes retired types and prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
-	//
-	// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
-	ListGpuTypePrices(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateGpuTypePriceWithBody Schedule a new price for a GPU type
-	//
-	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-	CreateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateGpuTypePrice Schedule a new price for a GPU type
-	//
-	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-	CreateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteGpuTypePrice Remove a scheduled price for a GPU type
-	//
-	// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`. Retired GPU types return `404`.
-	//
-	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
-	DeleteGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// UpdateGpuTypePriceWithBody Update a scheduled price for a GPU type
-	//
-	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-	UpdateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// UpdateGpuTypePrice Update a scheduled price for a GPU type
-	//
-	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-	UpdateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// RestoreGpuType Restore a retired GPU type
-	//
-	// Returns a retired GPU type to the catalogue under the same code, with its price history intact, so the reserved code is usable again for the hardware it already described. Restricted to the Runware platform organization. A code that is not retired returns `409`; a code no entry has ever held returns `404`. Whether customers can then select the type still depends on pool admission, exactly as for any active type.
-	//
-	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/restore (the `RestoreGpuType` operationId).
-	RestoreGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLogEntries Read one page of a named log query
 	//
@@ -2790,38 +2797,27 @@ type ClientInterface interface {
 	//
 	// `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
 	//
-	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 	//
-	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring `deployment` (the public app id, rewritten to the live deployment UUID): `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+	//
+	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 	//
 	// Corresponds with GET /v1/metrics/queries/{queryId}/series (the `GetMetricSeries` operationId).
 	GetMetricSeries(ctx context.Context, queryId QueryId, params *GetMetricSeriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpsertOrgTenancyWithBody Set an organisation's serverless tenancy state
+	// ListReservedCapacity Report reserved capacity and its use
 	//
-	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+	// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
+	// One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
+	// Counts describe recorded billable state at the window end, so a report of a past period describes that period rather than mixing it with the present. A scope with an effective commitment appears even when nothing is using it: an idle reservation is still charged for, and is what the customer most needs to see. Scopes whose terms expired during the period remain with their historical usage and zero committed capacity at the window end.
 	//
-	// Takes any type of body and a specified content type.
+	// The fixed commitment charge is not here. Serverless meters usage and does not own that charge; the commerce system invoices it from the contract schedule. Usage that cannot be priced returns `500`, with no partial report.
 	//
-	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-	UpsertOrgTenancyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// UpsertOrgTenancy Set an organisation's serverless tenancy state
-	//
-	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
-	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
-	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-	UpsertOrgTenancy(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with GET /v1/reserved-capacity (the `ListReservedCapacity` operationId).
+	ListReservedCapacity(ctx context.Context, params *ListReservedCapacityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSecrets List secrets
 	//
@@ -2832,7 +2828,7 @@ type ClientInterface interface {
 
 	// CreateSecretWithBody Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2841,7 +2837,7 @@ type ClientInterface interface {
 
 	// CreateSecret Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2857,7 +2853,7 @@ type ClientInterface interface {
 
 	// UpdateSecretWithBody Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2866,7 +2862,7 @@ type ClientInterface interface {
 
 	// UpdateSecret Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2925,11 +2921,22 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/usage (the `ListUsageEvents` operationId).
 	ListUsageEvents(ctx context.Context, params *ListUsageEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUsageSummary Summarise usage over a time range
+	//
+	// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+	//
+	// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+	//
+	// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+	//
+	// Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
+	GetUsageSummary(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetAppSummary App summary metrics for the authenticated organisation
 //
-// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
+// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 //
 // Corresponds with GET /v1/app-summary (the `GetAppSummary` operationId).
 func (c *Client) GetAppSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3171,7 +3178,11 @@ func (c *Client) GetBuild(ctx context.Context, appId AppId, buildId openapi_type
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+//
+//	one app rolls to one version at a time. Retry once it completes.
+//
+// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes any type of body and a specified content type.
 //
@@ -3195,7 +3206,11 @@ func (c *Client) DeployVersionWithBody(ctx context.Context, appId AppId, content
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+//
+//	one app rolls to one version at a time. Retry once it completes.
+//
+// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3216,6 +3231,8 @@ func (c *Client) DeployVersion(ctx context.Context, appId AppId, body DeployVers
 //
 // Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 //
+// Each row may include `runtime` (status, req/min, p95, p99) from the latest 5-minute Insights window. Those fields are omitted when metrics cannot be read or the endpoint has no samples; identity always comes from Postgres.
+//
 // Corresponds with GET /v1/apps/{appId}/endpoints (the `ListEndpoints` operationId).
 func (c *Client) ListEndpoints(ctx context.Context, appId AppId, params *ListEndpointsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEndpointsRequest(c.Server, appId, params)
@@ -3230,6 +3247,8 @@ func (c *Client) ListEndpoints(ctx context.Context, appId AppId, params *ListEnd
 }
 
 // GetEndpoint Get an endpoint
+//
+// Returns one live endpoint on the app. `runtime` is the same optional latest-window traffic as `listEndpoints` and is omitted when metrics cannot be read or the endpoint has no samples.
 //
 // Corresponds with GET /v1/apps/{appId}/endpoints/{endpointId} (the `GetEndpoint` operationId).
 func (c *Client) GetEndpoint(ctx context.Context, appId AppId, endpointId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3261,6 +3280,8 @@ func (c *Client) ListAppEnvironmentVariables(ctx context.Context, appId AppId, p
 
 // DeleteAppEnvironmentVariable Delete an app environment variable
 //
+// Removes one environment variable. A successful delete records a new version carrying the remaining environment set and the same image. If that image is deployable, the delete pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A delete of a key that is present while a rollout of this app is still in flight returns `409 Conflict` and does not remove the value. A name that is not present returns `404` even during that window.
+//
 // Corresponds with DELETE /v1/apps/{appId}/environment-variables/{variableName} (the `DeleteAppEnvironmentVariable` operationId).
 func (c *Client) DeleteAppEnvironmentVariable(ctx context.Context, appId AppId, variableName EnvironmentVariableName, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteAppEnvironmentVariableRequest(c.Server, appId, variableName)
@@ -3277,6 +3298,10 @@ func (c *Client) DeleteAppEnvironmentVariable(ctx context.Context, appId AppId, 
 // UpdateAppEnvironmentVariableWithBody Update an app environment variable
 //
 // Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+//
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -3300,6 +3325,10 @@ func (c *Client) UpdateAppEnvironmentVariableWithBody(ctx context.Context, appId
 // UpdateAppEnvironmentVariable Update an app environment variable
 //
 // Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+//
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -3557,7 +3586,7 @@ func (c *Client) DetachAppSecret(ctx context.Context, appId AppId, secretName Se
 
 // StopApp Stop an app
 //
-// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
+// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status` is `active` or `failed` — a rollout that failed can leave a workload running, and a stop is what takes it away without deleting the app.
 //
 // Corresponds with POST /v1/apps/{appId}/stop (the `StopApp` operationId).
 func (c *Client) StopApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3689,66 +3718,11 @@ func (c *Client) GetWorker(ctx context.Context, appId AppId, workerId WorkerId, 
 
 // ListGpuTypes List supported GPU types and their pricing
 //
-// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
+// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 //
 // Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 func (c *Client) ListGpuTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListGpuTypesRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateGpuTypeWithBody Add a GPU type to the catalogue
-//
-// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-func (c *Client) CreateGpuTypeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateGpuTypeRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateGpuType Add a GPU type to the catalogue
-//
-// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-func (c *Client) CreateGpuType(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateGpuTypeRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DeleteGpuType Retire a GPU type from the catalogue
-//
-// Soft-deletes a GPU type while preserving its code and price history. Restricted to the Runware platform organization. Returns `409` if a worker configuration or GPU pool still references the code. Retiring an already retired code returns `404`. Reversible with `POST /v1/gpu-types/{gpuTypeId}/restore`.
-//
-// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
-func (c *Client) DeleteGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteGpuTypeRequest(c.Server, gpuTypeId)
 	if err != nil {
 		return nil, err
 	}
@@ -3766,171 +3740,6 @@ func (c *Client) DeleteGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEdit
 // Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
 func (c *Client) GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetGpuTypeRequest(c.Server, gpuTypeId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// UpdateGpuTypeWithBody Update a GPU type in the catalogue
-//
-// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-func (c *Client) UpdateGpuTypeWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateGpuTypeRequestWithBody(c.Server, gpuTypeId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// UpdateGpuType Update a GPU type in the catalogue
-//
-// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-func (c *Client) UpdateGpuType(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateGpuTypeRequest(c.Server, gpuTypeId, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ListGpuTypePrices List historical and future prices of a GPU type
-//
-// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes retired types and prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
-//
-// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
-func (c *Client) ListGpuTypePrices(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListGpuTypePricesRequest(c.Server, gpuTypeId, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateGpuTypePriceWithBody Schedule a new price for a GPU type
-//
-// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-func (c *Client) CreateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateGpuTypePriceRequestWithBody(c.Server, gpuTypeId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// CreateGpuTypePrice Schedule a new price for a GPU type
-//
-// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-func (c *Client) CreateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateGpuTypePriceRequest(c.Server, gpuTypeId, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DeleteGpuTypePrice Remove a scheduled price for a GPU type
-//
-// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`. Retired GPU types return `404`.
-//
-// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
-func (c *Client) DeleteGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteGpuTypePriceRequest(c.Server, gpuTypeId, priceId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// UpdateGpuTypePriceWithBody Update a scheduled price for a GPU type
-//
-// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-func (c *Client) UpdateGpuTypePriceWithBody(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateGpuTypePriceRequestWithBody(c.Server, gpuTypeId, priceId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// UpdateGpuTypePrice Update a scheduled price for a GPU type
-//
-// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-func (c *Client) UpdateGpuTypePrice(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateGpuTypePriceRequest(c.Server, gpuTypeId, priceId, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// RestoreGpuType Restore a retired GPU type
-//
-// Returns a retired GPU type to the catalogue under the same code, with its price history intact, so the reserved code is usable again for the hardware it already described. Restricted to the Runware platform organization. A code that is not retired returns `409`; a code no entry has ever held returns `404`. Whether customers can then select the type still depends on pool admission, exactly as for any active type.
-//
-// Corresponds with POST /v1/gpu-types/{gpuTypeId}/restore (the `RestoreGpuType` operationId).
-func (c *Client) RestoreGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRestoreGpuTypeRequest(c.Server, gpuTypeId)
 	if err != nil {
 		return nil, err
 	}
@@ -4004,9 +3813,11 @@ func (c *Client) ListInsightsQueries(ctx context.Context, reqEditors ...RequestE
 //
 // `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
 //
-// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 //
-// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring `deployment` (the public app id, rewritten to the live deployment UUID): `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+//
+// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 //
 // Corresponds with GET /v1/metrics/queries/{queryId}/series (the `GetMetricSeries` operationId).
 func (c *Client) GetMetricSeries(ctx context.Context, queryId QueryId, params *GetMetricSeriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4021,42 +3832,19 @@ func (c *Client) GetMetricSeries(ctx context.Context, queryId QueryId, params *G
 	return c.Client.Do(req)
 }
 
-// UpsertOrgTenancyWithBody Set an organisation's serverless tenancy state
+// ListReservedCapacity Report reserved capacity and its use
 //
-// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 //
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
+// One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 //
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
+// Counts describe recorded billable state at the window end, so a report of a past period describes that period rather than mixing it with the present. A scope with an effective commitment appears even when nothing is using it: an idle reservation is still charged for, and is what the customer most needs to see. Scopes whose terms expired during the period remain with their historical usage and zero committed capacity at the window end.
 //
-// Takes any type of body and a specified content type.
+// The fixed commitment charge is not here. Serverless meters usage and does not own that charge; the commerce system invoices it from the contract schedule. Usage that cannot be priced returns `500`, with no partial report.
 //
-// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-func (c *Client) UpsertOrgTenancyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpsertOrgTenancyRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// UpsertOrgTenancy Set an organisation's serverless tenancy state
-//
-// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
-//
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
-//
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-func (c *Client) UpsertOrgTenancy(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpsertOrgTenancyRequest(c.Server, body)
+// Corresponds with GET /v1/reserved-capacity (the `ListReservedCapacity` operationId).
+func (c *Client) ListReservedCapacity(ctx context.Context, params *ListReservedCapacityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListReservedCapacityRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4086,7 +3874,7 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams, req
 
 // CreateSecretWithBody Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4105,7 +3893,7 @@ func (c *Client) CreateSecretWithBody(ctx context.Context, contentType string, b
 
 // CreateSecret Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4141,7 +3929,7 @@ func (c *Client) DeleteSecret(ctx context.Context, secretName SecretName, reqEdi
 
 // UpdateSecretWithBody Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4160,7 +3948,7 @@ func (c *Client) UpdateSecretWithBody(ctx context.Context, secretName SecretName
 
 // UpdateSecret Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4290,6 +4078,27 @@ func (c *Client) GetSource(ctx context.Context, sourceId SourceId, reqEditors ..
 // Corresponds with GET /v1/usage (the `ListUsageEvents` operationId).
 func (c *Client) ListUsageEvents(ctx context.Context, params *ListUsageEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListUsageEventsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetUsageSummary Summarise usage over a time range
+//
+// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+//
+// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+//
+// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+//
+// Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
+func (c *Client) GetUsageSummary(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUsageSummaryRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6125,80 +5934,6 @@ func NewListGpuTypesRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewCreateGpuTypeRequest calls the generic CreateGpuType builder with application/json body
-func NewCreateGpuTypeRequest(server string, body CreateGpuTypeJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCreateGpuTypeRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewCreateGpuTypeRequestWithBody constructs an http.Request for the CreateGpuType method, with any body, and a specified content type
-func NewCreateGpuTypeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDeleteGpuTypeRequest constructs an http.Request for the DeleteGpuType method
-func NewDeleteGpuTypeRequest(server string, gpuTypeId GpuTypeId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewGetGpuTypeRequest constructs an http.Request for the GetGpuType method
 func NewGetGpuTypeRequest(server string, gpuTypeId GpuTypeId) (*http.Request, error) {
 	var err error
@@ -6226,302 +5961,6 @@ func NewGetGpuTypeRequest(server string, gpuTypeId GpuTypeId) (*http.Request, er
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewUpdateGpuTypeRequest calls the generic UpdateGpuType builder with application/json body
-func NewUpdateGpuTypeRequest(server string, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewUpdateGpuTypeRequestWithBody(server, gpuTypeId, "application/json", bodyReader)
-}
-
-// NewUpdateGpuTypeRequestWithBody constructs an http.Request for the UpdateGpuType method, with any body, and a specified content type
-func NewUpdateGpuTypeRequestWithBody(server string, gpuTypeId GpuTypeId, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewListGpuTypePricesRequest constructs an http.Request for the ListGpuTypePrices method
-func NewListGpuTypePricesRequest(server string, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		// queryValues collects non-styled parameters (passthrough, JSON)
-		// that are safe to round-trip through url.Values.Encode().
-		queryValues := queryURL.Query()
-		// rawQueryFragments collects pre-encoded query fragments from
-		// styled parameters, preserving literal commas as delimiters
-		// per the OpenAPI spec (e.g. "color=blue,black,brown").
-		var rawQueryFragments []string
-
-		if params.Limit != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.Cursor != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if encoded := queryValues.Encode(); encoded != "" {
-			rawQueryFragments = append(rawQueryFragments, encoded)
-		}
-		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewCreateGpuTypePriceRequest calls the generic CreateGpuTypePrice builder with application/json body
-func NewCreateGpuTypePriceRequest(server string, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCreateGpuTypePriceRequestWithBody(server, gpuTypeId, "application/json", bodyReader)
-}
-
-// NewCreateGpuTypePriceRequestWithBody constructs an http.Request for the CreateGpuTypePrice method, with any body, and a specified content type
-func NewCreateGpuTypePriceRequestWithBody(server string, gpuTypeId GpuTypeId, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDeleteGpuTypePriceRequest constructs an http.Request for the DeleteGpuTypePrice method
-func NewDeleteGpuTypePriceRequest(server string, gpuTypeId GpuTypeId, priceId openapi_types.UUID) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "priceId", priceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewUpdateGpuTypePriceRequest calls the generic UpdateGpuTypePrice builder with application/json body
-func NewUpdateGpuTypePriceRequest(server string, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewUpdateGpuTypePriceRequestWithBody(server, gpuTypeId, priceId, "application/json", bodyReader)
-}
-
-// NewUpdateGpuTypePriceRequestWithBody constructs an http.Request for the UpdateGpuTypePrice method, with any body, and a specified content type
-func NewUpdateGpuTypePriceRequestWithBody(server string, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "priceId", priceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types/%s/prices/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewRestoreGpuTypeRequest constructs an http.Request for the RestoreGpuType method
-func NewRestoreGpuTypeRequest(server string, gpuTypeId GpuTypeId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "gpuTypeId", gpuTypeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/gpu-types/%s/restore", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6859,19 +6298,8 @@ func NewGetMetricSeriesRequest(server string, queryId QueryId, params *GetMetric
 	return req, nil
 }
 
-// NewUpsertOrgTenancyRequest calls the generic UpsertOrgTenancy builder with application/json body
-func NewUpsertOrgTenancyRequest(server string, body UpsertOrgTenancyJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewUpsertOrgTenancyRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewUpsertOrgTenancyRequestWithBody constructs an http.Request for the UpsertOrgTenancy method, with any body, and a specified content type
-func NewUpsertOrgTenancyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewListReservedCapacityRequest constructs an http.Request for the ListReservedCapacity method
+func NewListReservedCapacityRequest(server string, params *ListReservedCapacityParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -6879,7 +6307,7 @@ func NewUpsertOrgTenancyRequestWithBody(server string, contentType string, body 
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/org-tenancies")
+	operationPath := fmt.Sprintf("/v1/reserved-capacity")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -6889,12 +6317,49 @@ func NewUpsertOrgTenancyRequestWithBody(server string, contentType string, body 
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", *params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", *params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -7364,6 +6829,108 @@ func NewListUsageEventsRequest(server string, params *ListUsageEventsParams) (*h
 	return req, nil
 }
 
+// NewGetUsageSummaryRequest constructs an http.Request for the GetUsageSummary method
+func NewGetUsageSummaryRequest(server string, params *GetUsageSummaryParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/usage/summary")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", *params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", *params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.AppId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "appId", *params.AppId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.GpuType != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "gpuType", *params.GpuType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.GroupBy != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "groupBy", *params.GroupBy, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -7410,7 +6977,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetAppSummaryWithResponse App summary metrics for the authenticated organisation
 	//
-	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
+	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7558,7 +7125,9 @@ type ClientWithResponsesInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+	//   one app rolls to one version at a time. Retry once it completes.
+	// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7572,7 +7141,9 @@ type ClientWithResponsesInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+	//   one app rolls to one version at a time. Retry once it completes.
+	// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7583,12 +7154,16 @@ type ClientWithResponsesInterface interface {
 	//
 	// Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 	//
+	// Each row may include `runtime` (status, req/min, p95, p99) from the latest 5-minute Insights window. Those fields are omitted when metrics cannot be read or the endpoint has no samples; identity always comes from Postgres.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/apps/{appId}/endpoints (the `ListEndpoints` operationId).
 	ListEndpointsWithResponse(ctx context.Context, appId AppId, params *ListEndpointsParams, reqEditors ...RequestEditorFn) (*ListEndpointsResponse, error)
 
 	// GetEndpointWithResponse Get an endpoint
+	//
+	// Returns one live endpoint on the app. `runtime` is the same optional latest-window traffic as `listEndpoints` and is omitted when metrics cannot be read or the endpoint has no samples.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7604,6 +7179,8 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteAppEnvironmentVariableWithResponse Delete an app environment variable
 	//
+	// Removes one environment variable. A successful delete records a new version carrying the remaining environment set and the same image. If that image is deployable, the delete pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A delete of a key that is present while a rollout of this app is still in flight returns `409 Conflict` and does not remove the value. A name that is not present returns `404` even during that window.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/environment-variables/{variableName} (the `DeleteAppEnvironmentVariable` operationId).
@@ -7612,6 +7189,10 @@ type ClientWithResponsesInterface interface {
 	// UpdateAppEnvironmentVariableWithBodyWithResponse Update an app environment variable
 	//
 	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+	//
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -7625,6 +7206,10 @@ type ClientWithResponsesInterface interface {
 	// UpdateAppEnvironmentVariableWithResponse Update an app environment variable
 	//
 	// Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+	//
+	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+	//
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -7756,7 +7341,7 @@ type ClientWithResponsesInterface interface {
 
 	// StopAppWithResponse Stop an app
 	//
-	// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
+	// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status` is `active` or `failed` — a rollout that failed can leave a workload running, and a stop is what takes it away without deleting the app.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7824,39 +7409,12 @@ type ClientWithResponsesInterface interface {
 
 	// ListGpuTypesWithResponse List supported GPU types and their pricing
 	//
-	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
+	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 	ListGpuTypesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListGpuTypesResponse, error)
-
-	// CreateGpuTypeWithBodyWithResponse Add a GPU type to the catalogue
-	//
-	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-	CreateGpuTypeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error)
-
-	// CreateGpuTypeWithResponse Add a GPU type to the catalogue
-	//
-	// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-	CreateGpuTypeWithResponse(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error)
-
-	// DeleteGpuTypeWithResponse Retire a GPU type from the catalogue
-	//
-	// Soft-deletes a GPU type while preserving its code and price history. Restricted to the Runware platform organization. Returns `409` if a worker configuration or GPU pool still references the code. Retiring an already retired code returns `404`. Reversible with `POST /v1/gpu-types/{gpuTypeId}/restore`.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
-	DeleteGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*DeleteGpuTypeResponse, error)
 
 	// GetGpuTypeWithResponse Get a GPU type from the catalogue
 	//
@@ -7866,87 +7424,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
 	GetGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*GetGpuTypeResponse, error)
-
-	// UpdateGpuTypeWithBodyWithResponse Update a GPU type in the catalogue
-	//
-	// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-	UpdateGpuTypeWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error)
-
-	// UpdateGpuTypeWithResponse Update a GPU type in the catalogue
-	//
-	// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-	UpdateGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error)
-
-	// ListGpuTypePricesWithResponse List historical and future prices of a GPU type
-	//
-	// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes retired types and prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
-	ListGpuTypePricesWithResponse(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*ListGpuTypePricesResponse, error)
-
-	// CreateGpuTypePriceWithBodyWithResponse Schedule a new price for a GPU type
-	//
-	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-	CreateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error)
-
-	// CreateGpuTypePriceWithResponse Schedule a new price for a GPU type
-	//
-	// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-	CreateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error)
-
-	// DeleteGpuTypePriceWithResponse Remove a scheduled price for a GPU type
-	//
-	// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`. Retired GPU types return `404`.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
-	DeleteGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteGpuTypePriceResponse, error)
-
-	// UpdateGpuTypePriceWithBodyWithResponse Update a scheduled price for a GPU type
-	//
-	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-	UpdateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error)
-
-	// UpdateGpuTypePriceWithResponse Update a scheduled price for a GPU type
-	//
-	// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-	UpdateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error)
-
-	// RestoreGpuTypeWithResponse Restore a retired GPU type
-	//
-	// Returns a retired GPU type to the catalogue under the same code, with its price history intact, so the reserved code is usable again for the hardware it already described. Restricted to the Runware platform organization. A code that is not retired returns `409`; a code no entry has ever held returns `404`. Whether customers can then select the type still depends on pool admission, exactly as for any active type.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/gpu-types/{gpuTypeId}/restore (the `RestoreGpuType` operationId).
-	RestoreGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*RestoreGpuTypeResponse, error)
 
 	// GetLogEntriesWithResponse Read one page of a named log query
 	//
@@ -7987,40 +7464,31 @@ type ClientWithResponsesInterface interface {
 	//
 	// `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
 	//
-	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 	//
-	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring `deployment` (the public app id, rewritten to the live deployment UUID): `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+	//
+	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/metrics/queries/{queryId}/series (the `GetMetricSeries` operationId).
 	GetMetricSeriesWithResponse(ctx context.Context, queryId QueryId, params *GetMetricSeriesParams, reqEditors ...RequestEditorFn) (*GetMetricSeriesResponse, error)
 
-	// UpsertOrgTenancyWithBodyWithResponse Set an organisation's serverless tenancy state
+	// ListReservedCapacityWithResponse Report reserved capacity and its use
 	//
-	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+	// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
+	// One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
+	// Counts describe recorded billable state at the window end, so a report of a past period describes that period rather than mixing it with the present. A scope with an effective commitment appears even when nothing is using it: an idle reservation is still charged for, and is what the customer most needs to see. Scopes whose terms expired during the period remain with their historical usage and zero committed capacity at the window end.
 	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	// The fixed commitment charge is not here. Serverless meters usage and does not own that charge; the commerce system invoices it from the contract schedule. Usage that cannot be priced returns `500`, with no partial report.
 	//
-	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-	UpsertOrgTenancyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error)
-
-	// UpsertOrgTenancyWithResponse Set an organisation's serverless tenancy state
+	// Returns a wrapper object for the known response body format(s).
 	//
-	// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
-	//
-	// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
-	//
-	// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-	UpsertOrgTenancyWithResponse(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error)
+	// Corresponds with GET /v1/reserved-capacity (the `ListReservedCapacity` operationId).
+	ListReservedCapacityWithResponse(ctx context.Context, params *ListReservedCapacityParams, reqEditors ...RequestEditorFn) (*ListReservedCapacityResponse, error)
 
 	// ListSecretsWithResponse List secrets
 	//
@@ -8033,7 +7501,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithBodyWithResponse Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8042,7 +7510,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithResponse Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8060,7 +7528,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSecretWithBodyWithResponse Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8069,7 +7537,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSecretWithResponse Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8138,6 +7606,19 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/usage (the `ListUsageEvents` operationId).
 	ListUsageEventsWithResponse(ctx context.Context, params *ListUsageEventsParams, reqEditors ...RequestEditorFn) (*ListUsageEventsResponse, error)
+
+	// GetUsageSummaryWithResponse Summarise usage over a time range
+	//
+	// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+	//
+	// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+	//
+	// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
+	GetUsageSummaryWithResponse(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*GetUsageSummaryResponse, error)
 }
 
 type GetAppSummaryResponse struct {
@@ -9225,6 +8706,8 @@ type DeleteAppEnvironmentVariableResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
 }
@@ -9242,6 +8725,11 @@ func (r DeleteAppEnvironmentVariableResponse) GetApplicationproblemJSON403() *Fo
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r DeleteAppEnvironmentVariableResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteAppEnvironmentVariableResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
@@ -9291,6 +8779,8 @@ type UpdateAppEnvironmentVariableResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
@@ -9320,6 +8810,11 @@ func (r UpdateAppEnvironmentVariableResponse) GetApplicationproblemJSON403() *Fo
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r UpdateAppEnvironmentVariableResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateAppEnvironmentVariableResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
@@ -10934,165 +10429,6 @@ func (r ListGpuTypesResponse) ContentType() string {
 	return ""
 }
 
-type CreateGpuTypeResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *GpuType
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r CreateGpuTypeResponse) GetJSON201() *GpuType {
-	return r.JSON201
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r CreateGpuTypeResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r CreateGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r CreateGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r CreateGpuTypeResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r CreateGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r CreateGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r CreateGpuTypeResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r CreateGpuTypeResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CreateGpuTypeResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r CreateGpuTypeResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DeleteGpuTypeResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r DeleteGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r DeleteGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r DeleteGpuTypeResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r DeleteGpuTypeResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r DeleteGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r DeleteGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r DeleteGpuTypeResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteGpuTypeResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteGpuTypeResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteGpuTypeResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type GetGpuTypeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11163,500 +10499,6 @@ func (r GetGpuTypeResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetGpuTypeResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type UpdateGpuTypeResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *GpuType
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r UpdateGpuTypeResponse) GetJSON200() *GpuType {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r UpdateGpuTypeResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r UpdateGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r UpdateGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r UpdateGpuTypeResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r UpdateGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r UpdateGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r UpdateGpuTypeResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r UpdateGpuTypeResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r UpdateGpuTypeResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r UpdateGpuTypeResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type ListGpuTypePricesResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *struct {
-		Data *[]GpuPricingListItem `json:"data,omitempty"`
-
-		// NextCursor Cursor for the next page; null when there are no more items.
-		NextCursor *string `json:"nextCursor,omitempty"`
-	}
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListGpuTypePricesResponse) GetJSON200() *struct {
-	Data *[]GpuPricingListItem `json:"data,omitempty"`
-
-	// NextCursor Cursor for the next page; null when there are no more items.
-	NextCursor *string `json:"nextCursor,omitempty"`
-} {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r ListGpuTypePricesResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r ListGpuTypePricesResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r ListGpuTypePricesResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r ListGpuTypePricesResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r ListGpuTypePricesResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetBody returns the raw response body bytes
-func (r ListGpuTypePricesResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ListGpuTypePricesResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListGpuTypePricesResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ListGpuTypePricesResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type CreateGpuTypePriceResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *GpuPricing
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-}
-
-// GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r CreateGpuTypePriceResponse) GetJSON201() *GpuPricing {
-	return r.JSON201
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r CreateGpuTypePriceResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetBody returns the raw response body bytes
-func (r CreateGpuTypePriceResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r CreateGpuTypePriceResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CreateGpuTypePriceResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r CreateGpuTypePriceResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DeleteGpuTypePriceResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r DeleteGpuTypePriceResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetBody returns the raw response body bytes
-func (r DeleteGpuTypePriceResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteGpuTypePriceResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteGpuTypePriceResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteGpuTypePriceResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type UpdateGpuTypePriceResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *GpuPricing
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *BadRequest
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r UpdateGpuTypePriceResponse) GetJSON200() *GpuPricing {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON400() *BadRequest {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r UpdateGpuTypePriceResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetBody returns the raw response body bytes
-func (r UpdateGpuTypePriceResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r UpdateGpuTypePriceResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r UpdateGpuTypePriceResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r UpdateGpuTypePriceResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type RestoreGpuTypeResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *GpuType
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Unauthorized
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Forbidden
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *NotFound
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Conflict
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *ValidationError
-	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
-	ApplicationproblemJSON503 *ServiceUnavailable
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r RestoreGpuTypeResponse) GetJSON200() *GpuType {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r RestoreGpuTypeResponse) GetApplicationproblemJSON401() *Unauthorized {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r RestoreGpuTypeResponse) GetApplicationproblemJSON403() *Forbidden {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r RestoreGpuTypeResponse) GetApplicationproblemJSON404() *NotFound {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r RestoreGpuTypeResponse) GetApplicationproblemJSON409() *Conflict {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r RestoreGpuTypeResponse) GetApplicationproblemJSON422() *ValidationError {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r RestoreGpuTypeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
-	return r.ApplicationproblemJSON503
-}
-
-// GetBody returns the raw response body bytes
-func (r RestoreGpuTypeResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r RestoreGpuTypeResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r RestoreGpuTypeResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r RestoreGpuTypeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12072,11 +10914,13 @@ func (r GetMetricSeriesResponse) ContentType() string {
 	return ""
 }
 
-type UpsertOrgTenancyResponse struct {
+type ListReservedCapacityResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *OrgTenancy
+	JSON200 *struct {
+		Data []ReservedCapacity `json:"data"`
+	}
 	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
@@ -12085,47 +10929,56 @@ type UpsertOrgTenancyResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r UpsertOrgTenancyResponse) GetJSON200() *OrgTenancy {
+func (r ListReservedCapacityResponse) GetJSON200() *struct {
+	Data []ReservedCapacity `json:"data"`
+} {
 	return r.JSON200
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON400() *BadRequest {
+func (r ListReservedCapacityResponse) GetApplicationproblemJSON400() *BadRequest {
 	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON401() *Unauthorized {
+func (r ListReservedCapacityResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON403() *Forbidden {
+func (r ListReservedCapacityResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON422() *ValidationError {
+func (r ListReservedCapacityResponse) GetApplicationproblemJSON422() *ValidationError {
 	return r.ApplicationproblemJSON422
 }
 
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListReservedCapacityResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
 // GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r UpsertOrgTenancyResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+func (r ListReservedCapacityResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
 	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
-func (r UpsertOrgTenancyResponse) GetBody() []byte {
+func (r ListReservedCapacityResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r UpsertOrgTenancyResponse) Status() string {
+func (r ListReservedCapacityResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -12133,7 +10986,7 @@ func (r UpsertOrgTenancyResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r UpsertOrgTenancyResponse) StatusCode() int {
+func (r ListReservedCapacityResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -12141,7 +10994,7 @@ func (r UpsertOrgTenancyResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r UpsertOrgTenancyResponse) ContentType() string {
+func (r ListReservedCapacityResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12991,9 +11844,92 @@ func (r ListUsageEventsResponse) ContentType() string {
 	return ""
 }
 
+type GetUsageSummaryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UsageSummary
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUsageSummaryResponse) GetJSON200() *UsageSummary {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetUsageSummaryResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetUsageSummaryResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetUsageSummaryResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetUsageSummaryResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetUsageSummaryResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetUsageSummaryResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUsageSummaryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUsageSummaryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUsageSummaryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUsageSummaryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetAppSummaryWithResponse App summary metrics for the authenticated organisation
 //
-// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend is omitted until billing rollups exist.
+// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13205,7 +12141,11 @@ func (c *ClientWithResponses) GetBuildWithResponse(ctx context.Context, appId Ap
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+//
+//	one app rolls to one version at a time. Retry once it completes.
+//
+// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13225,7 +12165,11 @@ func (c *ClientWithResponses) DeployVersionWithBodyWithResponse(ctx context.Cont
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least one to become healthy, switches task routing to the new version, then drains old-version workers gracefully. Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being force-terminated. If new workers fail to become healthy, old workers are not drained and the app continues on the previous version.
-// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - Deploy to a non-existent or `deleted` app returns `404 Not Found`
+// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A deploy while a rollout of this app is still in flight returns `409 Conflict`;
+//
+//	one app rolls to one version at a time. Retry once it completes.
+//
+// - Deploy to a non-existent or `deleted` app returns `404 Not Found`
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13242,6 +12186,8 @@ func (c *ClientWithResponses) DeployVersionWithResponse(ctx context.Context, app
 //
 // Lists the endpoints of the app's active version. The set is written by the source itself — a code build's introspection, or a container's config document — and is replaced atomically whenever a version activates, so a deploy of a newer version or a rollback to an older one is immediately reflected here. Empty while the app is `initializing`: nothing is routable until its first build is ready and deployed.
 //
+// Each row may include `runtime` (status, req/min, p95, p99) from the latest 5-minute Insights window. Those fields are omitted when metrics cannot be read or the endpoint has no samples; identity always comes from Postgres.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/apps/{appId}/endpoints (the `ListEndpoints` operationId).
@@ -13254,6 +12200,8 @@ func (c *ClientWithResponses) ListEndpointsWithResponse(ctx context.Context, app
 }
 
 // GetEndpointWithResponse Get an endpoint
+//
+// Returns one live endpoint on the app. `runtime` is the same optional latest-window traffic as `listEndpoints` and is omitted when metrics cannot be read or the endpoint has no samples.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13281,6 +12229,8 @@ func (c *ClientWithResponses) ListAppEnvironmentVariablesWithResponse(ctx contex
 
 // DeleteAppEnvironmentVariableWithResponse Delete an app environment variable
 //
+// Removes one environment variable. A successful delete records a new version carrying the remaining environment set and the same image. If that image is deployable, the delete pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A delete of a key that is present while a rollout of this app is still in flight returns `409 Conflict` and does not remove the value. A name that is not present returns `404` even during that window.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with DELETE /v1/apps/{appId}/environment-variables/{variableName} (the `DeleteAppEnvironmentVariable` operationId).
@@ -13295,6 +12245,10 @@ func (c *ClientWithResponses) DeleteAppEnvironmentVariableWithResponse(ctx conte
 // UpdateAppEnvironmentVariableWithBodyWithResponse Update an app environment variable
 //
 // Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+//
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -13314,6 +12268,10 @@ func (c *ClientWithResponses) UpdateAppEnvironmentVariableWithBodyWithResponse(c
 // UpdateAppEnvironmentVariableWithResponse Update an app environment variable
 //
 // Sets one environment variable, creating it if absent. Names the platform sets on the serving container itself are rejected with `422`, as they are on create.
+//
+// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
+//
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -13529,7 +12487,7 @@ func (c *ClientWithResponses) DetachAppSecretWithResponse(ctx context.Context, a
 
 // StopAppWithResponse Stop an app
 //
-// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status = active`.
+// Moves the app to `stopping` and returns `202` once that intent is persisted. Scale-to-zero and worker drain are performed asynchronously by the Scaler; `status` becomes `stopped` once all workers drain. In-flight tasks have a fixed, platform-managed grace period to complete; workers that exceed it are force-terminated and their tasks return to the queue per delivery guarantees. New task submissions remain accepted while `stopping`; after the app reaches `stopped`, submissions return `409 Conflict`. Precondition: `status` is `active` or `failed` — a rollout that failed can leave a workload running, and a stop is what takes it away without deleting the app.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13645,7 +12603,7 @@ func (c *ClientWithResponses) GetWorkerWithResponse(ctx context.Context, appId A
 
 // ListGpuTypesWithResponse List supported GPU types and their pricing
 //
-// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect; the Runware principal can read the full price history, including scheduled future changes, from `GET /v1/gpu-types/{gpuTypeId}/prices`.
+// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13656,51 +12614,6 @@ func (c *ClientWithResponses) ListGpuTypesWithResponse(ctx context.Context, reqE
 		return nil, err
 	}
 	return ParseListGpuTypesResponse(rsp)
-}
-
-// CreateGpuTypeWithBodyWithResponse Add a GPU type to the catalogue
-//
-// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-func (c *ClientWithResponses) CreateGpuTypeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error) {
-	rsp, err := c.CreateGpuTypeWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateGpuTypeResponse(rsp)
-}
-
-// CreateGpuTypeWithResponse Add a GPU type to the catalogue
-//
-// Creates a new entry in the global GPU type catalogue. Restricted to the Runware platform organization. The `id` (catalogue code) is immutable and remains reserved after retirement: a retired code answers `409` here and is brought back with `POST /v1/gpu-types/{gpuTypeId}/restore` rather than recreated.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/gpu-types (the `CreateGpuType` operationId).
-func (c *ClientWithResponses) CreateGpuTypeWithResponse(ctx context.Context, body CreateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypeResponse, error) {
-	rsp, err := c.CreateGpuType(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateGpuTypeResponse(rsp)
-}
-
-// DeleteGpuTypeWithResponse Retire a GPU type from the catalogue
-//
-// Soft-deletes a GPU type while preserving its code and price history. Restricted to the Runware platform organization. Returns `409` if a worker configuration or GPU pool still references the code. Retiring an already retired code returns `404`. Reversible with `POST /v1/gpu-types/{gpuTypeId}/restore`.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /v1/gpu-types/{gpuTypeId} (the `DeleteGpuType` operationId).
-func (c *ClientWithResponses) DeleteGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*DeleteGpuTypeResponse, error) {
-	rsp, err := c.DeleteGpuType(ctx, gpuTypeId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteGpuTypeResponse(rsp)
 }
 
 // GetGpuTypeWithResponse Get a GPU type from the catalogue
@@ -13716,141 +12629,6 @@ func (c *ClientWithResponses) GetGpuTypeWithResponse(ctx context.Context, gpuTyp
 		return nil, err
 	}
 	return ParseGetGpuTypeResponse(rsp)
-}
-
-// UpdateGpuTypeWithBodyWithResponse Update a GPU type in the catalogue
-//
-// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-func (c *ClientWithResponses) UpdateGpuTypeWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error) {
-	rsp, err := c.UpdateGpuTypeWithBody(ctx, gpuTypeId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUpdateGpuTypeResponse(rsp)
-}
-
-// UpdateGpuTypeWithResponse Update a GPU type in the catalogue
-//
-// Updates mutable fields of an active GPU type. Restricted to the Runware platform organization. The catalogue code (`gpuTypeId`) cannot be changed; retired entries return `404`.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId} (the `UpdateGpuType` operationId).
-func (c *ClientWithResponses) UpdateGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body UpdateGpuTypeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypeResponse, error) {
-	rsp, err := c.UpdateGpuType(ctx, gpuTypeId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUpdateGpuTypeResponse(rsp)
-}
-
-// ListGpuTypePricesWithResponse List historical and future prices of a GPU type
-//
-// Returns a page of a GPU type's prices, ordered by effectiveFrom. Restricted to the Runware platform organization: the page includes retired types and prices that are scheduled but not yet in effect. Customers read the price currently in effect from `GET /v1/gpu-types`.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /v1/gpu-types/{gpuTypeId}/prices (the `ListGpuTypePrices` operationId).
-func (c *ClientWithResponses) ListGpuTypePricesWithResponse(ctx context.Context, gpuTypeId GpuTypeId, params *ListGpuTypePricesParams, reqEditors ...RequestEditorFn) (*ListGpuTypePricesResponse, error) {
-	rsp, err := c.ListGpuTypePrices(ctx, gpuTypeId, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListGpuTypePricesResponse(rsp)
-}
-
-// CreateGpuTypePriceWithBodyWithResponse Schedule a new price for a GPU type
-//
-// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-func (c *ClientWithResponses) CreateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error) {
-	rsp, err := c.CreateGpuTypePriceWithBody(ctx, gpuTypeId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateGpuTypePriceResponse(rsp)
-}
-
-// CreateGpuTypePriceWithResponse Schedule a new price for a GPU type
-//
-// Schedules a new price to take effect at `effectiveFrom`. Restricted to the Runware platform organization. `effectiveFrom` must normally be more than 7 days in the future. Before a GPU type is admitted or used, a later price can be added inside that window to correct its initial price. This preserves the original row and records the correction as a superseding price. Retired types return `404`; other values inside the notice window return `422`. Returns `409` if the GPU type already has a price scheduled at that exact instant.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/gpu-types/{gpuTypeId}/prices (the `CreateGpuTypePrice` operationId).
-func (c *ClientWithResponses) CreateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, body CreateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGpuTypePriceResponse, error) {
-	rsp, err := c.CreateGpuTypePrice(ctx, gpuTypeId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateGpuTypePriceResponse(rsp)
-}
-
-// DeleteGpuTypePriceWithResponse Remove a scheduled price for a GPU type
-//
-// Deletes a scheduled price. Restricted to the Runware platform organization. Only a price whose effectiveFrom is still more than 7 days in the future can be deleted — once inside that window the price is locked in (about to take effect, or already has) and this returns `409`. Retired GPU types return `404`.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `DeleteGpuTypePrice` operationId).
-func (c *ClientWithResponses) DeleteGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteGpuTypePriceResponse, error) {
-	rsp, err := c.DeleteGpuTypePrice(ctx, gpuTypeId, priceId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteGpuTypePriceResponse(rsp)
-}
-
-// UpdateGpuTypePriceWithBodyWithResponse Update a scheduled price for a GPU type
-//
-// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-func (c *ClientWithResponses) UpdateGpuTypePriceWithBodyWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error) {
-	rsp, err := c.UpdateGpuTypePriceWithBody(ctx, gpuTypeId, priceId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUpdateGpuTypePriceResponse(rsp)
-}
-
-// UpdateGpuTypePriceWithResponse Update a scheduled price for a GPU type
-//
-// Partially updates a scheduled price. Restricted to the Runware platform organization. Only a price whose current `effectiveFrom` is still more than 7 days in the future can be edited — once inside that window the price is locked in and this returns `409`. A supplied `effectiveFrom` must itself be more than 7 days in the future, returning `422` otherwise. Retired GPU types return `404`. Returns `409` if the update collides with another price already scheduled at that exact instant.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with PATCH /v1/gpu-types/{gpuTypeId}/prices/{priceId} (the `UpdateGpuTypePrice` operationId).
-func (c *ClientWithResponses) UpdateGpuTypePriceWithResponse(ctx context.Context, gpuTypeId GpuTypeId, priceId openapi_types.UUID, body UpdateGpuTypePriceJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGpuTypePriceResponse, error) {
-	rsp, err := c.UpdateGpuTypePrice(ctx, gpuTypeId, priceId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUpdateGpuTypePriceResponse(rsp)
-}
-
-// RestoreGpuTypeWithResponse Restore a retired GPU type
-//
-// Returns a retired GPU type to the catalogue under the same code, with its price history intact, so the reserved code is usable again for the hardware it already described. Restricted to the Runware platform organization. A code that is not retired returns `409`; a code no entry has ever held returns `404`. Whether customers can then select the type still depends on pool admission, exactly as for any active type.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/gpu-types/{gpuTypeId}/restore (the `RestoreGpuType` operationId).
-func (c *ClientWithResponses) RestoreGpuTypeWithResponse(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*RestoreGpuTypeResponse, error) {
-	rsp, err := c.RestoreGpuType(ctx, gpuTypeId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseRestoreGpuTypeResponse(rsp)
 }
 
 // GetLogEntriesWithResponse Read one page of a named log query
@@ -13910,9 +12688,11 @@ func (c *ClientWithResponses) ListInsightsQueriesWithResponse(ctx context.Contex
 //
 // `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Other queries reject `appId`. Other windows are not available for these queries.
 //
-// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires `deployment` (the public app id, rewritten to the live deployment UUID). Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic. Other queries reject `endpointId`. Other windows are not available for this query.
+// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 //
-// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring `deployment` (the public app id, rewritten to the live deployment UUID): `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+//
+// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13925,42 +12705,25 @@ func (c *ClientWithResponses) GetMetricSeriesWithResponse(ctx context.Context, q
 	return ParseGetMetricSeriesResponse(rsp)
 }
 
-// UpsertOrgTenancyWithBodyWithResponse Set an organisation's serverless tenancy state
+// ListReservedCapacityWithResponse Report reserved capacity and its use
 //
-// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
+// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 //
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
+// One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 //
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
+// Counts describe recorded billable state at the window end, so a report of a past period describes that period rather than mixing it with the present. A scope with an effective commitment appears even when nothing is using it: an idle reservation is still charged for, and is what the customer most needs to see. Scopes whose terms expired during the period remain with their historical usage and zero committed capacity at the window end.
 //
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+// The fixed commitment charge is not here. Serverless meters usage and does not own that charge; the commerce system invoices it from the contract schedule. Usage that cannot be priced returns `500`, with no partial report.
 //
-// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-func (c *ClientWithResponses) UpsertOrgTenancyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error) {
-	rsp, err := c.UpsertOrgTenancyWithBody(ctx, contentType, body, reqEditors...)
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/reserved-capacity (the `ListReservedCapacity` operationId).
+func (c *ClientWithResponses) ListReservedCapacityWithResponse(ctx context.Context, params *ListReservedCapacityParams, reqEditors ...RequestEditorFn) (*ListReservedCapacityResponse, error) {
+	rsp, err := c.ListReservedCapacity(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUpsertOrgTenancyResponse(rsp)
-}
-
-// UpsertOrgTenancyWithResponse Set an organisation's serverless tenancy state
-//
-// Idempotent upsert for one customer organisation. The customer UUID is in the body — public paths never carry an organisation identifier (the authenticated API key names the *caller*, which for this route must be the Runware platform organisation).
-//
-// `state: active` runs Ensure: a Cloud KMS CryptoKey named after the organisation UUID, a Kubernetes service account `org-<uuid>` in the shared app namespace, and a decrypt IAM binding on that key for the KSA principal. `state: disabled` runs teardown: disable the key's primary version, drop the decrypt binding, delete the KSA. It then stops the organisation's estate: every deployment that is `active` moves to `stopping` and has its drain enqueued, and that stop is one database transaction — the `200` is returned only once it has committed, so it guarantees every deployment that was active is on its way to `stopped`. The key itself is not destroyed — a destroyed key makes every ciphertext under it permanently unreadable. The local row stays as a tombstone so a later Ensure converges on the same names; a later Ensure does not resume the deployments this disable stopped — restoring the organisation's IAM is not the same decision as restarting its workload, and this route does not conflate them. A stopped deployment stays stopped until its own resume call, the same as one the customer stopped directly.
-//
-// A retry after a partial failure converges rather than duplicating objects. `200` returns the resulting receipt. `503` when Cloud KMS key-admin is rate-limited (60 writes/min) or otherwise unavailable, or when the tenancy was disabled but the deployment stop could not be committed — the tenancy row is already `disabled` in that case, and the same PUT retried stops whatever is still active; the caller (admin-api Messenger) retries the same PUT either way.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with PUT /v1/org-tenancies (the `UpsertOrgTenancy` operationId).
-func (c *ClientWithResponses) UpsertOrgTenancyWithResponse(ctx context.Context, body UpsertOrgTenancyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpsertOrgTenancyResponse, error) {
-	rsp, err := c.UpsertOrgTenancy(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUpsertOrgTenancyResponse(rsp)
+	return ParseListReservedCapacityResponse(rsp)
 }
 
 // ListSecretsWithResponse List secrets
@@ -13980,7 +12743,7 @@ func (c *ClientWithResponses) ListSecretsWithResponse(ctx context.Context, param
 
 // CreateSecretWithBodyWithResponse Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13995,7 +12758,7 @@ func (c *ClientWithResponses) CreateSecretWithBodyWithResponse(ctx context.Conte
 
 // CreateSecretWithResponse Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext).
+// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -14025,7 +12788,7 @@ func (c *ClientWithResponses) DeleteSecretWithResponse(ctx context.Context, secr
 
 // UpdateSecretWithBodyWithResponse Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -14040,7 +12803,7 @@ func (c *ClientWithResponses) UpdateSecretWithBodyWithResponse(ctx context.Conte
 
 // UpdateSecretWithResponse Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -14156,6 +12919,25 @@ func (c *ClientWithResponses) ListUsageEventsWithResponse(ctx context.Context, p
 		return nil, err
 	}
 	return ParseListUsageEventsResponse(rsp)
+}
+
+// GetUsageSummaryWithResponse Summarise usage over a time range
+//
+// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+//
+// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+//
+// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
+func (c *ClientWithResponses) GetUsageSummaryWithResponse(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*GetUsageSummaryResponse, error) {
+	rsp, err := c.GetUsageSummary(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUsageSummaryResponse(rsp)
 }
 
 // ParseGetAppSummaryResponse parses an HTTP response from a GetAppSummaryWithResponse call
@@ -15057,6 +13839,13 @@ func ParseDeleteAppEnvironmentVariableResponse(rsp *http.Response) (*DeleteAppEn
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest ServiceUnavailable
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -15117,6 +13906,13 @@ func ParseUpdateAppEnvironmentVariableResponse(rsp *http.Response) (*UpdateAppEn
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError
@@ -16407,138 +15203,6 @@ func ParseListGpuTypesResponse(rsp *http.Response) (*ListGpuTypesResponse, error
 	return response, nil
 }
 
-// ParseCreateGpuTypeResponse parses an HTTP response from a CreateGpuTypeWithResponse call
-func ParseCreateGpuTypeResponse(rsp *http.Response) (*CreateGpuTypeResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CreateGpuTypeResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest GpuType
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteGpuTypeResponse parses an HTTP response from a DeleteGpuTypeWithResponse call
-func ParseDeleteGpuTypeResponse(rsp *http.Response) (*DeleteGpuTypeResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteGpuTypeResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseGetGpuTypeResponse parses an HTTP response from a GetGpuTypeWithResponse call
 func ParseGetGpuTypeResponse(rsp *http.Response) (*GetGpuTypeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16580,408 +15244,6 @@ func ParseGetGpuTypeResponse(rsp *http.Response) (*GetGpuTypeResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseUpdateGpuTypeResponse parses an HTTP response from a UpdateGpuTypeWithResponse call
-func ParseUpdateGpuTypeResponse(rsp *http.Response) (*UpdateGpuTypeResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &UpdateGpuTypeResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest GpuType
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest ServiceUnavailable
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON503 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseListGpuTypePricesResponse parses an HTTP response from a ListGpuTypePricesWithResponse call
-func ParseListGpuTypePricesResponse(rsp *http.Response) (*ListGpuTypePricesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListGpuTypePricesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			Data *[]GpuPricingListItem `json:"data,omitempty"`
-
-			// NextCursor Cursor for the next page; null when there are no more items.
-			NextCursor *string `json:"nextCursor,omitempty"`
-		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseCreateGpuTypePriceResponse parses an HTTP response from a CreateGpuTypePriceWithResponse call
-func ParseCreateGpuTypePriceResponse(rsp *http.Response) (*CreateGpuTypePriceResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CreateGpuTypePriceResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest GpuPricing
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteGpuTypePriceResponse parses an HTTP response from a DeleteGpuTypePriceWithResponse call
-func ParseDeleteGpuTypePriceResponse(rsp *http.Response) (*DeleteGpuTypePriceResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteGpuTypePriceResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseUpdateGpuTypePriceResponse parses an HTTP response from a UpdateGpuTypePriceWithResponse call
-func ParseUpdateGpuTypePriceResponse(rsp *http.Response) (*UpdateGpuTypePriceResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &UpdateGpuTypePriceResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest GpuPricing
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest ValidationError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseRestoreGpuTypeResponse parses an HTTP response from a RestoreGpuTypeWithResponse call
-func ParseRestoreGpuTypeResponse(rsp *http.Response) (*RestoreGpuTypeResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &RestoreGpuTypeResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest GpuType
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError
@@ -17369,22 +15631,24 @@ func ParseGetMetricSeriesResponse(rsp *http.Response) (*GetMetricSeriesResponse,
 	return response, nil
 }
 
-// ParseUpsertOrgTenancyResponse parses an HTTP response from a UpsertOrgTenancyWithResponse call
-func ParseUpsertOrgTenancyResponse(rsp *http.Response) (*UpsertOrgTenancyResponse, error) {
+// ParseListReservedCapacityResponse parses an HTTP response from a ListReservedCapacityWithResponse call
+func ParseListReservedCapacityResponse(rsp *http.Response) (*ListReservedCapacityResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &UpsertOrgTenancyResponse{
+	response := &ListReservedCapacityResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest OrgTenancy
+		var dest struct {
+			Data []ReservedCapacity `json:"data"`
+		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -17417,6 +15681,13 @@ func ParseUpsertOrgTenancyResponse(rsp *http.Response) (*UpsertOrgTenancyRespons
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest ServiceUnavailable
@@ -18106,6 +16377,74 @@ func ParseListUsageEventsResponse(rsp *http.Response) (*ListUsageEventsResponse,
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetUsageSummaryResponse parses an HTTP response from a GetUsageSummaryWithResponse call
+func ParseGetUsageSummaryResponse(rsp *http.Response) (*GetUsageSummaryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUsageSummaryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UsageSummary
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest ServiceUnavailable

@@ -31,6 +31,11 @@ const (
 	colMessage       = "Message"
 	colWorker        = "Worker"
 	colEndpoint      = "Endpoint"
+	colDay           = "Day"
+	colCoverage      = "Coverage"
+	colGPUTime       = "GPU time"
+	colPAYGSpend     = "PAYG spend"
+	colPAYGValue     = "PAYG-equivalent value"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
