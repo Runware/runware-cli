@@ -25,10 +25,12 @@ const usageRulesLong = `The window is half-open (--from inclusive, --to exclusiv
 and clipped: a worker running across a boundary contributes only the part
 inside it. --for cannot be combined with --from or --to.
 
-GPU time is summed per GPU, so four GPUs for one second is four seconds. PAYG
-spend is provisional and not a settled charge; the PAYG-equivalent value prices
-the same time at the catalogue rate whatever covered it, so the difference is
-what reserved capacity saved.
+Billable time runs from loading through ready, draining and stopping; pending,
+pulling and stopped do not bill, and busy is queue occupancy rather than a
+lifecycle transition. GPU time is summed per GPU, so four GPUs for one second
+is four seconds. PAYG spend is provisional and not a settled charge; the
+PAYG-equivalent value prices the same time at the catalogue rate whatever
+covered it, so the difference is what reserved capacity saved.
 
 Grouping by day splits a span at UTC midnight. The table ends with a Total row
 and prints the resolved window to stderr; json and yaml output the API payload.`
