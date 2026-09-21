@@ -108,6 +108,48 @@ func TestReportEndpointSetChangeSaysNothingWhenNothingMoved(t *testing.T) {
 	}
 }
 
+// TestShouldReportEndpointChange guards the two ways this report can lie: with
+// no reading from before the deploy it would call the app's whole existing set
+// new, and before the rollout activates it would compare the old set to itself.
+func TestShouldReportEndpointChange(t *testing.T) {
+	cases := []struct {
+		name       string
+		readBefore bool
+		status     serverlessapi.AppStatus
+		want       bool
+	}{
+		{
+			name:       "read before and rolled out",
+			readBefore: true,
+			status:     serverlessapi.AppStatusActive,
+			want:       true,
+		},
+		{
+			name:       "the before-read failed, so the whole set would look new",
+			readBefore: false,
+			status:     serverlessapi.AppStatusActive,
+		},
+		{
+			name:       "the deploy failed, so nothing moved",
+			readBefore: true,
+			status:     serverlessapi.AppStatusFailed,
+		},
+		{
+			name:       "still rolling out, so the rows are still the old version's",
+			readBefore: true,
+			status:     serverlessapi.AppStatusInitializing,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldReportEndpointChange(tc.readBefore, tc.status); got != tc.want {
+				t.Errorf("shouldReportEndpointChange(%v, %q) = %v, want %v",
+					tc.readBefore, tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDeployEndpointPaths(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

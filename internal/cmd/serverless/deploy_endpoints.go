@@ -25,6 +25,21 @@ func (c endpointSetChange) empty() bool {
 	return len(c.added) == 0 && len(c.removed) == 0
 }
 
+// shouldReportEndpointChange decides whether the two readings are worth
+// comparing. Both conditions are load-bearing.
+//
+// readBefore, because carrying on without a reading from before the deploy
+// would make every endpoint the app already served look newly added, and a
+// warning that cries wolf on an unchanged deploy is worse than none: the one it
+// exists to raise is a real rename.
+//
+// active, because the endpoint rows only become the new version's when the
+// rollout activates. A deploy that failed, or one still rolling, moved nothing
+// yet, and reading the set then reports the old one against itself.
+func shouldReportEndpointChange(readBefore bool, status serverlessapi.AppStatus) bool {
+	return readBefore && status == serverlessapi.AppStatusActive
+}
+
 // deployEndpointPaths reads the app's live endpoint paths, sorted.
 //
 // One page is the whole set: an app may declare at most 20 endpoints and the
