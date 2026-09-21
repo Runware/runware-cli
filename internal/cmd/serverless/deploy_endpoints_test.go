@@ -171,6 +171,39 @@ func TestDeployEndpointPaths(t *testing.T) {
 	}
 }
 
+// TestDeployEndpointPathsFollowsTheCursor: an app may declare as many endpoints
+// as a default page holds, so a reader that stops at the first page would call
+// the endpoints it never saw removed and warn about 404s that are not coming.
+func TestDeployEndpointPathsFollowsTheCursor(t *testing.T) {
+	var gotCursors []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCursors = append(gotCursors, r.URL.Query().Get("cursor"))
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("cursor") == "" {
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":"019c7654-8b21-7abc-9123-abcdef123456","appId":"my-app","path":"generate"}
+			],"nextCursor":"page2"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"019c7654-8b21-7abc-9123-abcdef123457","appId":"my-app","path":"embed"}
+		]}`))
+	}))
+	defer server.Close()
+
+	client := serverlessapi.NewClient("test-key", server.URL, slog.Default())
+	paths, err := deployEndpointPaths(context.Background(), client, testAppID)
+	if err != nil {
+		t.Fatalf("deployEndpointPaths: %v", err)
+	}
+	if !slices.Equal(paths, []string{testOtherEndpointPath, testEndpointPath}) {
+		t.Errorf("paths = %v, want both pages", paths)
+	}
+	if !slices.Equal(gotCursors, []string{"", "page2"}) {
+		t.Errorf("cursors requested = %v, want the second page to be fetched once", gotCursors)
+	}
+}
+
 // TestDeployEndpointPathsSurfacesTheError: the caller decides a failed read
 // costs the warning rather than the deploy, so this must not swallow it here.
 func TestDeployEndpointPathsSurfacesTheError(t *testing.T) {

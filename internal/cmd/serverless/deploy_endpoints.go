@@ -9,6 +9,10 @@ import (
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
+// endpointPageLimit is the per-page size deployEndpointPaths asks for: the
+// contract's maximum, so the common app takes one round trip.
+const endpointPageLimit = 100
+
 // endpointSetChange is what a deploy did to the app's public endpoint set: the
 // paths it published and the ones it retired, each sorted.
 type endpointSetChange struct {
@@ -27,17 +31,32 @@ func shouldReportEndpointChange(readBefore bool, status serverlessapi.AppStatus)
 	return readBefore && status == serverlessapi.AppStatusActive
 }
 
-// deployEndpointPaths reads the app's live endpoint paths, sorted. One page is
-// the whole set: at most 20 endpoints per app against a list route that pages at
-// 100, so there is no cursor to follow.
+// deployEndpointPaths reads every live endpoint path on the app, sorted.
+//
+// It follows the cursor rather than trusting one page. The limit defaults to 20
+// and an app may declare 20 endpoints, so a full app already sits exactly on the
+// page boundary; a short read would report the endpoints it did not see as
+// removed, and tell the customer their callers are about to 404 on paths that
+// never moved.
 func deployEndpointPaths(ctx context.Context, client *serverlessapi.Client, appID string) ([]string, error) {
-	page, err := client.ListEndpoints(ctx, appID, nil)
-	if err != nil {
-		return nil, err
-	}
-	paths := make([]string, 0, len(page.Data))
-	for i := range page.Data {
-		paths = append(paths, page.Data[i].Path)
+	var (
+		paths  []string
+		cursor string
+	)
+	for {
+		params := &serverlessapi.ListEndpointsParams{}
+		params.Limit, params.Cursor = listPageParams(endpointPageLimit, cursor)
+		page, err := client.ListEndpoints(ctx, appID, params)
+		if err != nil {
+			return nil, err
+		}
+		for i := range page.Data {
+			paths = append(paths, page.Data[i].Path)
+		}
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			break
+		}
+		cursor = *page.NextCursor
 	}
 	slices.Sort(paths)
 	return paths, nil
