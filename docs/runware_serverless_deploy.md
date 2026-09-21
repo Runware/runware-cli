@@ -55,6 +55,12 @@ A volume keeps it out of both.
 Worker settings are supplied via flags on create. Endpoints are derived
 server-side from the SDK (code) or from container.yaml (container).
 
+A code app's endpoint path is its handler's method name with underscores turned
+into hyphens, so renaming a method moves a public endpoint and 404s its callers.
+Updating an existing application with --wait reports what the deploy did to the
+endpoint set once the rollout lands. It is a report, not a gate: renaming an
+endpoint on purpose is allowed.
+
 ```
 runware serverless deploy [file] [flags]
 ```
