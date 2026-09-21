@@ -248,13 +248,10 @@ endpoint on purpose is allowed.`,
 				return err
 			}
 
-			// The endpoint set the app is serving now, to compare against the one
-			// the new version publishes. Only on an update we are going to wait
-			// for: a create has no previous set, and without --wait this command
-			// returns before the build that decides the new one.
-			//
-			// A read failure costs the warning, not the deploy — see
-			// shouldReportEndpointChange for why it has to cost the whole warning.
+			// The set the app serves now, to compare against what the new version
+			// publishes. Only on an update we will wait for: a create has no
+			// previous set, and without --wait this returns before the build that
+			// decides the new one. A read failure costs the warning, not the deploy.
 			var (
 				endpointsBefore []string
 				canCompare      bool

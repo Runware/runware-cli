@@ -9,13 +9,8 @@ import (
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
-// endpointSetChange is what a deploy did to the app's public endpoint set:
-// the paths it published, and the paths it retired. Both sorted.
-//
-// A code app's endpoint path is its handler's method name with underscores
-// turned into hyphens, so renaming a method is an ordinary local refactor that
-// moves a public URL and 404s the customer's callers. Reporting the change is
-// the signal that says so; nothing here refuses the deploy.
+// endpointSetChange is what a deploy did to the app's public endpoint set: the
+// paths it published and the ones it retired, each sorted.
 type endpointSetChange struct {
 	added   []string
 	removed []string
@@ -25,27 +20,16 @@ func (c endpointSetChange) empty() bool {
 	return len(c.added) == 0 && len(c.removed) == 0
 }
 
-// shouldReportEndpointChange decides whether the two readings are worth
-// comparing. Both conditions are load-bearing.
-//
-// readBefore, because carrying on without a reading from before the deploy
-// would make every endpoint the app already served look newly added, and a
-// warning that cries wolf on an unchanged deploy is worse than none: the one it
-// exists to raise is a real rename.
-//
-// active, because the endpoint rows only become the new version's when the
-// rollout activates. A deploy that failed, or one still rolling, moved nothing
-// yet, and reading the set then reports the old one against itself.
+// shouldReportEndpointChange guards the two ways the comparison would lie:
+// without a reading from before the deploy the app's whole existing set looks
+// new, and before the rollout activates the rows are still the old version's.
 func shouldReportEndpointChange(readBefore bool, status serverlessapi.AppStatus) bool {
 	return readBefore && status == serverlessapi.AppStatusActive
 }
 
-// deployEndpointPaths reads the app's live endpoint paths, sorted.
-//
-// One page is the whole set: an app may declare at most 20 endpoints and the
-// list route pages at 100, so there is no cursor to follow. A miss is not an
-// error to the caller — an app that does not exist yet, or one whose first
-// version has not deployed, simply has no endpoints to compare against.
+// deployEndpointPaths reads the app's live endpoint paths, sorted. One page is
+// the whole set: at most 20 endpoints per app against a list route that pages at
+// 100, so there is no cursor to follow.
 func deployEndpointPaths(ctx context.Context, client *serverlessapi.Client, appID string) ([]string, error) {
 	page, err := client.ListEndpoints(ctx, appID, nil)
 	if err != nil {
@@ -59,7 +43,6 @@ func deployEndpointPaths(ctx context.Context, client *serverlessapi.Client, appI
 	return paths, nil
 }
 
-// compareEndpointSets reports what moved between two readings of the set.
 func compareEndpointSets(before, after []string) endpointSetChange {
 	beforeSet := make(map[string]struct{}, len(before))
 	for _, path := range before {
@@ -86,12 +69,9 @@ func compareEndpointSets(before, after []string) endpointSetChange {
 	return change
 }
 
-// reportEndpointSetChange writes the change to w, and nothing at all when the
-// deploy left the set alone — most deploys change code behind an unchanged set,
-// and a line on every one of those would bury the deploy that moves a URL.
-//
-// To stderr, never stdout: stdout carries the machine-readable app record that
-// --format json promises, and a warning there would corrupt it.
+// reportEndpointSetChange writes the change, and nothing when the deploy left the
+// set alone. w must be stderr: stdout carries the app record --format json
+// promises, and a warning there would corrupt it.
 func reportEndpointSetChange(w io.Writer, change endpointSetChange) {
 	if change.empty() {
 		return
