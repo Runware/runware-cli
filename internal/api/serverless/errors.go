@@ -29,6 +29,9 @@ func problemToError(p *gen.ProblemDetails, statusCode int) error {
 		if extra := formatProblemErrors(p.Errors); extra != "" {
 			msg = msg + "\n" + extra
 		}
+		if p.Shortfall != nil && *p.Shortfall != "" {
+			msg = msg + "\n  shortfall: " + *p.Shortfall
+		}
 	}
 	return transport.CreateRunwareError(
 		rawCodeForStatus(statusCode),
@@ -69,7 +72,7 @@ func problemFromBody(body []byte, statusCode int) error {
 }
 
 func isProblemDetails(p gen.ProblemDetails) bool {
-	return p.Title != "" || p.Type != "" || p.Status != 0 || (p.Detail != nil && *p.Detail != "") || (p.Errors != nil && len(*p.Errors) > 0)
+	return p.Title != "" || p.Type != "" || p.Status != 0 || (p.Detail != nil && *p.Detail != "") || (p.Errors != nil && len(*p.Errors) > 0) || (p.Shortfall != nil && *p.Shortfall != "")
 }
 
 // rawCodeForStatus maps an HTTP status to a raw error code string that
@@ -86,6 +89,8 @@ func rawCodeForStatus(statusCode int) string {
 		return "conflict"
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return "validationFailed"
+	case http.StatusPaymentRequired:
+		return "paymentRequired"
 	default:
 		// Must be a key in transport.serverErrorCodes so DeriveCode returns
 		// CodeServerError rather than CodeUnknown.

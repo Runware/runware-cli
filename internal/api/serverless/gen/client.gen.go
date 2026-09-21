@@ -238,6 +238,24 @@ func (e GpuAvailability) Valid() bool {
 	}
 }
 
+// Defines values for LogSort.
+const (
+	Newest LogSort = "newest"
+	Oldest LogSort = "oldest"
+)
+
+// Valid indicates whether the value is a known member of the LogSort enum.
+func (e LogSort) Valid() bool {
+	switch e {
+	case Newest:
+		return true
+	case Oldest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SecretType.
 const (
 	Generic SecretType = "generic"
@@ -690,6 +708,13 @@ type App struct {
 	// Configuration Live worker configuration. Updated via `PATCH /apps/{appId}`.
 	Configuration WorkerConfig `json:"configuration"`
 	CreatedAt     time.Time    `json:"createdAt"`
+
+	// EffectiveMaxWorkers The worker ceiling the last deploy actually applied, reduced where the organization's credit balance did not back the whole range. The autoscaler cannot grow past it.
+	//
+	// It describes what was applied, not what is configured now, and the two can differ. It is taken from the `maxWorkers` of the version that was deployed, so deploying an older version applies that version's ceiling; and a later `PATCH` of `configuration.maxWorkers` does not change it until the next deploy. Read it beside `configuration.maxWorkers` rather than as a bound on it.
+	//
+	// `null` means nothing has been applied yet. It is recalculated on every deploy. A committed credit top-up also recalculates a reduced ceiling and restores the funded range automatically; KEDA then grows the workload from queue demand without a customer redeploy.
+	EffectiveMaxWorkers *int32 `json:"effectiveMaxWorkers,omitempty"`
 
 	// EnvironmentVariables Plain-text environment variables for this app. Populated on single-app responses (get, update, stop, resume, delete, deploy, favourite). List of apps returns an empty array to avoid an N+1 per page row — use the `/environment-variables` endpoints to page the set.
 	EnvironmentVariables []EnvironmentVariable `json:"environmentVariables"`
@@ -1164,7 +1189,13 @@ type LogEntryPage struct {
 
 	// NextCursor Opaque; absent on the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// PrevCursor Opaque; absent on the first page. Walks the opposite direction of `nextCursor` under the same `sort`.
+	PrevCursor *string `json:"prevCursor,omitempty"`
 }
+
+// LogSort Ordering of a log page. `newest` is the default: the first row is the newest entry and `nextCursor` walks older. `oldest` reverses that.
+type LogSort string
 
 // MetricSeries defines model for MetricSeries.
 type MetricSeries struct {
@@ -1244,6 +1275,12 @@ type ProblemDetails struct {
 
 	// RequestId Extension member. Correlation id for this request, echoed in the `X-Request-Id` response header; quote it when reporting problems.
 	RequestId *string `json:"requestId,omitempty"`
+
+	// Shortfall Extension member. Present on `402` credit refusals. The amount of credit to add before retrying the same request. Units match the platform credit display.
+	//
+	//
+	// Example: 12.50
+	Shortfall *string `json:"shortfall,omitempty"`
 
 	// Status HTTP status code generated for this occurrence.
 	//
@@ -1749,7 +1786,7 @@ type WorkerConfig struct {
 	// GpuType Preferred GPU type. Absent (or null) only on historical apps created before a GPU type was required.
 	GpuType *GpuTypeId `json:"gpuType,omitempty"`
 
-	// GpusPerWorker One GPU per worker is currently supported. Historical apps may contain another value.
+	// GpusPerWorker GPUs granted to one worker pod. Create and update accept only the group sizes the cluster grants indivisibly, since a worker holds its GPUs as one such group. Historical apps may contain another value.
 	GpusPerWorker int32              `json:"gpusPerWorker"`
 	Id            openapi_types.UUID `json:"id"`
 
@@ -1783,7 +1820,7 @@ type WorkerConfigCreate struct {
 	// GpuType GPU type the workers run on. Required: omitting it (or sending null) is a 422 before a build or deploy starts, because a GPU app with no type is unpinned and the deployer would render NVIDIA defaults. Must match an `id` returned by `GET /v1/gpu-types` that currently has admitted capacity.
 	GpuType GpuTypeId `json:"gpuType"`
 
-	// GpusPerWorker Only 1 is currently supported. Any other value returns 422.
+	// GpusPerWorker GPUs granted to one worker pod. A worker holds its GPUs as one group the cluster grants indivisibly, so the count is one of the advertised group sizes rather than any number in a range. The value must also be a group size admitted by the cluster backing the chosen `gpuType`: a count above 1 that cluster does not grant is rejected with a 422 naming `/configuration/gpusPerWorker`, since the pod could never be scheduled. A value above 1 requires an image built after the multi-GPU worker entrypoint; older images serve a single rank while holding every granted GPU.
 	GpusPerWorker *int32 `json:"gpusPerWorker,omitempty"`
 	IdleTtlSecs   int32  `json:"idleTtlSecs"`
 	MaxWorkers    int32  `json:"maxWorkers"`
@@ -1806,7 +1843,7 @@ type WorkerConfigPatch struct {
 	// GpuType Preferred GPU type. Omit to leave unchanged. Rejected with a 422 when no capacity is currently offered for the type (it does not appear in `GET /v1/gpu-types`).
 	GpuType *GpuTypeId `json:"gpuType,omitempty"`
 
-	// GpusPerWorker Only 1 is currently supported. Any other value returns 422.
+	// GpusPerWorker GPUs granted to one worker pod. A worker holds its GPUs as one group the cluster grants indivisibly, so the count is one of the advertised group sizes rather than any number in a range. The value must also be a group size admitted by the cluster backing the chosen `gpuType`: a count above 1 that cluster does not grant is rejected with a 422 naming `/configuration/gpusPerWorker`, since the pod could never be scheduled. A value above 1 requires an image built after the multi-GPU worker entrypoint; older images serve a single rank while holding every granted GPU.
 	GpusPerWorker *int32 `json:"gpusPerWorker,omitempty"`
 	IdleTtlSecs   *int32 `json:"idleTtlSecs,omitempty"`
 	MaxWorkers    *int32 `json:"maxWorkers,omitempty"`
@@ -1889,6 +1926,9 @@ type InternalServerError = ProblemDetails
 // NotFound RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type NotFound = ProblemDetails
 
+// PaymentRequired RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type PaymentRequired = ProblemDetails
+
 // ServiceUnavailable RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation; clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type ServiceUnavailable = ProblemDetails
 
@@ -1909,7 +1949,7 @@ type ListAppsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Status Return only apps in this status.
@@ -1928,7 +1968,7 @@ type ListBuildsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -1937,7 +1977,7 @@ type ListEndpointsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -1946,7 +1986,7 @@ type ListAppEnvironmentVariablesParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -1955,7 +1995,7 @@ type ListAppErrorsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Window The range to search. Same closed ladder as the metrics queries. Defaults to the last 24 hours.
@@ -1976,7 +2016,7 @@ type ListAppEventsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor       `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Type   *AppEventType `form:"type,omitempty" json:"type,omitempty"`
 }
@@ -1986,7 +2026,7 @@ type ListAppSecretsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -1995,7 +2035,7 @@ type ListTasksParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor     `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Status *TaskStatus `form:"status,omitempty" json:"status,omitempty"`
 }
@@ -2005,7 +2045,7 @@ type ListVersionsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -2014,7 +2054,7 @@ type ListWorkersParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// VersionId Scope the page to one version. The default is the app's `activeVersionId`. When that field is unset the default page is empty: the app has no active version, not that it has no workers. Send `all` (any case) to include every version. An empty value is refused. A cursor must be replayed under the same version scope it was issued with.
@@ -2025,6 +2065,9 @@ type ListWorkersParams struct {
 	// A `state` of `live` with a `status` of `stopped` is a contradiction and is refused, because an empty page would read as "this app has never run".
 	State  *WorkerStateFilter `form:"state,omitempty" json:"state,omitempty"`
 	Status *WorkerStatus      `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Case-insensitive literal substring match against `id`, `podName`, `nodeName` and `versionId`. A worker matching any field is returned within the selected version, state and status filters. Omit `q` to disable search. Cursors must retain the same search term, ignoring case.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // GetLogEntriesParams defines parameters for GetLogEntries.
@@ -2035,8 +2078,11 @@ type GetLogEntriesParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Sort Ordering of a log page and the direction `nextCursor` moves in. Only `getLogEntries` accepts it.
+	Sort *LogSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Deployment Narrow to one app.
 	Deployment *SelectorDeployment `form:"deployment,omitempty" json:"deployment,omitempty"`
@@ -2101,7 +2147,7 @@ type ListSecretsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -2110,7 +2156,7 @@ type ListUsageEventsParams struct {
 	// Limit Maximum number of items to return.
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Cursor Opaque pagination cursor returned as `nextCursor` by a previous call.
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	AppId  *AppId  `form:"appId,omitempty" json:"appId,omitempty"`
 
@@ -2738,7 +2784,7 @@ type ClientInterface interface {
 
 	// ListWorkers List workers
 	//
-	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned. Optional `state` and `status` narrow the page further; a cursor must be replayed under the same filters it was issued with.
+	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned.         Optional `state`, `status` and `q` narrow the page further; a cursor must be replayed under the same filters it was issued with.
 	//
 	// Corresponds with GET /v1/apps/{appId}/workers (the `ListWorkers` operationId).
 	ListWorkers(ctx context.Context, appId AppId, params *ListWorkersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2766,7 +2812,7 @@ type ClientInterface interface {
 
 	// GetLogEntries Read one page of a named log query
 	//
-	// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists. Query ids and their supported selectors are listed by the insights catalogue.
+	// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
 	//
 	// Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
 	GetLogEntries(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3684,7 +3730,7 @@ func (c *Client) GetVersion(ctx context.Context, appId AppId, versionNumber int3
 
 // ListWorkers List workers
 //
-// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned. Optional `state` and `status` narrow the page further; a cursor must be replayed under the same filters it was issued with.
+// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned.         Optional `state`, `status` and `q` narrow the page further; a cursor must be replayed under the same filters it was issued with.
 //
 // Corresponds with GET /v1/apps/{appId}/workers (the `ListWorkers` operationId).
 func (c *Client) ListWorkers(ctx context.Context, appId AppId, params *ListWorkersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3752,7 +3798,7 @@ func (c *Client) GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors
 
 // GetLogEntries Read one page of a named log query
 //
-// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists. Query ids and their supported selectors are listed by the insights catalogue.
+// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
 //
 // Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
 func (c *Client) GetLogEntries(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5852,6 +5898,18 @@ func NewListWorkersRequest(server string, appId AppId, params *ListWorkersParams
 
 		}
 
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -6026,6 +6084,18 @@ func NewGetLogEntriesRequest(server string, queryId QueryId, params *GetLogEntri
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -7391,7 +7461,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListWorkersWithResponse List workers
 	//
-	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned. Optional `state` and `status` narrow the page further; a cursor must be replayed under the same filters it was issued with.
+	// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned.         Optional `state`, `status` and `q` narrow the page further; a cursor must be replayed under the same filters it was issued with.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7427,7 +7497,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetLogEntriesWithResponse Read one page of a named log query
 	//
-	// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists. Query ids and their supported selectors are listed by the insights catalogue.
+	// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7778,6 +7848,8 @@ type CreateAppResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON402 the response for an HTTP 402 `application/problem+json` response
+	ApplicationproblemJSON402 *PaymentRequired
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
@@ -7803,6 +7875,11 @@ func (r CreateAppResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r CreateAppResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON402 returns the response for an HTTP 402 `application/problem+json` response
+func (r CreateAppResponse) GetApplicationproblemJSON402() *PaymentRequired {
+	return r.ApplicationproblemJSON402
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
@@ -8006,6 +8083,8 @@ type UpdateAppResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON402 the response for an HTTP 402 `application/problem+json` response
+	ApplicationproblemJSON402 *PaymentRequired
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
@@ -8031,6 +8110,11 @@ func (r UpdateAppResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UpdateAppResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON402 returns the response for an HTTP 402 `application/problem+json` response
+func (r UpdateAppResponse) GetApplicationproblemJSON402() *PaymentRequired {
+	return r.ApplicationproblemJSON402
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
@@ -8354,6 +8438,8 @@ type DeployVersionResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON402 the response for an HTTP 402 `application/problem+json` response
+	ApplicationproblemJSON402 *PaymentRequired
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
@@ -8379,6 +8465,11 @@ func (r DeployVersionResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r DeployVersionResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON402 returns the response for an HTTP 402 `application/problem+json` response
+func (r DeployVersionResponse) GetApplicationproblemJSON402() *PaymentRequired {
+	return r.ApplicationproblemJSON402
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
@@ -9395,12 +9486,16 @@ type ResumeAppResponse struct {
 	JSON202 *App
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON402 the response for an HTTP 402 `application/problem+json` response
+	ApplicationproblemJSON402 *PaymentRequired
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
 	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
 }
@@ -9413,6 +9508,11 @@ func (r ResumeAppResponse) GetJSON202() *App {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ResumeAppResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON402 returns the response for an HTTP 402 `application/problem+json` response
+func (r ResumeAppResponse) GetApplicationproblemJSON402() *PaymentRequired {
+	return r.ApplicationproblemJSON402
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
@@ -9428,6 +9528,11 @@ func (r ResumeAppResponse) GetApplicationproblemJSON404() *NotFound {
 // GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
 func (r ResumeAppResponse) GetApplicationproblemJSON409() *Conflict {
 	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ResumeAppResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
 }
 
 // GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
@@ -12573,7 +12678,7 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, appId 
 
 // ListWorkersWithResponse List workers
 //
-// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned. Optional `state` and `status` narrow the page further; a cursor must be replayed under the same filters it was issued with.
+// Returns a newest-first page of workers observed for the app (including terminal `stopped` rows until purged). Omitted `versionId` scopes the page to the app's `activeVersionId`. An app with no active version therefore answers an empty default page — not that it has no workers, only that none are pinned.         Optional `state`, `status` and `q` narrow the page further; a cursor must be replayed under the same filters it was issued with.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12633,7 +12738,7 @@ func (c *ClientWithResponses) GetGpuTypeWithResponse(ctx context.Context, gpuTyp
 
 // GetLogEntriesWithResponse Read one page of a named log query
 //
-// Returns one page of log entries, newest first, with an opaque cursor for the next page when one exists. Query ids and their supported selectors are listed by the insights catalogue.
+// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13088,6 +13193,13 @@ func ParseCreateAppResponse(rsp *http.Response) (*CreateAppResponse, error) {
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 402:
+		var dest PaymentRequired
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON402 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest Forbidden
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -13270,6 +13382,13 @@ func ParseUpdateAppResponse(rsp *http.Response) (*UpdateAppResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 402:
+		var dest PaymentRequired
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON402 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest Forbidden
@@ -13553,6 +13672,13 @@ func ParseDeployVersionResponse(rsp *http.Response) (*DeployVersionResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 402:
+		var dest PaymentRequired
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON402 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest Forbidden
@@ -14399,6 +14525,13 @@ func ParseResumeAppResponse(rsp *http.Response) (*ResumeAppResponse, error) {
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 402:
+		var dest PaymentRequired
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON402 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest Forbidden
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -14419,6 +14552,13 @@ func ParseResumeAppResponse(rsp *http.Response) (*ResumeAppResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest ServiceUnavailable

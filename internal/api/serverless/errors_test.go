@@ -38,3 +38,32 @@ func TestProblemToError_IncludesValidationErrors(t *testing.T) {
 		t.Errorf("missing field error: %q", re.Message)
 	}
 }
+
+func TestProblemToError_PaymentRequiredIncludesShortfall(t *testing.T) {
+	detail := "Organization credit cannot cover the requested capacity"
+	shortfall := "12.50"
+	p := &gen.ProblemDetails{
+		Title:     "Payment Required",
+		Status:    402,
+		Detail:    &detail,
+		Shortfall: &shortfall,
+	}
+
+	err := problemToError(p, http.StatusPaymentRequired)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeQuota {
+		t.Errorf("expected CodeQuota, got %v", re.Code)
+	}
+	if re.StatusCode != http.StatusPaymentRequired {
+		t.Errorf("status %d, want 402", re.StatusCode)
+	}
+	if !strings.Contains(re.Message, detail) {
+		t.Errorf("missing problem detail: %q", re.Message)
+	}
+	if !strings.Contains(re.Message, "shortfall: 12.50") {
+		t.Errorf("missing shortfall: %q", re.Message)
+	}
+}

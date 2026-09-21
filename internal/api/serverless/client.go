@@ -128,6 +128,9 @@ const (
 // Endpoint is an app HTTP endpoint.
 type Endpoint = gen.Endpoint
 
+// EndpointRuntime is latest-window traffic for one endpoint.
+type EndpointRuntime = gen.EndpointRuntime
+
 // Version is a deployed application version.
 type Version = gen.Version
 
@@ -321,6 +324,8 @@ func (c *Client) CreateApp(ctx context.Context, body AppCreate) (*App, error) {
 		return nil, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusPaymentRequired:
+		return nil, problemToError(resp.ApplicationproblemJSON402, http.StatusPaymentRequired)
 	case http.StatusForbidden:
 		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusConflict:
@@ -459,6 +464,8 @@ func (c *Client) UpdateApp(ctx context.Context, appID string, body AppUpdate) (*
 		return nil, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusPaymentRequired:
+		return nil, problemToError(resp.ApplicationproblemJSON402, http.StatusPaymentRequired)
 	case http.StatusForbidden:
 		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
@@ -509,10 +516,12 @@ func (c *Client) ResumeApp(ctx context.Context, appID string) (*App, error) {
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
 	return acceptedApp("resume app", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
-		Unauthorized: resp.ApplicationproblemJSON401,
-		Forbidden:    resp.ApplicationproblemJSON403,
-		NotFound:     resp.ApplicationproblemJSON404,
-		Conflict:     resp.ApplicationproblemJSON409,
+		Unauthorized:    resp.ApplicationproblemJSON401,
+		PaymentRequired: resp.ApplicationproblemJSON402,
+		Forbidden:       resp.ApplicationproblemJSON403,
+		NotFound:        resp.ApplicationproblemJSON404,
+		Conflict:        resp.ApplicationproblemJSON409,
+		Unprocessable:   resp.ApplicationproblemJSON422,
 	})
 }
 
@@ -555,19 +564,23 @@ func (c *Client) DeployVersion(ctx context.Context, appID string, versionNumber 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
 	return acceptedApp("deploy version", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
-		Unauthorized: resp.ApplicationproblemJSON401,
-		Forbidden:    resp.ApplicationproblemJSON403,
-		NotFound:     resp.ApplicationproblemJSON404,
-		Conflict:     resp.ApplicationproblemJSON409,
+		Unauthorized:    resp.ApplicationproblemJSON401,
+		PaymentRequired: resp.ApplicationproblemJSON402,
+		Forbidden:       resp.ApplicationproblemJSON403,
+		NotFound:        resp.ApplicationproblemJSON404,
+		Conflict:        resp.ApplicationproblemJSON409,
+		Unprocessable:   resp.ApplicationproblemJSON422,
 	})
 }
 
 // lifecycleProblems are typed RFC 9457 bodies bound by the generated client.
 type lifecycleProblems struct {
-	Unauthorized *gen.ProblemDetails
-	Forbidden    *gen.ProblemDetails
-	NotFound     *gen.ProblemDetails
-	Conflict     *gen.ProblemDetails
+	Unauthorized    *gen.ProblemDetails
+	PaymentRequired *gen.ProblemDetails
+	Forbidden       *gen.ProblemDetails
+	NotFound        *gen.ProblemDetails
+	Conflict        *gen.ProblemDetails
+	Unprocessable   *gen.ProblemDetails
 }
 
 func acceptedApp(op string, status int, app *App, body []byte, problems lifecycleProblems) (*App, error) {
@@ -579,6 +592,8 @@ func acceptedApp(op string, status int, app *App, body []byte, problems lifecycl
 		return app, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(problems.Unauthorized, http.StatusUnauthorized)
+	case http.StatusPaymentRequired:
+		return nil, problemToError(problems.PaymentRequired, http.StatusPaymentRequired)
 	case http.StatusForbidden:
 		return nil, problemToError(problems.Forbidden, http.StatusForbidden)
 	case http.StatusNotFound:
@@ -586,6 +601,11 @@ func acceptedApp(op string, status int, app *App, body []byte, problems lifecycl
 	case http.StatusConflict:
 		if problems.Conflict != nil {
 			return nil, problemToError(problems.Conflict, http.StatusConflict)
+		}
+		return nil, problemFromBody(body, status)
+	case http.StatusUnprocessableEntity:
+		if problems.Unprocessable != nil {
+			return nil, problemToError(problems.Unprocessable, http.StatusUnprocessableEntity)
 		}
 		return nil, problemFromBody(body, status)
 	default:
@@ -928,6 +948,57 @@ func (c *Client) ListAppEvents(ctx context.Context, appID string, params *ListAp
 		return Page[AppEvent]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
 		return Page[AppEvent]{}, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// ListAppErrorsParams filters the request-error page for an app.
+type ListAppErrorsParams = gen.ListAppErrorsParams
+
+// ListAppErrorsParamsWindow is the closed set of time windows listAppErrors accepts.
+type ListAppErrorsParamsWindow = gen.ListAppErrorsParamsWindow
+
+// ListAppErrorsParamsStatusClass filters listAppErrors by 4xx or 5xx.
+type ListAppErrorsParamsStatusClass = gen.ListAppErrorsParamsStatusClass
+
+// ListAppErrors returns one page of failed inference requests for an app.
+func (c *Client) ListAppErrors(ctx context.Context, appID string, params *ListAppErrorsParams) (Page[LogEntry], error) {
+	if c.apiKey == "" {
+		return Page[LogEntry]{}, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.ListAppErrorsWithResponse(ctx, appID, params)
+	if err != nil {
+		return Page[LogEntry]{}, fmt.Errorf("list app errors: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return pageOf[LogEntry](nil, nil), nil
+		}
+		return pageOf(&resp.JSON200.Data, resp.JSON200.NextCursor), nil
+	case http.StatusBadRequest:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
+	case http.StatusUnauthorized:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusUnprocessableEntity:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
+	case http.StatusTooManyRequests:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON429, http.StatusTooManyRequests)
+	case http.StatusBadGateway:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON502, http.StatusBadGateway)
+	case http.StatusServiceUnavailable:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
+	case http.StatusGatewayTimeout:
+		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON504, http.StatusGatewayTimeout)
+	default:
+		return Page[LogEntry]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
 
