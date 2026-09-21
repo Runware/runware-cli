@@ -48,6 +48,15 @@ const (
 	colIdleTTL             = "Idle TTL (s)"
 	colScalingDelay        = "Scaling delay (s)"
 	colConcurrency         = "Concurrency"
+	colEffectiveMaxWorkers = "Effective max workers"
+	colActiveWorkers       = "Active workers"
+	colQueueDepth          = "Queue depth"
+	colRequests24h         = "Requests (24h)"
+	colEndpointPath        = "Endpoint"
+	colReqPerMin           = "Req/min"
+	colP95                 = "P95 (s)"
+	colP99                 = "P99 (s)"
+	colLevel               = "Level"
 )
 
 // appResult wraps a single app for table/json/yaml display.
@@ -77,6 +86,10 @@ func (r appResult) Rows() [][]any {
 		{colIdleTTL, cfg.IdleTtlSecs},
 		{colScalingDelay, cfg.ScalingDelaySecs},
 		{colConcurrency, cfg.Concurrency},
+		{colEffectiveMaxWorkers, formatOptionalInt32(r.EffectiveMaxWorkers)},
+		{colActiveWorkers, r.Runtime.ActiveWorkers},
+		{colQueueDepth, formatOptionalInt64(r.Runtime.QueueDepth)},
+		{colRequests24h, formatOptionalInt64(r.Runtime.Requests24h)},
 	}
 }
 
@@ -105,7 +118,7 @@ func (r appsResult) Rows() [][]any {
 type endpointsResult []serverlessapi.Endpoint
 
 func (r endpointsResult) Headers() []string {
-	return []string{"Path", colID, colCreated}
+	return []string{"Path", colID, colCreated, colStatus, colReqPerMin, colP95, colP99}
 }
 
 func (r endpointsResult) Rows() [][]any {
@@ -116,6 +129,10 @@ func (r endpointsResult) Rows() [][]any {
 			e.Path,
 			e.Id.String(),
 			formatOptionalTime(e.CreatedAt),
+			formatEndpointStatus(e.Runtime),
+			formatEndpointRate(e.Runtime, func(rt serverlessapi.EndpointRuntime) *float64 { return rt.RequestsPerMinute }),
+			formatEndpointRate(e.Runtime, func(rt serverlessapi.EndpointRuntime) *float64 { return rt.P95RequestDuration }),
+			formatEndpointRate(e.Runtime, func(rt serverlessapi.EndpointRuntime) *float64 { return rt.P99RequestDuration }),
 		}
 	}
 	return rows
@@ -135,6 +152,10 @@ func (r endpointResult) Rows() [][]any {
 		{colApp, r.AppId},
 		{colCreated, formatOptionalTime(r.CreatedAt)},
 		{colUpdated, formatOptionalTime(r.UpdatedAt)},
+		{colStatus, formatEndpointStatus(r.Runtime)},
+		{colReqPerMin, formatEndpointRate(r.Runtime, func(rt serverlessapi.EndpointRuntime) *float64 { return rt.RequestsPerMinute })},
+		{colP95, formatEndpointRate(r.Runtime, func(rt serverlessapi.EndpointRuntime) *float64 { return rt.P95RequestDuration })},
+		{colP99, formatEndpointRate(r.Runtime, func(rt serverlessapi.EndpointRuntime) *float64 { return rt.P99RequestDuration })},
 	}
 }
 
@@ -262,7 +283,7 @@ func (r workerResult) Rows() [][]any {
 type tasksResult []serverlessapi.Task
 
 func (r tasksResult) Headers() []string {
-	return []string{colID, colStatus, colError, colCreated, colCompleted}
+	return []string{colID, colStatus, colEndpointPath, colError, colCreated, colCompleted}
 }
 
 func (r tasksResult) Rows() [][]any {
@@ -272,6 +293,7 @@ func (r tasksResult) Rows() [][]any {
 		rows[i] = []any{
 			task.Id,
 			string(task.Status),
+			task.EndpointPath,
 			formatOptionalString(task.Error),
 			formatTaskTime(task.CreatedAt),
 			formatOptionalTime(task.CompletedAt),
@@ -291,6 +313,7 @@ func (r taskResult) Rows() [][]any {
 	rows := [][]any{
 		{colID, r.Id},
 		{colApp, r.AppId},
+		{colEndpointPath, r.EndpointPath},
 		{colStatus, string(r.Status)},
 		{colCreated, formatTaskTime(r.CreatedAt)},
 		{colCompleted, formatOptionalTime(r.CompletedAt)},
@@ -325,6 +348,61 @@ func formatOptionalInt32(v *int32) string {
 		return ""
 	}
 	return fmt.Sprintf("%d", *v)
+}
+
+func formatOptionalInt64(v *int64) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *v)
+}
+
+func formatEndpointStatus(rt *serverlessapi.EndpointRuntime) string {
+	if rt == nil || rt.Status == nil {
+		return ""
+	}
+	return string(*rt.Status)
+}
+
+func formatEndpointRate(rt *serverlessapi.EndpointRuntime, field func(serverlessapi.EndpointRuntime) *float64) string {
+	if rt == nil {
+		return ""
+	}
+	return formatOptionalFloat64(field(*rt))
+}
+
+func formatOptionalFloat64(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%.2f", *v)
+}
+
+// requestErrorsResult wraps failed inference requests for table display.
+type requestErrorsResult []serverlessapi.LogEntry
+
+func (r requestErrorsResult) Headers() []string {
+	return []string{colTime, colLevel, colMessage}
+}
+
+func (r requestErrorsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		entry := r[i]
+		rows[i] = []any{
+			formatLogTime(entry),
+			entryLevel(entry),
+			entry.Body,
+		}
+	}
+	return rows
+}
+
+func formatLogTime(entry serverlessapi.LogEntry) string {
+	if entry.Time == 0 {
+		return ""
+	}
+	return time.Unix(entry.Time, 0).UTC().Format(time.RFC3339)
 }
 
 // buildsResult wraps build lists for table display. Log tail is omitted.
@@ -567,13 +645,24 @@ func printPage[T any](format output.Format, page serverlessapi.Page[T], table ou
 }
 
 func printNextCursor(errOut io.Writer, next *string, extraFlags string) error {
-	if next == nil || *next == "" {
+	return printNamedCursor(errOut, "Next page", next, extraFlags)
+}
+
+func printLogCursors(errOut io.Writer, next, prev *string, extraFlags string) error {
+	if err := printNamedCursor(errOut, "Next page", next, extraFlags); err != nil {
+		return err
+	}
+	return printNamedCursor(errOut, "Previous page", prev, extraFlags)
+}
+
+func printNamedCursor(errOut io.Writer, label string, cursor *string, extraFlags string) error {
+	if cursor == nil || *cursor == "" {
 		return nil
 	}
-	hint := "--cursor " + *next
+	hint := "--cursor " + *cursor
 	if extraFlags != "" {
 		hint = extraFlags + " " + hint
 	}
-	_, err := fmt.Fprintf(errOut, "\nNext page: %s\n", hint)
+	_, err := fmt.Fprintf(errOut, "\n%s: %s\n", label, hint)
 	return err
 }

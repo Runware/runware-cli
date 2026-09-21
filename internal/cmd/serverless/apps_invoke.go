@@ -1,7 +1,9 @@
 package serverless
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +21,7 @@ func newAppsInvokeCmd(logger *log.Logger) *cobra.Command {
 	var (
 		sync         bool
 		wait         bool
+		timeout      time.Duration
 		bodyFile     string
 		taskID       string
 		pollInterval time.Duration
@@ -81,9 +84,14 @@ instead of starting a second run.`,
 			if shouldWait && task.Status == serverlessapi.TaskStatusPending {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Task %s accepted; waiting...\n", task.Id)
 				spin.SetMessage(fmt.Sprintf("Waiting for task %s...", task.Id))
-				task, err = client.WaitTask(cmd.Context(), appID, task.Id, pollInterval)
+				waitCtx, cancel := waitContext(cmd.Context(), timeout)
+				task, err = client.WaitTask(waitCtx, appID, task.Id, pollInterval)
+				cancel()
 				if err != nil {
 					spin.Stop()
+					if errors.Is(err, context.DeadlineExceeded) && timeout > 0 {
+						return fmt.Errorf("timed out waiting for task %s after %s", task.Id, timeout)
+					}
 					return err
 				}
 			}
@@ -98,6 +106,7 @@ instead of starting a second run.`,
 
 	cmd.Flags().BoolVar(&sync, "sync", false, "Use sync invocation and wait for a terminal task")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the task is completed or failed")
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait (0 = no limit)")
 	cmd.Flags().StringVarP(&bodyFile, "body", "f", "", "JSON payload file, or - for stdin (default {})")
 	cmd.Flags().StringVar(&taskID, "task-id", "", "Client task id (UUID); generated if omitted")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for a task")

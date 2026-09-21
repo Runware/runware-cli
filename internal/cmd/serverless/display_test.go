@@ -59,12 +59,13 @@ func TestParseAppSort(t *testing.T) {
 		t.Fatalf("unset sort: got=%v err=%v", got, err)
 	}
 
-	got, err = parseAppSort("activity")
-	if err != nil {
+	_, err = parseAppSort("activity")
+	if err == nil || !strings.Contains(err.Error(), "not available yet") {
 		t.Fatalf("activity: %v", err)
 	}
-	if got == nil || *got != "activity" {
-		t.Fatalf("activity: got %+v", got)
+	_, err = parseAppSort("errorRate")
+	if err == nil || !strings.Contains(err.Error(), "not available yet") {
+		t.Fatalf("errorRate: %v", err)
 	}
 
 	got, err = parseAppSort("createdAt")
@@ -184,16 +185,19 @@ func TestExtraStatusCursorFlag(t *testing.T) {
 }
 
 func TestExtraWorkersCursorFlags(t *testing.T) {
-	if got := extraWorkersCursorFlags("live", "ready"); got != "--state live --status ready" {
-		t.Fatalf("both: got %q", got)
+	if got := extraWorkersCursorFlags("live", "ready", "all"); got != "--state live --status ready --version all" {
+		t.Fatalf("all: got %q", got)
 	}
-	if got := extraWorkersCursorFlags("live", ""); got != "--state live" {
+	if got := extraWorkersCursorFlags("live", "", ""); got != "--state live" {
 		t.Fatalf("state only: got %q", got)
 	}
-	if got := extraWorkersCursorFlags("", "ready"); got != "--status ready" {
+	if got := extraWorkersCursorFlags("", "ready", ""); got != "--status ready" {
 		t.Fatalf("status only: got %q", got)
 	}
-	if got := extraWorkersCursorFlags("", ""); got != "" {
+	if got := extraWorkersCursorFlags("", "", "all"); got != "--version all" {
+		t.Fatalf("version only: got %q", got)
+	}
+	if got := extraWorkersCursorFlags("", "", ""); got != "" {
 		t.Fatalf("empty: got %q", got)
 	}
 }
@@ -321,6 +325,10 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 		colIdleTTL:             int32(60),
 		colScalingDelay:        int32(10),
 		colConcurrency:         int32(1),
+		colEffectiveMaxWorkers: "",
+		colActiveWorkers:       int64(0),
+		colQueueDepth:          "",
+		colRequests24h:         "",
 	}
 	got := make(map[string]any, len(rows))
 	for _, row := range rows {
@@ -553,14 +561,17 @@ func TestEndpointResult(t *testing.T) {
 		Path:      "generate",
 		CreatedAt: &created,
 	}).Rows()
-	if len(rows) != 5 {
-		t.Fatalf("expected 5 rows, got %d", len(rows))
+	if len(rows) != 9 {
+		t.Fatalf("expected 9 rows, got %d", len(rows))
 	}
 	if rows[0][1] != "generate" || rows[2][1] != testAppID {
 		t.Fatalf("unexpected rows %#v", rows)
 	}
 	if rows[4][1] != "" {
 		t.Fatalf("nil UpdatedAt should render empty, got %#v", rows[4][1])
+	}
+	if rows[5][1] != "" || rows[6][1] != "" || rows[7][1] != "" || rows[8][1] != "" {
+		t.Fatalf("omitted runtime should render empty, got %#v", rows)
 	}
 }
 

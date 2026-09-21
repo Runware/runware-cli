@@ -6,9 +6,11 @@ Create or update an organisation secret
 
 Create an organisation-scoped secret, or update its value if the name already exists.
 
-This does not attach the secret to an application. Use 'secrets attach' for that.
-The secret value is never printed. Prefer --value-file so the value is not visible
-in process lists; use --value-file - to read from stdin.
+This does not attach the secret to an application. Use 'secrets attach' for that,
+or pass --secret on create. Updating a value rolls every live application that
+already attaches this secret. The secret value is never printed. Prefer
+--value-file so the value is not visible in process lists; use --value-file -
+to read from stdin.
 
 ```
 runware serverless secrets set <name> [flags]

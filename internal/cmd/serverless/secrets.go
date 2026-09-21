@@ -96,9 +96,11 @@ func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
 		Short: "Create or update an organisation secret",
 		Long: `Create an organisation-scoped secret, or update its value if the name already exists.
 
-This does not attach the secret to an application. Use 'secrets attach' for that.
-The secret value is never printed. Prefer --value-file so the value is not visible
-in process lists; use --value-file - to read from stdin.`,
+This does not attach the secret to an application. Use 'secrets attach' for that,
+or pass --secret on create. Updating a value rolls every live application that
+already attaches this secret. The secret value is never printed. Prefer
+--value-file so the value is not visible in process lists; use --value-file -
+to read from stdin.`,
 		Example: `  # create or update a secret from a file
   runware serverless secrets set FOO --value-file ./foo.txt
 
@@ -220,11 +222,12 @@ func newSecretsAttachCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "attach <appId> <name>",
 		Short: "Attach an organisation secret to an application",
-		Long: `Record that an organisation secret is attached to an application, optionally
-under a different environment variable name.
+		Long: `Attach an organisation secret to an application, optionally under a different
+environment variable name.
 
-The organisation secret must already exist (see 'secrets set'). This is a
-control-plane association only in this API release — it does not roll workers.`,
+The organisation secret must already exist (see 'secrets set'). Attach rolls
+live workers so the value reaches running pods. PATCH secrets-replace still
+does not roll.`,
 		Example: `  # attach a secret using its name as the env var
   runware serverless secrets attach my-app FOO
 
@@ -265,8 +268,8 @@ func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "detach <appId> <name>",
 		Short: "Detach a secret from an application",
-		Long: `Remove the control-plane attachment from an application. Does not remove the
-organisation secret.`,
+		Long: `Detach an organisation secret from an application. Live workers are rolled so
+the value is removed from running pods. Does not remove the organisation secret.`,
 		Example: `  # detach a secret from an application
   runware serverless secrets detach my-app FOO`,
 		Args: cobra.ExactArgs(2),

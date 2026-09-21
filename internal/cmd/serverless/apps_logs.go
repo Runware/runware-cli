@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"slices"
 	"strings"
 	"time"
 
@@ -37,6 +36,7 @@ type logsFlags struct {
 	window string
 	limit  int
 	cursor string
+	sort   string
 	follow bool
 }
 
@@ -46,17 +46,19 @@ func newAppsLogsCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs <appId>",
 		Short: "Show or follow logs for a serverless application",
-		Long: `Show recent application logs, oldest first, and optionally follow new ones.
+		Long: `Show recent application logs and optionally follow new ones.
 
-The recent page is read from the runtime log query over --window (default 1h),
-and --limit and --cursor page through it. With --follow the command prints the
-recent page, then streams new entries until interrupted; the stream reconnects
-when the server ends it, and waits for the stream to open when a gateway
-answers first, which is what an application that has written nothing does. The
-live stream has no window, so --window, --limit and --cursor apply to the
-recent page only, and --cursor cannot be combined with --follow. Entries
-written between the recent page and the start of the stream, or while the
-stream reconnects, can be missed or repeated.
+The recent page is read from the runtime log query over --window (default 1h).
+--sort oldest (the default) lists oldest first; --sort newest lists newest
+first. --limit and --cursor page through the window; nextCursor continues in
+the sort order and prevCursor walks the other way. With --follow the command
+prints the recent page, then streams new entries until interrupted; the stream
+reconnects when the server ends it, and waits for the stream to open when a
+gateway answers first, which is what an application that has written nothing
+does. The live stream has no window, so --window, --limit, --cursor and --sort
+apply to the recent page only, and --cursor cannot be combined with --follow.
+Entries written between the recent page and the start of the stream, or while
+the stream reconnects, can be missed or repeated.
 
 In table format each entry is one line: time, level and message. In json or
 yaml format the recent page is printed as one document; with --follow every
@@ -104,7 +106,7 @@ entry is printed as one JSON object per line.`,
 			}
 
 			emit := logEmitter(format, out)
-			for _, entry := range slices.Backward(page.Entries) {
+			for _, entry := range page.Entries {
 				if err := emit(entry); err != nil {
 					return err
 				}
@@ -118,7 +120,8 @@ entry is printed as one JSON object per line.`,
 
 	cmd.Flags().StringVar(&flags.window, "window", "1h", "Time window for the recent page ("+logWindows+")")
 	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of entries on the recent page (1-100, default 20)")
-	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor or prevCursor")
+	cmd.Flags().StringVar(&flags.sort, "sort", "oldest", "Page order (oldest or newest)")
 	cmd.Flags().BoolVarP(&flags.follow, "follow", "f", false, "Stream new log entries until interrupted")
 	return cmd
 }
@@ -135,12 +138,25 @@ func logEntriesParams(appID string, flags logsFlags) (serverlessapi.GetLogEntrie
 	if window == nil {
 		return serverlessapi.GetLogEntriesParams{}, fmt.Errorf("--window is required (want %s)", logWindows)
 	}
+	sortVal, err := parseLogSort(flags.sort)
+	if err != nil {
+		return serverlessapi.GetLogEntriesParams{}, err
+	}
 	params := serverlessapi.GetLogEntriesParams{
 		Window:     *window,
 		Deployment: &appID,
+		Sort:       sortVal,
 	}
 	params.Limit, params.Cursor = listPageParams(flags.limit, flags.cursor)
 	return params, nil
+}
+
+func parseLogSort(sort string) (*serverlessapi.LogSort, error) {
+	if sort == "" {
+		oldest := serverlessapi.LogSortOldest
+		return &oldest, nil
+	}
+	return parseValidFlag[serverlessapi.LogSort]("--sort", sort, "oldest or newest")
 }
 
 // extraLogsCursorFlags repeats the filters a next-page --cursor is bound to.
@@ -149,14 +165,16 @@ func extraLogsCursorFlags(flags logsFlags) string {
 	if flags.limit > 0 {
 		parts = appendFlag(parts, "--limit", fmt.Sprint(flags.limit))
 	}
+	if flags.sort != "" && flags.sort != "oldest" {
+		parts = appendFlag(parts, "--sort", flags.sort)
+	}
 	return strings.Join(parts, " ")
 }
 
-// printLogPage prints one page, oldest first: as a document in json or yaml,
-// as one line per entry in table format.
+// printLogPage prints one page in the API sort order: as a document in json or
+// yaml, as one line per entry in table format. Both neighbouring cursors are
+// hinted when present.
 func printLogPage(format output.Format, page serverlessapi.LogEntryPage, out, errOut io.Writer, extraCursorFlags string) error {
-	page.Entries = slices.Clone(page.Entries)
-	slices.Reverse(page.Entries)
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
 		return output.Print(format, page)
@@ -166,7 +184,7 @@ func printLogPage(format output.Format, page serverlessapi.LogEntryPage, out, er
 				return err
 			}
 		}
-		return printNextCursor(errOut, page.NextCursor, extraCursorFlags)
+		return printLogCursors(errOut, page.NextCursor, page.PrevCursor, extraCursorFlags)
 	}
 }
 

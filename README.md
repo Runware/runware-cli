@@ -2,7 +2,7 @@
 
 A command-line tool for interacting with the [Runware](https://runware.ai) API. Built in Go, distributed as a single static binary.
 
-Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, and more.
+Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, deploy serverless applications, and more.
 
 ## Install
 
@@ -47,6 +47,9 @@ runware run runware:400@1 positivePrompt="a chess match in the park" width=1024 
 
 # Check your account details
 runware account details
+
+# Deploy a serverless application
+runware serverless deploy ./app.py --id my-app --gpu-type h100
 ```
 
 ## Commands
@@ -211,6 +214,20 @@ runware result <taskUUID>       # Resume waiting for an async task by UUID
 ```
 
 Use when `runware run` was interrupted before a task completed. The taskUUID is printed when the task is first submitted.
+
+### `runware serverless` — applications
+
+Deploy and manage Runware serverless applications.
+
+```shell
+runware serverless deploy ./app.py --id my-app --gpu-type h100
+runware serverless apps list
+runware serverless apps show my-app
+runware serverless apps invoke my-app infer -f payload.json --wait
+runware serverless apps logs my-app --follow
+```
+
+Full command reference is under [docs/runware_serverless.md](./docs/runware_serverless.md).
 
 ### Other
 

@@ -4,17 +4,19 @@ Show or follow logs for a serverless application
 
 ### Synopsis
 
-Show recent application logs, oldest first, and optionally follow new ones.
+Show recent application logs and optionally follow new ones.
 
-The recent page is read from the runtime log query over --window (default 1h),
-and --limit and --cursor page through it. With --follow the command prints the
-recent page, then streams new entries until interrupted; the stream reconnects
-when the server ends it, and waits for the stream to open when a gateway
-answers first, which is what an application that has written nothing does. The
-live stream has no window, so --window, --limit and --cursor apply to the
-recent page only, and --cursor cannot be combined with --follow. Entries
-written between the recent page and the start of the stream, or while the
-stream reconnects, can be missed or repeated.
+The recent page is read from the runtime log query over --window (default 1h).
+--sort oldest (the default) lists oldest first; --sort newest lists newest
+first. --limit and --cursor page through the window; nextCursor continues in
+the sort order and prevCursor walks the other way. With --follow the command
+prints the recent page, then streams new entries until interrupted; the stream
+reconnects when the server ends it, and waits for the stream to open when a
+gateway answers first, which is what an application that has written nothing
+does. The live stream has no window, so --window, --limit, --cursor and --sort
+apply to the recent page only, and --cursor cannot be combined with --follow.
+Entries written between the recent page and the start of the stream, or while
+the stream reconnects, can be missed or repeated.
 
 In table format each entry is one line: time, level and message. In json or
 yaml format the recent page is printed as one document; with --follow every
@@ -43,10 +45,11 @@ runware serverless apps logs <appId> [flags]
 ### Options
 
 ```
-      --cursor string   Pagination cursor from a previous nextCursor
+      --cursor string   Pagination cursor from a previous nextCursor or prevCursor
   -f, --follow          Stream new log entries until interrupted
   -h, --help            help for logs
       --limit int       Maximum number of entries on the recent page (1-100, default 20)
+      --sort string     Page order (oldest or newest) (default "oldest")
       --window string   Time window for the recent page (1h, 6h, 24h, 7d, or 30d) (default "1h")
 ```
 

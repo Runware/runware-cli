@@ -9,6 +9,10 @@ Create or update one plain-text environment variable.
 Prefer --value-file so the value is not visible in process lists; use
 --value-file - to read from stdin.
 
+A write that changes the stored value records a new version and rolls live
+workers when the application can take one. A write that leaves the value
+unchanged records no version and does not roll.
+
 The server rejects (HTTP 422) reserved platform names, names that collide
 with an attached secret's injected env var, and adding a binding past the
 100-variable-plus-secret ceiling. Overwriting an existing key is always

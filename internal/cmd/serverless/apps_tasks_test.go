@@ -33,20 +33,21 @@ func TestTaskResult_IncludesOutputAndError(t *testing.T) {
 	errMsg := "oom killed"
 	output := map[string]any{"ok": true}
 	r := taskResult{
-		Id:          testTaskID,
-		AppId:       testAppID,
-		Status:      serverlessapi.TaskStatusFailed,
-		Error:       &errMsg,
-		Output:      &output,
-		CreatedAt:   created,
-		CompletedAt: &completed,
+		Id:           testTaskID,
+		AppId:        testAppID,
+		EndpointPath: "infer",
+		Status:       serverlessapi.TaskStatusFailed,
+		Error:        &errMsg,
+		Output:       &output,
+		CreatedAt:    created,
+		CompletedAt:  &completed,
 	}
 	rows := r.Rows()
 	got := make(map[string]any, len(rows))
 	for _, row := range rows {
 		got[row[0].(string)] = row[1]
 	}
-	if got[colID] != testTaskID || got[colStatus] != "failed" || got[colError] != errMsg {
+	if got[colID] != testTaskID || got[colStatus] != "failed" || got[colError] != errMsg || got[colEndpointPath] != "infer" {
 		t.Fatalf("rows = %#v", got)
 	}
 	if got["Output"] != `{"ok":true}` {
@@ -58,7 +59,7 @@ func TestTasksResult_Headers(t *testing.T) {
 	r := tasksResult{
 		{Id: testTaskID, Status: serverlessapi.TaskStatusPending, CreatedAt: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)},
 	}
-	if got := r.Headers(); len(got) != 5 {
+	if got := r.Headers(); len(got) != 6 {
 		t.Fatalf("headers: %v", got)
 	}
 	rows := r.Rows()

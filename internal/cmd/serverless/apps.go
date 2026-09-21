@@ -31,9 +31,11 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsBuildsCmd(logger),
 		newAppsLogsCmd(logger),
 		newAppsEventsCmd(logger),
+		newAppsErrorsCmd(logger),
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(logger),
 		newAppsUsageCmd(logger),
+		newAppsRenameCmd(logger),
 		newAppsStopCmd(logger),
 		newAppsResumeCmd(logger),
 		newAppsDeleteCmd(logger),
@@ -112,7 +114,7 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, initializing, stopped, …)")
 	cmd.Flags().StringVar(&query, "query", "", "Filter by substring on name or ID")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "Filter by GPU type (see 'serverless gpus')")
-	cmd.Flags().StringVar(&sort, "sort", "", "Sort order (createdAt (default), name, activity, or errorRate)")
+	cmd.Flags().StringVar(&sort, "sort", "", "Sort order (createdAt (default) or name)")
 
 	return cmd
 }
@@ -132,6 +134,39 @@ func newAppsShowCmd(logger *log.Logger) *cobra.Command {
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
 			app, err := client.GetApp(cmd.Context(), id)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+		},
+	}
+}
+
+func newAppsRenameCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rename <appId> <name>",
+		Short: "Rename a serverless application",
+		Long: `Change the display name of a serverless application.
+
+The application ID is immutable. A name-only update records a version and does
+not pin or roll workers.`,
+		Example: `  # rename an application
+  runware serverless apps rename my-app "Image generator"`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			name := args[1]
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Renaming application %s...", id))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			app, err := client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
+				AppName: &name,
+			})
 			if err != nil {
 				spin.Stop()
 				return err
@@ -287,10 +322,11 @@ for worker output.`,
 
 func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 	var (
-		limit  int
-		cursor string
-		status string
-		state  string
+		limit   int
+		cursor  string
+		status  string
+		state   string
+		version string
 	)
 
 	cmd := &cobra.Command{
@@ -298,12 +334,19 @@ func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
 		Short: "List and inspect workers for a serverless application",
 		Long: `List workers observed for an application.
 
+The default page is the active version only. An application with no active
+version therefore answers an empty default page — not that it has no workers.
+Pass --version all to include every version, or --version <id> to scope to one.
+
 The default state is all: terminal stopped rows stay in the page until they
 are purged. Pass --state live to drop them. --state live with --status stopped
 is refused by the API (422), because an empty page would read as "this app
 has never run".`,
-		Example: `  # list workers for an application
+		Example: `  # list workers for the active version
   runware serverless apps workers my-app
+
+  # include workers from every version
+  runware serverless apps workers my-app --version all
 
   # omit terminal stopped rows
   runware serverless apps workers my-app --state live
@@ -328,11 +371,12 @@ has never run".`,
 				return err
 			}
 			var params *serverlessapi.ListWorkersParams
-			if limit > 0 || cursor != "" || status != "" || state != "" {
+			if limit > 0 || cursor != "" || status != "" || state != "" || version != "" {
 				params = &serverlessapi.ListWorkersParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
 				params.Status = statusVal
 				params.State = stateVal
+				params.VersionId = optionalStringPtr(version)
 			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching workers for %s...", id))
@@ -346,7 +390,7 @@ has never run".`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraWorkersCursorFlags(state, status))
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraWorkersCursorFlags(state, status, version))
 		},
 	}
 
@@ -354,6 +398,7 @@ has never run".`,
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (ready, busy, pending, …)")
 	cmd.Flags().StringVar(&state, "state", "", "Include stopped rows (all, the API default) or drop them (live)")
+	cmd.Flags().StringVar(&version, "version", "", "Scope to a version ID, or all (default: the active version)")
 	cmd.AddCommand(newAppsWorkersShowCmd(logger))
 	return cmd
 }
@@ -420,7 +465,12 @@ func parseValidFlag[T validListFlag](flag, value, want string) (*T, error) {
 }
 
 func parseAppSort(sort string) (*serverlessapi.AppSort, error) {
-	return parseValidFlag[serverlessapi.AppSort]("--sort", sort, "createdAt, name, activity, or errorRate")
+	switch sort {
+	case "activity", "errorRate":
+		return nil, fmt.Errorf("--sort %s is not available yet; traffic ranks are not collected. Use createdAt or name", sort)
+	default:
+		return parseValidFlag[serverlessapi.AppSort]("--sort", sort, "createdAt or name")
+	}
 }
 
 func parseAppStatus(status string) (*serverlessapi.AppStatus, error) {
@@ -455,9 +505,10 @@ func extraStatusCursorFlag(value string) string {
 }
 
 // extraWorkersCursorFlags repeats workers list filters a next-page --cursor is bound to.
-func extraWorkersCursorFlags(state, status string) string {
+func extraWorkersCursorFlags(state, status, version string) string {
 	parts := appendFlag(nil, "--state", state)
-	return strings.Join(appendFlag(parts, "--status", status), " ")
+	parts = appendFlag(parts, "--status", status)
+	return strings.Join(appendFlag(parts, "--version", version), " ")
 }
 
 func extraTypeCursorFlag(value string) string {

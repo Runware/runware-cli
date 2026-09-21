@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -107,15 +108,21 @@ func newAppsVersionsShowCmd(logger *log.Logger) *cobra.Command {
 }
 
 func newAppsVersionsActivateCmd(logger *log.Logger) *cobra.Command {
-	return &cobra.Command{
+	var (
+		wait         bool
+		timeout      time.Duration
+		pollInterval time.Duration
+	)
+
+	cmd := &cobra.Command{
 		Use:   "activate <appId> <versionNumber>",
 		Short: "Activate a ready application version",
 		Long: `Activate a ready version by number, including rollback to an older version.
 
 The server accepts the deploy and returns immediately with the updated app.
-Worker rollout is asynchronous; this command does not wait until workers are
-healthy. Re-activating the currently active version is permitted and re-applies
-it. On a stopped app the version is recorded and applied on resume.
+Worker rollout is asynchronous. Pass --wait to poll until the application is
+active or failed. Re-activating the currently active version is permitted and
+re-applies it. On a stopped app the version is recorded and applied on resume.
 
 A missing app is 404. A missing version, a version that is not ready, or an
 app that is deleting is 409.`,
@@ -124,7 +131,10 @@ app that is deleting is 409.`,
   runware serverless apps versions activate my-app 2
 
   # roll back to an older ready version
-  runware serverless apps versions activate my-app 1`,
+  runware serverless apps versions activate my-app 1
+
+  # wait until the rollout is active or failed
+  runware serverless apps versions activate my-app 2 --wait`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appID := args[0]
@@ -142,11 +152,28 @@ app that is deleting is 409.`,
 				spin.Stop()
 				return err
 			}
+			if wait && !serverlessapi.AppDeployTerminal(app.Status) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; waiting...\n", app.AppId, app.Status)
+				spin.SetMessage(fmt.Sprintf("Waiting for application %s...", app.AppId))
+				app, err = waitForApp(cmd.Context(), client, app.AppId, pollInterval, timeout)
+				if err != nil {
+					spin.Stop()
+					return err
+				}
+			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+			if err := output.Print(cmdutil.FormatFor(cmd), appResult(*app)); err != nil {
+				return err
+			}
+			if !wait {
+				return nil
+			}
+			return appFailedErr(cmd.Context(), client, app)
 		},
 	}
+	addAppWaitFlags(cmd, &wait, &timeout, &pollInterval)
+	return cmd
 }
 
 func newAppsVersionsDeleteCmd(logger *log.Logger) *cobra.Command {

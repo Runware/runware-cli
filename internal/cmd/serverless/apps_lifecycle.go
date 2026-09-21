@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -38,27 +39,42 @@ is stopped. The application must be active.`,
   runware serverless apps stop my-app`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLifecycle(cmd, logger, args[0], "Stopping", (*serverlessapi.Client).StopApp)
+			return runLifecycle(cmd, logger, args[0], "Stopping", (*serverlessapi.Client).StopApp, waitOptions{})
 		},
 	}
 }
 
 func newAppsResumeCmd(logger *log.Logger) *cobra.Command {
-	return &cobra.Command{
+	var (
+		wait         bool
+		timeout      time.Duration
+		pollInterval time.Duration
+	)
+
+	cmd := &cobra.Command{
 		Use:   "resume <appId>",
 		Short: "Resume a stopped serverless application",
 		Long: `Resume a stopped serverless application.
 
 The server accepts the resume and returns immediately with status initializing.
-Worker start is asynchronous; this command does not wait until the application
-is active. The application must be stopped.`,
+Worker start is asynchronous. Pass --wait to poll until the application is
+active or failed. The application must be stopped.`,
 		Example: `  # resume a stopped application
-  runware serverless apps resume my-app`,
+  runware serverless apps resume my-app
+
+  # wait until the application is active or failed
+  runware serverless apps resume my-app --wait`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLifecycle(cmd, logger, args[0], "Resuming", (*serverlessapi.Client).ResumeApp)
+			return runLifecycle(cmd, logger, args[0], "Resuming", (*serverlessapi.Client).ResumeApp, waitOptions{
+				Wait:     wait,
+				Timeout:  timeout,
+				Interval: pollInterval,
+			})
 		},
 	}
+	addAppWaitFlags(cmd, &wait, &timeout, &pollInterval)
+	return cmd
 }
 
 func newAppsDeleteCmd(logger *log.Logger) *cobra.Command {
@@ -88,7 +104,7 @@ Confirmation is required unless --yes or --force is passed.`,
 			if err := confirmDelete("application "+id, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
 				return err
 			}
-			return runLifecycle(cmd, logger, id, "Deleting", (*serverlessapi.Client).DeleteApp)
+			return runLifecycle(cmd, logger, id, "Deleting", (*serverlessapi.Client).DeleteApp, waitOptions{})
 		},
 	}
 
@@ -98,7 +114,13 @@ Confirmation is required unless --yes or --force is passed.`,
 
 type lifecycleAction func(*serverlessapi.Client, context.Context, string) (*serverlessapi.App, error)
 
-func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, action lifecycleAction) error {
+type waitOptions struct {
+	Wait     bool
+	Timeout  time.Duration
+	Interval time.Duration
+}
+
+func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, action lifecycleAction, wait waitOptions) error {
 	spin := cmdutil.NewSpinner(fmt.Sprintf("%s application %s...", verb, id))
 	spin.Start()
 
@@ -108,9 +130,24 @@ func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, actio
 		spin.Stop()
 		return err
 	}
+	if wait.Wait && !serverlessapi.AppDeployTerminal(app.Status) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; waiting...\n", app.AppId, app.Status)
+		spin.SetMessage(fmt.Sprintf("Waiting for application %s...", app.AppId))
+		app, err = waitForApp(cmd.Context(), client, app.AppId, wait.Interval, wait.Timeout)
+		if err != nil {
+			spin.Stop()
+			return err
+		}
+	}
 	spin.Stop()
 
-	return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+	if err := output.Print(cmdutil.FormatFor(cmd), appResult(*app)); err != nil {
+		return err
+	}
+	if !wait.Wait {
+		return nil
+	}
+	return appFailedErr(cmd.Context(), client, app)
 }
 
 func addDeleteConfirmFlags(cmd *cobra.Command, yes, force *bool) {

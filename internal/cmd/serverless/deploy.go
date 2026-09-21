@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -33,9 +34,14 @@ var createOnlyDeployFlags = []string{
 	"scaling-delay",
 	"min-workers",
 	"gpus-per-worker",
+	"concurrency",
+	"fallback-gpu-type",
+	"min-available-workers",
+	"available-workers-pct",
 	"volume",
 	"env",
 	"env-file",
+	"secret",
 }
 
 // deploySource is the packed archive's type plus the fields CreateApp needs
@@ -112,23 +118,29 @@ func buildDeployArchive(srcDir, containerDir, baseImage string, requirements []s
 
 func newDeployCmd(logger *log.Logger) *cobra.Command {
 	var (
-		id            string
-		name          string
-		maxWorkers    int32
-		idleTTL       int32
-		scalingDelay  int32
-		baseImage     string
-		gpuType       string
-		requirements  []string
-		minWorkers    int32
-		gpusPerWorker int32
-		srcDir        string
-		containerDir  string
-		volumes       []string
-		envVars       []string
-		envFiles      []string
-		wait          bool
-		pollInterval  time.Duration
+		id                  string
+		name                string
+		maxWorkers          int32
+		idleTTL             int32
+		scalingDelay        int32
+		baseImage           string
+		gpuType             string
+		requirements        []string
+		minWorkers          int32
+		gpusPerWorker       int32
+		concurrency         int32
+		fallbackGPUType     string
+		minAvailableWorkers int32
+		availableWorkersPct int32
+		srcDir              string
+		containerDir        string
+		volumes             []string
+		envVars             []string
+		envFiles            []string
+		secrets             []string
+		wait                bool
+		timeout             time.Duration
+		pollInterval        time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -139,9 +151,10 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 A first deploy with a new --id creates the application. A later deploy with the
 same --id uploads a new source, records version N+1, and rolls it when the
 build is ready. Create-only flags (--gpu-type, worker settings, --volume,
---env, --env-file, --name) apply only to create; passing them when the
-application already exists is an error. Change workers with 'apps scale' and
-environment with 'apps env'. A source update on a stopped application is 409.
+--env, --env-file, --secret, --name) apply only to create; passing them when the
+application already exists is an error. Change workers with 'apps scale',
+environment with 'apps env', and the display name with 'apps rename'. A source
+update on a stopped application is 409.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -170,17 +183,17 @@ what a project keeps out of version control is a different question from what it
 ships. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv, node_modules or the usual build and tool caches.
 
-Environment variables must be supplied at create with --env or --env-file. An
-app's environment is frozen into the version this command creates, which is
-what the worker is rendered from, so setting one afterwards with 'apps env set'
-stores it without it ever reaching a pod. Prefer --env-file for anything secret:
-a value passed as --env is visible in the process list and recorded in shell
-history.
+Environment variables can be supplied at create with --env or --env-file, or
+changed later with 'apps env set', which records a new version and rolls live
+workers when the value changes. Prefer --env-file for anything secret: a value
+passed as --env is visible in the process list and recorded in shell history.
+Attach existing organisation secrets at create with --secret so the first
+rollout carries them; attach and detach after create also roll live workers.
 
-Anything the app downloads at runtime belongs on a --volume. The app runs in a
-sandbox whose filesystem is part of the checkpointed state, so an unmounted
-download is copied into every checkpoint and fetched again on every cold start.
-A volume keeps it out of both.
+Anything the app downloads at runtime belongs on a --volume. Volumes are
+immutable after create. The app runs in a sandbox whose filesystem is part of
+the checkpointed state, so an unmounted download is copied into every checkpoint
+and fetched again on every cold start. A volume keeps it out of both.
 
 Worker settings are supplied via flags on create. Endpoints are derived
 server-side from the SDK (code) or from container.yaml (container).`,
@@ -245,13 +258,21 @@ server-side from the SDK (code) or from container.yaml (container).`,
 			var (
 				appVolumes *[]serverlessapi.AppVolume
 				appEnv     *map[string]string
+				appSecrets *[]serverlessapi.SecretAttach
 			)
 			if !update {
+				if err := validateGPUsPerWorker(gpusPerWorker); err != nil {
+					return err
+				}
 				appVolumes, err = buildVolumes(volumes)
 				if err != nil {
 					return err
 				}
 				appEnv, err = buildEnvironmentVariables(envFiles, envVars)
+				if err != nil {
+					return err
+				}
+				appSecrets, err = parseSecretAttaches(secrets)
 				if err != nil {
 					return err
 				}
@@ -286,13 +307,18 @@ server-side from the SDK (code) or from container.yaml (container).`,
 					AppSource:            appSource,
 					Volumes:              appVolumes,
 					EnvironmentVariables: appEnv,
+					Secrets:              appSecrets,
 					Configuration: serverlessapi.WorkerConfigCreate{
-						MaxWorkers:       maxWorkers,
-						IdleTtlSecs:      idleTTL,
-						ScalingDelaySecs: scalingDelay,
-						GpuType:          gpuType,
-						MinWorkers:       optionalInt32Ptr(cmd, "min-workers", minWorkers),
-						GpusPerWorker:    optionalInt32Ptr(cmd, "gpus-per-worker", gpusPerWorker),
+						MaxWorkers:          maxWorkers,
+						IdleTtlSecs:         idleTTL,
+						ScalingDelaySecs:    scalingDelay,
+						GpuType:             gpuType,
+						MinWorkers:          optionalInt32Ptr(cmd, "min-workers", minWorkers),
+						GpusPerWorker:       optionalInt32Ptr(cmd, "gpus-per-worker", gpusPerWorker),
+						Concurrency:         optionalInt32Ptr(cmd, "concurrency", concurrency),
+						FallbackGpuType:     optionalFlagStringPtr(cmd, "fallback-gpu-type", fallbackGPUType),
+						MinAvailableWorkers: optionalInt32Ptr(cmd, "min-available-workers", minAvailableWorkers),
+						AvailableWorkersPct: optionalInt32Ptr(cmd, "available-workers-pct", availableWorkersPct),
 					},
 				})
 				if isHTTPConflict(err) {
@@ -308,7 +334,7 @@ server-side from the SDK (code) or from container.yaml (container).`,
 			if wait && !serverlessapi.AppDeployTerminal(app.Status) {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; waiting...\n", app.AppId, app.Status)
 				spin.SetMessage(fmt.Sprintf("Waiting for application %s...", app.AppId))
-				app, err = client.WaitApp(cmd.Context(), app.AppId, pollInterval)
+				app, err = waitForApp(cmd.Context(), client, app.AppId, pollInterval, timeout)
 				if err != nil {
 					spin.Stop()
 					return err
@@ -328,9 +354,10 @@ server-side from the SDK (code) or from container.yaml (container).`,
 
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
 	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
-	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage (repeatable)")
+	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage (repeatable; immutable after create)")
 	cmd.Flags().StringArrayVar(&envVars, "env", nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
+	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Attach an organisation secret as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")
@@ -340,9 +367,12 @@ server-side from the SDK (code) or from container.yaml (container).`,
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
-	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker")
-	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the application is active or failed")
-	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
+	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker (1, 2, 4, or 8)")
+	cmd.Flags().Int32Var(&concurrency, "concurrency", 1, "Max tasks a single worker handles simultaneously")
+	cmd.Flags().StringVar(&fallbackGPUType, "fallback-gpu-type", "", "Secondary GPU type if the preferred type is unavailable")
+	cmd.Flags().Int32Var(&minAvailableWorkers, "min-available-workers", 0, "Minimum idle workers kept as a buffer")
+	cmd.Flags().Int32Var(&availableWorkersPct, "available-workers-pct", 0, "Idle-worker buffer as a percentage of load (0-100)")
+	addAppWaitFlags(cmd, &wait, &timeout, &pollInterval)
 
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		panic(err)
@@ -380,15 +410,58 @@ func validateUpdateDeployFlags(cmd *cobra.Command) error {
 
 func createOnlyDeployHint(name string) string {
 	switch name {
-	case "gpu-type", "max-workers", "idle-ttl", "scaling-delay", "min-workers", "gpus-per-worker":
+	case "gpu-type", "max-workers", "idle-ttl", "scaling-delay", "min-workers", "gpus-per-worker", "concurrency", "fallback-gpu-type", "min-available-workers", "available-workers-pct":
 		return "use 'runware serverless apps scale' to change worker configuration"
 	case "env", "env-file":
 		return "use 'runware serverless apps env' to change environment variables"
+	case "secret":
+		return "use 'runware serverless secrets attach' to attach secrets"
 	case "volume":
-		return "volumes are set at create time and cannot be changed here"
+		return "volumes are immutable after create"
+	case "name":
+		return "use 'runware serverless apps rename' to change the display name"
 	default:
 		return "omit it when updating an existing application"
 	}
+}
+
+func validateGPUsPerWorker(n int32) error {
+	switch n {
+	case 1, 2, 4, 8:
+		return nil
+	default:
+		return fmt.Errorf("--gpus-per-worker must be 1, 2, 4, or 8")
+	}
+}
+
+func parseSecretAttaches(values []string) (*[]serverlessapi.SecretAttach, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := make([]serverlessapi.SecretAttach, 0, len(values))
+	for _, raw := range values {
+		name, envVar, err := splitSecretAttach(raw)
+		if err != nil {
+			return nil, err
+		}
+		attach := serverlessapi.SecretAttach{SecretName: name}
+		if envVar != "" {
+			attach.EnvVarName = &envVar
+		}
+		out = append(out, attach)
+	}
+	return &out, nil
+}
+
+func splitSecretAttach(raw string) (name, envVar string, err error) {
+	name, envVar, ok := strings.Cut(raw, "=")
+	if !ok {
+		name = raw
+	}
+	if name == "" {
+		return "", "", fmt.Errorf("invalid --secret %q (want NAME or NAME=ENV_VAR)", raw)
+	}
+	return name, envVar, nil
 }
 
 func optionalStringSlice(vals []string) *[]string {

@@ -93,6 +93,10 @@ func newAppsEnvSetCmd(logger *log.Logger) *cobra.Command {
 Prefer --value-file so the value is not visible in process lists; use
 --value-file - to read from stdin.
 
+A write that changes the stored value records a new version and rolls live
+workers when the application can take one. A write that leaves the value
+unchanged records no version and does not roll.
+
 The server rejects (HTTP 422) reserved platform names, names that collide
 with an attached secret's injected env var, and adding a binding past the
 100-variable-plus-secret ceiling. Overwriting an existing key is always
@@ -189,12 +193,9 @@ var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 // buildEnvironmentVariables turns --env KEY=VALUE pairs and --env-file paths into
 // the create request's map.
 //
-// These belong on the CREATE request and nowhere else: an app's environment is
-// frozen into its version snapshot, which is what the deployer renders from, and
-// no endpoint creates a further version -- `deploy` re-applies an existing one by
-// number and says so. So a variable set through the /environment-variables
-// endpoints after the app exists is stored, listed back, and never reaches a
-// worker. Passing it here is the only route that ends up in a pod.
+// Create-time flags put the first environment set on the version this deploy
+// records. After create, 'apps env set' also records a version and rolls when
+// the stored value changes.
 //
 // Files are read before the inline pairs are applied, so an explicit --env wins
 // over a file entry with the same name.

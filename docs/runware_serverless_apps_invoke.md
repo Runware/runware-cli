@@ -49,6 +49,7 @@ runware serverless apps invoke <appId> <endpointPath> [flags]
       --poll-interval duration   Polling interval when waiting for a task (default 2s)
       --sync                     Use sync invocation and wait for a terminal task
       --task-id string           Client task id (UUID); generated if omitted
+      --timeout duration         Maximum time to wait (0 = no limit)
       --wait                     Poll until the task is completed or failed
 ```
 

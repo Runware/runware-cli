@@ -4,11 +4,12 @@ Attach an organisation secret to an application
 
 ### Synopsis
 
-Record that an organisation secret is attached to an application, optionally
-under a different environment variable name.
+Attach an organisation secret to an application, optionally under a different
+environment variable name.
 
-The organisation secret must already exist (see 'secrets set'). This is a
-control-plane association only in this API release — it does not roll workers.
+The organisation secret must already exist (see 'secrets set'). Attach rolls
+live workers so the value reaches running pods. PATCH secrets-replace still
+does not roll.
 
 ```
 runware serverless secrets attach <appId> <name> [flags]

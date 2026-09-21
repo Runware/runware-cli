@@ -4,8 +4,8 @@ Detach a secret from an application
 
 ### Synopsis
 
-Remove the control-plane attachment from an application. Does not remove the
-organisation secret.
+Detach an organisation secret from an application. Live workers are rolled so
+the value is removed from running pods. Does not remove the organisation secret.
 
 ```
 runware serverless secrets detach <appId> <name> [flags]

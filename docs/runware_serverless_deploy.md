@@ -9,9 +9,10 @@ Create or update a serverless application from Python code or a container source
 A first deploy with a new --id creates the application. A later deploy with the
 same --id uploads a new source, records version N+1, and rolls it when the
 build is ready. Create-only flags (--gpu-type, worker settings, --volume,
---env, --env-file, --name) apply only to create; passing them when the
-application already exists is an error. Change workers with 'apps scale' and
-environment with 'apps env'. A source update on a stopped application is 409.
+--env, --env-file, --secret, --name) apply only to create; passing them when the
+application already exists is an error. Change workers with 'apps scale',
+environment with 'apps env', and the display name with 'apps rename'. A source
+update on a stopped application is 409.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -40,17 +41,17 @@ what a project keeps out of version control is a different question from what it
 ships. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv, node_modules or the usual build and tool caches.
 
-Environment variables must be supplied at create with --env or --env-file. An
-app's environment is frozen into the version this command creates, which is
-what the worker is rendered from, so setting one afterwards with 'apps env set'
-stores it without it ever reaching a pod. Prefer --env-file for anything secret:
-a value passed as --env is visible in the process list and recorded in shell
-history.
+Environment variables can be supplied at create with --env or --env-file, or
+changed later with 'apps env set', which records a new version and rolls live
+workers when the value changes. Prefer --env-file for anything secret: a value
+passed as --env is visible in the process list and recorded in shell history.
+Attach existing organisation secrets at create with --secret so the first
+rollout carries them; attach and detach after create also roll live workers.
 
-Anything the app downloads at runtime belongs on a --volume. The app runs in a
-sandbox whose filesystem is part of the checkpointed state, so an unmounted
-download is copied into every checkpoint and fetched again on every cold start.
-A volume keeps it out of both.
+Anything the app downloads at runtime belongs on a --volume. Volumes are
+immutable after create. The app runs in a sandbox whose filesystem is part of
+the checkpointed state, so an unmounted download is copied into every checkpoint
+and fetched again on every cold start. A volume keeps it out of both.
 
 Worker settings are supplied via flags on create. Endpoints are derived
 server-side from the SDK (code) or from container.yaml (container).
@@ -97,24 +98,30 @@ runware serverless deploy [file] [flags]
 ### Options
 
 ```
-      --base-image string         Builder base image (code deploys only) (default "python:3.11-slim")
-      --container string          Directory whose root contains Dockerfile and container.yaml
-      --env stringArray           Environment variable as KEY=VALUE (repeatable)
-      --env-file stringArray      File of KEY=VALUE lines to read environment variables from (repeatable)
-      --gpu-type string           GPU type ID (see 'serverless gpus'; required when creating)
-      --gpus-per-worker int32     GPUs allocated per worker (default 1)
-  -h, --help                      help for deploy
-      --id string                 Application ID (immutable, lowercase slug)
-      --idle-ttl int32            Idle TTL in seconds before scaling down (default 60)
-      --max-workers int32         Maximum number of workers (default 1)
-      --min-workers int32         Minimum number of workers
-      --name string               Display name (defaults to --id)
-      --poll-interval duration    Polling interval when waiting for the application (default 2s)
-      --requirement stringArray   Additional pip package to install (repeatable; code deploys only)
-      --scaling-delay int32       Scaling delay in seconds (default 10)
-      --src-dir string            Directory to package as the application source (default: the working directory; code deploys only)
-      --volume stringArray        Absolute path inside the app backed by persistent node-local storage (repeatable)
-      --wait                      Poll until the application is active or failed
+      --available-workers-pct int32   Idle-worker buffer as a percentage of load (0-100)
+      --base-image string             Builder base image (code deploys only) (default "python:3.11-slim")
+      --concurrency int32             Max tasks a single worker handles simultaneously (default 1)
+      --container string              Directory whose root contains Dockerfile and container.yaml
+      --env stringArray               Environment variable as KEY=VALUE (repeatable)
+      --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
+      --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
+      --gpu-type string               GPU type ID (see 'serverless gpus'; required when creating)
+      --gpus-per-worker int32         GPUs allocated per worker (1, 2, 4, or 8) (default 1)
+  -h, --help                          help for deploy
+      --id string                     Application ID (immutable, lowercase slug)
+      --idle-ttl int32                Idle TTL in seconds before scaling down (default 60)
+      --max-workers int32             Maximum number of workers (default 1)
+      --min-available-workers int32   Minimum idle workers kept as a buffer
+      --min-workers int32             Minimum number of workers
+      --name string                   Display name (defaults to --id)
+      --poll-interval duration        Polling interval when waiting for the application (default 2s)
+      --requirement stringArray       Additional pip package to install (repeatable; code deploys only)
+      --scaling-delay int32           Scaling delay in seconds (default 10)
+      --secret stringArray            Attach an organisation secret as NAME or NAME=ENV_VAR (repeatable)
+      --src-dir string                Directory to package as the application source (default: the working directory; code deploys only)
+      --timeout duration              Maximum time to wait (0 = no limit)
+      --volume stringArray            Absolute path inside the app backed by persistent node-local storage (repeatable; immutable after create)
+      --wait                          Poll until the application is active or failed
 ```
 
 ### Options inherited from parent commands

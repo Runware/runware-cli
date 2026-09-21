@@ -87,6 +87,17 @@ func TestWorkerConfigPatchFromFlags_EachFlag(t *testing.T) {
 	}
 }
 
+func TestWorkerConfigPatchFromFlags_RejectsInvalidGPUsPerWorker(t *testing.T) {
+	cmd, flags := newScaleFlagCmd()
+	if err := cmd.ParseFlags([]string{"--gpus-per-worker", "3"}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	_, err := workerConfigPatchFromFlags(cmd, *flags)
+	if err == nil || !strings.Contains(err.Error(), "1, 2, 4, or 8") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestWorkerConfigPatchFromFlags_RequiresAFlag(t *testing.T) {
 	cmd, flags := newScaleFlagCmd()
 	if err := cmd.ParseFlags([]string{}); err != nil {

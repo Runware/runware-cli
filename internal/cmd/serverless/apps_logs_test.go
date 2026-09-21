@@ -36,6 +36,9 @@ func TestLogEntriesParams_MapsFlags(t *testing.T) {
 	if params.Limit == nil || *params.Limit != 50 || params.Cursor == nil || *params.Cursor != testLogCursor {
 		t.Errorf("limit/cursor = %#v", params)
 	}
+	if params.Sort == nil || *params.Sort != serverlessapi.LogSortOldest {
+		t.Errorf("sort = %#v", params.Sort)
+	}
 }
 
 func TestLogEntriesParams_OmitsUnsetOptionalFlags(t *testing.T) {
@@ -45,6 +48,9 @@ func TestLogEntriesParams_OmitsUnsetOptionalFlags(t *testing.T) {
 	}
 	if params.Limit != nil || params.Cursor != nil {
 		t.Errorf("optional params must be nil: %#v", params)
+	}
+	if params.Sort == nil || *params.Sort != serverlessapi.LogSortOldest {
+		t.Errorf("default sort = %#v", params.Sort)
 	}
 }
 
@@ -70,6 +76,13 @@ func TestLogEntriesParams_RejectsBadFlags(t *testing.T) {
 		"nowindow": {
 			flags: logsFlags{window: ""},
 			want:  "--window is required",
+		},
+		"sort": {
+			flags: logsFlags{
+				window: "1h",
+				sort:   "nope",
+			},
+			want: "invalid --sort",
 		},
 	}
 	for name, tc := range cases {
@@ -107,20 +120,22 @@ func TestFormatLogLine(t *testing.T) {
 	}
 }
 
-func TestPrintLogPage_TablePrintsOldestFirstAndCursorHint(t *testing.T) {
+func TestPrintLogPage_TablePrintsAPIOrderAndCursors(t *testing.T) {
 	next := testLogCursor
+	prev := "page-0"
 	page := serverlessapi.LogEntryPage{
 		Entries: []serverlessapi.LogEntry{
-			{
-				Time: 1750000001,
-				Body: testLogBodySlow,
-			},
 			{
 				Time: 1750000000,
 				Body: testLogBodyReady,
 			},
+			{
+				Time: 1750000001,
+				Body: testLogBodySlow,
+			},
 		},
 		NextCursor: &next,
+		PrevCursor: &prev,
 	}
 	var out, errOut bytes.Buffer
 	flags := logsFlags{
@@ -134,9 +149,11 @@ func TestPrintLogPage_TablePrintsOldestFirstAndCursorHint(t *testing.T) {
 	if len(lines) != 2 || !strings.HasSuffix(lines[0], testLogBodyReady) || !strings.HasSuffix(lines[1], testLogBodySlow) {
 		t.Fatalf("stdout = %q", out.String())
 	}
-	want := "Next page: --window 6h --limit 50 --cursor " + testLogCursor
-	if !strings.Contains(errOut.String(), want) {
-		t.Fatalf("stderr = %q, want %q", errOut.String(), want)
+	if !strings.Contains(errOut.String(), "Next page: --window 6h --limit 50 --cursor "+testLogCursor) {
+		t.Fatalf("stderr missing next: %q", errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "Previous page: --window 6h --limit 50 --cursor "+prev) {
+		t.Fatalf("stderr missing prev: %q", errOut.String())
 	}
 }
 

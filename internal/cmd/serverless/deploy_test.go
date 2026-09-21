@@ -199,6 +199,12 @@ func TestNewDeployCmd_RegistersContainerFlag(t *testing.T) {
 	if cmd.Flags().Lookup("poll-interval") == nil {
 		t.Fatal("deploy is missing --poll-interval")
 	}
+	if cmd.Flags().Lookup("timeout") == nil {
+		t.Fatal("deploy is missing --timeout")
+	}
+	if cmd.Flags().Lookup("secret") == nil {
+		t.Fatal("deploy is missing --secret")
+	}
 	if cmd.Use != "deploy [file]" {
 		t.Errorf("Use = %q, want deploy [file]", cmd.Use)
 	}
@@ -280,7 +286,9 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--env", "FOO=bar"}, wantErr: "apps env"},
 		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env"},
 		{flags: []string{"--volume", "/data"}, wantErr: "volumes"},
-		{flags: []string{"--name", "My App"}, wantErr: "omit it"},
+		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
+		{flags: []string{"--secret", "FOO"}, wantErr: "secrets attach"},
+		{flags: []string{"--concurrency", "2"}, wantErr: "apps scale"},
 		{flags: []string{"--requirement", testPipPackage}},
 		{flags: []string{"--base-image", "python:3.12-slim"}},
 		{flags: []string{testSrcDirFlag, "."}},
@@ -356,5 +364,41 @@ func TestAppFailedErr(t *testing.T) {
 	err = appFailedErr(context.Background(), serverlessapi.NewClient("test-key", empty.URL, slog.Default()), failed)
 	if err == nil || !strings.Contains(err.Error(), "inspect builds") {
 		t.Fatalf("failed without build error: %v", err)
+	}
+}
+
+func TestValidateGPUsPerWorker(t *testing.T) {
+	for _, n := range []int32{1, 2, 4, 8} {
+		if err := validateGPUsPerWorker(n); err != nil {
+			t.Fatalf("%d: %v", n, err)
+		}
+	}
+	if err := validateGPUsPerWorker(3); err == nil || !strings.Contains(err.Error(), "1, 2, 4, or 8") {
+		t.Fatalf("3: %v", err)
+	}
+}
+
+func TestParseSecretAttaches(t *testing.T) {
+	got, err := parseSecretAttaches(nil)
+	if err != nil || got != nil {
+		t.Fatalf("nil: got=%v err=%v", got, err)
+	}
+
+	got, err = parseSecretAttaches([]string{"FOO", "BAR=BAZ"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got == nil || len(*got) != 2 {
+		t.Fatalf("got %#v", got)
+	}
+	if (*got)[0].SecretName != "FOO" || (*got)[0].EnvVarName != nil {
+		t.Fatalf("FOO: %#v", (*got)[0])
+	}
+	if (*got)[1].SecretName != "BAR" || (*got)[1].EnvVarName == nil || *(*got)[1].EnvVarName != "BAZ" {
+		t.Fatalf("BAR: %#v", (*got)[1])
+	}
+
+	if _, err := parseSecretAttaches([]string{"=ENV"}); err == nil {
+		t.Fatal("expected error for empty secret name")
 	}
 }
