@@ -251,12 +251,20 @@ endpoint on purpose is allowed.`,
 			// The endpoint set the app is serving now, to compare against the one
 			// the new version publishes. Only on an update we are going to wait
 			// for: a create has no previous set, and without --wait this command
-			// returns before the build that decides the new one. A read failure
-			// is not fatal — it costs the warning, not the deploy.
-			var endpointsBefore []string
+			// returns before the build that decides the new one.
+			//
+			// A read failure costs the warning, not the deploy — but it has to
+			// cost the whole warning. Carrying on with an empty "before" would
+			// make every endpoint the app already served look newly added, and a
+			// warning that cries wolf on an unchanged deploy is worse than none:
+			// the one it needs to raise is a real rename.
+			var (
+				endpointsBefore []string
+				canCompare      bool
+			)
 			if update && wait {
 				if paths, err := deployEndpointPaths(cmd.Context(), client, id); err == nil {
-					endpointsBefore = paths
+					endpointsBefore, canCompare = paths, true
 				}
 			}
 
@@ -337,7 +345,7 @@ endpoint on purpose is allowed.`,
 			// Only once the app is active are the endpoint rows the new version's:
 			// the set is derived server-side by the build, and the rows are replaced
 			// when the rollout activates. A deploy that failed moved nothing.
-			if update && wait && app.Status == serverlessapi.AppStatusActive {
+			if canCompare && app.Status == serverlessapi.AppStatusActive {
 				if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
 					reportEndpointSetChange(cmd.ErrOrStderr(), compareEndpointSets(endpointsBefore, paths))
 				}
