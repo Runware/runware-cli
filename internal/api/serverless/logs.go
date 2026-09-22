@@ -16,10 +16,20 @@ import (
 // LogEntry is one application log line.
 type LogEntry = gen.LogEntry
 
-// LogEntryPage is one page of log entries, newest first.
+// LogEntryPage is one page of log entries in the requested sort order.
 type LogEntryPage = gen.LogEntryPage
 
-// GetLogEntriesParams narrows a log page: window, page size, cursor, app and endpoint.
+// LogSort is the ordering of a log page.
+type LogSort = gen.LogSort
+
+const (
+	// LogSortNewest lists newest first; nextCursor walks older.
+	LogSortNewest LogSort = gen.Newest
+	// LogSortOldest lists oldest first; nextCursor walks newer.
+	LogSortOldest LogSort = gen.Oldest
+)
+
+// GetLogEntriesParams narrows a log page: window, page size, cursor, sort, app and endpoint.
 type GetLogEntriesParams = gen.GetLogEntriesParams
 
 // LogWindow is the closed set of time windows a log query accepts.

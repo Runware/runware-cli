@@ -434,6 +434,8 @@ paths:
                 $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '403':
@@ -545,6 +547,8 @@ paths:
                 $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '403':
@@ -829,6 +833,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '403':
@@ -898,6 +904,8 @@ paths:
                 $ref: '#/components/schemas/App'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '403':
@@ -906,6 +914,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   /v1/apps/{appId}/favourite:
     put:
@@ -1317,7 +1327,7 @@ paths:
         terminal `stopped` rows until purged). Omitted `versionId` scopes the page
         to the app's `activeVersionId`. An app with no active version therefore
         answers an empty default page — not that it has no workers, only that
-        none are pinned. Optional `state` and `status` narrow the page further;
+        none are pinned.         Optional `state`, `status` and `q` narrow the page further;
         a cursor must be replayed under the same filters it was issued with.
       operationId: listWorkers
       parameters:
@@ -1353,6 +1363,18 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/WorkerStatus'
+        - name: q
+          in: query
+          required: false
+          description: >
+            Case-insensitive literal substring match against `id`, `podName`,
+            `nodeName` and `versionId`. A worker matching any field is returned
+            within the selected version, state and status filters. Omit `q` to
+            disable search. Cursors must retain the same search term, ignoring case.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
       responses:
         '200':
           description: A page of workers
@@ -2327,15 +2349,20 @@ paths:
         - Observability
       summary: Read one page of a named log query
       description: >
-        Returns one page of log entries, newest first, with an opaque cursor for the next
-        page when one exists. Query ids and their supported selectors are listed by the
-        insights catalogue.
+        Returns one page of log entries in the requested `sort` order, newest first by
+        default, with opaque cursors for the neighbouring pages when they exist.
+        `nextCursor` continues in the `sort` order and `prevCursor` goes back against it,
+        so a client can walk a window in either direction from either end. A cursor is only
+        valid for the `sort` it was issued under; reusing one under the other ordering
+        returns `400`. Query ids and their supported selectors are listed by the insights
+        catalogue.
       operationId: getLogEntries
       parameters:
         - $ref: '#/components/parameters/QueryId'
         - $ref: '#/components/parameters/MetricWindow'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/LogSort'
         - $ref: '#/components/parameters/SelectorDeployment'
         - $ref: '#/components/parameters/SelectorEndpoint'
       responses:
@@ -2497,9 +2524,20 @@ components:
       name: cursor
       in: query
       required: false
-      description: Opaque pagination cursor returned as `nextCursor` by a previous call.
+      description: >
+        Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the
+        operations that offer one, `prevCursor`.
       schema:
         type: string
+    LogSort:
+      name: sort
+      in: query
+      required: false
+      description: >
+        Ordering of a log page and the direction `nextCursor` moves in. Only
+        `getLogEntries` accepts it.
+      schema:
+        $ref: '#/components/schemas/LogSort'
 
     QueryId:
       name: queryId
@@ -2682,6 +2720,18 @@ components:
             $ref: '#/components/schemas/ProblemDetails'
     Unauthorized:
       description: Missing or invalid credentials
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    PaymentRequired:
+      description: >
+        The organization's credit cannot cover the capacity the request asks for.
+        The problem `type` is `insufficient-credit` when the available balance
+        is short, and `credit-suspended` when a refund took back credit already
+        spent and every allocation is refused until the balance is funded back.
+        Either way `shortfall` is the amount to add before retrying: the request
+        is unchanged by the refusal and succeeds as sent once the credit is there.
       content:
         application/problem+json:
           schema:
@@ -3038,6 +3088,15 @@ components:
         - name
         - activity
         - errorRate
+    LogSort:
+      type: string
+      description: >
+        Ordering of a log page. `newest` is the default: the first row is the
+        newest entry and `nextCursor` walks older. `oldest` reverses that.
+      default: newest
+      enum:
+        - newest
+        - oldest
     BuildStatus:
       type: string
       description: Build/validation lifecycle status.
@@ -3463,6 +3522,30 @@ components:
           allOf:
             - $ref: '#/components/schemas/WorkerConfig'
           description: Live worker configuration. Updated via `PATCH /apps/{appId}`.
+        effectiveMaxWorkers:
+          type: integer
+          format: int32
+          minimum: 0
+          nullable: true
+          readOnly: true
+          description: >
+            The worker ceiling the last deploy actually applied, reduced where the
+            organization's credit balance did not back the whole range. The autoscaler
+            cannot grow past it.
+
+
+            It describes what was applied, not what is configured now, and the two can
+            differ. It is taken from the `maxWorkers` of the version that was deployed,
+            so deploying an older version applies that version's ceiling; and a later
+            `PATCH` of `configuration.maxWorkers` does not change it until the next
+            deploy. Read it beside `configuration.maxWorkers` rather than as a bound on
+            it.
+
+
+            `null` means nothing has been applied yet. It is recalculated on every
+            deploy. A committed credit top-up also recalculates a reduced ceiling and
+            restores the funded range automatically; KEDA then grows the workload from
+            queue demand without a customer redeploy.
         runtime:
           $ref: '#/components/schemas/AppRuntime'
         secrets:
@@ -3722,7 +3805,10 @@ components:
           type: integer
           format: int32
           default: 1
-          description: One GPU per worker is currently supported. Historical apps may contain another value.
+          description: >
+            GPUs granted to one worker pod. Create and update accept only the group
+            sizes the cluster grants indivisibly, since a worker holds its GPUs as one
+            such group. Historical apps may contain another value.
         minWorkers:
           type: integer
           format: int32
@@ -3818,9 +3904,19 @@ components:
         gpusPerWorker:
           type: integer
           format: int32
-          minimum: 0
+          enum: [1, 2, 4, 8]
+          x-go-type: int32
           default: 1
-          description: Only 1 is currently supported. Any other value returns 422.
+          description: >
+            GPUs granted to one worker pod. A worker holds its GPUs as one group the
+            cluster grants indivisibly, so the count is one of the advertised group
+            sizes rather than any number in a range. The value must also be a group
+            size admitted by the cluster backing the chosen `gpuType`: a count above 1
+            that cluster does not grant is rejected with a 422 naming
+            `/configuration/gpusPerWorker`, since the pod could never be scheduled.
+            A value above 1 requires an image built after the multi-GPU worker
+            entrypoint; older images serve a single rank while holding every granted
+            GPU.
         minWorkers:
           type: integer
           format: int32
@@ -3899,8 +3995,18 @@ components:
         gpusPerWorker:
           type: integer
           format: int32
-          minimum: 0
-          description: Only 1 is currently supported. Any other value returns 422.
+          enum: [1, 2, 4, 8]
+          x-go-type: int32
+          description: >
+            GPUs granted to one worker pod. A worker holds its GPUs as one group the
+            cluster grants indivisibly, so the count is one of the advertised group
+            sizes rather than any number in a range. The value must also be a group
+            size admitted by the cluster backing the chosen `gpuType`: a count above 1
+            that cluster does not grant is rejected with a 422 naming
+            `/configuration/gpusPerWorker`, since the pod could never be scheduled.
+            A value above 1 requires an image built after the multi-GPU worker
+            entrypoint; older images serve a single rank while holding every granted
+            GPU.
         minWorkers:
           type: integer
           format: int32
@@ -5164,6 +5270,13 @@ components:
             per offending request field.
           items:
             $ref: '#/components/schemas/ProblemError'
+        shortfall:
+          type: string
+          description: >
+            Extension member. Present on `402` credit refusals. The amount of
+            credit to add before retrying the same request. Units match the
+            platform credit display.
+          example: "12.50"
 
     ProblemError:
       type: object
@@ -5316,6 +5429,11 @@ components:
         nextCursor:
           type: string
           description: Opaque; absent on the last page.
+        prevCursor:
+          type: string
+          description: >
+            Opaque; absent on the first page. Walks the opposite direction of
+            `nextCursor` under the same `sort`.
     LogEntry:
       type: object
       required: [time, body]
