@@ -6,8 +6,11 @@ Scale a serverless application
 
 Patch live worker configuration for a serverless application.
 
-Omitted flags are left unchanged. Configuration changes take effect on the
-next scaler cycle; this command does not wait for a rollout.
+Omitted flags are left unchanged. A configuration change records a new version
+with the same image and rolls the workload when the app is active or
+initializing. A failed app is moved to initializing and rolled. A stopped or
+stopping app applies the change on resume. This command does not wait for that
+rollout. A change during an in-flight rollout returns 409.
 
 The server rejects unsupported or invalid fields with HTTP 422.
 
@@ -24,7 +27,7 @@ runware serverless apps scale <appId> [flags]
   # scale to zero and raise idle TTL
   runware serverless apps scale my-app --min-workers 0 --idle-ttl 120
 
-  # change GPU type (applies to newly created workers)
+  # change GPU type; the rollout replaces workers with the new type
   runware serverless apps scale my-app --gpu-type h100
 ```
 
