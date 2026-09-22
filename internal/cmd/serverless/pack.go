@@ -22,7 +22,8 @@ const maxPackEntryBytes int64 = 10 << 20 // 10 MiB
 
 // maxPackTotalBytes bounds the archive as a whole. The per-file cap alone does
 // not: a virtualenv is thousands of small files and would sail past it.
-const maxPackTotalBytes int64 = 25 << 20 // 25 MiB
+// 10 MiB matches SourceUploadCreate.declaredByteLength (maximum 10485760).
+const maxPackTotalBytes int64 = 10 << 20 // 10 MiB
 
 // runwareIgnoreFile is the project's own exclude list, and the only one read.
 //
