@@ -258,12 +258,7 @@ endpoint on purpose is allowed.`,
 				canCompare      bool
 			)
 			if update && wait {
-				if paths, err := deployEndpointPaths(cmd.Context(), client, id); err == nil {
-					endpointsBefore, canCompare = paths, true
-				}
-				if live, err := client.GetApp(cmd.Context(), id); err == nil {
-					versionBefore = live.ActiveVersionId
-				}
+				endpointsBefore, versionBefore, canCompare = endpointComparisonBase(cmd.Context(), client, id)
 			}
 
 			var (

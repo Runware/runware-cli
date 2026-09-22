@@ -15,6 +15,30 @@ import (
 // contract's maximum, so the common app takes one round trip.
 const endpointPageLimit = 100
 
+// endpointComparisonBase reads what a comparison after the deploy needs: the set
+// the app serves now, and the version it serves it from.
+//
+// Both or neither. A nil pin from a failed read is indistinguishable from an app
+// that has never activated a version, and activationMoved counts the second as a
+// move — so a half-captured base would make waitForSubmittedVersion return on its
+// first poll, against the outgoing endpoint set, which is the silent miss this
+// whole path exists to avoid.
+func endpointComparisonBase(
+	ctx context.Context,
+	client *serverlessapi.Client,
+	appID string,
+) (paths []string, pin *uuid.UUID, ok bool) {
+	paths, err := deployEndpointPaths(ctx, client, appID)
+	if err != nil {
+		return nil, nil, false
+	}
+	app, err := client.GetApp(ctx, appID)
+	if err != nil {
+		return nil, nil, false
+	}
+	return paths, app.ActiveVersionId, true
+}
+
 // waitForSubmittedVersion polls until the app pins a version other than previous,
 // and returns the app it saw last.
 //

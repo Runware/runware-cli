@@ -16,24 +16,78 @@ import (
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
-// appBody renders a getApp response pinning activeVersionId, or none when empty.
-func appBody(status, activeVersionID string) string {
+// activeAppBody renders a getApp response for an active app pinning
+// activeVersionId, or pinning none when it is empty.
+func activeAppBody(activeVersionID string) string {
 	pin := "null"
 	if activeVersionID != "" {
 		pin = fmt.Sprintf("%q", activeVersionID)
 	}
 	return fmt.Sprintf(`{
-		"appId":"my-app","appName":"My App","status":%q,"activeVersionId":%s,
+		"appId":"my-app","appName":"My App","status":"active","activeVersionId":%s,
 		"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
 		"environmentVariables":[],"secrets":[],
 		"createdAt":"2026-07-30T12:00:00Z","updatedAt":"2026-07-30T12:00:00Z"
-	}`, status, pin)
+	}`, pin)
 }
 
 const (
 	oldVersionID = "019c7654-8b21-7abc-9123-aaaaaaaaaaaa"
 	newVersionID = "019c7654-8b21-7abc-9123-bbbbbbbbbbbb"
 )
+
+// TestEndpointComparisonBaseNeedsBothReads: a nil pin from a failed read looks
+// exactly like an app that has never activated a version, and activationMoved
+// counts that as a move — so half a base would send the comparison straight at
+// the outgoing endpoint set rather than waiting for the new one.
+func TestEndpointComparisonBaseNeedsBothReads(t *testing.T) {
+	cases := []struct {
+		name    string
+		appFail bool
+		epFail  bool
+	}{
+		{name: "both succeed"},
+		{name: "the app read fails", appFail: true},
+		{name: "the endpoint read fails", epFail: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				endpoints := strings.Contains(r.URL.Path, "/endpoints")
+				if (endpoints && tc.epFail) || (!endpoints && tc.appFail) {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if endpoints {
+					_, _ = w.Write([]byte(`{"data":[{"id":"019c7654-8b21-7abc-9123-abcdef123456","appId":"my-app","path":"generate"}]}`))
+					return
+				}
+				_, _ = w.Write([]byte(activeAppBody(oldVersionID)))
+			}))
+			defer server.Close()
+
+			client := serverlessapi.NewClient("test-key", server.URL, slog.Default())
+			paths, pin, ok := endpointComparisonBase(context.Background(), client, testAppID)
+			wantOK := !tc.appFail && !tc.epFail
+			if ok != wantOK {
+				t.Fatalf("ok = %v, want %v", ok, wantOK)
+			}
+			if !ok {
+				if paths != nil || pin != nil {
+					t.Errorf("half a base escaped: paths=%v pin=%v", paths, pin)
+				}
+				return
+			}
+			if pin == nil || pin.String() != oldVersionID {
+				t.Errorf("pin = %v, want the version the app serves now", pin)
+			}
+			if !slices.Equal(paths, []string{testEndpointPath}) {
+				t.Errorf("paths = %v, want the live set", paths)
+			}
+		})
+	}
+}
 
 // TestWaitForSubmittedVersionWaitsThroughAnActiveBuild is the defect this guard
 // exists for: a source update on an app that is already active answers `active`
@@ -50,10 +104,10 @@ func TestWaitForSubmittedVersionWaitsThroughAnActiveBuild(t *testing.T) {
 		calls++
 		// Still rolling the first two times, pinned the third.
 		if calls < 3 {
-			_, _ = w.Write([]byte(appBody("active", oldVersionID)))
+			_, _ = w.Write([]byte(activeAppBody(oldVersionID)))
 			return
 		}
-		_, _ = w.Write([]byte(appBody("active", newVersionID)))
+		_, _ = w.Write([]byte(activeAppBody(newVersionID)))
 	}))
 	defer server.Close()
 
@@ -81,7 +135,7 @@ func TestWaitForSubmittedVersionGivesUpOnAFailedBuild(t *testing.T) {
 			_, _ = w.Write([]byte(`{"data":[{"id":"019c7654-8b21-7abc-9123-abcdef123456","appId":"my-app","status":"failed","phases":[]}]}`))
 			return
 		}
-		_, _ = w.Write([]byte(appBody("active", oldVersionID)))
+		_, _ = w.Write([]byte(activeAppBody(oldVersionID)))
 	}))
 	defer server.Close()
 
