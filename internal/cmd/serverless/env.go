@@ -1,10 +1,12 @@
 package serverless
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -83,15 +85,23 @@ func newAppsEnvSetCmd(logger *log.Logger) *cobra.Command {
 	var (
 		value     string
 		valueFile string
+		envPairs  []string
+		envFiles  []string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "set <appId> <key>",
-		Short: "Create or update an environment variable",
-		Long: `Create or update one plain-text environment variable.
+		Use:   "set <appId> [key]",
+		Short: "Create or update environment variables",
+		Long: `Create or update plain-text environment variables.
 
-Prefer --value-file so the value is not visible in process lists; use
---value-file - to read from stdin.
+A single key is the [key] argument with --value or --value-file. Prefer
+--value-file so the value is not visible in process lists; use --value-file -
+to read from stdin.
+
+Several keys are repeatable --env KEY=VALUE, or --env-file. The command reads
+the current set, merges these keys in, and writes the set once, so one rollout
+carries all of them. A key you do not mention is left in place. A write during
+an in-flight rollout returns 409 and does not store the change.
 
 A change records a new version with the same image and rolls the workload when
 the app is active, initializing, or failed and its image is deployable. A
@@ -103,45 +113,151 @@ The server rejects (HTTP 422) reserved platform names, names that collide
 with an attached secret's injected env var, and adding a binding past the
 100-variable-plus-secret ceiling. Overwriting an existing key is always
 allowed.`,
-		Example: `  # set an environment variable
+		Example: `  # set one environment variable
   runware serverless apps env set my-app MY_KEY --value hello
 
-  # read the value from a file
+  # read one value from a file
   runware serverless apps env set my-app MY_KEY --value-file ./value.txt
 
-  # read the value from stdin
-  printf '%s' "$MY_VALUE" | runware serverless apps env set my-app MY_KEY --value-file -`,
-		Args: cobra.ExactArgs(2),
+  # read one value from stdin
+  printf '%s' "$MY_VALUE" | runware serverless apps env set my-app MY_KEY --value-file -
+
+  # set several keys in one rollout
+  runware serverless apps env set my-app --env FOO=bar --env BAZ=qux
+
+  # set several keys from a file, in one rollout
+  runware serverless apps env set my-app --env-file .env.deploy`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := args[0]
-			key := args[1]
-			v, err := readValueFlag(value, valueFile, cmd.InOrStdin())
+			appID := args[0]
+			bulk := len(envPairs) > 0 || len(envFiles) > 0
+			if len(args) == 2 {
+				if bulk {
+					return fmt.Errorf("pass either <key> with --value, or --env/--env-file")
+				}
+				return setOneEnvironmentVariable(cmd, logger, appID, args[1], value, valueFile)
+			}
+			if value != "" || valueFile != "" {
+				return fmt.Errorf("--value and --value-file apply to a single <key>")
+			}
+			updates, err := buildEnvironmentVariables(envFiles, envPairs)
 			if err != nil {
 				return err
 			}
+			if updates == nil || len(*updates) == 0 {
+				return fmt.Errorf("pass <key> with --value or --value-file, or use --env / --env-file")
+			}
 
-			spin := cmdutil.NewSpinner(fmt.Sprintf("Saving environment variable %s...", key))
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Saving %d environment variables...", len(*updates)))
 			spin.Start()
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			ev, err := client.UpdateAppEnvironmentVariable(cmd.Context(), app, key, serverlessapi.EnvironmentVariableUpdate{
-				Value: v,
-			})
-			if err != nil {
+			if err := applyEnvUpdates(cmd.Context(), client, appID, *updates); err != nil {
 				spin.Stop()
 				return err
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), envVarResult(*ev))
+			return output.Print(cmdutil.FormatFor(cmd), envVarsResult(envVarsFromMap(*updates)))
 		},
 	}
 
-	cmd.Flags().StringVar(&value, "value", "", "Variable value (visible in process lists; prefer --value-file)")
-	cmd.Flags().StringVar(&valueFile, "value-file", "", "Read variable value from a file, or - for stdin")
+	cmd.Flags().StringVar(&value, "value", "", "Variable value for a single <key> (visible in process lists; prefer --value-file)")
+	cmd.Flags().StringVar(&valueFile, "value-file", "", "Read one <key> value from a file, or - for stdin")
+	cmd.Flags().StringArrayVar(&envPairs, "env", nil, "Environment variable as KEY=VALUE, merged and written once (repeatable)")
+	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to merge and write once (repeatable)")
 	cmd.MarkFlagsMutuallyExclusive("value", "value-file")
-	cmd.MarkFlagsOneRequired("value", "value-file")
 	return cmd
+}
+
+func setOneEnvironmentVariable(cmd *cobra.Command, logger *log.Logger, appID, key, value, valueFile string) error {
+	if value == "" && valueFile == "" {
+		return fmt.Errorf("--value or --value-file is required")
+	}
+	v, err := readValueFlag(value, valueFile, cmd.InOrStdin())
+	if err != nil {
+		return err
+	}
+
+	spin := cmdutil.NewSpinner(fmt.Sprintf("Saving environment variable %s...", key))
+	spin.Start()
+
+	client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+	ev, err := client.UpdateAppEnvironmentVariable(cmd.Context(), appID, key, serverlessapi.EnvironmentVariableUpdate{
+		Value: v,
+	})
+	if err != nil {
+		spin.Stop()
+		return err
+	}
+	spin.Stop()
+
+	return output.Print(cmdutil.FormatFor(cmd), envVarResult(*ev))
+}
+
+// applyEnvUpdates merges updates into the app's current variables and writes
+// the whole set in one request. A key absent from updates is kept. The API
+// treats the map as a replacement, so sending only the new keys would delete
+// the rest.
+func applyEnvUpdates(ctx context.Context, client *serverlessapi.Client, appID string, updates map[string]string) error {
+	existing, err := listEnvironmentVariables(ctx, client, appID)
+	if err != nil {
+		return err
+	}
+	merged := envReplacement(existing, updates)
+	_, err = client.UpdateApp(ctx, appID, serverlessapi.AppUpdate{
+		EnvironmentVariables: &merged,
+	})
+	return err
+}
+
+func listEnvironmentVariables(ctx context.Context, client *serverlessapi.Client, appID string) (map[string]string, error) {
+	out := map[string]string{}
+	var cursor string
+	for {
+		params := &serverlessapi.ListAppEnvironmentVariablesParams{}
+		params.Limit, params.Cursor = listPageParams(maxEnvVars, cursor)
+		page, err := client.ListAppEnvironmentVariables(ctx, appID, params)
+		if err != nil {
+			return nil, err
+		}
+		for i := range page.Data {
+			out[page.Data[i].Key] = page.Data[i].Value
+		}
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			return out, nil
+		}
+		cursor = *page.NextCursor
+	}
+}
+
+func envReplacement(existing, updates map[string]string) map[string]*string {
+	out := make(map[string]*string, len(existing)+len(updates))
+	for key, value := range existing {
+		val := value
+		out[key] = &val
+	}
+	for key, value := range updates {
+		val := value
+		out[key] = &val
+	}
+	return out
+}
+
+func envVarsFromMap(updates map[string]string) []serverlessapi.EnvironmentVariable {
+	keys := make([]string, 0, len(updates))
+	for key := range updates {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	out := make([]serverlessapi.EnvironmentVariable, len(keys))
+	for i, key := range keys {
+		out[i] = serverlessapi.EnvironmentVariable{
+			Key:   key,
+			Value: updates[key],
+		}
+	}
+	return out
 }
 
 func newAppsEnvUnsetCmd(logger *log.Logger) *cobra.Command {

@@ -1,10 +1,18 @@
 package serverless
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
 func TestBuildEnvironmentVariables(t *testing.T) {
@@ -240,4 +248,76 @@ func TestBuildEnvironmentVariables_LimitIsCountedInRunes(t *testing.T) {
 	if _, err := buildEnvironmentVariables(nil, []string{"MSG=" + value + "é"}); err == nil {
 		t.Error("expected a rejection one character past the limit")
 	}
+}
+
+func TestEnvReplacement_KeepsUnmentionedKeys(t *testing.T) {
+	got := envReplacement(
+		map[string]string{"KEEP": "old"},
+		map[string]string{"NEW_KEY": "n"},
+	)
+	if got["KEEP"] == nil || *got["KEEP"] != "old" || got["NEW_KEY"] == nil || *got["NEW_KEY"] != "n" {
+		t.Fatalf("replacement = %#v", derefEnv(got))
+	}
+}
+
+func TestApplyEnvUpdates_MergesIntoOneRequest(t *testing.T) {
+	var patches int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "environment-variables") {
+			if r.URL.Query().Get("cursor") == "" {
+				_, _ = w.Write([]byte(`{"data":[{"key":"KEEP","value":"old"}],"nextCursor":"page2"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"key":"KEEP_TOO","value":"also"}]}`))
+			return
+		}
+		if r.Method != http.MethodPatch {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			return
+		}
+		patches++
+		var body struct {
+			EnvironmentVariables map[string]string `json:"environmentVariables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode: %v", err)
+			return
+		}
+		if body.EnvironmentVariables["KEEP"] != "old" || body.EnvironmentVariables["KEEP_TOO"] != "also" || body.EnvironmentVariables["NEW_KEY"] != "n" {
+			t.Errorf("environmentVariables = %#v", body.EnvironmentVariables)
+		}
+		_, _ = w.Write([]byte(activeAppBody("")))
+	}))
+	defer srv.Close()
+
+	client := serverlessapi.NewClient("test-key", srv.URL, slog.Default())
+	err := applyEnvUpdates(context.Background(), client, testAppID, map[string]string{"NEW_KEY": "n"})
+	if err != nil {
+		t.Fatalf("applyEnvUpdates: %v", err)
+	}
+	if patches != 1 {
+		t.Fatalf("patches = %d, want 1", patches)
+	}
+}
+
+func TestEnvSet_RejectsMixedForms(t *testing.T) {
+	cmd := newAppsEnvSetCmd(nil)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testAppID, testEnvKey, "--value", testEnvValue, "--env", "NEW_KEY=n"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--env") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func derefEnv(in map[string]*string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		if value != nil {
+			out[key] = *value
+		}
+	}
+	return out
 }
