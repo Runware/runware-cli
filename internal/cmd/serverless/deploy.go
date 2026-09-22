@@ -227,6 +227,11 @@ endpoint on purpose is allowed.`,
 			if err := validateDeployArgs(cmd, args, containerDir); err != nil {
 				return err
 			}
+			if cmd.Flags().Changed("gpus-per-worker") {
+				if err := validateGPUsPerWorker(gpusPerWorker); err != nil {
+					return err
+				}
+			}
 			if name == "" {
 				name = id
 			}
@@ -375,7 +380,7 @@ endpoint on purpose is allowed.`,
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
-	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker")
+	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker (1, 2, 4, or 8)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the application is active or failed")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
 
@@ -402,6 +407,22 @@ func validateCreateDeployGPU(gpuType string) error {
 		return fmt.Errorf("--gpu-type is required when creating an application")
 	}
 	return nil
+}
+
+// gpusPerWorkerValues are the group sizes create and scale accept. The API
+// rejects anything else with 422, which on deploy is after the archive upload.
+var gpusPerWorkerValues = map[int32]struct{}{
+	1: {},
+	2: {},
+	4: {},
+	8: {},
+}
+
+func validateGPUsPerWorker(n int32) error {
+	if _, ok := gpusPerWorkerValues[n]; ok {
+		return nil
+	}
+	return fmt.Errorf("--gpus-per-worker must be 1, 2, 4, or 8")
 }
 
 func validateUpdateDeployFlags(cmd *cobra.Command) error {
