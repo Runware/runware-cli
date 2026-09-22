@@ -345,13 +345,16 @@ func TestDeployEndpointPathsSurfacesTheError(t *testing.T) {
 	}
 }
 
-func TestReportDeployEndpoints(t *testing.T) {
+func TestReportDeployEndpoints_SaysNothingWhenThereAreNoPaths(t *testing.T) {
 	var out bytes.Buffer
 	reportDeployEndpoints(&out, testAppID, nil)
 	if out.Len() != 0 {
 		t.Fatalf("empty set wrote %q", out.String())
 	}
+}
 
+func TestReportDeployEndpoints_PrintsPathsAndAnInvokeExample(t *testing.T) {
+	var out bytes.Buffer
 	reportDeployEndpoints(&out, testAppID, []string{testEndpointPath, testOtherEndpointPath})
 	got := out.String()
 	if !strings.Contains(got, "'"+testEndpointPath+"'") || !strings.Contains(got, "'"+testOtherEndpointPath+"'") {

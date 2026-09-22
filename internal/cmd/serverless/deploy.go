@@ -316,6 +316,7 @@ paths and an invoke example once the application is active.`,
 					},
 				})
 				if isHTTPConflict(err) {
+					update = true
 					app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
 						AppSource: &appSource,
 					})
