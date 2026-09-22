@@ -254,11 +254,15 @@ endpoint on purpose is allowed.`,
 			// decides the new one. A read failure costs the warning, not the deploy.
 			var (
 				endpointsBefore []string
+				versionBefore   *uuid.UUID
 				canCompare      bool
 			)
 			if update && wait {
 				if paths, err := deployEndpointPaths(cmd.Context(), client, id); err == nil {
 					endpointsBefore, canCompare = paths, true
+				}
+				if live, err := client.GetApp(cmd.Context(), id); err == nil {
+					versionBefore = live.ActiveVersionId
 				}
 			}
 
@@ -336,9 +340,17 @@ endpoint on purpose is allowed.`,
 			}
 			spin.Stop()
 
-			if shouldReportEndpointChange(canCompare, app.Status) {
-				if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
-					reportEndpointSetChange(cmd.ErrOrStderr(), compareEndpointSets(endpointsBefore, paths))
+			// The endpoint rows are the outgoing version's until the submitted one
+			// activates, and a source update on an already-active app answers
+			// `active` throughout its build — so the wait above returns at once and
+			// says nothing about whether this deploy landed. The pin is what moves
+			// when it does.
+			if canCompare {
+				settled, err := waitForSubmittedVersion(cmd.Context(), client, app.AppId, versionBefore, pollInterval)
+				if err == nil && activationMoved(versionBefore, settled.ActiveVersionId) {
+					if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
+						reportEndpointSetChange(cmd.ErrOrStderr(), compareEndpointSets(endpointsBefore, paths))
+					}
 				}
 			}
 

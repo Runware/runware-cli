@@ -3,15 +3,130 @@ package serverless
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
+
+// appBody renders a getApp response pinning activeVersionId, or none when empty.
+func appBody(status, activeVersionID string) string {
+	pin := "null"
+	if activeVersionID != "" {
+		pin = fmt.Sprintf("%q", activeVersionID)
+	}
+	return fmt.Sprintf(`{
+		"appId":"my-app","appName":"My App","status":%q,"activeVersionId":%s,
+		"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
+		"environmentVariables":[],"secrets":[],
+		"createdAt":"2026-07-30T12:00:00Z","updatedAt":"2026-07-30T12:00:00Z"
+	}`, status, pin)
+}
+
+const (
+	oldVersionID = "019c7654-8b21-7abc-9123-aaaaaaaaaaaa"
+	newVersionID = "019c7654-8b21-7abc-9123-bbbbbbbbbbbb"
+)
+
+// TestWaitForSubmittedVersionWaitsThroughAnActiveBuild is the defect this guard
+// exists for: a source update on an app that is already active answers `active`
+// while its new build runs, so a reader keyed on status alone compares the
+// outgoing version's endpoint rows and reports that nothing moved.
+func TestWaitForSubmittedVersionWaitsThroughAnActiveBuild(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/builds") {
+			_, _ = w.Write([]byte(`{"data":[{"id":"019c7654-8b21-7abc-9123-abcdef123456","appId":"my-app","status":"building","phases":[]}]}`))
+			return
+		}
+		calls++
+		// Still rolling the first two times, pinned the third.
+		if calls < 3 {
+			_, _ = w.Write([]byte(appBody("active", oldVersionID)))
+			return
+		}
+		_, _ = w.Write([]byte(appBody("active", newVersionID)))
+	}))
+	defer server.Close()
+
+	previous := uuid.MustParse(oldVersionID)
+	client := serverlessapi.NewClient("test-key", server.URL, slog.Default())
+	app, err := waitForSubmittedVersion(context.Background(), client, testAppID, &previous, time.Millisecond)
+	if err != nil {
+		t.Fatalf("waitForSubmittedVersion: %v", err)
+	}
+	if app.ActiveVersionId == nil || app.ActiveVersionId.String() != newVersionID {
+		t.Errorf("pinned version = %v, want the submitted one", app.ActiveVersionId)
+	}
+	if calls < 3 {
+		t.Errorf("getApp calls = %d, want it to have kept polling past the unchanged pin", calls)
+	}
+}
+
+// TestWaitForSubmittedVersionGivesUpOnAFailedBuild: a roll that fails on a live
+// app leaves it active on the version that kept serving, so the pin never moves
+// and nothing but the build says the wait is over.
+func TestWaitForSubmittedVersionGivesUpOnAFailedBuild(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/builds") {
+			_, _ = w.Write([]byte(`{"data":[{"id":"019c7654-8b21-7abc-9123-abcdef123456","appId":"my-app","status":"failed","phases":[]}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(appBody("active", oldVersionID)))
+	}))
+	defer server.Close()
+
+	previous := uuid.MustParse(oldVersionID)
+	client := serverlessapi.NewClient("test-key", server.URL, slog.Default())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		app, err := waitForSubmittedVersion(context.Background(), client, testAppID, &previous, time.Millisecond)
+		if err != nil {
+			t.Errorf("waitForSubmittedVersion: %v", err)
+			return
+		}
+		if activationMoved(&previous, app.ActiveVersionId) {
+			t.Errorf("reported an activation for a failed build")
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForSubmittedVersion did not give up on a failed build")
+	}
+}
+
+func TestActivationMoved(t *testing.T) {
+	oldID := uuid.MustParse(oldVersionID)
+	newID := uuid.MustParse(newVersionID)
+	cases := []struct {
+		name              string
+		previous, current *uuid.UUID
+		want              bool
+	}{
+		{name: "pin unchanged", previous: &oldID, current: &oldID},
+		{name: "pin moved", previous: &oldID, current: &newID, want: true},
+		{name: "first ever activation", current: &newID, want: true},
+		{name: "nothing pinned yet", previous: &oldID},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := activationMoved(tc.previous, tc.current); got != tc.want {
+				t.Errorf("activationMoved() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestCompareEndpointSets(t *testing.T) {
 	cases := []struct {
@@ -105,48 +220,6 @@ func TestReportEndpointSetChangeSaysNothingWhenNothingMoved(t *testing.T) {
 	reportEndpointSetChange(&out, endpointSetChange{})
 	if out.Len() != 0 {
 		t.Errorf("report = %q, want nothing for an unchanged set", out.String())
-	}
-}
-
-// TestShouldReportEndpointChange guards the two ways this report can lie: with
-// no reading from before the deploy it would call the app's whole existing set
-// new, and before the rollout activates it would compare the old set to itself.
-func TestShouldReportEndpointChange(t *testing.T) {
-	cases := []struct {
-		name       string
-		readBefore bool
-		status     serverlessapi.AppStatus
-		want       bool
-	}{
-		{
-			name:       "read before and rolled out",
-			readBefore: true,
-			status:     serverlessapi.AppStatusActive,
-			want:       true,
-		},
-		{
-			name:       "the before-read failed, so the whole set would look new",
-			readBefore: false,
-			status:     serverlessapi.AppStatusActive,
-		},
-		{
-			name:       "the deploy failed, so nothing moved",
-			readBefore: true,
-			status:     serverlessapi.AppStatusFailed,
-		},
-		{
-			name:       "still rolling out, so the rows are still the old version's",
-			readBefore: true,
-			status:     serverlessapi.AppStatusInitializing,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldReportEndpointChange(tc.readBefore, tc.status); got != tc.want {
-				t.Errorf("shouldReportEndpointChange(%v, %q) = %v, want %v",
-					tc.readBefore, tc.status, got, tc.want)
-			}
-		})
 	}
 }
 

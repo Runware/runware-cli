@@ -94,6 +94,13 @@ type Build = gen.Build
 // BuildStatus is a build lifecycle status.
 type BuildStatus = gen.BuildStatus
 
+const (
+	BuildStatusBuilding BuildStatus = gen.BuildStatusBuilding
+	BuildStatusFailed   BuildStatus = gen.BuildStatusFailed
+	BuildStatusQueued   BuildStatus = gen.BuildStatusQueued
+	BuildStatusReady    BuildStatus = gen.BuildStatusReady
+)
+
 // ListWorkersParams are optional filters for ListWorkers.
 type ListWorkersParams = gen.ListWorkersParams
 

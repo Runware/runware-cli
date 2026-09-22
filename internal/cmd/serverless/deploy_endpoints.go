@@ -5,13 +5,83 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"time"
 
+	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
 // endpointPageLimit is the per-page size deployEndpointPaths asks for: the
 // contract's maximum, so the common app takes one round trip.
 const endpointPageLimit = 100
+
+// waitForSubmittedVersion polls until the app pins a version other than previous,
+// and returns the app it saw last.
+//
+// The app's status cannot answer this on its own. A source update on an app that
+// is already active leaves it active while the new build runs, so `--wait` sees a
+// terminal status immediately and the endpoint rows it would read are still the
+// outgoing version's. The pin is what moves when the submitted version activates.
+//
+// It gives up when no activation can still arrive: the app left the states a roll
+// can land in, or the roll failed, which on a live app leaves the status active
+// and the pin where it was — the case that would otherwise poll forever.
+func waitForSubmittedVersion(
+	ctx context.Context,
+	client *serverlessapi.Client,
+	appID string,
+	previous *uuid.UUID,
+	interval time.Duration,
+) (*serverlessapi.App, error) {
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	for {
+		app, err := client.GetApp(ctx, appID)
+		if err != nil {
+			return nil, err
+		}
+		if activationMoved(previous, app.ActiveVersionId) {
+			return app, nil
+		}
+		switch app.Status {
+		case serverlessapi.AppStatusActive, serverlessapi.AppStatusInitializing:
+			if buildFailed(ctx, client, appID) {
+				return app, nil
+			}
+		default:
+			return app, nil
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// activationMoved reports that the app pins a different version than it did.
+// A first deploy moves from no pin at all, which counts.
+func activationMoved(previous, current *uuid.UUID) bool {
+	if current == nil {
+		return false
+	}
+	return previous == nil || *previous != *current
+}
+
+// buildFailed reports that the app's newest build gave up, so no activation is
+// coming. Newest first, as listBuilds returns them; an unreadable list is not a
+// failure, and the poll simply continues.
+func buildFailed(ctx context.Context, client *serverlessapi.Client, appID string) bool {
+	page, err := client.ListBuilds(ctx, appID, nil)
+	if err != nil || len(page.Data) == 0 {
+		return false
+	}
+	return page.Data[0].Status == serverlessapi.BuildStatusFailed
+}
 
 // endpointSetChange is what a deploy did to the app's public endpoint set: the
 // paths it published and the ones it retired, each sorted.
@@ -22,13 +92,6 @@ type endpointSetChange struct {
 
 func (c endpointSetChange) empty() bool {
 	return len(c.added) == 0 && len(c.removed) == 0
-}
-
-// shouldReportEndpointChange guards the two ways the comparison would lie:
-// without a reading from before the deploy the app's whole existing set looks
-// new, and before the rollout activates the rows are still the old version's.
-func shouldReportEndpointChange(readBefore bool, status serverlessapi.AppStatus) bool {
-	return readBefore && status == serverlessapi.AppStatusActive
 }
 
 // deployEndpointPaths reads every live endpoint path on the app, sorted.
@@ -109,8 +172,10 @@ func reportEndpointSetChange(w io.Writer, change endpointSetChange) {
 	}
 	_, _ = fmt.Fprintf(w, "Warning: %s.\n", message)
 	if len(change.removed) > 0 {
+		// Source-neutral: a code app's paths come from its handler names and a
+		// container app's from container.yaml, and this report covers both.
 		_, _ = fmt.Fprintf(w,
-			"Callers of %s will receive 404s. Rename the handler back if this was not intended.\n",
+			"Callers of %s will receive 404s. Restore those paths in the source if this was not intended.\n",
 			quotedPaths(change.removed))
 	}
 }
