@@ -252,6 +252,11 @@ paths and an invoke example once the application is active.`,
 			if err := validateGPUsPerWorkerFlag(cmd, gpusPerWorker); err != nil {
 				return err
 			}
+			if cmd.Flags().Changed("available-workers-pct") {
+				if err := validateAvailableWorkersPct(availableWorkersPct); err != nil {
+					return err
+				}
+			}
 			if name == "" {
 				name = id
 			}
@@ -489,6 +494,13 @@ func validateGPUsPerWorkerFlag(cmd *cobra.Command, n int32) error {
 		return nil
 	}
 	return validateGPUsPerWorker(n)
+}
+
+func validateAvailableWorkersPct(n int32) error {
+	if n < 0 || n > 100 {
+		return fmt.Errorf("--available-workers-pct must be between 0 and 100")
+	}
+	return nil
 }
 
 func validateUpdateDeployFlags(cmd *cobra.Command) error {
