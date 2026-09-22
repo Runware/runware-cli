@@ -18,6 +18,10 @@ const (
 	testEnvValue  = "hello"
 	testGPUType   = "h100"
 	testEventType = "error"
+	// testEndpointPath and testOtherEndpointPath are two endpoint paths on one
+	// app, so a set is never a single element.
+	testEndpointPath      = "generate"
+	testOtherEndpointPath = "embed"
 )
 
 func TestListPageParams(t *testing.T) {
@@ -550,7 +554,7 @@ func TestEndpointResult(t *testing.T) {
 	rows := (endpointResult{
 		Id:        uuid.MustParse("11111111-1111-1111-1111-111111111111"),
 		AppId:     testAppID,
-		Path:      "generate",
+		Path:      testEndpointPath,
 		CreatedAt: &created,
 	}).Rows()
 	if len(rows) != 5 {

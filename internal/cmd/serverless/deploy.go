@@ -183,7 +183,13 @@ download is copied into every checkpoint and fetched again on every cold start.
 A volume keeps it out of both.
 
 Worker settings are supplied via flags on create. Endpoints are derived
-server-side from the SDK (code) or from container.yaml (container).`,
+server-side from the SDK (code) or from container.yaml (container).
+
+A code app's endpoint path is its handler's method name with underscores turned
+into hyphens, so renaming a method moves a public endpoint and 404s its callers.
+Updating an existing application with --wait reports what the deploy did to the
+endpoint set once the rollout lands. It is a report, not a gate: renaming an
+endpoint on purpose is allowed.`,
 		Example: `  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
 
@@ -240,6 +246,19 @@ server-side from the SDK (code) or from container.yaml (container).`,
 				}
 			} else if err := validateCreateDeployGPU(gpuType); err != nil {
 				return err
+			}
+
+			// The set the app serves now, to compare against what the new version
+			// publishes. Only on an update we will wait for: a create has no
+			// previous set, and without --wait this returns before the build that
+			// decides the new one. A read failure costs the warning, not the deploy.
+			var (
+				endpointsBefore []string
+				versionBefore   *uuid.UUID
+				canCompare      bool
+			)
+			if update && wait {
+				endpointsBefore, versionBefore, canCompare = endpointComparisonBase(cmd.Context(), client, id)
 			}
 
 			var (
@@ -315,6 +334,20 @@ server-side from the SDK (code) or from container.yaml (container).`,
 				}
 			}
 			spin.Stop()
+
+			// The endpoint rows are the outgoing version's until the submitted one
+			// activates, and a source update on an already-active app answers
+			// `active` throughout its build — so the wait above returns at once and
+			// says nothing about whether this deploy landed. The pin is what moves
+			// when it does.
+			if canCompare {
+				settled, err := waitForSubmittedVersion(cmd.Context(), client, app.AppId, versionBefore, pollInterval)
+				if err == nil && activationMoved(versionBefore, settled.ActiveVersionId) {
+					if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
+						reportEndpointSetChange(cmd.ErrOrStderr(), compareEndpointSets(endpointsBefore, paths))
+					}
+				}
+			}
 
 			if err := output.Print(cmdutil.FormatFor(cmd), appResult(*app)); err != nil {
 				return err
