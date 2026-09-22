@@ -325,6 +325,10 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 		colIdleTTL:             int32(60),
 		colScalingDelay:        int32(10),
 		colConcurrency:         int32(1),
+		colEffectiveMaxWorkers: "",
+		colActiveWorkers:       int64(0),
+		colQueueDepth:          "",
+		colRequests24h:         "",
 	}
 	got := make(map[string]any, len(rows))
 	for _, row := range rows {
@@ -557,14 +561,17 @@ func TestEndpointResult(t *testing.T) {
 		Path:      testEndpointPath,
 		CreatedAt: &created,
 	}).Rows()
-	if len(rows) != 5 {
-		t.Fatalf("expected 5 rows, got %d", len(rows))
+	if len(rows) != 9 {
+		t.Fatalf("expected 9 rows, got %d", len(rows))
 	}
 	if rows[0][1] != "generate" || rows[2][1] != testAppID {
 		t.Fatalf("unexpected rows %#v", rows)
 	}
 	if rows[4][1] != "" {
 		t.Fatalf("nil UpdatedAt should render empty, got %#v", rows[4][1])
+	}
+	if rows[5][0] != colStatus || rows[5][1] != "" {
+		t.Fatalf("nil runtime status should render empty, got %#v", rows[5])
 	}
 }
 

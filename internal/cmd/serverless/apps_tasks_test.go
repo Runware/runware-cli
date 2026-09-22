@@ -58,7 +58,7 @@ func TestTasksResult_Headers(t *testing.T) {
 	r := tasksResult{
 		{Id: testTaskID, Status: serverlessapi.TaskStatusPending, CreatedAt: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)},
 	}
-	if got := r.Headers(); len(got) != 5 {
+	if got := r.Headers(); len(got) != 6 || got[2] != colEndpoint {
 		t.Fatalf("headers: %v", got)
 	}
 	rows := r.Rows()

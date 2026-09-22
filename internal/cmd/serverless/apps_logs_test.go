@@ -107,25 +107,28 @@ func TestFormatLogLine(t *testing.T) {
 	}
 }
 
-func TestPrintLogPage_TablePrintsOldestFirstAndCursorHint(t *testing.T) {
+func TestPrintLogPage_TablePrintsAPIOrderAndCursorHints(t *testing.T) {
 	next := testLogCursor
+	prev := "prev-cursor"
 	page := serverlessapi.LogEntryPage{
 		Entries: []serverlessapi.LogEntry{
-			{
-				Time: 1750000001,
-				Body: testLogBodySlow,
-			},
 			{
 				Time: 1750000000,
 				Body: testLogBodyReady,
 			},
+			{
+				Time: 1750000001,
+				Body: testLogBodySlow,
+			},
 		},
 		NextCursor: &next,
+		PrevCursor: &prev,
 	}
 	var out, errOut bytes.Buffer
 	flags := logsFlags{
 		window: testLogWindow6h,
 		limit:  50,
+		sort:   "newest",
 	}
 	if err := printLogPage(output.FormatTable, page, &out, &errOut, extraLogsCursorFlags(flags)); err != nil {
 		t.Fatalf("printLogPage: %v", err)
@@ -134,9 +137,25 @@ func TestPrintLogPage_TablePrintsOldestFirstAndCursorHint(t *testing.T) {
 	if len(lines) != 2 || !strings.HasSuffix(lines[0], testLogBodyReady) || !strings.HasSuffix(lines[1], testLogBodySlow) {
 		t.Fatalf("stdout = %q", out.String())
 	}
-	want := "Next page: --window 6h --limit 50 --cursor " + testLogCursor
-	if !strings.Contains(errOut.String(), want) {
-		t.Fatalf("stderr = %q, want %q", errOut.String(), want)
+	wantNext := "Next page: --window 6h --limit 50 --sort newest --cursor " + testLogCursor
+	wantPrev := "Previous page: --window 6h --limit 50 --sort newest --cursor " + prev
+	if !strings.Contains(errOut.String(), wantNext) || !strings.Contains(errOut.String(), wantPrev) {
+		t.Fatalf("stderr = %q, want %q and %q", errOut.String(), wantNext, wantPrev)
+	}
+}
+
+func TestParseLogSort(t *testing.T) {
+	got, err := parseLogSort("oldest")
+	if err != nil || got == nil || *got != serverlessapi.LogSortOldest {
+		t.Fatalf("oldest: got=%v err=%v", got, err)
+	}
+	got, err = parseLogSort("newest")
+	if err != nil || got == nil || *got != serverlessapi.LogSortNewest {
+		t.Fatalf("newest: got=%v err=%v", got, err)
+	}
+	_, err = parseLogSort("activity")
+	if err == nil || !strings.Contains(err.Error(), "oldest or newest") {
+		t.Fatalf("expected invalid --sort, got %v", err)
 	}
 }
 
