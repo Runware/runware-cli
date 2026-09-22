@@ -8,12 +8,14 @@ Create or update plain-text environment variables.
 
 A single key is the [key] argument with --value or --value-file. Prefer
 --value-file so the value is not visible in process lists; use --value-file -
-to read from stdin.
+to read from stdin. A single-key write during an in-flight rollout returns
+409 and does not store the change.
 
 Several keys are repeatable --env KEY=VALUE, or --env-file. The command reads
 the current set, merges these keys in, and writes the set once, so one rollout
-carries all of them. A key you do not mention is left in place. A write during
-an in-flight rollout returns 409 and does not store the change.
+carries all of them. Keys you do not mention stay when no other writer changes
+the set between the read and the write. That write returns 409 while a create
+or resume rollout is already in progress, and does not store the change.
 
 A change records a new version with the same image and rolls the workload when
 the app is active, initializing, or failed and its image is deployable. A

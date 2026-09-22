@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
@@ -277,15 +279,18 @@ func TestApplyEnvUpdates_MergesIntoOneRequest(t *testing.T) {
 			return
 		}
 		patches++
-		var body struct {
-			EnvironmentVariables map[string]string `json:"environmentVariables"`
-		}
+		var body serverlessapi.AppUpdate
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Errorf("decode: %v", err)
 			return
 		}
-		if body.EnvironmentVariables["KEEP"] != "old" || body.EnvironmentVariables["KEEP_TOO"] != "also" || body.EnvironmentVariables["NEW_KEY"] != "n" {
-			t.Errorf("environmentVariables = %#v", body.EnvironmentVariables)
+		if body.EnvironmentVariables == nil {
+			t.Error("missing environmentVariables")
+			return
+		}
+		got := derefEnv(*body.EnvironmentVariables)
+		if got["KEEP"] != "old" || got["KEEP_TOO"] != "also" || got["NEW_KEY"] != "n" {
+			t.Errorf("environmentVariables = %#v", got)
 		}
 		_, _ = w.Write([]byte(activeAppBody("")))
 	}))
@@ -307,8 +312,47 @@ func TestEnvSet_RejectsMixedForms(t *testing.T) {
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{testAppID, testEnvKey, "--value", testEnvValue, "--env", "NEW_KEY=n"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--env") {
+	if err == nil || err.Error() != envSetUsage {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestEnvSet_EmptyValueStillSets(t *testing.T) {
+	var puts int
+	var gotValue *string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPut {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			return
+		}
+		puts++
+		var body serverlessapi.EnvironmentVariableUpdate
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode: %v", err)
+			return
+		}
+		value := body.Value
+		gotValue = &value
+		_, _ = w.Write([]byte(`{"key":"` + testEnvKey + `","value":""}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+
+	cmd := newAppsEnvSetCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testAppID, testEnvKey, "--value", ""})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("env set: %v", err)
+	}
+	if puts != 1 {
+		t.Fatalf("puts = %d, want 1", puts)
+	}
+	if gotValue == nil || *gotValue != "" {
+		t.Fatalf("value = %v, want empty", gotValue)
 	}
 }
 

@@ -96,18 +96,19 @@ func newAppsEnvSetCmd(logger *log.Logger) *cobra.Command {
 
 A single key is the [key] argument with --value or --value-file. Prefer
 --value-file so the value is not visible in process lists; use --value-file -
-to read from stdin.
+to read from stdin. A single-key write during an in-flight rollout returns
+409 and does not store the change.
 
 Several keys are repeatable --env KEY=VALUE, or --env-file. The command reads
 the current set, merges these keys in, and writes the set once, so one rollout
-carries all of them. A key you do not mention is left in place. A write during
-an in-flight rollout returns 409 and does not store the change.
+carries all of them. Keys you do not mention stay when no other writer changes
+the set between the read and the write. That write returns 409 while a create
+or resume rollout is already in progress, and does not store the change.
 
 A change records a new version with the same image and rolls the workload when
 the app is active, initializing, or failed and its image is deployable. A
 stopped or stopping app applies it on resume. An unchanged value records no
-version. A write during an in-flight rollout returns 409 and does not store
-the value.
+version.
 
 The server rejects (HTTP 422) reserved platform names, names that collide
 with an attached secret's injected env var, and adding a binding past the
@@ -130,22 +131,23 @@ allowed.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appID := args[0]
+			hasSingleValue := cmd.Flags().Changed("value") || cmd.Flags().Changed("value-file")
 			bulk := len(envPairs) > 0 || len(envFiles) > 0
 			if len(args) == 2 {
 				if bulk {
-					return fmt.Errorf("pass either <key> with --value, or --env/--env-file")
+					return fmt.Errorf("%s", envSetUsage)
 				}
 				return setOneEnvironmentVariable(cmd, logger, appID, args[1], value, valueFile)
 			}
-			if value != "" || valueFile != "" {
-				return fmt.Errorf("--value and --value-file apply to a single <key>")
+			if hasSingleValue {
+				return fmt.Errorf("%s", envSetUsage)
 			}
 			updates, err := buildEnvironmentVariables(envFiles, envPairs)
 			if err != nil {
 				return err
 			}
 			if updates == nil || len(*updates) == 0 {
-				return fmt.Errorf("pass <key> with --value or --value-file, or use --env / --env-file")
+				return fmt.Errorf("%s", envSetUsage)
 			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Saving %d environment variables...", len(*updates)))
@@ -170,9 +172,11 @@ allowed.`,
 	return cmd
 }
 
+const envSetUsage = "pass <key> with --value or --value-file, or use --env / --env-file"
+
 func setOneEnvironmentVariable(cmd *cobra.Command, logger *log.Logger, appID, key, value, valueFile string) error {
-	if value == "" && valueFile == "" {
-		return fmt.Errorf("--value or --value-file is required")
+	if !cmd.Flags().Changed("value") && !cmd.Flags().Changed("value-file") {
+		return fmt.Errorf("%s", envSetUsage)
 	}
 	v, err := readValueFlag(value, valueFile, cmd.InOrStdin())
 	if err != nil {
@@ -296,7 +300,7 @@ rollout returns 409 and does not remove the value.`,
 }
 
 // ---------------------------------------------------------------------------
-// Create-time environment variables, for `deploy --env` / `--env-file`.
+// --env / --env-file parsing, shared by deploy and apps env set.
 // ---------------------------------------------------------------------------
 
 // Environment variable limits, mirrored from the server's EnvironmentVariableName
@@ -313,12 +317,8 @@ const (
 // the archive has already been uploaded.
 var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
-// buildEnvironmentVariables turns --env KEY=VALUE pairs and --env-file paths into
-// the create request's map. After the app exists, 'apps env set' and 'apps env
-// unset' record a new version with the same image and roll the workload; this
-// helper only builds the create-time map.
-//
-// Files are read before the inline pairs are applied, so an explicit --env wins
+// buildEnvironmentVariables turns --env KEY=VALUE pairs and --env-file paths
+// into a name-to-value map. Files are read first, so an explicit --env wins
 // over a file entry with the same name.
 func buildEnvironmentVariables(files, pairs []string) (*map[string]string, error) {
 	if len(files) == 0 && len(pairs) == 0 {
