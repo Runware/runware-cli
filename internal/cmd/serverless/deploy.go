@@ -255,6 +255,11 @@ endpoint on purpose is allowed.`,
 					return err
 				}
 			}
+			if cmd.Flags().Changed("available-workers-pct") {
+				if err := validateAvailableWorkersPct(availableWorkersPct); err != nil {
+					return err
+				}
+			}
 			if name == "" {
 				name = id
 			}
@@ -461,6 +466,13 @@ func validateGPUsPerWorker(n int32) error {
 		return nil
 	}
 	return fmt.Errorf("--gpus-per-worker must be 1, 2, 4, or 8")
+}
+
+func validateAvailableWorkersPct(n int32) error {
+	if n < 0 || n > 100 {
+		return fmt.Errorf("--available-workers-pct must be between 0 and 100")
+	}
+	return nil
 }
 
 func validateUpdateDeployFlags(cmd *cobra.Command) error {

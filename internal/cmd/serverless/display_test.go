@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	testAppID     = "my-app"
-	testEnvKey    = "MY_KEY"
-	testEnvValue  = "hello"
-	testGPUType   = "h100"
-	testEventType = "error"
+	testAppID       = "my-app"
+	testEnvKey      = "MY_KEY"
+	testEnvValue    = "hello"
+	testGPUType     = "h100"
+	testGPUTypeFlag = "--gpu-type"
+	testEventType   = "error"
 	// testEndpointPath and testOtherEndpointPath are two endpoint paths on one
 	// app, so a set is never a single element.
 	testEndpointPath      = "generate"
