@@ -7,8 +7,11 @@ Attach an organisation secret to an application
 Record that an organisation secret is attached to an application, optionally
 under a different environment variable name.
 
-The organisation secret must already exist (see 'secrets set'). This is a
-control-plane association only in this API release — it does not roll workers.
+The organisation secret must already exist (see 'secrets set'). Attaching rolls
+the live deployment so a running worker picks up the value. If a rollout is
+already in progress, this attach reaches the worker on a later redeploy. An
+application that is not live records the attachment only; the next resume reads
+it.
 
 ```
 runware serverless secrets attach <appId> <name> [flags]

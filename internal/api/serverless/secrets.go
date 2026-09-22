@@ -103,7 +103,8 @@ func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, 
 	}
 }
 
-// UpdateSecret replaces the value of an existing organisation secret.
+// UpdateSecret replaces the value of an existing organisation secret and rolls
+// every live deployment that attaches it.
 func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdate) (*Secret, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
@@ -203,8 +204,8 @@ func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListA
 	}
 }
 
-// AttachAppSecret records that an organisation secret is attached to an app.
-// This is a control-plane association only in this API release.
+// AttachAppSecret records that an organisation secret is attached to an app
+// and rolls the live deployment so a running worker picks up the value.
 func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretAttach) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
@@ -237,7 +238,8 @@ func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretA
 	}
 }
 
-// DetachAppSecret removes a secret attachment from an app. It does not delete
+// DetachAppSecret removes a secret attachment from an app and rolls the live
+// deployment so a running worker stops receiving the value. It does not delete
 // the organisation secret.
 func (c *Client) DetachAppSecret(ctx context.Context, appID, secretName string) error {
 	if c.apiKey == "" {

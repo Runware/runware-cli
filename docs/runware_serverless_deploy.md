@@ -40,12 +40,13 @@ what a project keeps out of version control is a different question from what it
 ships. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv, node_modules or the usual build and tool caches.
 
-Environment variables must be supplied at create with --env or --env-file. An
-app's environment is frozen into the version this command creates, which is
-what the worker is rendered from, so setting one afterwards with 'apps env set'
-stores it without it ever reaching a pod. Prefer --env-file for anything secret:
-a value passed as --env is visible in the process list and recorded in shell
-history.
+Pass --env or --env-file on create to set the application's initial environment.
+Change a variable afterwards with 'apps env set' or 'apps env unset': a change
+records a new version with the same image and rolls the workload when the app
+is active, initializing, or failed. A stopped or stopping app applies it on
+resume. A write during an in-flight rollout returns 409 and does not store the
+value. Prefer --env-file for anything secret: a value passed as --env is
+visible in the process list and recorded in shell history.
 
 Anything the app downloads at runtime belongs on a --volume. The app runs in a
 sandbox whose filesystem is part of the checkpointed state, so an unmounted

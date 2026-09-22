@@ -93,6 +93,11 @@ func newAppsEnvSetCmd(logger *log.Logger) *cobra.Command {
 Prefer --value-file so the value is not visible in process lists; use
 --value-file - to read from stdin.
 
+A change records a new version with the same image and rolls the workload when
+the app is active, initializing, or failed. A stopped or stopping app applies
+it on resume. An unchanged value records no version. A write during an
+in-flight rollout returns 409 and does not store the value.
+
 The server rejects (HTTP 422) reserved platform names, names that collide
 with an attached secret's injected env var, and adding a binding past the
 100-variable-plus-secret ceiling. Overwriting an existing key is always
@@ -142,7 +147,12 @@ func newAppsEnvUnsetCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "unset <appId> <key>",
 		Short: "Remove an environment variable",
-		Long:  "Remove one plain-text environment variable from an application.",
+		Long: `Remove one plain-text environment variable from an application.
+
+A delete records a new version with the same image and rolls the workload when
+the app is active, initializing, or failed. A stopped or stopping app applies
+it on resume. A delete during an in-flight rollout returns 409 and does not
+remove the value.`,
 		Example: `  # remove an environment variable
   runware serverless apps env unset my-app MY_KEY`,
 		Args: cobra.ExactArgs(2),
@@ -187,14 +197,9 @@ const (
 var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
 // buildEnvironmentVariables turns --env KEY=VALUE pairs and --env-file paths into
-// the create request's map.
-//
-// These belong on the CREATE request and nowhere else: an app's environment is
-// frozen into its version snapshot, which is what the deployer renders from, and
-// no endpoint creates a further version -- `deploy` re-applies an existing one by
-// number and says so. So a variable set through the /environment-variables
-// endpoints after the app exists is stored, listed back, and never reaches a
-// worker. Passing it here is the only route that ends up in a pod.
+// the create request's map. After the app exists, 'apps env set' and 'apps env
+// unset' record a new version with the same image and roll the workload; this
+// helper only builds the create-time map.
 //
 // Files are read before the inline pairs are applied, so an explicit --env wins
 // over a file entry with the same name.

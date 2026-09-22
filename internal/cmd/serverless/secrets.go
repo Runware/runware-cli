@@ -96,7 +96,12 @@ func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
 		Short: "Create or update an organisation secret",
 		Long: `Create an organisation-scoped secret, or update its value if the name already exists.
 
-This does not attach the secret to an application. Use 'secrets attach' for that.
+Creating a secret does not attach it to an application. Use 'secrets attach' for that.
+Updating an existing secret re-encrypts the value and rolls every live application
+that attaches it, so a running worker picks up the new value. If a rollout is already
+in progress, the new value reaches that worker on a later redeploy. An application
+that is not live picks it up on its next deploy.
+
 The secret value is never printed. Prefer --value-file so the value is not visible
 in process lists; use --value-file - to read from stdin.`,
 		Example: `  # create or update a secret from a file
@@ -223,8 +228,11 @@ func newSecretsAttachCmd(logger *log.Logger) *cobra.Command {
 		Long: `Record that an organisation secret is attached to an application, optionally
 under a different environment variable name.
 
-The organisation secret must already exist (see 'secrets set'). This is a
-control-plane association only in this API release — it does not roll workers.`,
+The organisation secret must already exist (see 'secrets set'). Attaching rolls
+the live deployment so a running worker picks up the value. If a rollout is
+already in progress, this attach reaches the worker on a later redeploy. An
+application that is not live records the attachment only; the next resume reads
+it.`,
 		Example: `  # attach a secret using its name as the env var
   runware serverless secrets attach my-app FOO
 
@@ -265,8 +273,12 @@ func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "detach <appId> <name>",
 		Short: "Detach a secret from an application",
-		Long: `Remove the control-plane attachment from an application. Does not remove the
-organisation secret.`,
+		Long: `Remove an organisation secret's attachment from an application. The organisation
+secret itself remains.
+
+Detaching rolls the live deployment so a running worker stops receiving the
+value. If a rollout is already in progress, the worker stops receiving it on a
+later redeploy. An application that is not live records the removal only.`,
 		Example: `  # detach a secret from an application
   runware serverless secrets detach my-app FOO`,
 		Args: cobra.ExactArgs(2),
