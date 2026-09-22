@@ -336,13 +336,17 @@ has never run".`,
 			if err != nil {
 				return err
 			}
+			versionVal, err := parseWorkersVersion(version)
+			if err != nil {
+				return err
+			}
 			var params *serverlessapi.ListWorkersParams
-			if limit > 0 || cursor != "" || status != "" || state != "" || version != "" {
+			if limit > 0 || cursor != "" || status != "" || state != "" || versionVal != "" {
 				params = &serverlessapi.ListWorkersParams{}
 				params.Limit, params.Cursor = listPageParams(limit, cursor)
 				params.Status = statusVal
 				params.State = stateVal
-				params.VersionId = optionalStringPtr(version)
+				params.VersionId = optionalStringPtr(versionVal)
 			}
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching workers for %s...", id))
@@ -356,7 +360,7 @@ has never run".`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraWorkersCursorFlags(state, status, version))
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraWorkersCursorFlags(state, status, versionVal))
 		},
 	}
 
@@ -463,6 +467,21 @@ func extraListCursorFlags(query, gpuType, sort, status string) string {
 // extraStatusCursorFlag formats --status for a next-page --cursor hint.
 func extraStatusCursorFlag(value string) string {
 	return strings.Join(appendFlag(nil, "--status", value), " ")
+}
+
+// parseWorkersVersion accepts "all" (any case) or a version UUID. A typo
+// fails here instead of as a 4xx from the API.
+func parseWorkersVersion(version string) (string, error) {
+	if version == "" {
+		return "", nil
+	}
+	if strings.EqualFold(version, "all") {
+		return "all", nil
+	}
+	if _, err := uuid.Parse(version); err != nil {
+		return "", fmt.Errorf("--version must be a version ID or all")
+	}
+	return version, nil
 }
 
 // extraWorkersCursorFlags repeats workers list filters a next-page --cursor is bound to.
