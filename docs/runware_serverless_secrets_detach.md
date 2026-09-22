@@ -8,8 +8,8 @@ Remove an organisation secret's attachment from an application. The organisation
 secret itself remains.
 
 Detaching rolls the live deployment so a running worker stops receiving the
-value. If a rollout is already in progress, the worker stops receiving it on a
-later redeploy. An application that is not live records the removal only.
+value. If a rollout is already in progress, the worker stops receiving it on
+the next deploy. An application that is not live records the removal only.
 
 ```
 runware serverless secrets detach <appId> <name> [flags]

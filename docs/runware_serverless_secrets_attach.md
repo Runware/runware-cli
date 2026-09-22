@@ -9,9 +9,9 @@ under a different environment variable name.
 
 The organisation secret must already exist (see 'secrets set'). Attaching rolls
 the live deployment so a running worker picks up the value. If a rollout is
-already in progress, this attach reaches the worker on a later redeploy. An
-application that is not live records the attachment only; the next resume reads
-it.
+already in progress, this attach reaches the worker on the next deploy. An
+application that is not live records the attachment only; the next deploy or
+resume reads it.
 
 ```
 runware serverless secrets attach <appId> <name> [flags]

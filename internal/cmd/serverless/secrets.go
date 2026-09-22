@@ -99,7 +99,7 @@ func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
 that attaches it, so a running worker picks up the new value. If a rollout is already
-in progress, the new value reaches that worker on a later redeploy. An application
+in progress, the new value reaches that worker on the next deploy. An application
 that is not live picks it up on its next deploy.
 
 The secret value is never printed. Prefer --value-file so the value is not visible
@@ -230,9 +230,9 @@ under a different environment variable name.
 
 The organisation secret must already exist (see 'secrets set'). Attaching rolls
 the live deployment so a running worker picks up the value. If a rollout is
-already in progress, this attach reaches the worker on a later redeploy. An
-application that is not live records the attachment only; the next resume reads
-it.`,
+already in progress, this attach reaches the worker on the next deploy. An
+application that is not live records the attachment only; the next deploy or
+resume reads it.`,
 		Example: `  # attach a secret using its name as the env var
   runware serverless secrets attach my-app FOO
 
@@ -277,8 +277,8 @@ func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 secret itself remains.
 
 Detaching rolls the live deployment so a running worker stops receiving the
-value. If a rollout is already in progress, the worker stops receiving it on a
-later redeploy. An application that is not live records the removal only.`,
+value. If a rollout is already in progress, the worker stops receiving it on
+the next deploy. An application that is not live records the removal only.`,
 		Example: `  # detach a secret from an application
   runware serverless secrets detach my-app FOO`,
 		Args: cobra.ExactArgs(2),

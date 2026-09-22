@@ -43,10 +43,11 @@ __pycache__, .venv, node_modules or the usual build and tool caches.
 Pass --env or --env-file on create to set the application's initial environment.
 Change a variable afterwards with 'apps env set' or 'apps env unset': a change
 records a new version with the same image and rolls the workload when the app
-is active, initializing, or failed. A stopped or stopping app applies it on
-resume. A write during an in-flight rollout returns 409 and does not store the
-value. Prefer --env-file for anything secret: a value passed as --env is
-visible in the process list and recorded in shell history.
+is active, initializing, or failed and its image is deployable. A stopped or
+stopping app applies it on resume. A write during an in-flight rollout
+returns 409 and does not store the value. Prefer --env-file for anything
+secret: a value passed as --env is visible in the process list and recorded
+in shell history.
 
 Anything the app downloads at runtime belongs on a --volume. The app runs in a
 sandbox whose filesystem is part of the checkpointed state, so an unmounted
