@@ -2,7 +2,7 @@
 
 A command-line tool for interacting with the [Runware](https://runware.ai) API. Built in Go, distributed as a single static binary.
 
-Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, and deploy serverless applications.
+Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, deploy serverless applications, and more.
 
 ## Install
 
@@ -136,46 +136,46 @@ runware run tencent:hunyuan-3d@3.1-pro inputs.images.0="https://example.com/prod
 Deploy, invoke, and manage Runware serverless applications. Full command reference is in [docs/runware_serverless.md](./docs/runware_serverless.md).
 
 ```shell
-# list GPU types and per-second pricing
+# List GPU types and per-second pricing
 runware serverless gpus
 
-# create from a Python entry file (the source directory is zipped and uploaded)
+# Create from a Python entry file (the working directory, or --src-dir, is zipped and uploaded)
 runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait
 
-# create from a container source (Dockerfile + container.yaml at the directory root)
+# Create from a container source (Dockerfile + container.yaml at the directory root)
 runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper --wait
 
-# later deploys with the same --id upload a new source and roll version N+1
+# Later deploys with the same --id upload a new source and roll version N+1
 runware serverless deploy ./app.py --id my-app --wait
 
-# inspect
+# Inspect
 runware serverless apps list
 runware serverless apps show my-app
 runware serverless apps endpoints my-app
 runware serverless apps workers my-app --state live
 
-# invoke an endpoint (path is a bare segment, e.g. infer)
+# Invoke an endpoint (path is a bare segment, e.g. infer)
 runware serverless apps invoke my-app infer -f payload.json --wait
 
-# logs, events, and usage
+# Logs, events, and usage
 runware serverless apps logs my-app --follow
 runware serverless apps events my-app
 runware serverless usage --for this-month --group-by app,day
 runware serverless apps usage my-app --for this-month
 
-# environment, secrets, and scale
+# Environment, secrets, and scale
 runware serverless apps env set my-app MY_KEY --value-file ./value.txt
 runware serverless secrets set FOO --value-file ./foo.txt
 runware serverless secrets attach my-app FOO
 runware serverless apps scale my-app --max-workers 2
 
-# lifecycle
+# Lifecycle
 runware serverless apps stop my-app
 runware serverless apps resume my-app
 runware serverless open my-app
 ```
 
-`--gpu-type`, worker settings, `--volume`, `--env`, `--env-file`, and `--name` apply on create only. Change workers with `apps scale` and environment with `apps env`. An environment change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
+`--volume`, `--env`, `--env-file`, and `--name` apply on create only. Change `--gpu-type` and other worker settings with `apps scale`, and environment with `apps env`. An environment change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
 
 `.env` files are never packed into the source archive. Prefer `--env-file` and `secrets set --value-file` so values stay out of the process list.
 
