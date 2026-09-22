@@ -33,7 +33,7 @@ runware serverless apps list [flags]
   -h, --help              help for list
       --limit int         Maximum number of applications to return (1-100)
       --query string      Filter by substring on name or ID
-      --sort string       Sort order (createdAt (default), name, activity, or errorRate)
+      --sort string       Sort order (createdAt (default) or name)
       --status string     Filter by status (active, initializing, stopped, …)
 ```
 

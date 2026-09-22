@@ -66,12 +66,9 @@ func TestParseAppSort(t *testing.T) {
 		t.Fatalf("unset sort: got=%v err=%v", got, err)
 	}
 
-	got, err = parseAppSort("activity")
-	if err != nil {
-		t.Fatalf("activity: %v", err)
-	}
-	if got == nil || *got != "activity" {
-		t.Fatalf("activity: got %+v", got)
+	got, err = parseAppSort("name")
+	if err != nil || got == nil || *got != "name" {
+		t.Fatalf("name: got=%v err=%v", got, err)
 	}
 
 	got, err = parseAppSort("createdAt")
@@ -79,12 +76,14 @@ func TestParseAppSort(t *testing.T) {
 		t.Fatalf("createdAt: got=%v err=%v", got, err)
 	}
 
-	_, err = parseAppSort("nope")
-	if err == nil {
-		t.Fatal("expected error for sort nope")
-	}
-	if !strings.Contains(err.Error(), "invalid --sort") {
-		t.Fatalf("error %q should mention invalid --sort", err)
+	for _, sort := range []string{"activity", "errorRate", "nope"} {
+		_, err = parseAppSort(sort)
+		if err == nil {
+			t.Fatalf("expected error for sort %q", sort)
+		}
+		if !strings.Contains(err.Error(), "invalid --sort") || !strings.Contains(err.Error(), "createdAt (default) or name") {
+			t.Fatalf("error %q should name the allowed sorts", err)
+		}
 	}
 }
 
