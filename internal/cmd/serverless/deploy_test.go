@@ -289,6 +289,30 @@ func TestValidateCreateDeployGPU(t *testing.T) {
 	}
 }
 
+func TestParseSecretAttaches(t *testing.T) {
+	got, err := parseSecretAttaches(nil)
+	if err != nil || got != nil {
+		t.Fatalf("empty: got=%v err=%v", got, err)
+	}
+
+	got, err = parseSecretAttaches([]string{"ORG_TOKEN", "API_KEY=INFERENCE_KEY"})
+	if err != nil || got == nil || len(*got) != 2 {
+		t.Fatalf("attaches: got=%v err=%v", got, err)
+	}
+	if (*got)[0].SecretName != "ORG_TOKEN" || (*got)[0].EnvVarName != nil {
+		t.Fatalf("name only: %#v", (*got)[0])
+	}
+	if (*got)[1].SecretName != "API_KEY" || (*got)[1].EnvVarName == nil || *(*got)[1].EnvVarName != "INFERENCE_KEY" {
+		t.Fatalf("env override: %#v", (*got)[1])
+	}
+
+	for _, raw := range []string{"", "=NOPE", "NAME=", "bad-name", "1TOKEN"} {
+		if _, err := parseSecretAttaches([]string{raw}); err == nil || !strings.Contains(err.Error(), "invalid --secret") {
+			t.Fatalf("%q: got %v", raw, err)
+		}
+	}
+}
+
 func TestValidateUpdateDeployFlags(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	if err := cmd.ParseFlags(nil); err != nil {
@@ -298,15 +322,21 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		t.Fatalf("no create flags: %v", err)
 	}
 
+	const scaleHint = "apps scale"
 	cases := []struct {
 		flags   []string
 		wantErr string
 	}{
-		{flags: []string{"--gpu-type", "h100"}, wantErr: "apps scale"},
-		{flags: []string{"--max-workers", "2"}, wantErr: "apps scale"},
+		{flags: []string{"--gpu-type", "h100"}, wantErr: scaleHint},
+		{flags: []string{"--max-workers", "2"}, wantErr: scaleHint},
 		{flags: []string{"--env", "FOO=bar"}, wantErr: "apps env"},
 		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env"},
-		{flags: []string{"--volume", "/data"}, wantErr: "volumes"},
+		{flags: []string{"--volume", "/data"}, wantErr: "immutable"},
+		{flags: []string{"--secret", "ORG_TOKEN"}, wantErr: "secrets attach"},
+		{flags: []string{"--concurrency", "2"}, wantErr: scaleHint},
+		{flags: []string{"--fallback-gpu-type", "l40s"}, wantErr: scaleHint},
+		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
+		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
 		{flags: []string{"--name", "My App"}, wantErr: "omit it"},
 		{flags: []string{"--requirement", testPipPackage}},
 		{flags: []string{"--base-image", "python:3.12-slim"}},
