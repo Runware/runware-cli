@@ -204,6 +204,16 @@ func reportEndpointSetChange(w io.Writer, change endpointSetChange) {
 	}
 }
 
+// reportDeployEndpoints tells the customer how to call a first deploy. w must
+// be stderr: stdout carries the app record --format json promises.
+func reportDeployEndpoints(w io.Writer, appID string, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "Endpoints: %s\n", quotedPaths(paths))
+	_, _ = fmt.Fprintf(w, "Invoke: runware serverless apps invoke %s %s -f payload.json\n", appID, paths[0])
+}
+
 func quotedPaths(paths []string) string {
 	out := ""
 	for i, path := range paths {

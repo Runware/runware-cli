@@ -189,7 +189,8 @@ A code app's endpoint path is its handler's method name with underscores turned
 into hyphens, so renaming a method moves a public endpoint and 404s its callers.
 Updating an existing application with --wait reports what the deploy did to the
 endpoint set once the rollout lands. It is a report, not a gate: renaming an
-endpoint on purpose is allowed.`,
+endpoint on purpose is allowed. A first deploy with --wait prints the endpoint
+paths and an invoke example once the application is active.`,
 		Example: `  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
 
@@ -346,6 +347,10 @@ endpoint on purpose is allowed.`,
 					if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
 						reportEndpointSetChange(cmd.ErrOrStderr(), compareEndpointSets(endpointsBefore, paths))
 					}
+				}
+			} else if wait && !update && app.Status == serverlessapi.AppStatusActive {
+				if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
+					reportDeployEndpoints(cmd.ErrOrStderr(), app.AppId, paths)
 				}
 			}
 
