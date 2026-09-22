@@ -254,6 +254,20 @@ func TestExistingApp(t *testing.T) {
 	}
 }
 
+func TestValidateGPUsPerWorker(t *testing.T) {
+	for _, n := range []int32{1, 2, 4, 8} {
+		if err := validateGPUsPerWorker(n); err != nil {
+			t.Errorf("validateGPUsPerWorker(%d): %v", n, err)
+		}
+	}
+	for _, n := range []int32{0, 3, 5, 16} {
+		err := validateGPUsPerWorker(n)
+		if err == nil || !strings.Contains(err.Error(), "1, 2, 4, or 8") {
+			t.Errorf("validateGPUsPerWorker(%d) = %v, want an allowed-values error", n, err)
+		}
+	}
+}
+
 func TestValidateCreateDeployGPU(t *testing.T) {
 	if err := validateCreateDeployGPU(""); err == nil || !strings.Contains(err.Error(), "--gpu-type") {
 		t.Fatalf("empty: %v", err)

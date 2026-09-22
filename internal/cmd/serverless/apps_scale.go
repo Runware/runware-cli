@@ -87,7 +87,7 @@ func bindScaleFlags(cmd *cobra.Command, flags *scaleFlags) {
 	f.Int32Var(&flags.idleTTL, "idle-ttl", 0, "Idle TTL in seconds before scaling down")
 	f.Int32Var(&flags.scalingDelay, "scaling-delay", 0, "Scaling delay in seconds")
 	f.StringVar(&flags.gpuType, "gpu-type", "", "Preferred GPU type ID (see 'serverless gpus')")
-	f.Int32Var(&flags.gpusPerWorker, "gpus-per-worker", 0, "GPUs allocated per worker")
+	f.Int32Var(&flags.gpusPerWorker, "gpus-per-worker", 0, "GPUs allocated per worker (1, 2, 4, or 8)")
 	f.StringVar(&flags.fallbackGPUType, "fallback-gpu-type", "", "Secondary GPU type if the preferred type is unavailable")
 	f.Int32Var(&flags.minAvailableWorkers, "min-available-workers", 0, "Minimum idle workers kept as a buffer")
 	f.Int32Var(&flags.availableWorkersPct, "available-workers-pct", 0, "Idle-worker buffer as a percentage of load (0-100)")
@@ -97,6 +97,11 @@ func bindScaleFlags(cmd *cobra.Command, flags *scaleFlags) {
 // were explicitly set. Unchanged flags are omitted so existing values are
 // not cleared.
 func workerConfigPatchFromFlags(cmd *cobra.Command, flags scaleFlags) (*serverlessapi.WorkerConfigPatch, error) {
+	if cmd.Flags().Changed("gpus-per-worker") {
+		if err := validateGPUsPerWorker(flags.gpusPerWorker); err != nil {
+			return nil, err
+		}
+	}
 	patch := &serverlessapi.WorkerConfigPatch{
 		MaxWorkers:          optionalInt32Ptr(cmd, "max-workers", flags.maxWorkers),
 		MinWorkers:          optionalInt32Ptr(cmd, "min-workers", flags.minWorkers),
