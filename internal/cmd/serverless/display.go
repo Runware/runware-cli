@@ -50,6 +50,10 @@ const (
 	colConcurrency         = "Concurrency"
 )
 
+// redactedEnvValue replaces a plaintext environment value in JSON and YAML
+// app output. apps env list is the command that prints the real value.
+const redactedEnvValue = "[redacted]"
+
 // appResult wraps a single app for table/json/yaml display.
 type appResult serverlessapi.App
 
@@ -78,6 +82,31 @@ func (r appResult) Rows() [][]any {
 		{colScalingDelay, cfg.ScalingDelaySecs},
 		{colConcurrency, cfg.Concurrency},
 	}
+}
+
+// MarshalJSON redacts plaintext environment values. The table already omits
+// them; JSON would otherwise print the value field from the app payload.
+func (r appResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.withRedactedEnv())
+}
+
+// MarshalYAML redacts plaintext environment values, matching MarshalJSON.
+func (r appResult) MarshalYAML() (any, error) {
+	return r.withRedactedEnv(), nil
+}
+
+func (r appResult) withRedactedEnv() serverlessapi.App {
+	app := serverlessapi.App(r)
+	if len(app.EnvironmentVariables) == 0 {
+		return app
+	}
+	env := make([]serverlessapi.EnvironmentVariable, len(app.EnvironmentVariables))
+	copy(env, app.EnvironmentVariables)
+	for i := range env {
+		env[i].Value = redactedEnvValue
+	}
+	app.EnvironmentVariables = env
+	return app
 }
 
 // appsResult wraps an app list for table display.

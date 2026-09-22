@@ -121,6 +121,10 @@ func newAppsShowCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <appId>",
 		Short: "Show details for a serverless application",
+		Long: `Show details for a serverless application.
+
+JSON and YAML include environment variable names with each value replaced by
+[redacted]. Read a value with 'apps env list'.`,
 		Example: `  # show details for an application
   runware serverless apps show my-app`,
 		Args: cobra.ExactArgs(1),
