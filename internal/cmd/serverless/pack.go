@@ -20,10 +20,14 @@ import (
 // memory and base64 expands it by ~4/3.
 const maxPackEntryBytes int64 = 10 << 20 // 10 MiB
 
-// maxPackTotalBytes bounds the archive as a whole. The per-file cap alone does
-// not: a virtualenv is thousands of small files and would sail past it.
-// 10 MiB matches SourceUploadCreate.declaredByteLength (maximum 10485760).
-const maxPackTotalBytes int64 = 10 << 20 // 10 MiB
+// maxPackTotalBytes bounds uncompressed file bytes held in memory while packing.
+// The per-file cap alone does not: a virtualenv is thousands of small files
+// and would sail past it.
+const maxPackTotalBytes int64 = 25 << 20 // 25 MiB
+
+// maxArchiveBytes is SourceUploadCreate.declaredByteLength (maximum 10485760),
+// which is the zip after compression, not the uncompressed tree.
+const maxArchiveBytes int64 = 10 << 20 // 10 MiB
 
 // runwareIgnoreFile is the project's own exclude list, and the only one read.
 //
@@ -490,6 +494,12 @@ func writeArchive(root string, files []packedFile) ([]byte, error) {
 	}
 	if err := zw.Close(); err != nil {
 		return nil, fmt.Errorf("close zip: %w", err)
+	}
+	if int64(buf.Len()) > maxArchiveBytes {
+		return nil, fmt.Errorf(
+			"the packed archive is %s; the maximum is %s.\n%s\nExclude what the app does not need with a %s file",
+			humanBytes(int64(buf.Len())), humanBytes(maxArchiveBytes), largestFilesSummary(files), runwareIgnoreFile,
+		)
 	}
 	return buf.Bytes(), nil
 }
