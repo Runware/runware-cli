@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -52,10 +53,12 @@ func newAppsLogsCmd(logger *log.Logger) *cobra.Command {
 		Long: `Show recent application logs and optionally follow new ones.
 
 The recent page is read from the runtime log query over --window (default 1h).
---sort oldest (the default) lists oldest first, so nextCursor walks newer;
---sort newest lists newest first, so nextCursor walks older. prevCursor walks
-the other way. Replay either cursor with the same --sort, --window, and
---limit.
+Without --sort the command fetches the newest page (the API default) and
+prints it oldest first, so a plain apps logs shows the latest entries as a
+readable timeline. --sort newest lists newest first, so nextCursor walks
+older. --sort oldest lists the oldest page of the window first, so nextCursor
+walks newer. prevCursor walks the other way. Replay either cursor with the
+same --sort, --window, and --limit.
 
 With --follow the command prints the recent page, then streams new entries
 until interrupted; the stream reconnects when the server ends it, and waits
@@ -82,7 +85,10 @@ entry is printed as one JSON object per line.`,
   runware serverless apps logs my-app --limit 50 --cursor <nextCursor>
 
   # newest first
-  runware serverless apps logs my-app --sort newest`,
+  runware serverless apps logs my-app --sort newest
+
+  # oldest page of the window
+  runware serverless apps logs my-app --sort oldest`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appID := args[0]
@@ -110,6 +116,7 @@ entry is printed as one JSON object per line.`,
 				return err
 			}
 
+			page.Entries = chronologicalLogEntries(page.Entries, flags.sort)
 			if !flags.follow {
 				return printLogPage(format, page, out, errOut, extraLogsCursorFlags(flags))
 			}
@@ -129,7 +136,7 @@ entry is printed as one JSON object per line.`,
 
 	cmd.Flags().StringVar(&flags.window, "window", "1h", "Time window for the recent page ("+logWindows+")")
 	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of entries on the recent page (1-100, default 20)")
-	cmd.Flags().StringVar(&flags.sort, "sort", "oldest", "Order of the recent page ("+logSorts+")")
+	cmd.Flags().StringVar(&flags.sort, "sort", "", "Order of the recent page ("+logSorts+"; default: latest page, oldest first)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor (nextCursor or prevCursor)")
 	cmd.Flags().BoolVarP(&flags.follow, "follow", "f", false, "Stream new log entries until interrupted")
 	return cmd
@@ -162,9 +169,21 @@ func logEntriesParams(appID string, flags logsFlags) (serverlessapi.GetLogEntrie
 
 func parseLogSort(sort string) (*serverlessapi.LogSort, error) {
 	if sort == "" {
-		sort = string(serverlessapi.LogSortOldest)
+		return nil, nil
 	}
 	return parseValidFlag[serverlessapi.LogSort]("--sort", sort, logSorts)
+}
+
+// chronologicalLogEntries reverses a newest-first API page when --sort is
+// unset, so the default view is the latest entries oldest-first. An explicit
+// --sort keeps the API order.
+func chronologicalLogEntries(entries []serverlessapi.LogEntry, sort string) []serverlessapi.LogEntry {
+	if sort != "" || len(entries) < 2 {
+		return entries
+	}
+	out := slices.Clone(entries)
+	slices.Reverse(out)
+	return out
 }
 
 // extraLogsCursorFlags repeats the filters a next-page --cursor is bound to.
@@ -173,7 +192,7 @@ func extraLogsCursorFlags(flags logsFlags) string {
 	if flags.limit > 0 {
 		parts = appendFlag(parts, "--limit", fmt.Sprint(flags.limit))
 	}
-	if flags.sort != "" && flags.sort != string(serverlessapi.LogSortOldest) {
+	if flags.sort != "" {
 		parts = appendFlag(parts, "--sort", flags.sort)
 	}
 	return strings.Join(parts, " ")

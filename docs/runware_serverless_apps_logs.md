@@ -7,10 +7,12 @@ Show or follow logs for a serverless application
 Show recent application logs and optionally follow new ones.
 
 The recent page is read from the runtime log query over --window (default 1h).
---sort oldest (the default) lists oldest first, so nextCursor walks newer;
---sort newest lists newest first, so nextCursor walks older. prevCursor walks
-the other way. Replay either cursor with the same --sort, --window, and
---limit.
+Without --sort the command fetches the newest page (the API default) and
+prints it oldest first, so a plain apps logs shows the latest entries as a
+readable timeline. --sort newest lists newest first, so nextCursor walks
+older. --sort oldest lists the oldest page of the window first, so nextCursor
+walks newer. prevCursor walks the other way. Replay either cursor with the
+same --sort, --window, and --limit.
 
 With --follow the command prints the recent page, then streams new entries
 until interrupted; the stream reconnects when the server ends it, and waits
@@ -46,6 +48,9 @@ runware serverless apps logs <appId> [flags]
 
   # newest first
   runware serverless apps logs my-app --sort newest
+
+  # oldest page of the window
+  runware serverless apps logs my-app --sort oldest
 ```
 
 ### Options
@@ -55,7 +60,7 @@ runware serverless apps logs <appId> [flags]
   -f, --follow          Stream new log entries until interrupted
   -h, --help            help for logs
       --limit int       Maximum number of entries on the recent page (1-100, default 20)
-      --sort string     Order of the recent page (oldest or newest) (default "oldest")
+      --sort string     Order of the recent page (oldest or newest; default: latest page, oldest first)
       --window string   Time window for the recent page (1h, 6h, 24h, 7d, or 30d) (default "1h")
 ```
 

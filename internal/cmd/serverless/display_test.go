@@ -570,8 +570,12 @@ func TestEndpointResult(t *testing.T) {
 	if rows[4][1] != "" {
 		t.Fatalf("nil UpdatedAt should render empty, got %#v", rows[4][1])
 	}
-	if rows[5][0] != colStatus || rows[5][1] != "" {
-		t.Fatalf("nil runtime status should render empty, got %#v", rows[5])
+	got := make(map[string]any, len(rows))
+	for _, row := range rows {
+		got[row[0].(string)] = row[1]
+	}
+	if v, ok := got[colStatus]; !ok || v != "" {
+		t.Fatalf("nil runtime status should render empty, got %#v", v)
 	}
 }
 
