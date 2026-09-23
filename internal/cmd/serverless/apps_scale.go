@@ -40,7 +40,8 @@ initializing. A failed app is moved to initializing and rolled. A stopped or
 stopping app applies the change on resume. This command does not wait for that
 rollout. A change during an in-flight rollout returns 409.
 
-The server rejects unsupported or invalid fields with HTTP 422.`,
+The server rejects unsupported or invalid fields with HTTP 422. A capacity
+increase without enough credit returns 402.`,
 		Example: `  # set the worker cap
   runware serverless apps scale my-app --max-workers 2
 
