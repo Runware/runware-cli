@@ -9,6 +9,12 @@ Create or update one plain-text environment variable.
 Prefer --value-file so the value is not visible in process lists; use
 --value-file - to read from stdin.
 
+A change records a new version with the same image and rolls the workload when
+the app is active, initializing, or failed and its image is deployable. A
+stopped or stopping app applies it on resume. An unchanged value records no
+version. A write during an in-flight rollout returns 409 and does not store
+the value.
+
 The server rejects (HTTP 422) reserved platform names, names that collide
 with an attached secret's injected env var, and adding a binding past the
 100-variable-plus-secret ceiling. Overwriting an existing key is always

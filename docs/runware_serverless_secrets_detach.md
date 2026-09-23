@@ -4,8 +4,12 @@ Detach a secret from an application
 
 ### Synopsis
 
-Remove the control-plane attachment from an application. Does not remove the
-organisation secret.
+Remove an organisation secret's attachment from an application. The organisation
+secret itself remains.
+
+Detaching rolls the live deployment so a running worker stops receiving the
+value. If a rollout is already in progress, the worker stops receiving it on
+the next deploy. An application that is not live records the removal only.
 
 ```
 runware serverless secrets detach <appId> <name> [flags]

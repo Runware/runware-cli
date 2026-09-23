@@ -6,6 +6,11 @@ Remove an environment variable
 
 Remove one plain-text environment variable from an application.
 
+A delete records a new version with the same image and rolls the workload when
+the app is active, initializing, or failed and its image is deployable. A
+stopped or stopping app applies it on resume. A delete during an in-flight
+rollout returns 409 and does not remove the value.
+
 ```
 runware serverless apps env unset <appId> <key> [flags]
 ```

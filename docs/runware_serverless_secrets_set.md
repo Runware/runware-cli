@@ -6,7 +6,12 @@ Create or update an organisation secret
 
 Create an organisation-scoped secret, or update its value if the name already exists.
 
-This does not attach the secret to an application. Use 'secrets attach' for that.
+Creating a secret does not attach it to an application. Use 'secrets attach' for that.
+Updating an existing secret re-encrypts the value and rolls every live application
+that attaches it, so a running worker picks up the new value. If a rollout is already
+in progress, the new value reaches that worker on the next deploy. An application
+that is not live picks it up on its next deploy.
+
 The secret value is never printed. Prefer --value-file so the value is not visible
 in process lists; use --value-file - to read from stdin.
 
