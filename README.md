@@ -289,7 +289,6 @@ All commands support `--format json` for piping into `jq` or scripts.
 | Variable | Description |
 |----------|-------------|
 | `RUNWARE_API_KEY` | API key (overrides config file) |
-| `RUNWARE_DASHBOARD_URL` | Dashboard base URL for `serverless open` (default `https://my.runware.ai`) |
 
 ### Config file
 
