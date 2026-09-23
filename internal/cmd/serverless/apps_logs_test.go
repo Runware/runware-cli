@@ -43,7 +43,7 @@ func TestLogEntriesParams_OmitsUnsetOptionalFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("logEntriesParams: %v", err)
 	}
-	if params.Limit != nil || params.Cursor != nil {
+	if params.Limit != nil || params.Cursor != nil || params.Sort != nil {
 		t.Errorf("optional params must be nil: %#v", params)
 	}
 }
@@ -107,25 +107,28 @@ func TestFormatLogLine(t *testing.T) {
 	}
 }
 
-func TestPrintLogPage_TablePrintsOldestFirstAndCursorHint(t *testing.T) {
+func TestPrintLogPage_TablePrintsAPIOrderAndCursorHints(t *testing.T) {
 	next := testLogCursor
+	prev := "prev-cursor"
 	page := serverlessapi.LogEntryPage{
 		Entries: []serverlessapi.LogEntry{
-			{
-				Time: 1750000001,
-				Body: testLogBodySlow,
-			},
 			{
 				Time: 1750000000,
 				Body: testLogBodyReady,
 			},
+			{
+				Time: 1750000001,
+				Body: testLogBodySlow,
+			},
 		},
 		NextCursor: &next,
+		PrevCursor: &prev,
 	}
 	var out, errOut bytes.Buffer
 	flags := logsFlags{
 		window: testLogWindow6h,
 		limit:  50,
+		sort:   "newest",
 	}
 	if err := printLogPage(output.FormatTable, page, &out, &errOut, extraLogsCursorFlags(flags)); err != nil {
 		t.Fatalf("printLogPage: %v", err)
@@ -134,9 +137,51 @@ func TestPrintLogPage_TablePrintsOldestFirstAndCursorHint(t *testing.T) {
 	if len(lines) != 2 || !strings.HasSuffix(lines[0], testLogBodyReady) || !strings.HasSuffix(lines[1], testLogBodySlow) {
 		t.Fatalf("stdout = %q", out.String())
 	}
-	want := "Next page: --window 6h --limit 50 --cursor " + testLogCursor
-	if !strings.Contains(errOut.String(), want) {
-		t.Fatalf("stderr = %q, want %q", errOut.String(), want)
+	wantNext := "Next page: --window 6h --limit 50 --sort newest --cursor " + testLogCursor
+	wantPrev := "Previous page: --window 6h --limit 50 --sort newest --cursor " + prev
+	if !strings.Contains(errOut.String(), wantNext) || !strings.Contains(errOut.String(), wantPrev) {
+		t.Fatalf("stderr = %q, want %q and %q", errOut.String(), wantNext, wantPrev)
+	}
+}
+
+func TestParseLogSort(t *testing.T) {
+	got, err := parseLogSort("")
+	if err != nil || got != nil {
+		t.Fatalf("unset: got=%v err=%v", got, err)
+	}
+	got, err = parseLogSort("oldest")
+	if err != nil || got == nil || *got != serverlessapi.LogSortOldest {
+		t.Fatalf("oldest: got=%v err=%v", got, err)
+	}
+	got, err = parseLogSort("newest")
+	if err != nil || got == nil || *got != serverlessapi.LogSortNewest {
+		t.Fatalf("newest: got=%v err=%v", got, err)
+	}
+	_, err = parseLogSort("activity")
+	if err == nil || !strings.Contains(err.Error(), "oldest or newest") {
+		t.Fatalf("expected invalid --sort, got %v", err)
+	}
+}
+
+func TestChronologicalLogEntries_ReversesTheDefaultNewestPage(t *testing.T) {
+	newestFirst := []serverlessapi.LogEntry{
+		{Body: testLogBodySlow},
+		{Body: testLogBodyReady},
+	}
+	got := chronologicalLogEntries(newestFirst, "")
+	if len(got) != 2 || got[0].Body != testLogBodyReady || got[1].Body != testLogBodySlow {
+		t.Fatalf("default = %#v", got)
+	}
+	if newestFirst[0].Body != testLogBodySlow {
+		t.Fatal("caller slice was reordered")
+	}
+	kept := chronologicalLogEntries(newestFirst, "newest")
+	if kept[0].Body != testLogBodySlow {
+		t.Fatalf("explicit newest = %#v", kept)
+	}
+	oldest := chronologicalLogEntries(newestFirst, "oldest")
+	if oldest[0].Body != testLogBodySlow {
+		t.Fatalf("explicit oldest = %#v", oldest)
 	}
 }
 
