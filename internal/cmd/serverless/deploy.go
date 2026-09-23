@@ -191,7 +191,8 @@ A code app's endpoint path is its handler's method name with underscores turned
 into hyphens, so renaming a method moves a public endpoint and 404s its callers.
 Updating an existing application with --wait reports what the deploy did to the
 endpoint set once the rollout lands. It is a report, not a gate: renaming an
-endpoint on purpose is allowed.`,
+endpoint on purpose is allowed. A first deploy with --wait prints the endpoint
+paths and an invoke example once the application is active.`,
 		Example: `  # deploy the current directory, with app.py as the entry point
   runware serverless deploy ./app.py --id my-app --gpu-type h100
 
@@ -317,6 +318,7 @@ endpoint on purpose is allowed.`,
 					},
 				})
 				if isHTTPConflict(err) {
+					update = true
 					app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
 						AppSource: &appSource,
 					})
@@ -327,9 +329,16 @@ endpoint on purpose is allowed.`,
 				return err
 			}
 			if wait && !serverlessapi.AppDeployTerminal(app.Status) {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; waiting...\n", app.AppId, app.Status)
-				spin.SetMessage(fmt.Sprintf("Waiting for application %s...", app.AppId))
-				app, err = client.WaitApp(cmd.Context(), app.AppId, pollInterval)
+				var lastStatus string
+				app, err = waitForAppDeploy(cmd.Context(), client, app.AppId, pollInterval, func(appStatus, buildStatus string) {
+					msg := deployWaitMessage(app.AppId, appStatus, buildStatus)
+					if msg == lastStatus {
+						return
+					}
+					lastStatus = msg
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", msg)
+					spin.SetMessage(msg)
+				})
 				if err != nil {
 					spin.Stop()
 					return err
@@ -348,6 +357,10 @@ endpoint on purpose is allowed.`,
 					if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
 						reportEndpointSetChange(cmd.ErrOrStderr(), compareEndpointSets(endpointsBefore, paths))
 					}
+				}
+			} else if wait && !update && app.Status == serverlessapi.AppStatusActive {
+				if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
+					reportDeployEndpoints(cmd.ErrOrStderr(), app.AppId, paths)
 				}
 			}
 
@@ -456,6 +469,60 @@ func optionalFlagStringPtr(cmd *cobra.Command, name, v string) *string {
 		return nil
 	}
 	return &v
+}
+
+// deployWaitMessage is the status line --wait prints while an image build is
+// still running. buildStatus is empty when the build list cannot be read.
+func deployWaitMessage(appID, appStatus, buildStatus string) string {
+	if buildStatus == "" {
+		return fmt.Sprintf("Waiting for application %s (%s)...", appID, appStatus)
+	}
+	return fmt.Sprintf("Waiting for application %s (%s, build %s)...", appID, appStatus, buildStatus)
+}
+
+// waitForAppDeploy polls until the app reaches a terminal status. Each
+// non-terminal read reports the app status and the newest build status so a
+// long image build is not a silent wait.
+func waitForAppDeploy(
+	ctx context.Context,
+	client *serverlessapi.Client,
+	appID string,
+	interval time.Duration,
+	report func(appStatus, buildStatus string),
+) (*serverlessapi.App, error) {
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	for {
+		app, err := client.GetApp(ctx, appID)
+		if err != nil {
+			return nil, err
+		}
+		if serverlessapi.AppDeployTerminal(app.Status) {
+			return app, nil
+		}
+		if report != nil {
+			report(string(app.Status), latestBuildStatus(ctx, client, appID))
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// latestBuildStatus is the newest build's status. Newest first, as listBuilds
+// returns them. An unreadable list is not a failure of the wait.
+func latestBuildStatus(ctx context.Context, client *serverlessapi.Client, appID string) string {
+	page, err := client.ListBuilds(ctx, appID, nil)
+	if err != nil || len(page.Data) == 0 {
+		return ""
+	}
+	return string(page.Data[0].Status)
 }
 
 func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *serverlessapi.App) error {
