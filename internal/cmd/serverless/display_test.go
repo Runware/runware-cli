@@ -2,10 +2,13 @@ package serverless
 
 import (
 	"bytes"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -367,6 +370,44 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 		if got[field] != value {
 			t.Errorf("%s: got %#v, want %#v", field, got[field], value)
 		}
+	}
+}
+
+func TestAppResult_RedactsEnvironmentValues(t *testing.T) {
+	r := appResult{
+		AppId: testAppID,
+		EnvironmentVariables: []serverlessapi.EnvironmentVariable{
+			{
+				Key:   testEnvKey,
+				Value: testEnvValue,
+			},
+		},
+	}
+
+	js, err := json.Marshal(r)
+	if err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if strings.Contains(string(js), testEnvValue) || !strings.Contains(string(js), redactedEnvValue) {
+		t.Fatalf("json = %s", js)
+	}
+	if !strings.Contains(string(js), testEnvKey) {
+		t.Fatalf("json dropped the variable name: %s", js)
+	}
+
+	ym, err := yaml.Marshal(r)
+	if err != nil {
+		t.Fatalf("yaml: %v", err)
+	}
+	if strings.Contains(string(ym), testEnvValue) || !strings.Contains(string(ym), redactedEnvValue) {
+		t.Fatalf("yaml = %s", ym)
+	}
+	if !strings.Contains(string(ym), testEnvKey) {
+		t.Fatalf("yaml dropped the variable name: %s", ym)
+	}
+
+	if r.EnvironmentVariables[0].Value != testEnvValue {
+		t.Fatalf("redaction mutated the app: %q", r.EnvironmentVariables[0].Value)
 	}
 }
 

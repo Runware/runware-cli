@@ -2,6 +2,13 @@
 
 Show details for a serverless application
 
+### Synopsis
+
+Show details for a serverless application.
+
+JSON and YAML include environment variable names with each value replaced by
+[redacted]. Read a value with 'apps env list'.
+
 ```
 runware serverless apps show <appId> [flags]
 ```
