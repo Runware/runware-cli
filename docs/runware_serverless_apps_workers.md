@@ -6,6 +6,11 @@ List and inspect workers for a serverless application
 
 List workers observed for an application.
 
+The default page is the active version only. An application with no active
+version therefore answers an empty default page: it has no pinned version, not
+that it has no workers. Pass --version all to include every version, or
+--version <id> to scope to one.
+
 The default state is all: terminal stopped rows stay in the page until they
 are purged. Pass --state live to drop them. --state live with --status stopped
 is refused by the API (422), because an empty page would read as "this app
@@ -18,8 +23,11 @@ runware serverless apps workers <appId> [flags]
 ### Examples
 
 ```
-  # list workers for an application
+  # list workers for the active version
   runware serverless apps workers my-app
+
+  # include workers from every version
+  runware serverless apps workers my-app --version all
 
   # omit terminal stopped rows
   runware serverless apps workers my-app --state live
@@ -34,11 +42,12 @@ runware serverless apps workers <appId> [flags]
 ### Options
 
 ```
-      --cursor string   Pagination cursor from a previous nextCursor
-  -h, --help            help for workers
-      --limit int       Maximum number of workers to return (1-100)
-      --state string    Include stopped rows (all, the API default) or drop them (live)
-      --status string   Filter by status (ready, busy, pending, …)
+      --cursor string    Pagination cursor from a previous nextCursor
+  -h, --help             help for workers
+      --limit int        Maximum number of workers to return (1-100)
+      --state string     Include stopped rows (all, the API default) or drop them (live)
+      --status string    Filter by status (ready, busy, pending, …)
+      --version string   Scope to a version ID, or all (default: the active version)
 ```
 
 ### Options inherited from parent commands

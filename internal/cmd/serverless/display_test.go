@@ -188,17 +188,43 @@ func TestExtraStatusCursorFlag(t *testing.T) {
 }
 
 func TestExtraWorkersCursorFlags(t *testing.T) {
-	if got := extraWorkersCursorFlags("live", "ready"); got != "--state live --status ready" {
+	if got := extraWorkersCursorFlags("live", "ready", ""); got != "--state live --status ready" {
 		t.Fatalf("both: got %q", got)
 	}
-	if got := extraWorkersCursorFlags("live", ""); got != "--state live" {
+	if got := extraWorkersCursorFlags("live", "", ""); got != "--state live" {
 		t.Fatalf("state only: got %q", got)
 	}
-	if got := extraWorkersCursorFlags("", "ready"); got != "--status ready" {
+	if got := extraWorkersCursorFlags("", "ready", ""); got != "--status ready" {
 		t.Fatalf("status only: got %q", got)
 	}
-	if got := extraWorkersCursorFlags("", ""); got != "" {
+	if got := extraWorkersCursorFlags("", "", "all"); got != "--version all" {
+		t.Fatalf("version only: got %q", got)
+	}
+	if got := extraWorkersCursorFlags("live", "ready", "all"); got != "--state live --status ready --version all" {
+		t.Fatalf("all three: got %q", got)
+	}
+	if got := extraWorkersCursorFlags("", "", ""); got != "" {
 		t.Fatalf("empty: got %q", got)
+	}
+}
+
+func TestParseWorkersVersion(t *testing.T) {
+	got, err := parseWorkersVersion("")
+	if err != nil || got != "" {
+		t.Fatalf("empty: got=%q err=%v", got, err)
+	}
+	got, err = parseWorkersVersion("ALL")
+	if err != nil || got != "all" {
+		t.Fatalf("all: got=%q err=%v", got, err)
+	}
+	id := "22222222-2222-2222-2222-222222222222"
+	got, err = parseWorkersVersion(id)
+	if err != nil || got != id {
+		t.Fatalf("uuid: got=%q err=%v", got, err)
+	}
+	_, err = parseWorkersVersion("nope")
+	if err == nil || !strings.Contains(err.Error(), "version ID or all") {
+		t.Fatalf("typo: %v", err)
 	}
 }
 
