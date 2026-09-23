@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -303,6 +304,82 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 				t.Fatalf("got %v, want substring %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestDeployWaitMessage(t *testing.T) {
+	if got := deployWaitMessage(testAppID, "initializing", ""); got != "Waiting for application my-app (initializing)..." {
+		t.Fatalf("no build: %q", got)
+	}
+	if got := deployWaitMessage(testAppID, "initializing", "building"); got != "Waiting for application my-app (initializing, build building)..." {
+		t.Fatalf("building: %q", got)
+	}
+}
+
+func TestWaitForAppDeploy_ReportsBuildStatus(t *testing.T) {
+	var gets int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/builds") {
+			_, _ = w.Write([]byte(`{"data":[{"id":"33333333-3333-3333-3333-333333333333","status":"building","phases":[]}]}`))
+			return
+		}
+		gets++
+		status := string(serverlessapi.AppStatusInitializing)
+		if gets > 1 {
+			status = string(serverlessapi.AppStatusActive)
+		}
+		_, _ = w.Write([]byte(`{"appId":"` + testAppID + `","appName":"My App","status":"` + status + `","configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"computeType":"gpu","gpuType":"h100"},"environmentVariables":[],"secrets":[],"createdAt":"2026-07-30T12:00:00Z","updatedAt":"2026-07-30T12:00:00Z"}`))
+	}))
+	defer srv.Close()
+
+	var seen []string
+	client := serverlessapi.NewClient("test-key", srv.URL, slog.Default())
+	app, err := waitForAppDeploy(context.Background(), client, testAppID, time.Millisecond, func(appStatus, buildStatus string) {
+		seen = append(seen, deployWaitMessage(testAppID, appStatus, buildStatus))
+	})
+	if err != nil {
+		t.Fatalf("waitForAppDeploy: %v", err)
+	}
+	if app.Status != serverlessapi.AppStatusActive {
+		t.Fatalf("status = %s", app.Status)
+	}
+	if len(seen) != 1 || seen[0] != "Waiting for application my-app (initializing, build building)..." {
+		t.Fatalf("reports = %#v", seen)
+	}
+}
+
+func TestWaitForAppDeploy_ContinuesWhenBuildsFail(t *testing.T) {
+	var gets int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/builds") {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"unavailable"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		gets++
+		status := string(serverlessapi.AppStatusInitializing)
+		if gets > 1 {
+			status = string(serverlessapi.AppStatusActive)
+		}
+		_, _ = w.Write([]byte(`{"appId":"` + testAppID + `","appName":"My App","status":"` + status + `","configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"computeType":"gpu","gpuType":"h100"},"environmentVariables":[],"secrets":[],"createdAt":"2026-07-30T12:00:00Z","updatedAt":"2026-07-30T12:00:00Z"}`))
+	}))
+	defer srv.Close()
+
+	var seen []string
+	client := serverlessapi.NewClient("test-key", srv.URL, slog.Default())
+	app, err := waitForAppDeploy(context.Background(), client, testAppID, time.Millisecond, func(appStatus, buildStatus string) {
+		seen = append(seen, deployWaitMessage(testAppID, appStatus, buildStatus))
+	})
+	if err != nil {
+		t.Fatalf("waitForAppDeploy: %v", err)
+	}
+	if app.Status != serverlessapi.AppStatusActive {
+		t.Fatalf("status = %s", app.Status)
+	}
+	if len(seen) != 1 || seen[0] != "Waiting for application my-app (initializing)..." {
+		t.Fatalf("reports = %#v", seen)
 	}
 }
 
