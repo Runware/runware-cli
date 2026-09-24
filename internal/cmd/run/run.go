@@ -118,7 +118,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 				if err != nil {
 					return err
 				}
-				// Rebuild kvArgs as a sorted slice for deterministic behaviour.
+				// Rebuild kvArgs as a sorted slice for deterministic behavior.
 				kvArgs = make([]string, 0, len(merged))
 				for _, k := range slices.Sorted(maps.Keys(merged)) {
 					kvArgs = append(kvArgs, k+"="+merged[k])

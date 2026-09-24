@@ -32,7 +32,7 @@ const logWindows = "1h, 6h, 24h, 7d, or 30d"
 const logSorts = "oldest or newest"
 
 // logTailer opens one live log stream and hands each entry to emit until the
-// stream ends or ctx is cancelled.
+// stream ends or ctx is canceled.
 type logTailer func(ctx context.Context, emit func(serverlessapi.LogEntry) error) error
 
 // logsFlags is the flag set of apps logs.
@@ -240,7 +240,7 @@ func logEmitter(format output.Format, out io.Writer) func(serverlessapi.LogEntry
 	}
 }
 
-// followLogs keeps a live stream open until ctx is cancelled. A clean end of a
+// followLogs keeps a live stream open until ctx is canceled. A clean end of a
 // long-lived stream reconnects at once; a reported stream failure, a gateway
 // answering before the stream opens, or a clean end of a short-lived stream,
 // reconnects after tailReconnectDelay. Any other error is returned.

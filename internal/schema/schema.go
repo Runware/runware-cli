@@ -29,7 +29,7 @@ const (
 
 // SchemaType holds the JSON Schema "type" value. JSON Schema allows "type" to be
 // either a string or an array of strings (e.g. ["string", "null"] for nullable
-// fields). UnmarshalJSON normalises both forms to the first non-"null" type string.
+// fields). UnmarshalJSON normalizes both forms to the first non-"null" type string.
 type SchemaType string
 
 func (t *SchemaType) UnmarshalJSON(b []byte) error {
@@ -230,7 +230,7 @@ func ParseKV(arg string, node Node) (path []string, value any, err error) {
 		return nil, nil, fmt.Errorf("key contains empty segment (got %q)", arg)
 	}
 
-	segments = normalisePathSegments(segments, node)
+	segments = normalizePathSegments(segments, node)
 
 	leaf := schemaForPath(node, segments)
 
@@ -241,10 +241,10 @@ func ParseKV(arg string, node Node) (path []string, value any, err error) {
 	return segments, coerced, nil
 }
 
-// normalisePathSegments walks the schema alongside the raw path segments and
+// normalizePathSegments walks the schema alongside the raw path segments and
 // inserts an implicit "0" index wherever a non-numeric segment is encountered
 // inside an array-typed schema node.
-func normalisePathSegments(segments []string, node Node) []string {
+func normalizePathSegments(segments []string, node Node) []string {
 	out := make([]string, 0, len(segments)+1)
 	cur := node
 	for i, seg := range segments {
@@ -921,7 +921,7 @@ func checkStringConstraints(prop Node, val string, path string) error {
 var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // matchesFormat validates the named formats present in Runware schemas. An
-// unrecognised format passes, matching ajv-formats' behaviour for formats it
+// unrecognised format passes, matching ajv-formats' behavior for formats it
 // does not register.
 func matchesFormat(format, val string) bool {
 	switch format {

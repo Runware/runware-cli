@@ -54,7 +54,7 @@ func rawJSON(t *testing.T, v any) json.RawMessage {
 }
 
 // ---- Client.Poll polling-mechanics tests ----
-// Tests for success, progress, and nil-callback behaviour live in client_test.go.
+// Tests for success, progress, and nil-callback behavior live in client_test.go.
 
 // TestClientPoll_TransientErrorKeepsPolling: non-fatal errors are retried.
 func TestClientPoll_TransientErrorKeepsPolling(t *testing.T) {
@@ -105,10 +105,10 @@ func TestClientPoll_APIErrorFatal(t *testing.T) {
 	}
 }
 
-// TestClientPoll_ContextCancelled: cancelled context returns context.Canceled.
+// TestClientPoll_ContextCancelled: canceled context returns context.Canceled.
 func TestClientPoll_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // already cancelled
+	cancel() // already canceled
 
 	mock := &mockTransport{
 		responses: []mockResponse{
