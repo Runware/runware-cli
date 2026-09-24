@@ -1775,10 +1775,7 @@ type WorkerConfig struct {
 
 	// ComputeType Worker compute class. GPU is the only supported value. CPU workloads are not supported.
 	ComputeType ComputeType `json:"computeType"`
-
-	// Concurrency Max tasks a single worker handles simultaneously.
-	Concurrency int32      `json:"concurrency"`
-	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+	CreatedAt   *time.Time  `json:"createdAt,omitempty"`
 
 	// FallbackGpuType Secondary GPU type used if the preferred type is unavailable.
 	FallbackGpuType *GpuTypeId `json:"fallbackGpuType,omitempty"`
@@ -1812,7 +1809,6 @@ type WorkerConfigCreate struct {
 
 	// ComputeType GPU is the only supported compute type. Omitting the field selects GPU. CPU workloads are not supported; a request that names `cpu` is rejected with 422 before a build or deploy starts.
 	ComputeType *ComputeType `json:"computeType,omitempty"`
-	Concurrency *int32       `json:"concurrency,omitempty"`
 
 	// FallbackGpuType Secondary GPU type used if the preferred type is unavailable. Omit, send JSON null, or send an empty string for no fallback — forms bind an unselected dropdown as `""`, which is not a `GpuTypeId`. A non-empty value must be an active catalogue code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
 	FallbackGpuType *GpuTypeIdOrEmpty `json:"fallbackGpuType,omitempty"`
@@ -1835,7 +1831,6 @@ type WorkerConfigCreate struct {
 type WorkerConfigPatch struct {
 	// AvailableWorkersPct Idle workers held above current demand, as a percentage of that demand, rounded up. Omit to leave unchanged; send 0 to remove the buffer. Null is refused, because omitting a field and clearing it mean different things here.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
-	Concurrency         *int32 `json:"concurrency,omitempty"`
 
 	// FallbackGpuType Secondary GPU type. Omit to leave unchanged. Send an empty string to clear — forms bind an unselected dropdown as `""`. JSON null is rejected: this field is not nullable, so a client that meant to clear must send `""` rather than null. A non-empty value must be an active catalogue code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
 	FallbackGpuType *GpuTypeIdOrEmpty `json:"fallbackGpuType,omitempty"`

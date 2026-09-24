@@ -25,7 +25,7 @@ func activeAppBody(activeVersionID string) string {
 	}
 	return fmt.Sprintf(`{
 		"appId":"my-app","appName":"My App","status":"active","activeVersionId":%s,
-		"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"concurrency":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
+		"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
 		"environmentVariables":[],"secrets":[],
 		"createdAt":"2026-07-30T12:00:00Z","updatedAt":"2026-07-30T12:00:00Z"
 	}`, pin)
