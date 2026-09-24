@@ -34,7 +34,7 @@ func TestUsageParamsFromFlags_ExplicitWindow(t *testing.T) {
 	args := []string{
 		"--from", testUsageDate,
 		"--to", "2026-09-15T12:00:00+02:00",
-		"--gpu-type", testGPUType,
+		testGPUTypeFlag, testGPUType,
 		"--group-by", "app,day",
 		"--group-by", "coverage",
 	}
