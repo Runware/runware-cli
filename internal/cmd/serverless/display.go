@@ -47,7 +47,6 @@ const (
 	colAvailableWorkersPct = "Available workers %"
 	colIdleTTL             = "Idle TTL (s)"
 	colScalingDelay        = "Scaling delay (s)"
-	colConcurrency         = "Concurrency"
 	colEffectiveMaxWorkers = "Effective max workers"
 	colActiveWorkers       = "Active workers"
 	colQueueDepth          = "Queue depth"
@@ -87,7 +86,6 @@ func (r appResult) Rows() [][]any {
 		{colAvailableWorkersPct, formatOptionalInt32(cfg.AvailableWorkersPct)},
 		{colIdleTTL, cfg.IdleTtlSecs},
 		{colScalingDelay, cfg.ScalingDelaySecs},
-		{colConcurrency, cfg.Concurrency},
 		{colEffectiveMaxWorkers, formatOptionalInt32(r.EffectiveMaxWorkers)},
 		{colActiveWorkers, r.Runtime.ActiveWorkers},
 		{colQueueDepth, formatOptionalInt64(r.Runtime.QueueDepth)},

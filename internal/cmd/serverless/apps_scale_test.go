@@ -20,7 +20,6 @@ func TestWorkerConfigPatchFromFlags_EachFlag(t *testing.T) {
 		{[]string{"--min-workers", "0"}, "minWorkers", float64(0)},
 		{[]string{"--idle-ttl", "120"}, "idleTtlSecs", float64(120)},
 		{[]string{"--scaling-delay", "15"}, "scalingDelaySecs", float64(15)},
-		{[]string{"--concurrency", "4"}, "concurrency", float64(4)},
 		{[]string{"--gpu-type", testGPUType}, "gpuType", testGPUType},
 		{[]string{"--gpus-per-worker", "2"}, "gpusPerWorker", float64(2)},
 		{[]string{"--fallback-gpu-type", testGPUType}, "fallbackGpuType", testGPUType},

@@ -19,7 +19,6 @@ type scaleFlags struct {
 	minWorkers          int32
 	idleTTL             int32
 	scalingDelay        int32
-	concurrency         int32
 	gpuType             string
 	gpusPerWorker       int32
 	fallbackGPUType     string
@@ -87,7 +86,6 @@ func bindScaleFlags(cmd *cobra.Command, flags *scaleFlags) {
 	f.Int32Var(&flags.minWorkers, "min-workers", 0, "Minimum number of workers (0 = scale to zero)")
 	f.Int32Var(&flags.idleTTL, "idle-ttl", 0, "Idle TTL in seconds before scaling down")
 	f.Int32Var(&flags.scalingDelay, "scaling-delay", 0, "Scaling delay in seconds")
-	f.Int32Var(&flags.concurrency, "concurrency", 0, "Max tasks a single worker handles simultaneously")
 	f.StringVar(&flags.gpuType, "gpu-type", "", "Preferred GPU type ID (see 'serverless gpus')")
 	f.Int32Var(&flags.gpusPerWorker, "gpus-per-worker", 0, "GPUs allocated per worker")
 	f.StringVar(&flags.fallbackGPUType, "fallback-gpu-type", "", "Secondary GPU type if the preferred type is unavailable")
@@ -104,7 +102,6 @@ func workerConfigPatchFromFlags(cmd *cobra.Command, flags scaleFlags) (*serverle
 		MinWorkers:          optionalInt32Ptr(cmd, "min-workers", flags.minWorkers),
 		IdleTtlSecs:         optionalInt32Ptr(cmd, "idle-ttl", flags.idleTTL),
 		ScalingDelaySecs:    optionalInt32Ptr(cmd, "scaling-delay", flags.scalingDelay),
-		Concurrency:         optionalInt32Ptr(cmd, "concurrency", flags.concurrency),
 		GpuType:             optionalFlagStringPtr(cmd, "gpu-type", flags.gpuType),
 		GpusPerWorker:       optionalInt32Ptr(cmd, "gpus-per-worker", flags.gpusPerWorker),
 		FallbackGpuType:     optionalFlagStringPtr(cmd, "fallback-gpu-type", flags.fallbackGPUType),

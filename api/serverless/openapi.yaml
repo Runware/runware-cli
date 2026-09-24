@@ -3778,7 +3778,6 @@ components:
         - maxWorkers
         - idleTtlSecs
         - scalingDelaySecs
-        - concurrency
       properties:
         id:
           type: string
@@ -3849,11 +3848,6 @@ components:
           type: integer
           format: int32
           description: Cooldown between consecutive scaling decisions.
-        concurrency:
-          type: integer
-          format: int32
-          default: 1
-          description: Max tasks a single worker handles simultaneously.
         createdAt:
           type: string
           format: date-time
@@ -3956,11 +3950,6 @@ components:
           type: integer
           format: int32
           minimum: 1
-        concurrency:
-          type: integer
-          format: int32
-          minimum: 1
-          default: 1
 
     WorkerConfigPatch:
       type: object
@@ -4039,10 +4028,6 @@ components:
           format: int32
           minimum: 1
         scalingDelaySecs:
-          type: integer
-          format: int32
-          minimum: 1
-        concurrency:
           type: integer
           format: int32
           minimum: 1

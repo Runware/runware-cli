@@ -328,7 +328,6 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 			MaxWorkers:       2,
 			IdleTtlSecs:      60,
 			ScalingDelaySecs: 10,
-			Concurrency:      1,
 		},
 	}
 	if got := r.Headers(); len(got) != 2 || got[0] != colField || got[1] != colValue {
@@ -353,7 +352,6 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 		colAvailableWorkersPct: "",
 		colIdleTTL:             int32(60),
 		colScalingDelay:        int32(10),
-		colConcurrency:         int32(1),
 		colEffectiveMaxWorkers: "",
 		colActiveWorkers:       int64(0),
 		colQueueDepth:          "",
