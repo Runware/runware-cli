@@ -567,7 +567,7 @@ paths:
       summary: Delete an app
       description: >
         Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted.
-        Router removal, cancelling in-progress builds, and worker drain
+        Router removal, canceling in-progress builds, and worker drain
         (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler;
         `status` becomes `deleted` once all workers stop. All rows are retained for billing
         finalization, audit, and usage history. Idempotent if the app is already
@@ -784,7 +784,7 @@ paths:
       summary: Deploy a version
       description: >
         Activates a `ready` version by number, setting `activeVersionId` and returning `202`
-        once that intent is persisted. Worker rollout, routing switch, and cancelling
+        once that intent is persisted. Worker rollout, routing switch, and canceling
         in-progress builds (`superseded`) are performed asynchronously
         by the deployer/Scaler. Permitted in any addressable status, including `initializing`
         and `failed`.
@@ -1081,7 +1081,7 @@ paths:
       description: >
         Cancels a queued or running build and records it as `superseded`. Deleting
         a queued or running build ends its current rollout without activating the
-        cancelled build, so any previous version keeps serving. A terminal build can
+        canceled build, so any previous version keeps serving. A terminal build can
         be deleted once no live rollout still needs it. Ready builds remain while a
         version references them.
       operationId: deleteBuild
@@ -1095,7 +1095,7 @@ paths:
             format: uuid
       responses:
         '204':
-          description: Build cancelled or deleted
+          description: Build canceled or deleted
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4459,7 +4459,7 @@ components:
           format: int32
           description: >
             Version number to deploy. Must reference a `ready` version on this app.
-            Any in-progress or queued builds are cancelled. Use an older version number to roll back.
+            Any in-progress or queued builds are canceled. Use an older version number to roll back.
 
     EndpointTrafficStatus:
       type: string
