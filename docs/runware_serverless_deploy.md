@@ -94,7 +94,7 @@ runware serverless deploy [file] [flags]
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
     --max-workers 2 --idle-ttl 120 --gpu-type h100 \
-    --base-image python:3.11-slim --requirement torch
+    --base-image python:3.12-slim --requirement torch
 
   # deploy a container source (Dockerfile + container.yaml at the directory root)
   runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper
@@ -106,7 +106,7 @@ runware serverless deploy [file] [flags]
 ### Options
 
 ```
-      --base-image string         Builder base image (code deploys only) (default "python:3.11-slim")
+      --base-image string         Builder base image (code deploys only; needs Python 3.12 or newer) (default "python:3.12-slim")
       --container string          Directory whose root contains Dockerfile and container.yaml
       --env stringArray           Environment variable as KEY=VALUE (repeatable)
       --env-file stringArray      File of KEY=VALUE lines to read environment variables from (repeatable)
