@@ -216,7 +216,7 @@ paths and an invoke example once the application is active.`,
   # override worker settings and base image
   runware serverless deploy ./app.py --id my-app --name "My App" \
     --max-workers 2 --idle-ttl 120 --gpu-type h100 \
-    --base-image python:3.11-slim --requirement torch
+    --base-image python:3.12-slim --requirement torch
 
   # deploy a container source (Dockerfile + container.yaml at the directory root)
   runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper
@@ -384,7 +384,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")
 	cmd.Flags().Int32Var(&idleTTL, "idle-ttl", 60, "Idle TTL in seconds before scaling down")
 	cmd.Flags().Int32Var(&scalingDelay, "scaling-delay", 10, "Scaling delay in seconds")
-	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.11-slim", "Builder base image (code deploys only)")
+	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.12-slim", "Builder base image (code deploys only; needs Python 3.12 or newer)")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
