@@ -3,6 +3,7 @@ package serverless
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/rand"
 	"io"
 	"os"
 	"path/filepath"
@@ -528,6 +529,33 @@ func TestPackDirectory_TotalTooLarge(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Largest files") {
 		t.Errorf("error %q does not say what filled the archive", err)
+	}
+}
+
+func TestWriteArchive_RejectsZipOverAPILimit(t *testing.T) {
+	dir := t.TempDir()
+	// Uncompressed total stays under maxPackTotalBytes; Deflate cannot shrink
+	// random bytes enough to fit declaredByteLength.
+	const chunk = 6 << 20
+	for _, name := range []string{"a.bin", "b.bin"} {
+		buf := make([]byte, chunk)
+		if _, err := rand.Read(buf); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), buf, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := writeArchive(dir, []packedFile{
+		{rel: "a.bin", size: chunk},
+		{rel: "b.bin", size: chunk},
+	})
+	if err == nil {
+		t.Fatal("expected an error for a zip over declaredByteLength")
+	}
+	if !strings.Contains(err.Error(), "packed archive") || !strings.Contains(err.Error(), humanBytes(maxArchiveBytes)) {
+		t.Errorf("error %q does not name the zip cap", err)
 	}
 }
 
