@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -228,10 +229,8 @@ paths and an invoke example once the application is active.`,
 			if err := validateDeployArgs(cmd, args, containerDir); err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("gpus-per-worker") {
-				if err := validateGPUsPerWorker(gpusPerWorker); err != nil {
-					return err
-				}
+			if err := validateGPUsPerWorkerFlag(cmd, gpusPerWorker); err != nil {
+				return err
 			}
 			if name == "" {
 				name = id
@@ -393,7 +392,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
-	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker (1, 2, 4, or 8)")
+	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker ("+gpusPerWorkerValuesText()+")")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the application is active or failed")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
 
@@ -422,20 +421,41 @@ func validateCreateDeployGPU(gpuType string) error {
 	return nil
 }
 
-// gpusPerWorkerValues are the group sizes create and scale accept. The API
-// rejects anything else with 422, which on deploy is after the archive upload.
-var gpusPerWorkerValues = map[int32]struct{}{
-	1: {},
-	2: {},
-	4: {},
-	8: {},
+// gpusPerWorkerAllowed are the group sizes create and scale accept, in
+// display order. The API rejects anything else with 422, which on deploy
+// is after the archive upload.
+var gpusPerWorkerAllowed = []int32{
+	1,
+	2,
+	4,
+	8,
+}
+
+func gpusPerWorkerValuesText() string {
+	parts := make([]string, len(gpusPerWorkerAllowed))
+	for i, n := range gpusPerWorkerAllowed {
+		parts[i] = fmt.Sprint(n)
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + ", or " + parts[len(parts)-1]
 }
 
 func validateGPUsPerWorker(n int32) error {
-	if _, ok := gpusPerWorkerValues[n]; ok {
+	for _, allowed := range gpusPerWorkerAllowed {
+		if n == allowed {
+			return nil
+		}
+	}
+	return fmt.Errorf("--gpus-per-worker must be %s", gpusPerWorkerValuesText())
+}
+
+func validateGPUsPerWorkerFlag(cmd *cobra.Command, n int32) error {
+	if !cmd.Flags().Changed("gpus-per-worker") {
 		return nil
 	}
-	return fmt.Errorf("--gpus-per-worker must be 1, 2, 4, or 8")
+	return validateGPUsPerWorker(n)
 }
 
 func validateUpdateDeployFlags(cmd *cobra.Command) error {

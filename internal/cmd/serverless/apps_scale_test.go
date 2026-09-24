@@ -92,7 +92,7 @@ func TestWorkerConfigPatchFromFlags_RejectsGPUsPerWorker(t *testing.T) {
 		t.Fatalf("ParseFlags: %v", err)
 	}
 	_, err := workerConfigPatchFromFlags(cmd, *flags)
-	if err == nil || !strings.Contains(err.Error(), "1, 2, 4, or 8") {
+	if err == nil || !strings.Contains(err.Error(), gpusPerWorkerValuesText()) {
 		t.Fatalf("workerConfigPatchFromFlags = %v, want an allowed-values error", err)
 	}
 }
