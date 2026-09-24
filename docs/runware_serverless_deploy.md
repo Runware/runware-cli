@@ -111,7 +111,7 @@ runware serverless deploy [file] [flags]
       --env stringArray           Environment variable as KEY=VALUE (repeatable)
       --env-file stringArray      File of KEY=VALUE lines to read environment variables from (repeatable)
       --gpu-type string           GPU type ID (see 'serverless gpus'; required when creating)
-      --gpus-per-worker int32     GPUs allocated per worker (default 1)
+      --gpus-per-worker int32     GPUs allocated per worker (1, 2, 4, or 8) (default 1)
   -h, --help                      help for deploy
       --id string                 Application ID (immutable, lowercase slug)
       --idle-ttl int32            Idle TTL in seconds before scaling down (default 60)

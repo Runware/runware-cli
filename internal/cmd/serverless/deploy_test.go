@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -251,6 +252,31 @@ func TestExistingApp(t *testing.T) {
 
 	if _, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", fail.URL, slog.Default()), testAppID); err == nil {
 		t.Fatal("expected an error for 500")
+	}
+}
+
+func TestValidateGPUsPerWorker(t *testing.T) {
+	for _, n := range []int32{1, 2, 4, 8} {
+		if err := validateGPUsPerWorker(n); err != nil {
+			t.Errorf("validateGPUsPerWorker(%d): %v", n, err)
+		}
+	}
+	for _, n := range []int32{0, 3, 5, 16} {
+		err := validateGPUsPerWorker(n)
+		if err == nil || !strings.Contains(err.Error(), gpusPerWorkerValuesText()) {
+			t.Errorf("validateGPUsPerWorker(%d) = %v, want an allowed-values error", n, err)
+		}
+	}
+}
+
+func TestDeploy_RejectsInvalidGPUsPerWorkerBeforeUpload(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testModelFile, "--id", testAppID, "--gpus-per-worker", "3"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), gpusPerWorkerValuesText()) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

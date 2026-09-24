@@ -34,7 +34,7 @@ runware serverless apps scale <appId> [flags]
       --available-workers-pct int32   Idle-worker buffer as a percentage of load (0-100)
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
       --gpu-type string               Preferred GPU type ID (see 'serverless gpus')
-      --gpus-per-worker int32         GPUs allocated per worker
+      --gpus-per-worker int32         GPUs allocated per worker (1, 2, 4, or 8)
   -h, --help                          help for scale
       --idle-ttl int32                Idle TTL in seconds before scaling down
       --max-workers int32             Maximum number of workers
