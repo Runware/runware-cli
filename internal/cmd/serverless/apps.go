@@ -112,7 +112,7 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, initializing, stopped, …)")
 	cmd.Flags().StringVar(&query, "query", "", "Filter by substring on name or ID")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "Filter by GPU type (see 'serverless gpus')")
-	cmd.Flags().StringVar(&sort, "sort", "", "Sort order (createdAt (default), name, activity, or errorRate)")
+	cmd.Flags().StringVar(&sort, "sort", "", "Sort order ("+appListSortsHelp+")")
 
 	return cmd
 }
@@ -438,8 +438,25 @@ func parseValidFlag[T validListFlag](flag, value, want string) (*T, error) {
 	return &v, nil
 }
 
+// appListSorts are the listApps orderings this CLI offers. activity and
+// errorRate stay in the API enum, but they rank on traffic metrics that are
+// not collected yet, so the server answers 422. They are omitted until that lands.
+var appListSorts = map[serverlessapi.AppSort]struct{}{
+	serverlessapi.AppSortCreatedAt: {},
+	serverlessapi.AppSortName:      {},
+}
+
+const appListSortsHelp = "createdAt (default) or name"
+
 func parseAppSort(sort string) (*serverlessapi.AppSort, error) {
-	return parseValidFlag[serverlessapi.AppSort]("--sort", sort, "createdAt, name, activity, or errorRate")
+	if sort == "" {
+		return nil, nil
+	}
+	v := serverlessapi.AppSort(sort)
+	if _, ok := appListSorts[v]; !ok {
+		return nil, fmt.Errorf("invalid --sort %q (want %s)", sort, appListSortsHelp)
+	}
+	return &v, nil
 }
 
 func parseAppStatus(status string) (*serverlessapi.AppStatus, error) {

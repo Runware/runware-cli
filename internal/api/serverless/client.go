@@ -160,6 +160,11 @@ const (
 // AppSort is a listApps ordering.
 type AppSort = gen.AppSort
 
+const (
+	AppSortCreatedAt AppSort = gen.CreatedAt
+	AppSortName      AppSort = gen.Name
+)
+
 // WorkerStatus is a worker lifecycle status.
 type WorkerStatus = gen.WorkerStatus
 
