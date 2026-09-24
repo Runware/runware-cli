@@ -81,7 +81,7 @@ func TestParseAppSort(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error for sort %q", sort)
 		}
-		if !strings.Contains(err.Error(), "invalid --sort") || !strings.Contains(err.Error(), "createdAt (default) or name") {
+		if !strings.Contains(err.Error(), "invalid --sort") || !strings.Contains(err.Error(), appListSortsHelp) {
 			t.Fatalf("error %q should name the allowed sorts", err)
 		}
 	}
