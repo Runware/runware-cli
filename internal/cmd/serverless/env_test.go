@@ -1,10 +1,20 @@
 package serverless
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
 func TestBuildEnvironmentVariables(t *testing.T) {
@@ -240,4 +250,118 @@ func TestBuildEnvironmentVariables_LimitIsCountedInRunes(t *testing.T) {
 	if _, err := buildEnvironmentVariables(nil, []string{"MSG=" + value + "é"}); err == nil {
 		t.Error("expected a rejection one character past the limit")
 	}
+}
+
+func TestEnvReplacement_KeepsUnmentionedKeys(t *testing.T) {
+	got := envReplacement(
+		map[string]string{"KEEP": "old"},
+		map[string]string{"NEW_KEY": "n"},
+	)
+	if got["KEEP"] == nil || *got["KEEP"] != "old" || got["NEW_KEY"] == nil || *got["NEW_KEY"] != "n" {
+		t.Fatalf("replacement = %#v", derefEnv(got))
+	}
+}
+
+func TestApplyEnvUpdates_MergesIntoOneRequest(t *testing.T) {
+	var patches int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "environment-variables") {
+			if r.URL.Query().Get("cursor") == "" {
+				_, _ = w.Write([]byte(`{"data":[{"key":"KEEP","value":"old"}],"nextCursor":"page2"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"key":"KEEP_TOO","value":"also"}]}`))
+			return
+		}
+		if r.Method != http.MethodPatch {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			return
+		}
+		patches++
+		var body serverlessapi.AppUpdate
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode: %v", err)
+			return
+		}
+		if body.EnvironmentVariables == nil {
+			t.Error("missing environmentVariables")
+			return
+		}
+		got := derefEnv(*body.EnvironmentVariables)
+		if got["KEEP"] != "old" || got["KEEP_TOO"] != "also" || got["NEW_KEY"] != "n" {
+			t.Errorf("environmentVariables = %#v", got)
+		}
+		_, _ = w.Write([]byte(activeAppBody("")))
+	}))
+	defer srv.Close()
+
+	client := serverlessapi.NewClient("test-key", srv.URL, slog.Default())
+	err := applyEnvUpdates(context.Background(), client, testAppID, map[string]string{"NEW_KEY": "n"})
+	if err != nil {
+		t.Fatalf("applyEnvUpdates: %v", err)
+	}
+	if patches != 1 {
+		t.Fatalf("patches = %d, want 1", patches)
+	}
+}
+
+func TestEnvSet_RejectsMixedForms(t *testing.T) {
+	cmd := newAppsEnvSetCmd(nil)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testAppID, testEnvKey, "--value", testEnvValue, "--env", "NEW_KEY=n"})
+	err := cmd.Execute()
+	if err == nil || err.Error() != envSetUsage {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestEnvSet_EmptyValueStillSets(t *testing.T) {
+	var puts int
+	var gotValue *string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPut {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			return
+		}
+		puts++
+		var body serverlessapi.EnvironmentVariableUpdate
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode: %v", err)
+			return
+		}
+		value := body.Value
+		gotValue = &value
+		_, _ = w.Write([]byte(`{"key":"` + testEnvKey + `","value":""}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+
+	cmd := newAppsEnvSetCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testAppID, testEnvKey, "--value", ""})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("env set: %v", err)
+	}
+	if puts != 1 {
+		t.Fatalf("puts = %d, want 1", puts)
+	}
+	if gotValue == nil || *gotValue != "" {
+		t.Fatalf("value = %v, want empty", gotValue)
+	}
+}
+
+func derefEnv(in map[string]*string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		if value != nil {
+			out[key] = *value
+		}
+	}
+	return out
 }
