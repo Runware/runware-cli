@@ -1,13 +1,13 @@
 ## runware serverless secrets attach
 
-Attach an organisation secret to an application
+Attach an organization secret to an application
 
 ### Synopsis
 
-Record that an organisation secret is attached to an application, optionally
+Record that an organization secret is attached to an application, optionally
 under a different environment variable name.
 
-The organisation secret must already exist (see 'secrets set'). Attaching rolls
+The organization secret must already exist (see 'secrets set'). Attaching rolls
 the live deployment so a running worker picks up the value. If a rollout is
 already in progress, this attach reaches the worker on the next deploy. An
 application that is not live records the attachment only; the next deploy or
@@ -45,5 +45,5 @@ runware serverless secrets attach <appId> <name> [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organisation secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
 

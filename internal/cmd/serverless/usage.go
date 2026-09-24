@@ -30,7 +30,7 @@ Billable time runs from loading through ready, draining and stopping; pending,
 pulling and stopped do not bill, and busy is queue occupancy rather than a
 lifecycle transition. GPU time is summed per GPU, so four GPUs for one second
 is four seconds. PAYG spend is provisional and not a settled charge; the
-PAYG-equivalent value prices the same time at the catalogue rate whatever
+PAYG-equivalent value prices the same time at the catalog rate whatever
 covered it, so the difference is what reserved capacity saved.
 
 Grouping by day splits a span at UTC midnight. The table ends with a Total row
@@ -51,7 +51,7 @@ func newUsageCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "usage",
 		Short: "Show account-wide usage and cost",
-		Long: `Show GPU time and spend for the authenticated organisation over a time window.
+		Long: `Show GPU time and spend for the authenticated organization over a time window.
 
 ` + usageRulesLong,
 		Example: `  # last 24 hours, account-wide
@@ -92,7 +92,7 @@ func newAppsUsageCmd(logger *log.Logger) *cobra.Command {
 This is the account-wide report filtered to one appId. The filter narrows what
 is reported, not what is measured: commitment coverage depends on every app's
 concurrent GPUs, so a per-app split between commitment and PAYG reflects the
-organisation-wide allocation.
+organization-wide allocation.
 
 ` + usageRulesLong,
 		Example: `  # last 24 hours for one app
@@ -198,7 +198,7 @@ func usageParamsFromFlags(flags usageFlags, appID string, now time.Time) (*serve
 }
 
 // validateUsageAppID rejects a blank appId. An empty one drops the filter, and
-// the per-app command then reports the whole organisation.
+// the per-app command then reports the whole organization.
 func validateUsageAppID(appID string) error {
 	if strings.TrimSpace(appID) == "" {
 		return fmt.Errorf("appId is required")

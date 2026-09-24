@@ -9,7 +9,7 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-// Secret is organisation-scoped secret metadata. The encrypted value is never returned.
+// Secret is organization-scoped secret metadata. The encrypted value is never returned.
 type Secret = gen.Secret
 
 // SecretAttachment is a secret attached to an app. The encrypted value is never returned.
@@ -24,7 +24,7 @@ type SecretCreate = gen.SecretCreate
 // SecretUpdate is the request body for updateSecret.
 type SecretUpdate = gen.SecretUpdate
 
-// SecretType is the kind of organisation secret.
+// SecretType is the kind of organization secret.
 type SecretType = gen.SecretType
 
 // SecretTypeGeneric is the only supported secret type (environment-variable secrets).
@@ -36,7 +36,7 @@ type ListSecretsParams = gen.ListSecretsParams
 // ListAppSecretsParams are optional filters for ListAppSecrets.
 type ListAppSecretsParams = gen.ListAppSecretsParams
 
-// ListSecrets returns a page of organisation secret metadata.
+// ListSecrets returns a page of organization secret metadata.
 func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Page[Secret], error) {
 	if c.apiKey == "" {
 		return Page[Secret]{}, transport.ErrNoAPIKey
@@ -68,7 +68,7 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Pa
 	}
 }
 
-// CreateSecret creates an organisation-scoped secret. The value is encrypted at
+// CreateSecret creates an organization-scoped secret. The value is encrypted at
 // rest; the response is metadata only.
 func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, error) {
 	if c.apiKey == "" {
@@ -103,7 +103,7 @@ func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, 
 	}
 }
 
-// UpdateSecret replaces the value of an existing organisation secret and rolls
+// UpdateSecret replaces the value of an existing organization secret and rolls
 // every live deployment that attaches it.
 func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdate) (*Secret, error) {
 	if c.apiKey == "" {
@@ -138,7 +138,7 @@ func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdat
 	}
 }
 
-// DeleteSecret soft-deletes an organisation secret. Returns 409 while any
+// DeleteSecret soft-deletes an organization secret. Returns 409 while any
 // app still attaches it.
 func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 	if c.apiKey == "" {
@@ -204,7 +204,7 @@ func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListA
 	}
 }
 
-// AttachAppSecret records that an organisation secret is attached to an app
+// AttachAppSecret records that an organization secret is attached to an app
 // and rolls the live deployment so a running worker picks up the value.
 func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretAttach) error {
 	if c.apiKey == "" {
@@ -240,7 +240,7 @@ func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretA
 
 // DetachAppSecret removes a secret attachment from an app and rolls the live
 // deployment so a running worker stops receiving the value. It does not delete
-// the organisation secret.
+// the organization secret.
 func (c *Client) DetachAppSecret(ctx context.Context, appID, secretName string) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey

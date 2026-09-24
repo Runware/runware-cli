@@ -62,7 +62,7 @@ type StreamSender interface {
 }
 
 // DialContext dials a transport by scheme. scheme must be "ws" or "http"
-// (case-insensitive). Returns an error if the scheme is not recognised.
+// (case-insensitive). Returns an error if the scheme is not recognized.
 func DialContext(ctx context.Context, scheme, apiKey, url string, logger *slog.Logger) (Transport, error) {
 	switch strings.ToLower(scheme) {
 	case SchemeWS:

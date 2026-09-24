@@ -117,7 +117,7 @@ func emitRaw(format output.Format, parsed map[string]any) error {
 	return output.Print(format, jsonMapValue(parsed))
 }
 
-// jsonMapValue is a thin wrapper that makes map[string]any serialisable via output.Print.
+// jsonMapValue is a thin wrapper that makes map[string]any serializable via output.Print.
 type jsonMapValue map[string]any
 
 func (v jsonMapValue) MarshalJSON() ([]byte, error) { return json.Marshal(map[string]any(v)) }

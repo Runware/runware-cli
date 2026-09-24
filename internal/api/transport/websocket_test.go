@@ -143,7 +143,7 @@ func authErrorReply(t *testing.T, code, message string) []byte {
 	}})
 }
 
-// --- Existing tests (unchanged behaviour) ---
+// --- Existing tests (unchanged behavior) ---
 
 func TestWSTransport_ErrNoAPIKey(t *testing.T) {
 	_, err := DialWS(context.Background(), "", "ws://localhost", slog.Default())

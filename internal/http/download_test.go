@@ -79,7 +79,7 @@ func TestDownload_ContextAlreadyCancelled(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "out.mp4")
 	err := Download(ctx, srv.URL, dest, 5*time.Second)
 	if err == nil {
-		t.Fatal("expected error for cancelled context, got nil")
+		t.Fatal("expected error for canceled context, got nil")
 	}
 }
 

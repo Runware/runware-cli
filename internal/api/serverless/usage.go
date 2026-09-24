@@ -35,7 +35,7 @@ const (
 	UsageDimensionCoverage = gen.UsageDimensionCoverage
 )
 
-// GetUsageSummary returns GPU time and spend for the authenticated organisation
+// GetUsageSummary returns GPU time and spend for the authenticated organization
 // over a half-open window, grouped by the requested dimensions. The API derives
 // every figure on read; usage it cannot price fails the whole request rather
 // than being left out of the totals.

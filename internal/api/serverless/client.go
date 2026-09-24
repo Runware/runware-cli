@@ -34,7 +34,7 @@ const createAppTimeout = 5 * time.Minute
 // the same client task id is reused).
 const invokeSyncTimeout = 5 * time.Minute
 
-// GpuType is the public catalogue entry for a supported GPU type.
+// GpuType is the public catalog entry for a supported GPU type.
 type GpuType = gen.GpuType
 
 // App is a serverless application.
@@ -285,7 +285,7 @@ func (c *Client) innerWithTimeout(timeout time.Duration) *gen.ClientWithResponse
 	return newGeneratedClient(c.apiKey, c.baseURL, &cloned)
 }
 
-// ListGpuTypes returns the catalogue of supported GPU types and their pricing.
+// ListGpuTypes returns the catalog of supported GPU types and their pricing.
 func (c *Client) ListGpuTypes(ctx context.Context) ([]GpuType, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
@@ -349,7 +349,7 @@ func (c *Client) CreateApp(ctx context.Context, body AppCreate) (*App, error) {
 	}
 }
 
-// ListApps returns a page of apps for the authenticated organisation.
+// ListApps returns a page of apps for the authenticated organization.
 func (c *Client) ListApps(ctx context.Context, params *ListAppsParams) (Page[App], error) {
 	if c.apiKey == "" {
 		return Page[App]{}, transport.ErrNoAPIKey

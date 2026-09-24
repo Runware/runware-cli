@@ -178,7 +178,7 @@ func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.Raw
 // taskUUID is optional: supply it to use a specific identifier, or omit it to have one generated.
 //
 // For async delivery Run polls until a success result is received or the context
-// is cancelled. For sync delivery the submit response is returned directly.
+// is canceled. For sync delivery the submit response is returned directly.
 func (c *Client) Run(ctx context.Context, model string, args []string, opts RunOptions) ([]json.RawMessage, error) {
 	if model == "" {
 		return nil, ErrModelRequired
@@ -415,7 +415,7 @@ func uploadFailureMessage(status, message string) (string, bool) {
 // Poll polls for async task results using the getResponse task type.
 // It blocks until at least minResults items with status "success" have been
 // returned in a single poll cycle, a data item reports status "error", the
-// context is cancelled, or a fatal API/auth error occurs. minResults < 1 is
+// context is canceled, or a fatal API/auth error occurs. minResults < 1 is
 // treated as 1.
 //
 // onProgress is called with the reported progress percentage (0–100) each time

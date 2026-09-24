@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// gpuTypesResult wraps the GPU catalogue for display. JSON and YAML output the
+// gpuTypesResult wraps the GPU catalog for display. JSON and YAML output the
 // raw GpuType structs; the table renderer flattens them into columns.
 type gpuTypesResult []serverlessapi.GpuType
 

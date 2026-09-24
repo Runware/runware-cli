@@ -108,11 +108,11 @@ func TestFetchModelSchema_InvalidJSON(t *testing.T) {
 	}
 }
 
-// TestFetchModelSchema_ContextCancelled verifies that a cancelled context
+// TestFetchModelSchema_ContextCancelled verifies that a canceled context
 // causes the request to fail promptly.
 func TestFetchModelSchema_ContextCancelled(t *testing.T) {
 	_, base := schemaServer(t, func(w http.ResponseWriter, r *http.Request) {
-		// Handler intentionally does nothing; context will be cancelled before response.
+		// Handler intentionally does nothing; context will be canceled before response.
 		<-r.Context().Done()
 	})
 
@@ -121,6 +121,6 @@ func TestFetchModelSchema_ContextCancelled(t *testing.T) {
 
 	_, err := fetchModelSchema(ctx, "google:3@2", http.DefaultClient, base)
 	if err == nil {
-		t.Fatal("expected error from cancelled context, got nil")
+		t.Fatal("expected error from canceled context, got nil")
 	}
 }
