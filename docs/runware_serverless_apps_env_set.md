@@ -20,8 +20,7 @@ or resume rollout is already in progress, and does not store the change.
 A change records a new version with the same image and rolls the workload when
 the app is active, initializing, or failed and its image is deployable. A
 stopped or stopping app applies it on resume. An unchanged value records no
-version. A write during an in-flight rollout returns 409 and does not store
-the value.
+version.
 
 The server rejects (HTTP 422) reserved platform names, names that collide
 with an attached secret's injected env var, and adding a binding past the
