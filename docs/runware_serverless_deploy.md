@@ -29,7 +29,8 @@ builds a hosted wrapper image from that archive; the version records a buildId,
 not a customer image reference. Invalid container.yaml is rejected on create
 (400 if it cannot be parsed, 422 if it breaks a rule). The app stays
 initializing until that first build rolls out. Pass --wait to poll until the
-application is active or failed. A successful wait is not a live worker:
+application is active or failed, and --timeout to bound that wait. A successful
+wait is not a live worker:
 minWorkers=0 stays scaled to zero until the first invoke.
 
 --container cannot be combined with an entry file, --src-dir, --base-image, or
@@ -112,7 +113,7 @@ runware serverless deploy [file] [flags]
   runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper
 
   # wait until the first rollout is active or failed
-  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait
+  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait --timeout 10m
 ```
 
 ### Options
@@ -138,6 +139,7 @@ runware serverless deploy [file] [flags]
       --scaling-delay int32           Scaling delay in seconds (default 10)
       --secret stringArray            Organisation secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)
       --src-dir string                Directory to package as the application source (default: the working directory; code deploys only)
+      --timeout duration              Maximum time to wait (0 = no limit)
       --volume stringArray            Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)
       --wait                          Poll until the application is active or failed
 ```

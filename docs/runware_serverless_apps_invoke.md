@@ -10,7 +10,8 @@ endpointPath is a bare lowercase segment as returned by apps endpoints
 (e.g. infer). A leading slash is rejected.
 
 The default is async: the command prints the accepted task id. Pass --wait
-to poll until the task is completed or failed.
+to poll until the task is completed or failed, and --timeout to bound that
+wait.
 
 --sync uses the sync invocation endpoint. If the platform wait window
 expires, the command polls the returned task id; it never treats expiry as
@@ -35,7 +36,7 @@ runware serverless apps invoke <appId> <endpointPath> [flags]
   runware serverless apps invoke my-app infer --sync -f payload.json
 
   # async invoke and poll
-  runware serverless apps invoke my-app infer --wait -f payload.json
+  runware serverless apps invoke my-app infer --wait --timeout 2m -f payload.json
 
   # retry a lost response without starting a second task
   runware serverless apps invoke my-app infer --task-id 7c9e6679-7425-40de-944b-e07fc1f90ae7 -f payload.json
@@ -49,6 +50,7 @@ runware serverless apps invoke <appId> <endpointPath> [flags]
       --poll-interval duration   Polling interval when waiting for a task (default 2s)
       --sync                     Use sync invocation and wait for a terminal task
       --task-id string           Client task id (UUID); generated if omitted
+      --timeout duration         Maximum time to wait (0 = no limit)
       --wait                     Poll until the task is completed or failed
 ```
 

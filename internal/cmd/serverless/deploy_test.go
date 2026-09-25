@@ -203,6 +203,9 @@ func TestNewDeployCmd_RegistersContainerFlag(t *testing.T) {
 	if cmd.Flags().Lookup("poll-interval") == nil {
 		t.Fatal("deploy is missing --poll-interval")
 	}
+	if cmd.Flags().Lookup("timeout") == nil {
+		t.Fatal("deploy is missing --timeout")
+	}
 	if cmd.Use != "deploy [file]" {
 		t.Errorf("Use = %q, want deploy [file]", cmd.Use)
 	}
