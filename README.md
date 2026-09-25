@@ -163,11 +163,12 @@ runware serverless apps events my-app
 runware serverless usage --for this-month --group-by app,day
 runware serverless apps usage my-app --for this-month
 
-# Environment, secrets, and scale
+# Environment, secrets, scale, and rename
 runware serverless apps env set my-app MY_KEY --value-file ./value.txt
 runware serverless secrets set FOO --value-file ./foo.txt
 runware serverless secrets attach my-app FOO
 runware serverless apps scale my-app --max-workers 2
+runware serverless apps rename my-app "Image generator"
 
 # Lifecycle
 runware serverless apps stop my-app
@@ -175,7 +176,7 @@ runware serverless apps resume my-app
 runware serverless open my-app
 ```
 
-`--volume`, `--env`, `--env-file`, and `--name` apply on create only. Change `--gpu-type` and other worker settings with `apps scale`, and environment with `apps env`. An environment change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
+`--volume`, `--env`, `--env-file`, and `--name` apply on create only. Change `--gpu-type` and other worker settings with `apps scale`, environment with `apps env`, and the display name with `apps rename`. An environment change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
 
 `.env` files are never packed into the source archive. Prefer `--env-file` and `secrets set --value-file` so values stay out of the process list.
 
