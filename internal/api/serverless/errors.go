@@ -29,8 +29,8 @@ func problemToError(p *gen.ProblemDetails, statusCode int) error {
 		if extra := formatProblemErrors(p.Errors); extra != "" {
 			msg = msg + "\n" + extra
 		}
-		if p.Shortfall != nil && *p.Shortfall != "" {
-			msg = msg + "\n  shortfall: " + *p.Shortfall
+		if shortfall := formatShortfall(p.Shortfall); shortfall != "" {
+			msg = msg + "\n  shortfall: " + shortfall
 		}
 	}
 	return transport.CreateRunwareError(
@@ -58,6 +58,16 @@ func formatProblemErrors(errors *[]gen.ProblemError) string {
 	return strings.Join(lines, "\n")
 }
 
+func formatShortfall(amount *gen.MoneyAmount) string {
+	if amount == nil || amount.Amount == "" {
+		return ""
+	}
+	if amount.Currency == "" {
+		return amount.Amount
+	}
+	return amount.Amount + " " + string(amount.Currency)
+}
+
 // problemFromBody attempts to decode an RFC 9457 ProblemDetails from a response
 // body when the generated client did not bind a typed problem for this status.
 // Falls back to a status-only error when the body is empty or not a problem.
@@ -72,7 +82,7 @@ func problemFromBody(body []byte, statusCode int) error {
 }
 
 func isProblemDetails(p gen.ProblemDetails) bool {
-	return p.Title != "" || p.Type != "" || p.Status != 0 || (p.Detail != nil && *p.Detail != "") || (p.Errors != nil && len(*p.Errors) > 0) || (p.Shortfall != nil && *p.Shortfall != "")
+	return p.Title != "" || p.Type != "" || p.Status != 0 || (p.Detail != nil && *p.Detail != "") || (p.Errors != nil && len(*p.Errors) > 0) || (p.Shortfall != nil && p.Shortfall.Amount != "")
 }
 
 // rawCodeForStatus maps an HTTP status to a raw error code string that

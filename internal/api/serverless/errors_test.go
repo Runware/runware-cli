@@ -40,13 +40,15 @@ func TestProblemToError_IncludesValidationErrors(t *testing.T) {
 }
 
 func TestProblemToError_PaymentRequiredIncludesShortfall(t *testing.T) {
-	detail := "Organization credit cannot cover the requested capacity"
-	shortfall := "12.50"
+	detail := "available credit cannot cover the requested capacity"
 	p := &gen.ProblemDetails{
-		Title:     "Payment Required",
-		Status:    402,
-		Detail:    &detail,
-		Shortfall: &shortfall,
+		Title:  "Payment Required",
+		Status: 402,
+		Detail: &detail,
+		Shortfall: &gen.MoneyAmount{
+			Amount:   "12.50",
+			Currency: gen.USD,
+		},
 	}
 
 	err := problemToError(p, http.StatusPaymentRequired)
@@ -63,7 +65,7 @@ func TestProblemToError_PaymentRequiredIncludesShortfall(t *testing.T) {
 	if !strings.Contains(re.Message, detail) {
 		t.Errorf("missing problem detail: %q", re.Message)
 	}
-	if !strings.Contains(re.Message, "shortfall: 12.50") {
+	if !strings.Contains(re.Message, "shortfall: 12.50 USD") {
 		t.Errorf("missing shortfall: %q", re.Message)
 	}
 }
