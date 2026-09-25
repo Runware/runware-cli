@@ -438,7 +438,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--fallback-gpu-type", "l40s"}, wantErr: scaleHint},
 		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
 		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
-		{flags: []string{"--name", "My App"}, wantErr: "omit it"},
+		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
 		{flags: []string{"--requirement", testPipPackage}},
 		{flags: []string{"--base-image", "python:3.12-slim"}},
 		{flags: []string{testSrcDirFlag, "."}},
