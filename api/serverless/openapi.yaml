@@ -4854,10 +4854,9 @@ components:
         endpointPath:
           $ref: '#/components/schemas/EndpointPath'
         output:
-          type: object
-          additionalProperties: true
-          nullable: true
-          description: Inference result payload on success; null otherwise.
+          description: >
+            Inference result payload on success; null otherwise. May be any JSON
+            value, including an object, array, string, number, boolean, or null.
         error:
           type: string
           nullable: true

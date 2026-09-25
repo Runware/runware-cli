@@ -1551,9 +1551,9 @@ type Task struct {
 	// Id Task identifier, supplied by the caller when the task was submitted.
 	Id string `json:"id"`
 
-	// Output Inference result payload on success; null otherwise.
-	Output *map[string]interface{} `json:"output,omitempty"`
-	Status TaskStatus              `json:"status"`
+	// Output Inference result payload on success; null otherwise. May be any JSON value, including an object, array, string, number, boolean, or null.
+	Output interface{} `json:"output,omitempty"`
+	Status TaskStatus  `json:"status"`
 }
 
 // TaskId Client-generated task identifier, canonical lowercase UUID. One id is one task: resubmitting it is answered with the task it already names rather than starting a second, so a request whose response was lost can be sent again without paying for the work twice. Reusing an id for a different request returns the first task, so the id is the caller's to keep unique.
