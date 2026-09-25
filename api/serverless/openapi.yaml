@@ -5256,12 +5256,15 @@ components:
           items:
             $ref: '#/components/schemas/ProblemError'
         shortfall:
-          type: string
+          # allOf so the description is not a sibling of $ref (ignored in OAS 3.0).
+          allOf:
+            - $ref: '#/components/schemas/MoneyAmount'
           description: >
-            Extension member. Present on `402` credit refusals. The amount of
-            credit to add before retrying the same request. Units match the
-            platform credit display.
-          example: "12.50"
+            Extension member. Present on an `insufficient-credit` or a
+            `credit-suspended` problem (`402`): the amount to add to the
+            organization's balance before retrying. The request is unchanged by
+            the refusal and succeeds as sent once the credit is there. Read this
+            rather than parsing `detail`.
 
     ProblemError:
       type: object

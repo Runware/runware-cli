@@ -201,6 +201,62 @@ func TestCreateApp(t *testing.T) {
 	}
 }
 
+func TestCreateApp_PaymentRequiredReportsTheCreditRefusal(t *testing.T) {
+	t.Run("insufficient credit", func(t *testing.T) {
+		assertCreateAppPaymentRequired(t, "available credit cannot cover the requested capacity", `{
+			"type":"https://docs.runware.ai/serverless/errors#insufficient-credit",
+			"title":"Payment Required",
+			"status":402,
+			"detail":"available credit cannot cover the requested capacity",
+			"shortfall":{"amount":"12.50","currency":"USD"}
+		}`)
+	})
+	t.Run("suspended credit", func(t *testing.T) {
+		assertCreateAppPaymentRequired(t, "credit is suspended until the balance is funded back", `{
+			"type":"https://docs.runware.ai/serverless/errors#credit-suspended",
+			"title":"Payment Required",
+			"status":402,
+			"detail":"credit is suspended until the balance is funded back",
+			"shortfall":{"amount":"12.50","currency":"USD"}
+		}`)
+	})
+}
+
+func assertCreateAppPaymentRequired(t *testing.T, detail, body string) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusPaymentRequired)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.CreateApp(context.Background(), AppCreate{
+		AppId:   testAppID,
+		AppName: "My App",
+		Configuration: WorkerConfigCreate{
+			GpuType:          testGPUType,
+			MaxWorkers:       1,
+			IdleTtlSecs:      60,
+			ScalingDelaySecs: 10,
+		},
+	})
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.Code != transport.CodeQuota {
+		t.Errorf("expected CodeQuota, got %v", re.Code)
+	}
+	if !strings.Contains(re.Message, detail) {
+		t.Errorf("missing problem detail: %q", re.Message)
+	}
+	if !strings.Contains(re.Message, "shortfall: 12.50 USD") {
+		t.Errorf("missing shortfall: %q", re.Message)
+	}
+}
+
 func TestCreateApp_Conflict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
