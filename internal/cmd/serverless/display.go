@@ -345,7 +345,7 @@ func (r taskResult) Rows() [][]any {
 		{colError, formatOptionalString(r.Error)},
 	}
 	if r.Output != nil {
-		rows = append(rows, []any{"Output", formatJSONValue(*r.Output)})
+		rows = append(rows, []any{"Output", formatJSONValue(r.Output)})
 	}
 	return rows
 }
