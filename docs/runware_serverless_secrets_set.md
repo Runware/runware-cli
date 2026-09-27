@@ -1,10 +1,10 @@
 ## runware serverless secrets set
 
-Create or update an organisation secret
+Create or update an organization secret
 
 ### Synopsis
 
-Create an organisation-scoped secret, or update its value if the name already exists.
+Create an organization-scoped secret, or update its value if the name already exists.
 
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
@@ -51,5 +51,5 @@ runware serverless secrets set <name> [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organisation secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
 

@@ -57,7 +57,7 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
---secret NAME, or NAME=ENV_VAR, attaches an existing organisation secret at
+--secret NAME, or NAME=ENV_VAR, attaches an existing organization secret at
 create so the first rollout carries it. Repeat the flag for more than one.
 Attach or detach later with 'secrets attach' and 'secrets detach'.
 
@@ -136,7 +136,7 @@ runware serverless deploy [file] [flags]
       --poll-interval duration        Polling interval when waiting for the application (default 2s)
       --requirement stringArray       Additional pip package to install (repeatable; code deploys only)
       --scaling-delay int32           Scaling delay in seconds (default 10)
-      --secret stringArray            Organisation secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)
+      --secret stringArray            Organization secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)
       --src-dir string                Directory to package as the application source (default: the working directory; code deploys only)
       --volume stringArray            Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)
       --wait                          Poll until the application is active or failed

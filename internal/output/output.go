@@ -14,7 +14,7 @@ const (
 	FormatYAML  Format = "yaml"
 )
 
-// ValidFormats returns the list of recognised output format names.
+// ValidFormats returns the list of recognized output format names.
 func ValidFormats() []string {
 	return []string{
 		string(FormatTable),
@@ -23,7 +23,7 @@ func ValidFormats() []string {
 	}
 }
 
-// ValidFormat reports whether s is a recognised output format name.
+// ValidFormat reports whether s is a recognized output format name.
 func ValidFormat(s string) bool {
 	switch Format(strings.ToLower(s)) {
 	case FormatTable, FormatJSON, FormatYAML:
@@ -47,7 +47,7 @@ func ParseFormat(s string) Format {
 
 // Tabular is implemented by result types that know how to render themselves
 // as a table. Print uses this when the format is table; the same value is
-// serialised directly for JSON/YAML.
+// serialized directly for JSON/YAML.
 type Tabular interface {
 	Headers() []string
 	Rows() [][]any

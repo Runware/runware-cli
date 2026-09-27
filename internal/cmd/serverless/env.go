@@ -22,7 +22,7 @@ func newAppsEnvCmd(logger *log.Logger) *cobra.Command {
 	cmd := stubGroup("env", "Manage plain-text environment variables for an application")
 	cmd.Long = `Manage plain-text environment variables on a serverless application.
 
-These are not organisation secrets. Values are returned by list and set.
+These are not organization secrets. Values are returned by list and set.
 Use 'serverless secrets' for encrypted secrets attached as env vars.`
 	cmd.AddCommand(
 		newAppsEnvListCmd(logger),

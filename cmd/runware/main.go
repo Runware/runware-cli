@@ -31,7 +31,7 @@ func main() {
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	// Once the first signal has cancelled the context, hand the signals back so
+	// Once the first signal has canceled the context, hand the signals back so
 	// a second Ctrl-C kills a command that does not stop on its own.
 	go func() {
 		<-ctx.Done()

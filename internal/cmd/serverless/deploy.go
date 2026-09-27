@@ -196,7 +196,7 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
---secret NAME, or NAME=ENV_VAR, attaches an existing organisation secret at
+--secret NAME, or NAME=ENV_VAR, attaches an existing organization secret at
 create so the first rollout carries it. Repeat the flag for more than one.
 Attach or detach later with 'secrets attach' and 'secrets detach'.
 
@@ -415,7 +415,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
 	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
-	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Organisation secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
+	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Organization secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, "env", nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")

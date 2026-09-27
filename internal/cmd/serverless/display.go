@@ -456,7 +456,7 @@ func (r buildResult) Rows() [][]any {
 	}
 }
 
-// buildDeletedResult is the success payload for deleting or cancelling a build.
+// buildDeletedResult is the success payload for deleting or canceling a build.
 type buildDeletedResult struct {
 	AppID   string `json:"appId" yaml:"appId"`
 	BuildID string `json:"buildId" yaml:"buildId"`
@@ -491,8 +491,8 @@ func formatOptionalUUID(id *uuid.UUID) string {
 	return id.String()
 }
 
-// secretResult wraps a single organisation secret for table/json/yaml display.
-// JSON/YAML serialise the API Secret (metadata only; no value).
+// secretResult wraps a single organization secret for table/json/yaml display.
+// JSON/YAML serialize the API Secret (metadata only; no value).
 type secretResult serverlessapi.Secret
 
 func (r secretResult) Headers() []string {
@@ -507,7 +507,7 @@ func (r secretResult) Rows() [][]any {
 	}}
 }
 
-// secretsResult wraps an organisation secret list for table display.
+// secretsResult wraps an organization secret list for table display.
 type secretsResult []serverlessapi.Secret
 
 func (r secretsResult) Headers() []string {
@@ -548,7 +548,7 @@ func (r secretAttachmentsResult) Rows() [][]any {
 	return rows
 }
 
-// secretRemovedResult is the success payload for removing an organisation secret.
+// secretRemovedResult is the success payload for removing an organization secret.
 type secretRemovedResult struct {
 	Name string `json:"name" yaml:"name"`
 }

@@ -1242,7 +1242,7 @@ func TestNode_UnmarshalJSON_StringTypeNull(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if node.Type != "" {
-		t.Errorf("string null should normalise to empty, got %q", node.Type)
+		t.Errorf("string null should normalize to empty, got %q", node.Type)
 	}
 }
 

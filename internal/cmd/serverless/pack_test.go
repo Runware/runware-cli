@@ -706,7 +706,7 @@ func TestPackDirectory_IgnorePatternsAreNotTrimmed(t *testing.T) {
 		t.Fatalf("packDirectory: %v", err)
 	}
 	packed := unpack(t, encoded)
-	// A CRLF file must still work: only the CR is normalised.
+	// A CRLF file must still work: only the CR is normalized.
 	if _, ok := packed["drop.txt"]; ok {
 		t.Errorf("a CRLF ignore line was not honoured; archive = %v", names(packed))
 	}

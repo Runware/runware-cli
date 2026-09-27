@@ -10,7 +10,7 @@ info:
   description: >
     Control plane and task-ingestion API for the Runware Serverless platform.
 
-    A Runware organisation is the tenant boundary. Apps are addressed as
+    A Runware organization is the tenant boundary. Apps are addressed as
     `/v1/apps/{appId}` and endpoints are invoked as
     `/v1/apps/{appId}/invoke-async/{endpointPath}` (async invocation) or
     `/v1/apps/{appId}/invoke-sync/{endpointPath}` (sync invocation).
@@ -18,10 +18,10 @@ info:
 
     Two authentication schemes are accepted, both as bearer tokens. A Runware API key
     (CLI and SDK) is validated against the existing Runware platform server-to-server; the
-    key identifies the organisation. An org-scoped JWT (web app) is minted by the Runware
-    platform for one user acting in one organisation and verified locally against the
+    key identifies the organization. An org-scoped JWT (web app) is minted by the Runware
+    platform for one user acting in one organization and verified locally against the
     platform's published JWKS. Resources are always scoped to the authenticated
-    organisation, whichever scheme carried it. Task ingestion and task reads accept both
+    organization, whichever scheme carried it. Task ingestion and task reads accept both
     schemes too.
 
 security:
@@ -44,11 +44,11 @@ tags:
   - name: Endpoints
     description: Named endpoints exposed by an app
   - name: Compute
-    description: Compute hardware catalogues (GPU types) and pricing
+    description: Compute hardware catalogs (GPU types) and pricing
   - name: Workers
     description: Running worker instances (read-only runtime state)
   - name: Secrets
-    description: Organisation-scoped encrypted secrets
+    description: Organization-scoped encrypted secrets
   - name: EnvironmentVariables
     description: Plain-text environment variables scoped to an app
   - name: Observability
@@ -56,7 +56,7 @@ tags:
 
 paths:
   # ---------------------------------------------------------------------------
-  # Compute (GPU catalogue)
+  # Compute (GPU catalog)
   # ---------------------------------------------------------------------------
   /v1/gpu-types:
     get:
@@ -64,15 +64,15 @@ paths:
         - Compute
       summary: List supported GPU types and their pricing
       description: >
-         Returns the global GPU type catalogue and pricing. The request requires authentication.
+         Returns the global GPU type catalog and pricing. The request requires authentication.
          Customer principals receive only GPU types with capacity currently offered to customers;
          a type whose hardware is not yet cleared for customer workloads is omitted. The Runware
-         principal receives the full catalogue, including retired types and types not yet offered.
+         principal receives the full catalog, including retired types and types not yet offered.
          Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
       operationId: listGpuTypes
       responses:
         '200':
-          description: GPU type catalogue
+          description: GPU type catalog
           content:
             application/json:
               schema:
@@ -88,10 +88,10 @@ paths:
     get:
       tags:
         - Compute
-      summary: Get a GPU type from the catalogue
+      summary: Get a GPU type from the catalog
       description: >
-        Returns an active entry from the global GPU type catalogue. Retired entries return `404`.
-        The result is not organisation-specific, but the request still requires authentication.
+        Returns an active entry from the global GPU type catalog. Retired entries return `404`.
+        The result is not organization-specific, but the request still requires authentication.
       operationId: getGpuType
       parameters:
         - $ref: '#/components/parameters/GpuTypeId'
@@ -133,9 +133,9 @@ paths:
         `409 Conflict`, and an `active` app the platform has observed to have no workload
         able to serve returns `503 Service Unavailable` with no task minted. `stopped`,
         `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return
-        `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no
+        `404 Not Found`. An organization whose serverless tenancy is revoked, or has no
         tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app
-        that does not exist. An organisation whose tenancy is still being provisioned
+        that does not exist. An organization whose tenancy is still being provisioned
         returns `503 Service Unavailable` instead — that state is retryable, not a
         revocation, and clears once provisioning finishes.
         Endpoint membership is checked against the active version's endpoint set before
@@ -187,9 +187,9 @@ paths:
         `409 Conflict`, and an `active` app the platform has observed to have no workload
         able to serve returns `503 Service Unavailable` with no task minted. `stopped`,
         `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return
-        `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no
+        `404 Not Found`. An organization whose serverless tenancy is revoked, or has no
         tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app
-        that does not exist. An organisation whose tenancy is still being provisioned
+        that does not exist. An organization whose tenancy is still being provisioned
         returns `503 Service Unavailable` instead — that state is retryable, not a
         revocation, and clears once provisioning finishes. Endpoint
         membership is checked against the active version's endpoint set before the task
@@ -318,9 +318,9 @@ paths:
         - Apps
       summary: List apps
       description: >
-        Returns a page of the organisation's apps. Filters combine with AND; soft-deleted
-        apps are excluded unless `status=deleted` is requested explicitly. Favourited apps
-        appear before non-favourited apps, with the selected ordering applied within each group.
+        Returns a page of the organization's apps. Filters combine with AND; soft-deleted
+        apps are excluded unless `status=deleted` is requested explicitly. Favorited apps
+        appear before non-favorited apps, with the selected ordering applied within each group.
 
 
         A `cursor` is only valid for the `sort` and filters it was issued under — reusing one
@@ -411,10 +411,10 @@ paths:
         and only a finished deploy says what does.
 
 
-        `secrets` attaches organisation secrets that already exist. It is the app's initial
+        `secrets` attaches organization secrets that already exist. It is the app's initial
         attachment set, so the first rollout carries their values into the worker. This
         route does not create a secret — use `POST /v1/secrets` first. A name that is
-        unknown to the organisation, or that is not `active`, returns `404`. A name that
+        unknown to the organization, or that is not `active`, returns `404`. A name that
         collides with a key in `environmentVariables`, a repeated name and a set that goes
         past the binding limit each return `422`. The whole set is checked before any build
         capacity is spent.
@@ -455,7 +455,7 @@ paths:
         - Apps
       summary: Get an app
       description: >
-        Returns the app the authenticated organisation owns under this `appId`. An unknown
+        Returns the app the authenticated organization owns under this `appId`. An unknown
         app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to
         its owner, and its rows are retained only for billing and audit. To read deleted
         apps, list them with `status=deleted`.
@@ -567,10 +567,10 @@ paths:
       summary: Delete an app
       description: >
         Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted.
-        Router removal, cancelling in-progress builds, and worker drain
+        Router removal, canceling in-progress builds, and worker drain
         (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler;
         `status` becomes `deleted` once all workers stop. All rows are retained for billing
-        finalisation, audit, and usage history. Idempotent if the app is already
+        finalization, audit, and usage history. Idempotent if the app is already
         `deleting`.
 
 
@@ -784,7 +784,7 @@ paths:
       summary: Deploy a version
       description: >
         Activates a `ready` version by number, setting `activeVersionId` and returning `202`
-        once that intent is persisted. Worker rollout, routing switch, and cancelling
+        once that intent is persisted. Worker rollout, routing switch, and canceling
         in-progress builds (`superseded`) are performed asynchronously
         by the deployer/Scaler. Permitted in any addressable status, including `initializing`
         and `failed`.
@@ -917,23 +917,23 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
-  /v1/apps/{appId}/favourite:
+  /v1/apps/{appId}/favorite:
     put:
       tags:
         - Apps
-      summary: Favourite an app
+      summary: Favorite an app
       description: >
-        Pins the app as a favourite for the authenticated organisation so the console
-        can surface it in a Favourites section. Idempotent: favouriting an already-favourited
-        app succeeds and returns the app with `isFavourite: true`. Apps
-        in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any
+        Pins the app as a favorite for the authenticated organization so the console
+        can surface it in a Favorites section. Idempotent: favoriting an already-favorited
+        app succeeds and returns the app with `isFavorite: true`. Apps
+        in `deleting` or `deleted` status cannot be favorited (`404`). Soft-delete clears any
         existing pin when status becomes `deleting`.
-      operationId: favouriteApp
+      operationId: favoriteApp
       parameters:
         - $ref: '#/components/parameters/AppId'
       responses:
         '200':
-          description: App is favourited
+          description: App is favorited
           content:
             application/json:
               schema:
@@ -949,18 +949,18 @@ paths:
     delete:
       tags:
         - Apps
-      summary: Unfavourite an app
+      summary: Unfavorite an app
       description: >
-        Removes the organisation favourite pin from the app. Idempotent: unfavouriting
-        an app that is not favourited succeeds and returns the app with
-        `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning
+        Removes the organization favorite pin from the app. Idempotent: unfavoriting
+        an app that is not favorited succeeds and returns the app with
+        `isFavorite: false`. Valid in any status including `deleting` and `deleted` — unpinning
         is not an app lifecycle mutation. Missing apps return `404`.
-      operationId: unfavouriteApp
+      operationId: unfavoriteApp
       parameters:
         - $ref: '#/components/parameters/AppId'
       responses:
         '200':
-          description: App is not favourited
+          description: App is not favorited
           content:
             application/json:
               schema:
@@ -978,9 +978,9 @@ paths:
     get:
       tags:
         - Apps
-      summary: App summary metrics for the authenticated organisation
+      summary: App summary metrics for the authenticated organization
       description: >
-        Aggregate dashboard metrics across all apps owned by the authenticated organisation.
+        Aggregate dashboard metrics across all apps owned by the authenticated organization.
         App and worker tallies are always present. Request and error-rate totals come from
         the metrics store and are omitted when that hop cannot answer rather than reported
         as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot
@@ -1081,7 +1081,7 @@ paths:
       description: >
         Cancels a queued or running build and records it as `superseded`. Deleting
         a queued or running build ends its current rollout without activating the
-        cancelled build, so any previous version keeps serving. A terminal build can
+        canceled build, so any previous version keeps serving. A terminal build can
         be deleted once no live rollout still needs it. Ready builds remain while a
         version references them.
       operationId: deleteBuild
@@ -1095,7 +1095,7 @@ paths:
             format: uuid
       responses:
         '204':
-          description: Build cancelled or deleted
+          description: Build canceled or deleted
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1436,7 +1436,7 @@ paths:
           $ref: '#/components/responses/ValidationError'
 
   # ---------------------------------------------------------------------------
-  # Secrets (organisation-scoped)
+  # Secrets (organization-scoped)
   # ---------------------------------------------------------------------------
   /v1/secrets:
     get:
@@ -1450,7 +1450,7 @@ paths:
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: A page of the authenticated organisation's secrets
+          description: A page of the authenticated organization's secrets
           content:
             application/json:
               schema:
@@ -1477,7 +1477,7 @@ paths:
         - Secrets
       summary: Create a secret
       description: >
-        Creates an organisation-scoped secret. Returns `409` if the name is
+        Creates an organization-scoped secret. Returns `409` if the name is
         already in use — including when a secret of that name is
         `pending_destroy`. List only shows active secrets, so a name can appear
         free while create still conflicts for as long as that row remains.
@@ -1486,10 +1486,10 @@ paths:
         there is no deadline on that wait, so a continuously busy app can hold
         a name for as long as it runs. Recreate-while-deleting may later
         reuse the pending row with the new value (same name, new ciphertext).
-        An organisation whose serverless tenancy is revoked, or has no
-        tenancy receipt at all, returns `403 Forbidden` — the per-organisation
+        An organization whose serverless tenancy is revoked, or has no
+        tenancy receipt at all, returns `403 Forbidden` — the per-organization
         CryptoKey that seals the value is only minted when the tenancy is
-        active. An organisation whose tenancy is still being provisioned
+        active. An organization whose tenancy is still being provisioned
         returns `503 Service Unavailable` instead — that state is retryable,
         not a revocation, and clears once provisioning finishes.
       operationId: createSecret
@@ -1531,10 +1531,10 @@ paths:
         when this commits, this change is not guaranteed to land on it —
         it reaches the worker on a later redeploy instead. A deployment
         that is not live picks it up on its next deploy for another reason.
-        An organisation whose serverless tenancy is revoked, or has no
-        tenancy receipt at all, returns `403 Forbidden` — the per-organisation
+        An organization whose serverless tenancy is revoked, or has no
+        tenancy receipt at all, returns `403 Forbidden` — the per-organization
         CryptoKey that seals the value is only minted when the tenancy is
-        active. An organisation whose tenancy is still being provisioned
+        active. An organization whose tenancy is still being provisioned
         returns `503 Service Unavailable` instead — that state is retryable,
         not a revocation, and clears once provisioning finishes.
       operationId: updateSecret
@@ -1649,7 +1649,7 @@ paths:
         - Secrets
       summary: Attach a secret to an app
       description: >
-        Records that an organisation secret is attached to an app under a
+        Records that an organization secret is attached to an app under a
         resolved env-var name, and rolls the app's live deployment in place
         so a running worker picks up the value without waiting for an
         unrelated deploy. If a rollout is already in progress when this
@@ -1792,7 +1792,7 @@ paths:
 
         A write while a rollout of this app is still in flight returns
         `409 Conflict` and does not store the value. Each changing write is
-        serialised behind that rollout, so setting several variables one at a
+        serialized behind that rollout, so setting several variables one at a
         time is that many sequential rolls with `409`s between them. Replace the
         whole set in one request with `PATCH /v1/apps/{appId}`
         `environmentVariables`.
@@ -2032,14 +2032,14 @@ paths:
     get:
       tags:
         - Observability
-      summary: Summarise usage over a time range
+      summary: Summarize usage over a time range
       description: >
-        GPU time and spend for the authenticated organisation, aggregated over a
+        GPU time and spend for the authenticated organization, aggregated over a
         half-open window and grouped by the dimensions asked for.
 
 
         Every figure is derived on read from the immutable usage ledger, the
-        effective-dated price catalogue and the organisation's capacity commitments.
+        effective-dated price catalog and the organization's capacity commitments.
         Two consequences follow. The window is bounded, because the read folds every
         event of every worker in it. And a worker whose recorded life cannot be
         priced fails the request rather than being left out of the totals, because a
@@ -2048,11 +2048,11 @@ paths:
 
 
         `paygSpend` is provisional pay-as-you-go accrual, not a settled charge.
-        It excludes whole-second finalisation rounding and ledger adjustments.
+        It excludes whole-second finalization rounding and ledger adjustments.
         `paygEquivalentValue` prices the
-        same time at the catalogue rate whatever covered it, so the difference between
+        same time at the catalog rate whatever covered it, so the difference between
         them is what a capacity commitment saved. While commitment coverage is not yet
-        applied by settlement, an organisation holding a commitment sees a split here
+        applied by settlement, an organization holding a commitment sees a split here
         that the credit ledger has not yet applied.
       operationId: getUsageSummary
       parameters:
@@ -2090,7 +2090,7 @@ paths:
           description: >
             Report only usage of this GPU type. A retired type is accepted, because
             usage recorded before it was withdrawn is still reportable. A type the
-            catalogue has never carried returns `422`.
+            catalog has never carried returns `422`.
           schema:
             $ref: '#/components/schemas/GpuTypeId'
         - name: groupBy
@@ -2134,7 +2134,7 @@ paths:
         - Observability
       summary: Report reserved capacity and its use
       description: >
-        What the authenticated organisation has reserved, what it is using of it now,
+        What the authenticated organization has reserved, what it is using of it now,
         and what overflowed to pay-as-you-go.
 
 
@@ -2212,7 +2212,7 @@ paths:
   # cannot ask for another organization's data by naming it.
   #
   # Nothing on these routes accepts a query expression or a label matcher. A caller
-  # names a query from the catalogue and narrows it with selectors from a closed set;
+  # names a query from the catalog and narrows it with selectors from a closed set;
   # how that becomes a read is decided downstream (ADR-023).
   # ---------------------------------------------------------------------------
   /v1/metrics/queries:
@@ -2221,7 +2221,7 @@ paths:
         - Observability
       summary: List the metric and log queries this build can answer
       description: >
-        The catalogue: every named query, its unit and aggregation, the selectors it
+        The catalog: every named query, its unit and aggregation, the selectors it
         accepts, the series it returns, and the windows actually backed by stored series.
 
 
@@ -2232,11 +2232,11 @@ paths:
       operationId: listInsightsQueries
       responses:
         '200':
-          description: The catalogue for this build
+          description: The catalog for this build
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QueryCatalogue'
+                $ref: '#/components/schemas/QueryCatalog'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2290,7 +2290,7 @@ paths:
         `endpoints_latency_p99`, `endpoints_error_volume` and
         `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those
         feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the
-        catalogue. Other queries reject `endpointId`. Other windows are not
+        catalog. Other queries reject `endpointId`. Other windows are not
         available for these queries.
 
 
@@ -2350,12 +2350,12 @@ paths:
       summary: Read one page of a named log query
       description: >
         Returns one page of log entries in the requested `sort` order, newest first by
-        default, with opaque cursors for the neighbouring pages when they exist.
+        default, with opaque cursors for the neighboring pages when they exist.
         `nextCursor` continues in the `sort` order and `prevCursor` goes back against it,
         so a client can walk a window in either direction from either end. A cursor is only
         valid for the `sort` it was issued under; reusing one under the other ordering
         returns `400`. Query ids and their supported selectors are listed by the insights
-        catalogue.
+        catalog.
       operationId: getLogEntries
       parameters:
         - $ref: '#/components/parameters/QueryId'
@@ -2443,14 +2443,14 @@ components:
       scheme: bearer
       description: >
         Runware API key supplied as a bearer token. Validated server-to-server against the
-        existing Runware platform; the key identifies the organisation.
+        existing Runware platform; the key identifies the organization.
     OrgJwtAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: >
         Org-scoped JWT supplied as a bearer token, minted by the Runware platform for one
-        user acting in one organisation and verified locally against the platform's
+        user acting in one organization and verified locally against the platform's
         published JWKS. Serves the web app; the CLI and SDK use ApiKeyAuth.
 
   parameters:
@@ -2459,7 +2459,7 @@ components:
       in: path
       required: true
       description: >
-        Immutable app identifier, unique among the authenticated organisation's live apps.
+        Immutable app identifier, unique among the authenticated organization's live apps.
       schema:
         $ref: '#/components/schemas/AppId'
     SourceId:
@@ -2480,7 +2480,7 @@ components:
       name: gpuTypeId
       in: path
       required: true
-      description: Public catalogue code for a GPU type (e.g. `h100`), not the internal row UUID.
+      description: Public catalog code for a GPU type (e.g. `h100`), not the internal row UUID.
       schema:
         $ref: '#/components/schemas/GpuTypeId'
     WorkerId:
@@ -2506,7 +2506,7 @@ components:
       name: secretName
       in: path
       required: true
-      description: Secret name, unique within the authenticated organisation.
+      description: Secret name, unique within the authenticated organization.
       schema:
         $ref: '#/components/schemas/SecretName'
     Limit:
@@ -2544,7 +2544,7 @@ components:
       in: path
       required: true
       description: >
-        A query id from the catalogue. Deliberately not an enum: the downstream registry is
+        A query id from the catalog. Deliberately not an enum: the downstream registry is
         the source of ids, and an enum here would be a second list to keep in step with it.
       schema:
         type: string
@@ -2556,7 +2556,7 @@ components:
       description: >
         The time window. A closed set rather than a free-form range, because every distinct
         range defeats the server-side cache alignment that makes a sliding window cheap.
-        Only the windows a query lists in the catalogue can be asked of it.
+        Only the windows a query lists in the catalog can be asked of it.
       schema:
         type: string
         enum: [1h, 6h, 24h, 7d, 30d]
@@ -2648,7 +2648,7 @@ components:
         Values are quarter-hourly over `window=24h`. An id with no live app is
         dropped rather than refused: a deleted app has no traffic to pad. Repeat the
         parameter once per id on the current list page (at most 100, matching
-        `listApps`). Omit it to receive every app in the organisation that had data,
+        `listApps`). Omit it to receive every app in the organization that had data,
         unless that set is larger than this query will expand: then the call is a
         `422` on `appId` and the list page should name the apps it is showing. Other
         queries reject this parameter.
@@ -2806,7 +2806,7 @@ components:
     AppId:
       type: string
       description: >
-        Immutable app identifier. Unique among the authenticated organisation's live apps:
+        Immutable app identifier. Unique among the authenticated organization's live apps:
         it cannot be changed after creation, and it becomes available again once the app it
         named reaches `deleted`.
       minLength: 6
@@ -3035,7 +3035,7 @@ components:
     SecretName:
       type: string
       description: >
-        Organisation-scoped secret name. The shape matches
+        Organization-scoped secret name. The shape matches
         `EnvironmentVariableName` and the `secrets.name` /
         `deployment_secrets.env_var_name` column CHECKs — one rule for the
         contract and the schema — because attached secrets are intended to be
@@ -3066,7 +3066,7 @@ components:
     AppSort:
       type: string
       description: >
-        Ordering for `listApps`. Favourited apps appear before non-favourited apps, and the
+        Ordering for `listApps`. Favorited apps appear before non-favorited apps, and the
         selected ordering applies within each group. Every ordering is total (ties broken by
         `appId`), so a page is reproducible and its cursor stable.
 
@@ -3188,13 +3188,13 @@ components:
         - audit
         - error
 
-    # ---- Compute catalogue ----------------------------------------------
+    # ---- Compute catalog ----------------------------------------------
     GpuTypeId:
       type: string
       description: >
-        Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`).
+        Public catalog code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`).
         Must match an `id` returned by `GET /v1/gpu-types` (validated at request
-        time against the catalogue). This is not the internal database row UUID.
+        time against the catalog). This is not the internal database row UUID.
       minLength: 1
       maxLength: 64
       pattern: '^[a-z][a-z0-9_-]{0,63}$'
@@ -3205,14 +3205,14 @@ components:
         A `GpuTypeId`, or the empty string. Optional fallback GPU fields accept
         `""` because forms bind an unselected dropdown as empty rather than
         omitting the key. A non-empty value has the same shape as `GpuTypeId` —
-        keep this pattern aligned when the catalogue-code format changes.
+        keep this pattern aligned when the catalog-code format changes.
       maxLength: 64
       pattern: '^$|^[a-z][a-z0-9_-]{0,63}$'
 
     GpuAvailability:
       type: string
       description: >
-        How the catalogue currently offers this GPU type. `restricted` means the
+        How the catalog currently offers this GPU type. `restricted` means the
         SKU is not generally available. It is not purchased reserved capacity.
       enum:
         - available
@@ -3257,7 +3257,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/GpuTypeId'
           description: >
-            Public catalogue code referenced by `gpuType` in worker configuration
+            Public catalog code referenced by `gpuType` in worker configuration
             (not the internal database row UUID).
         name:
           type: string
@@ -3276,7 +3276,7 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: Retirement time, returned only in the Runware catalogue view.
+          description: Retirement time, returned only in the Runware catalog view.
         pricing:
           allOf:
             - $ref: '#/components/schemas/GpuPricing'
@@ -3377,7 +3377,7 @@ components:
       type: object
       description: >
         Aggregate dashboard metrics for every app in the authenticated
-        organisation. App and worker tallies are always present (zero when
+        organization. App and worker tallies are always present (zero when
         empty). Request and error-rate totals are omitted when the metrics
         store cannot be read, rather than reported as zero. Spend covers a
         rolling 24 hours and is omitted when the usage cannot be priced.
@@ -3395,13 +3395,13 @@ components:
         totalApps:
           type: integer
           format: int64
-          description: All apps in the organisation excluding soft-deleted ones.
+          description: All apps in the organization excluding soft-deleted ones.
         activeWorkers:
           type: integer
           format: int64
           description: >
             Non-terminal workers (`status` other than `stopped`) across every
-            app in the organisation.
+            app in the organization.
         provisionedGpuCount:
           type: integer
           format: int64
@@ -3412,7 +3412,7 @@ components:
           format: int64
           description: >
             Requests served in the last 24 hours across every app. Omitted when
-            metrics cannot be read. Zero when the organisation had no traffic.
+            metrics cannot be read. Zero when the organization had no traffic.
         errorRate24h:
           type: number
           format: double
@@ -3424,7 +3424,7 @@ components:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
             Provisional pay-as-you-go accrual over the last 24 hours, across every app.
-            Excludes finalisation rounding and ledger adjustments. A
+            Excludes finalization rounding and ledger adjustments. A
             rolling window rather than a calendar day, so the figure does not reset at
             a boundary the customer did not choose.
 
@@ -3510,7 +3510,7 @@ components:
         - secrets
         - environmentVariables
         - status
-        - isFavourite
+        - isFavorite
         - createdAt
         - updatedAt
       properties:
@@ -3562,19 +3562,19 @@ components:
           description: >
             Plain-text environment variables for this app. Populated on
             single-app responses (get, update, stop, resume, delete,
-            deploy, favourite). List of apps returns an empty array to
+            deploy, favorite). List of apps returns an empty array to
             avoid an N+1 per page row — use the `/environment-variables`
             endpoints to page the set.
           items:
             $ref: '#/components/schemas/EnvironmentVariable'
         status:
           $ref: '#/components/schemas/AppStatus'
-        isFavourite:
+        isFavorite:
           type: boolean
           description: >
-            Whether the authenticated organisation has favourited this app. Favourited apps
-            sort ahead of non-favourited apps; toggled via `PUT`/`DELETE`
-            `/v1/apps/{appId}/favourite`.
+            Whether the authenticated organization has favorited this app. Favorited apps
+            sort ahead of non-favorited apps; toggled via `PUT`/`DELETE`
+            `/v1/apps/{appId}/favorite`.
         activeVersionId:
           type: string
           format: uuid
@@ -3641,7 +3641,7 @@ components:
         secrets:
           type: array
           description: >
-            Existing organisation secrets to attach to this app, with an
+            Existing organization secrets to attach to this app, with an
             optional env-var name override per entry. This is the app's initial
             attachment set, so the first rollout carries the values into the
             worker. The secret must already exist and be `active`; this route
@@ -3891,7 +3891,7 @@ components:
             Secondary GPU type used if the preferred type is unavailable. Omit,
             send JSON null, or send an empty string for no fallback — forms bind
             an unselected dropdown as `""`, which is not a `GpuTypeId`. A
-            non-empty value must be an active catalogue code. Unlike `gpuType`
+            non-empty value must be an active catalog code. Unlike `gpuType`
             this is an existence check only: it does not require admitted
             capacity, so the code may not appear in the customer
             `GET /v1/gpu-types` list.
@@ -3978,7 +3978,7 @@ components:
             to clear — forms bind an unselected dropdown as `""`. JSON null is
             rejected: this field is not nullable, so a client that meant to
             clear must send `""` rather than null. A non-empty value must be
-            an active catalogue code. Unlike `gpuType` this is an existence
+            an active catalog code. Unlike `gpuType` this is an existence
             check only: it does not require admitted capacity, so the code
             may not appear in the customer `GET /v1/gpu-types` list.
         gpusPerWorker:
@@ -4334,7 +4334,7 @@ components:
           description: >
             The kind of source that produced this build — `code` or `container`, straight
             from the build record. Build phases differ by kind, so clients must not assume
-            a fixed phase list. Not modelled as an enum so adding a kind later does not
+            a fixed phase list. Not modeled as an enum so adding a kind later does not
             churn the existing source-type constants this API shares.
 
     TriggeredBy:
@@ -4459,7 +4459,7 @@ components:
           format: int32
           description: >
             Version number to deploy. Must reference a `ready` version on this app.
-            Any in-progress or queued builds are cancelled. Use an older version number to roll back.
+            Any in-progress or queued builds are canceled. Use an older version number to roll back.
 
     EndpointTrafficStatus:
       type: string
@@ -4610,7 +4610,7 @@ components:
             - $ref: '#/components/schemas/GpuTypeId'
           nullable: true
           description: >
-            GPU catalogue code snapshotted at observation time. Omitted until a
+            GPU catalog code snapshotted at observation time. Omitted until a
             GPU snapshot exists (the worker is still unscheduled, or the
             observation could not read a type). Not a CPU-worker marker; CPU
             workloads are not supported.
@@ -4620,8 +4620,8 @@ components:
             - $ref: '#/components/schemas/GpuAvailability'
           nullable: true
           description: >
-            How the catalogue currently provisions this worker's `gpuType`.
-            Omitted when there is no `gpuType`, or when the catalogue no longer
+            How the catalog currently provisions this worker's `gpuType`.
+            Omitted when there is no `gpuType`, or when the catalog no longer
             holds the code. Unlike `gpuType` this is read now rather than
             snapshotted, so it tells you how that GPU is supplied today, not how
             it was supplied when the worker started.
@@ -4691,7 +4691,7 @@ components:
     SecretAttach:
       type: object
       description: >
-        Attach an organisation secret to an app. The resolved name
+        Attach an organization secret to an app. The resolved name
         (`envVarName`, or `secretName` when omitted) is the environment variable
         the secret is injected as, and the next rollout carries the value into
         the worker. It must be unique among this app's secret attaches and must
@@ -4931,13 +4931,13 @@ components:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
-            Provisional pay-as-you-go accrual for this time, excluding finalisation
+            Provisional pay-as-you-go accrual for this time, excluding finalization
             rounding and ledger adjustments. Zero for time a commitment covered.
         paygEquivalentValue:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
-            The same time priced at the catalogue rate, whatever covered it. The
+            The same time priced at the catalog rate, whatever covered it. The
             difference from `paygSpend` is what reserved capacity saved.
 
     UsageSummary:
@@ -5091,12 +5091,12 @@ components:
         paygSpend:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
-          description: Provisional overflow accrual, excluding finalisation rounding and ledger adjustments.
+          description: Provisional overflow accrual, excluding finalization rounding and ledger adjustments.
         coveredValue:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
-            The covered time priced at the catalogue rate. What pay-as-you-go would
+            The covered time priced at the catalog rate. What pay-as-you-go would
             have charged for it, and so what the reservation saved.
         calculatedAt:
           type: string
@@ -5142,8 +5142,8 @@ components:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
-            Catalogue price per GPU per second in force at `occurredAt`, resolved from
-            the catalogue history. Absent when `gpuType` is absent or the catalogue
+            Catalog price per GPU per second in force at `occurredAt`, resolved from
+            the catalog history. Absent when `gpuType` is absent or the catalog
             history has no applicable price.
 
 
@@ -5229,7 +5229,7 @@ components:
         detail:
           type: string
           description: Human-readable explanation specific to this occurrence.
-          example: No app 'img-gen' exists for the authenticated organisation.
+          example: No app 'img-gen' exists for the authenticated organization.
         instance:
           type: string
           format: uri-reference
@@ -5289,19 +5289,19 @@ components:
             inside the document. A rejection about the archive rather than the
             document carries no `configPointer`, because nothing was parsed.
           example: /endpoints/0/path
-    QueryCatalogue:
+    QueryCatalog:
       type: object
       required: [metrics, logs]
       properties:
         metrics:
           type: array
           items:
-            $ref: '#/components/schemas/CatalogueEntry'
+            $ref: '#/components/schemas/CatalogEntry'
         logs:
           type: array
           items:
-            $ref: '#/components/schemas/CatalogueEntry'
-    CatalogueEntry:
+            $ref: '#/components/schemas/CatalogEntry'
+    CatalogEntry:
       type: object
       required: [id, unit, aggregation, windows, selectors, series]
       properties:
@@ -5388,7 +5388,7 @@ components:
           type: string
           description: >
             Stable identifier for this line. For chart queries it does not change, so a
-            client can map it to a colour or legend position. For `apps_request_volume`
+            client can map it to a color or legend position. For `apps_request_volume`
             it is the app id of that line.
         label:
           type: string

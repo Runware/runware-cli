@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	errDeleteCancelled    = errors.New("delete cancelled")
+	errDeleteCancelled    = errors.New("delete canceled")
 	errDeleteNeedsConfirm = errors.New("delete requires confirmation; re-run with --yes or --force")
 )
 

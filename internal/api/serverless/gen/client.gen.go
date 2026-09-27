@@ -699,7 +699,7 @@ type App struct {
 	// ActiveVersionId Current deployed version; null until the first version is successfully deployed.
 	ActiveVersionId *openapi_types.UUID `json:"activeVersionId,omitempty"`
 
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// AppName Mutable display name. Must start and end with a non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Interior spaces are allowed ("Sentiment Analysis"); leading or trailing whitespace is rejected, because a padded name is indistinguishable from its trimmed form in the console and breaks a name-confirm delete.
@@ -716,11 +716,11 @@ type App struct {
 	// `null` means nothing has been applied yet. It is recalculated on every deploy. A committed credit top-up also recalculates a reduced ceiling and restores the funded range automatically; KEDA then grows the workload from queue demand without a customer redeploy.
 	EffectiveMaxWorkers *int32 `json:"effectiveMaxWorkers,omitempty"`
 
-	// EnvironmentVariables Plain-text environment variables for this app. Populated on single-app responses (get, update, stop, resume, delete, deploy, favourite). List of apps returns an empty array to avoid an N+1 per page row — use the `/environment-variables` endpoints to page the set.
+	// EnvironmentVariables Plain-text environment variables for this app. Populated on single-app responses (get, update, stop, resume, delete, deploy, favorite). List of apps returns an empty array to avoid an N+1 per page row — use the `/environment-variables` endpoints to page the set.
 	EnvironmentVariables []EnvironmentVariable `json:"environmentVariables"`
 
-	// IsFavourite Whether the authenticated organisation has favourited this app. Favourited apps sort ahead of non-favourited apps; toggled via `PUT`/`DELETE` `/v1/apps/{appId}/favourite`.
-	IsFavourite bool `json:"isFavourite"`
+	// IsFavorite Whether the authenticated organization has favorited this app. Favorited apps sort ahead of non-favorited apps; toggled via `PUT`/`DELETE` `/v1/apps/{appId}/favorite`.
+	IsFavorite bool `json:"isFavorite"`
 
 	// Runtime Observed state for one app at `calculatedAt`. Desired worker scale remains in `configuration`. Worker and GPU counts are always present; traffic, duration, and queue fields are omitted when their backing data is unavailable.
 	Runtime AppRuntime `json:"runtime"`
@@ -733,7 +733,7 @@ type App struct {
 
 // AppCreate defines model for AppCreate.
 type AppCreate struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// AppName Mutable display name. Must start and end with a non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Interior spaces are allowed ("Sentiment Analysis"); leading or trailing whitespace is rejected, because a padded name is indistinguishable from its trimmed form in the console and breaks a name-confirm delete.
@@ -755,7 +755,7 @@ type AppCreate struct {
 	// Each key must satisfy `EnvironmentVariableName` — POSIX-style, at most 128 characters. OpenAPI 3.0 cannot constrain map keys, so a bad one is rejected by the server rather than by the schema. Keys must also not collide with a secret's injected env var name on the same app (see `attachAppSecret`).
 	EnvironmentVariables *map[string]string `json:"environmentVariables,omitempty"`
 
-	// Secrets Existing organisation secrets to attach to this app, with an optional env-var name override per entry. This is the app's initial attachment set, so the first rollout carries the values into the worker. The secret must already exist and be `active`; this route does not create one, and an unknown or inactive name returns `404`. Shape matches `POST /apps/{appId}/secrets` so create and attach share one contract. Each injected name must not collide with a key in `environmentVariables` — see `SecretAttach`. Each secret can also be attached to at most 25 deployments total, shared with every other route that attaches it; an entry that would push a secret past that returns `422`.
+	// Secrets Existing organization secrets to attach to this app, with an optional env-var name override per entry. This is the app's initial attachment set, so the first rollout carries the values into the worker. The secret must already exist and be `active`; this route does not create one, and an unknown or inactive name returns `404`. Shape matches `POST /apps/{appId}/secrets` so create and attach share one contract. Each injected name must not collide with a key in `environmentVariables` — see `SecretAttach`. Each secret can also be attached to at most 25 deployments total, shared with every other route that attaches it; an entry that would push a secret past that returns `422`.
 	Secrets *[]SecretAttach `json:"secrets,omitempty"`
 
 	// Volumes Persistent node-local directories bind-mounted through the checkpointer into the sandboxed application. Use these for downloaded weights and caches that must stay outside the checkpointed root filesystem. Paths must be unique and non-overlapping. The set is frozen into each immutable app version.
@@ -764,7 +764,7 @@ type AppCreate struct {
 
 // AppEvent defines model for AppEvent.
 type AppEvent struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId      AppId               `json:"appId"`
 	CreatedAt  *time.Time          `json:"createdAt,omitempty"`
 	EndpointId *openapi_types.UUID `json:"endpointId,omitempty"`
@@ -779,7 +779,7 @@ type AppEvent struct {
 // AppEventType defines model for AppEventType.
 type AppEventType string
 
-// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 type AppId = string
 
 // AppName Mutable display name. Must start and end with a non-whitespace character: it is what the console renders and what `sort=name` orders on, and it is not required to be unique. Interior spaces are allowed ("Sentiment Analysis"); leading or trailing whitespace is rejected, because a padded name is indistinguishable from its trimmed form in the console and breaks a name-confirm delete.
@@ -809,7 +809,7 @@ type AppRuntime struct {
 	Requests24h *int64 `json:"requests24h,omitempty"`
 }
 
-// AppSort Ordering for `listApps`. Favourited apps appear before non-favourited apps, and the selected ordering applies within each group. Every ordering is total (ties broken by `appId`), so a page is reproducible and its cursor stable.
+// AppSort Ordering for `listApps`. Favorited apps appear before non-favorited apps, and the selected ordering applies within each group. Every ordering is total (ties broken by `appId`), so a page is reproducible and its cursor stable.
 //
 // - `createdAt`: newest first. The default.
 // - `name`: `appName` A–Z, case-insensitive.
@@ -838,12 +838,12 @@ type AppSourceUpsert_Source struct {
 // AppStatus defines model for AppStatus.
 type AppStatus string
 
-// AppSummary Aggregate dashboard metrics for every app in the authenticated organisation. App and worker tallies are always present (zero when empty). Request and error-rate totals are omitted when the metrics store cannot be read, rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
+// AppSummary Aggregate dashboard metrics for every app in the authenticated organization. App and worker tallies are always present (zero when empty). Request and error-rate totals are omitted when the metrics store cannot be read, rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 type AppSummary struct {
 	// ActiveApps Apps currently in the `active` status.
 	ActiveApps int64 `json:"activeApps"`
 
-	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) across every app in the organisation.
+	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) across every app in the organization.
 	ActiveWorkers int64 `json:"activeWorkers"`
 
 	// CalculatedAt When these metrics were computed.
@@ -855,15 +855,15 @@ type AppSummary struct {
 	// ProvisionedGpuCount Sum of `gpuCount` across those same non-terminal workers.
 	ProvisionedGpuCount int64 `json:"provisionedGpuCount"`
 
-	// Requests24h Requests served in the last 24 hours across every app. Omitted when metrics cannot be read. Zero when the organisation had no traffic.
+	// Requests24h Requests served in the last 24 hours across every app. Omitted when metrics cannot be read. Zero when the organization had no traffic.
 	Requests24h *int64 `json:"requests24h,omitempty"`
 
-	// SpendToday Provisional pay-as-you-go accrual over the last 24 hours, across every app. Excludes finalisation rounding and ledger adjustments. A rolling window rather than a calendar day, so the figure does not reset at a boundary the customer did not choose.
+	// SpendToday Provisional pay-as-you-go accrual over the last 24 hours, across every app. Excludes finalization rounding and ledger adjustments. A rolling window rather than a calendar day, so the figure does not reset at a boundary the customer did not choose.
 	//
 	// What has accrued, not a projection: an app that has just started shows what it has run so far. Time a capacity commitment covered is excluded, because it collects nothing. Omitted when the usage cannot be priced, which a zero would misreport as having run for free.
 	SpendToday *MoneyAmount `json:"spendToday,omitempty"`
 
-	// TotalApps All apps in the organisation excluding soft-deleted ones.
+	// TotalApps All apps in the organization excluding soft-deleted ones.
 	TotalApps int64 `json:"totalApps"`
 }
 
@@ -919,7 +919,7 @@ type AppVolume struct {
 //   - `triggeredBy` names the user or API key that submitted the build; it is null only
 //     for builds created before the actor was recorded.
 type Build struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId *AppId `json:"appId,omitempty"`
 
 	// CompletedAt When the build reached a terminal status (`ready`/`failed`/`superseded`); null while running or for terminal builds recorded before this was tracked.
@@ -983,15 +983,15 @@ type BuildPhaseOutcome string
 
 // BuildSource Where a build's source came from: `code` for a customer code submission, `container` for a customer wrapper Dockerfile. `repository` and `revision` are not yet recorded (both sources are zip uploads) and will be added when the platform stores that provenance.
 type BuildSource struct {
-	// Type The kind of source that produced this build — `code` or `container`, straight from the build record. Build phases differ by kind, so clients must not assume a fixed phase list. Not modelled as an enum so adding a kind later does not churn the existing source-type constants this API shares.
+	// Type The kind of source that produced this build — `code` or `container`, straight from the build record. Build phases differ by kind, so clients must not assume a fixed phase list. Not modeled as an enum so adding a kind later does not churn the existing source-type constants this API shares.
 	Type string `json:"type"`
 }
 
 // BuildStatus Build/validation lifecycle status.
 type BuildStatus string
 
-// CatalogueEntry defines model for CatalogueEntry.
-type CatalogueEntry struct {
+// CatalogEntry defines model for CatalogEntry.
+type CatalogEntry struct {
 	// Aggregation How each bucket was reduced, e.g. `avg` or `p50`. Carried so a tooltip can say what a point means rather than presenting a bucket reduction as an instant reading.
 	Aggregation string `json:"aggregation"`
 
@@ -1057,13 +1057,13 @@ type Currency string
 
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
-	// VersionNumber Version number to deploy. Must reference a `ready` version on this app. Any in-progress or queued builds are cancelled. Use an older version number to roll back.
+	// VersionNumber Version number to deploy. Must reference a `ready` version on this app. Any in-progress or queued builds are canceled. Use an older version number to roll back.
 	VersionNumber int32 `json:"versionNumber"`
 }
 
 // Endpoint defines model for Endpoint.
 type Endpoint struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId     AppId              `json:"appId"`
 	CreatedAt *time.Time         `json:"createdAt,omitempty"`
 	Id        openapi_types.UUID `json:"id"`
@@ -1099,7 +1099,7 @@ type EndpointTrafficStatus string
 
 // EnvironmentVariable defines model for EnvironmentVariable.
 type EnvironmentVariable struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId     *AppId              `json:"appId,omitempty"`
 	CreatedAt *time.Time          `json:"createdAt,omitempty"`
 	Id        *openapi_types.UUID `json:"id,omitempty"`
@@ -1119,7 +1119,7 @@ type EnvironmentVariableUpdate struct {
 	Value string `json:"value"`
 }
 
-// GpuAvailability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
+// GpuAvailability How the catalog currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
 type GpuAvailability string
 
 // GpuPricing defines model for GpuPricing.
@@ -1137,13 +1137,13 @@ type GpuPricing struct {
 
 // GpuType defines model for GpuType.
 type GpuType struct {
-	// Availability How the catalogue currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
+	// Availability How the catalog currently offers this GPU type. `restricted` means the SKU is not generally available. It is not purchased reserved capacity.
 	Availability GpuAvailability `json:"availability"`
 
-	// DeletedAt Retirement time, returned only in the Runware catalogue view.
+	// DeletedAt Retirement time, returned only in the Runware catalog view.
 	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 
-	// Id Public catalogue code referenced by `gpuType` in worker configuration (not the internal database row UUID).
+	// Id Public catalog code referenced by `gpuType` in worker configuration (not the internal database row UUID).
 	Id GpuTypeId `json:"id"`
 
 	// Memory Human-readable memory capacity.
@@ -1158,10 +1158,10 @@ type GpuType struct {
 	Pricing GpuPricing `json:"pricing"`
 }
 
-// GpuTypeId Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalogue). This is not the internal database row UUID.
+// GpuTypeId Public catalog code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalog). This is not the internal database row UUID.
 type GpuTypeId = string
 
-// GpuTypeIdOrEmpty A `GpuTypeId`, or the empty string. Optional fallback GPU fields accept `""` because forms bind an unselected dropdown as empty rather than omitting the key. A non-empty value has the same shape as `GpuTypeId` — keep this pattern aligned when the catalogue-code format changes.
+// GpuTypeIdOrEmpty A `GpuTypeId`, or the empty string. Optional fallback GPU fields accept `""` because forms bind an unselected dropdown as empty rather than omitting the key. A non-empty value has the same shape as `GpuTypeId` — keep this pattern aligned when the catalog-code format changes.
 type GpuTypeIdOrEmpty = string
 
 // GpuTypeList defines model for GpuTypeList.
@@ -1216,7 +1216,7 @@ type MetricSeries struct {
 
 // MetricSeriesEntry defines model for MetricSeriesEntry.
 type MetricSeriesEntry struct {
-	// Id Stable identifier for this line. For chart queries it does not change, so a client can map it to a colour or legend position. For `apps_request_volume` it is the app id of that line.
+	// Id Stable identifier for this line. For chart queries it does not change, so a client can map it to a color or legend position. For `apps_request_volume` it is the app id of that line.
 	Id string `json:"id"`
 
 	// Label Display text. May change without notice; do not switch on it.
@@ -1256,7 +1256,7 @@ type Page struct {
 type ProblemDetails struct {
 	// Detail Human-readable explanation specific to this occurrence.
 	//
-	// Example: No app 'img-gen' exists for the authenticated organisation.
+	// Example: No app 'img-gen' exists for the authenticated organization.
 	Detail *string `json:"detail,omitempty"`
 
 	// EndpointPath Extension member. Present on a `404` from task invocation when the app exists but does not declare the requested endpoint path; its presence distinguishes an unknown endpoint from an unknown app. Carries the rejected path.
@@ -1320,10 +1320,10 @@ type ProblemError struct {
 	Pointer *string `json:"pointer,omitempty"`
 }
 
-// QueryCatalogue defines model for QueryCatalogue.
-type QueryCatalogue struct {
-	Logs    []CatalogueEntry `json:"logs"`
-	Metrics []CatalogueEntry `json:"metrics"`
+// QueryCatalog defines model for QueryCatalog.
+type QueryCatalog struct {
+	Logs    []CatalogEntry `json:"logs"`
+	Metrics []CatalogEntry `json:"metrics"`
 }
 
 // ReservedCapacity One commitment scope — a GPU type in a region — with what it reserves, what is using it and what overflowed past it.
@@ -1344,13 +1344,13 @@ type ReservedCapacity struct {
 	// CoveredGpuMilliseconds Reserved GPU time used over the period.
 	CoveredGpuMilliseconds int64 `json:"coveredGpuMilliseconds"`
 
-	// CoveredValue The covered time priced at the catalogue rate. What pay-as-you-go would have charged for it, and so what the reservation saved.
+	// CoveredValue The covered time priced at the catalog rate. What pay-as-you-go would have charged for it, and so what the reservation saved.
 	CoveredValue MoneyAmount `json:"coveredValue"`
 
 	// From Inclusive start of the reported period, as resolved.
 	From time.Time `json:"from"`
 
-	// GpuType Public catalogue code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalogue). This is not the internal database row UUID.
+	// GpuType Public catalog code for a supported GPU type (e.g. `h100`, `rtx-pro-6000`). Must match an `id` returned by `GET /v1/gpu-types` (validated at request time against the catalog). This is not the internal database row UUID.
 	GpuType GpuTypeId `json:"gpuType"`
 
 	// PaygGpuMilliseconds GPU time in this scope over the period that the reservation did not cover.
@@ -1359,7 +1359,7 @@ type ReservedCapacity struct {
 	// PaygOverflowGpuCount Matching GPUs in use at `calculatedAt` above the reserved quantity. These are what a pay-as-you-go charge in this scope can be traced to.
 	PaygOverflowGpuCount int32 `json:"paygOverflowGpuCount"`
 
-	// PaygSpend Provisional overflow accrual, excluding finalisation rounding and ledger adjustments.
+	// PaygSpend Provisional overflow accrual, excluding finalization rounding and ledger adjustments.
 	PaygSpend MoneyAmount `json:"paygSpend"`
 
 	// Region The region a capacity commitment applies to. One value until app placement selects a region.
@@ -1381,7 +1381,7 @@ type Secret struct {
 	// Metadata Optional opaque metadata associated with the secret.
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 
-	// Name Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// Name Organization-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
 	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
 	Name SecretName `json:"name"`
 
@@ -1390,12 +1390,12 @@ type Secret struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
-// SecretAttach Attach an organisation secret to an app. The resolved name (`envVarName`, or `secretName` when omitted) is the environment variable the secret is injected as, and the next rollout carries the value into the worker. It must be unique among this app's secret attaches and must not collide with a plain environment variable key on the same app — both names land in the same pod env namespace. Reserved platform names are rejected as on `SecretName`.
+// SecretAttach Attach an organization secret to an app. The resolved name (`envVarName`, or `secretName` when omitted) is the environment variable the secret is injected as, and the next rollout carries the value into the worker. It must be unique among this app's secret attaches and must not collide with a plain environment variable key on the same app — both names land in the same pod env namespace. Reserved platform names are rejected as on `SecretName`.
 type SecretAttach struct {
 	// EnvVarName Environment variable name the secret is injected as. Omit or null to use `secretName`; the server resolves and stores the final name. Same reserved-name rules as `SecretName` (`422` if reserved). The resolved name must also not collide with a plain environment variable key on this app (`422`).
 	EnvVarName *EnvironmentVariableName `json:"envVarName,omitempty"`
 
-	// SecretName Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// SecretName Organization-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
 	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
 	SecretName SecretName `json:"secretName"`
 }
@@ -1411,7 +1411,7 @@ type SecretAttachment struct {
 	// Metadata Optional opaque metadata associated with the secret.
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 
-	// Name Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// Name Organization-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
 	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
 	Name SecretName `json:"name"`
 
@@ -1424,7 +1424,7 @@ type SecretAttachment struct {
 type SecretCreate struct {
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 
-	// Name Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+	// Name Organization-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
 	// Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
 	Name SecretName `json:"name"`
 
@@ -1436,7 +1436,7 @@ type SecretCreate struct {
 	Value string `json:"value"`
 }
 
-// SecretName Organisation-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
+// SecretName Organization-scoped secret name. The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name` column CHECKs — one rule for the contract and the schema — because attached secrets are intended to be injected as environment variables once ADR-019 in-pod unseal lands.
 // Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: when injection exists, the deployer appends customer env after its own and kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform value. Same guard as plain environment variables; enforced by the server (not expressible as a pattern here).
 type SecretName = string
 
@@ -1537,7 +1537,7 @@ type SourceUploadTransfer struct {
 
 // Task defines model for Task.
 type Task struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId       AppId      `json:"appId"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
@@ -1600,10 +1600,10 @@ type UsageBucket struct {
 	// GpuType Present when grouped by `gpuType`.
 	GpuType *GpuTypeId `json:"gpuType,omitempty"`
 
-	// PaygEquivalentValue The same time priced at the catalogue rate, whatever covered it. The difference from `paygSpend` is what reserved capacity saved.
+	// PaygEquivalentValue The same time priced at the catalog rate, whatever covered it. The difference from `paygSpend` is what reserved capacity saved.
 	PaygEquivalentValue MoneyAmount `json:"paygEquivalentValue"`
 
-	// PaygSpend Provisional pay-as-you-go accrual for this time, excluding finalisation rounding and ledger adjustments. Zero for time a commitment covered.
+	// PaygSpend Provisional pay-as-you-go accrual for this time, excluding finalization rounding and ledger adjustments. Zero for time a commitment covered.
 	PaygSpend MoneyAmount `json:"paygSpend"`
 }
 
@@ -1615,7 +1615,7 @@ type UsageDimension string
 
 // UsageEvent defines model for UsageEvent.
 type UsageEvent struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// CreatedAt When the event was recorded. Audit only — may lag `occurredAt`.
@@ -1632,7 +1632,7 @@ type UsageEvent struct {
 	// OccurredAt When the transition happened. This is the event time the `from` and `to` filters apply to, and the field to bill on.
 	OccurredAt time.Time `json:"occurredAt"`
 
-	// PricePerSecond Catalogue price per GPU per second in force at `occurredAt`, resolved from the catalogue history. Absent when `gpuType` is absent or the catalogue history has no applicable price.
+	// PricePerSecond Catalog price per GPU per second in force at `occurredAt`, resolved from the catalog history. Absent when `gpuType` is absent or the catalog history has no applicable price.
 	//
 	// This is the positive pay-as-you-go rate whatever covered the time. Reserved capacity is not a discount on it: coverage is reported by `GET /v1/usage/summary` and never by a rate of zero.
 	PricePerSecond *MoneyAmount       `json:"pricePerSecond,omitempty"`
@@ -1670,7 +1670,7 @@ type UsageSummary struct {
 //     (no predecessor). A name-only update still inserts a version; `changes` is then
 //     present with `imageChanged` false and no field diffs.
 type Version struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// Author Who created this version — the authenticated user (JWT) or the API key. `displayName` is the name captured at write time.
@@ -1730,19 +1730,19 @@ type VersionKeySetDiff struct {
 //
 // Uptime is derived, not carried: a worker has been up from `createdAt` until `statusOccurredAt` once its `status` is `stopped`, and until now before that.
 type Worker struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// CreatedAt Pod creation time (`metadata.creationTimestamp`), not insert time. It is also the start of the worker's uptime.
 	CreatedAt time.Time `json:"createdAt"`
 
-	// GpuAvailability How the catalogue currently provisions this worker's `gpuType`. Omitted when there is no `gpuType`, or when the catalogue no longer holds the code. Unlike `gpuType` this is read now rather than snapshotted, so it tells you how that GPU is supplied today, not how it was supplied when the worker started.
+	// GpuAvailability How the catalog currently provisions this worker's `gpuType`. Omitted when there is no `gpuType`, or when the catalog no longer holds the code. Unlike `gpuType` this is read now rather than snapshotted, so it tells you how that GPU is supplied today, not how it was supplied when the worker started.
 	GpuAvailability *GpuAvailability `json:"gpuAvailability,omitempty"`
 
 	// GpuCount GPUs attached to this worker at observation time. Zero means the snapshot is unknown: the worker is still unscheduled, or a terminal observation could not read a GPU pair. A known snapshot is `>= 1` and travels with `gpuType`. An empty pair is incomplete, not a CPU worker. CPU workloads are not supported.
 	GpuCount int32 `json:"gpuCount"`
 
-	// GpuType GPU catalogue code snapshotted at observation time. Omitted until a GPU snapshot exists (the worker is still unscheduled, or the observation could not read a type). Not a CPU-worker marker; CPU workloads are not supported.
+	// GpuType GPU catalog code snapshotted at observation time. Omitted until a GPU snapshot exists (the worker is still unscheduled, or the observation could not read a type). Not a CPU-worker marker; CPU workloads are not supported.
 	GpuType *GpuTypeId         `json:"gpuType,omitempty"`
 	Id      openapi_types.UUID `json:"id"`
 
@@ -1767,7 +1767,7 @@ type Worker struct {
 
 // WorkerConfig defines model for WorkerConfig.
 type WorkerConfig struct {
-	// AppId Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 	AppId AppId `json:"appId"`
 
 	// AvailableWorkersPct Idle workers held above current demand, as a percentage of that demand, rounded up. Null or 0 means no buffer. When both buffers are set the larger of the two applies. The buffer applies only while the queue is non-empty: an idle app still scales to `minWorkers`.
@@ -1810,7 +1810,7 @@ type WorkerConfigCreate struct {
 	// ComputeType GPU is the only supported compute type. Omitting the field selects GPU. CPU workloads are not supported; a request that names `cpu` is rejected with 422 before a build or deploy starts.
 	ComputeType *ComputeType `json:"computeType,omitempty"`
 
-	// FallbackGpuType Secondary GPU type used if the preferred type is unavailable. Omit, send JSON null, or send an empty string for no fallback — forms bind an unselected dropdown as `""`, which is not a `GpuTypeId`. A non-empty value must be an active catalogue code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
+	// FallbackGpuType Secondary GPU type used if the preferred type is unavailable. Omit, send JSON null, or send an empty string for no fallback — forms bind an unselected dropdown as `""`, which is not a `GpuTypeId`. A non-empty value must be an active catalog code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
 	FallbackGpuType *GpuTypeIdOrEmpty `json:"fallbackGpuType,omitempty"`
 
 	// GpuType GPU type the workers run on. Required: omitting it (or sending null) is a 422 before a build or deploy starts, because a GPU app with no type is unpinned and the deployer would render NVIDIA defaults. Must match an `id` returned by `GET /v1/gpu-types` that currently has admitted capacity.
@@ -1832,7 +1832,7 @@ type WorkerConfigPatch struct {
 	// AvailableWorkersPct Idle workers held above current demand, as a percentage of that demand, rounded up. Omit to leave unchanged; send 0 to remove the buffer. Null is refused, because omitting a field and clearing it mean different things here.
 	AvailableWorkersPct *int32 `json:"availableWorkersPct,omitempty"`
 
-	// FallbackGpuType Secondary GPU type. Omit to leave unchanged. Send an empty string to clear — forms bind an unselected dropdown as `""`. JSON null is rejected: this field is not nullable, so a client that meant to clear must send `""` rather than null. A non-empty value must be an active catalogue code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
+	// FallbackGpuType Secondary GPU type. Omit to leave unchanged. Send an empty string to clear — forms bind an unselected dropdown as `""`. JSON null is rejected: this field is not nullable, so a client that meant to clear must send `""` rather than null. A non-empty value must be an active catalog code. Unlike `gpuType` this is an existence check only: it does not require admitted capacity, so the code may not appear in the customer `GET /v1/gpu-types` list.
 	FallbackGpuType *GpuTypeIdOrEmpty `json:"fallbackGpuType,omitempty"`
 
 	// GpuType Preferred GPU type. Omit to leave unchanged. Rejected with a 422 when no capacity is currently offered for the type (it does not appear in `GET /v1/gpu-types`).
@@ -1876,10 +1876,10 @@ type PinnedTo = int64
 // QueryId defines model for QueryId.
 type QueryId = string
 
-// RequiredLogDeployment Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+// RequiredLogDeployment Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 type RequiredLogDeployment = AppId
 
-// SelectorDeployment Immutable app identifier. Unique among the authenticated organisation's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
+// SelectorDeployment Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 type SelectorDeployment = AppId
 
 // SelectorEndpoint defines model for SelectorEndpoint.
@@ -2067,7 +2067,7 @@ type ListWorkersParams struct {
 
 // GetLogEntriesParams defines parameters for GetLogEntries.
 type GetLogEntriesParams struct {
-	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalogue can be asked of it.
+	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalog can be asked of it.
 	Window GetLogEntriesParamsWindow `form:"window" json:"window"`
 
 	// Limit Maximum number of items to return.
@@ -2097,7 +2097,7 @@ type TailLogEntriesParams struct {
 
 // GetMetricSeriesParams defines parameters for GetMetricSeries.
 type GetMetricSeriesParams struct {
-	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalogue can be asked of it.
+	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalog can be asked of it.
 	Window GetMetricSeriesParamsWindow `form:"window" json:"window"`
 
 	// PinnedTo Fixes the window's inclusive end, the last timestamp in `t`, so that several calls making up one visual share an axis instead of racing the clock between them. Must be aligned to the window's step, no newer than the newest readable edge, and inside retention.
@@ -2115,7 +2115,7 @@ type GetMetricSeriesParams struct {
 	// Region Narrow to one region. No series carries a region label yet, so no query currently accepts this and supplying it is rejected rather than ignored.
 	Region *SelectorRegion `form:"region,omitempty" json:"region,omitempty"`
 
-	// AppId Restrict the list-scoped queries (`apps_request_volume`, `apps_error_volume`, `apps_request_duration`) to these app ids: one series per id, in request order, with all-null series for apps that had no samples. Values are quarter-hourly over `window=24h`. An id with no live app is dropped rather than refused: a deleted app has no traffic to pad. Repeat the parameter once per id on the current list page (at most 100, matching `listApps`). Omit it to receive every app in the organisation that had data, unless that set is larger than this query will expand: then the call is a `422` on `appId` and the list page should name the apps it is showing. Other queries reject this parameter.
+	// AppId Restrict the list-scoped queries (`apps_request_volume`, `apps_error_volume`, `apps_request_duration`) to these app ids: one series per id, in request order, with all-null series for apps that had no samples. Values are quarter-hourly over `window=24h`. An id with no live app is dropped rather than refused: a deleted app has no traffic to pad. Repeat the parameter once per id on the current list page (at most 100, matching `listApps`). Omit it to receive every app in the organization that had data, unless that set is larger than this query will expand: then the call is a `422` on `appId` and the list page should name the apps it is showing. Other queries reject this parameter.
 	AppId *SeriesAppId `form:"appId,omitempty" json:"appId,omitempty"`
 
 	// EndpointId Restrict expand-by-`endpoint_id` queries (`endpoints_request_volume`, `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume`, `endpoints_request_count`) to these endpoint ids: one series per id, in request order, with all-null series for endpoints that had no traffic. `endpoints_request_volume` is quarter-hourly request counts over `window=24h`; the others are latest-window scalars over `window=1h`. Buckets that started before that endpoint row's `createdAt` are null. Repeat the parameter once per id on the current list page (at most 100, matching `listEndpoints`). Omit it to receive every endpoint on the selected app that had data, unless that set is larger than this query will expand: then the call is a `422` on `endpointId` and the list page should name the endpoints it is showing. Other queries reject this parameter. Requires the public app id.
@@ -2173,7 +2173,7 @@ type GetUsageSummaryParams struct {
 	// AppId Report only this app's usage. A filter on what is reported, not on what is measured: coverage depends on every app's concurrent GPUs.
 	AppId *AppId `form:"appId,omitempty" json:"appId,omitempty"`
 
-	// GpuType Report only usage of this GPU type. A retired type is accepted, because usage recorded before it was withdrawn is still reportable. A type the catalogue has never carried returns `422`.
+	// GpuType Report only usage of this GPU type. A retired type is accepted, because usage recorded before it was withdrawn is still reportable. A type the catalog has never carried returns `422`.
 	GpuType *GpuTypeId `form:"gpuType,omitempty" json:"gpuType,omitempty"`
 
 	// GroupBy Dimensions to group by. An empty list returns one bucket for the whole window. Each dimension appears on the bucket it was requested with and is absent otherwise.
@@ -2411,16 +2411,16 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
-	// GetAppSummary App summary metrics for the authenticated organisation
+	// GetAppSummary App summary metrics for the authenticated organization
 	//
-	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
+	// Aggregate dashboard metrics across all apps owned by the authenticated organization. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 	//
 	// Corresponds with GET /v1/app-summary (the `GetAppSummary` operationId).
 	GetAppSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListApps List apps
 	//
-	// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
+	// Returns a page of the organization's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favorited apps appear before non-favorited apps, with the selected ordering applied within each group.
 	//
 	// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 	//
@@ -2446,7 +2446,7 @@ type ClientInterface interface {
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+	// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2472,7 +2472,7 @@ type ClientInterface interface {
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+	// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2481,7 +2481,7 @@ type ClientInterface interface {
 
 	// DeleteApp Delete an app
 	//
-	// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
+	// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, canceling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalization, audit, and usage history. Idempotent if the app is already `deleting`.
 	//
 	// The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
 	//
@@ -2490,7 +2490,7 @@ type ClientInterface interface {
 
 	// GetApp Get an app
 	//
-	// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
+	// Returns the app the authenticated organization owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 	//
 	// Corresponds with GET /v1/apps/{appId} (the `GetApp` operationId).
 	GetApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2530,7 +2530,7 @@ type ClientInterface interface {
 
 	// DeleteBuild Delete or cancel a build
 	//
-	// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+	// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the canceled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/builds/{buildId} (the `DeleteBuild` operationId).
 	DeleteBuild(ctx context.Context, appId AppId, buildId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2542,7 +2542,7 @@ type ClientInterface interface {
 
 	// DeployVersionWithBody Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -2558,7 +2558,7 @@ type ClientInterface interface {
 
 	// DeployVersion Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -2606,7 +2606,7 @@ type ClientInterface interface {
 	//
 	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 	//
-	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -2623,7 +2623,7 @@ type ClientInterface interface {
 	//
 	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 	//
-	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -2646,23 +2646,23 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/apps/{appId}/events (the `ListAppEvents` operationId).
 	ListAppEvents(ctx context.Context, appId AppId, params *ListAppEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UnfavouriteApp Unfavourite an app
+	// UnfavoriteApp Unfavorite an app
 	//
-	// Removes the organisation favourite pin from the app. Idempotent: unfavouriting an app that is not favourited succeeds and returns the app with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
+	// Removes the organization favorite pin from the app. Idempotent: unfavoriting an app that is not favorited succeeds and returns the app with `isFavorite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
 	//
-	// Corresponds with DELETE /v1/apps/{appId}/favourite (the `UnfavouriteApp` operationId).
-	UnfavouriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with DELETE /v1/apps/{appId}/favorite (the `UnfavoriteApp` operationId).
+	UnfavoriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// FavouriteApp Favourite an app
+	// FavoriteApp Favorite an app
 	//
-	// Pins the app as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited app succeeds and returns the app with `isFavourite: true`. Apps in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+	// Pins the app as a favorite for the authenticated organization so the console can surface it in a Favorites section. Idempotent: favoriting an already-favorited app succeeds and returns the app with `isFavorite: true`. Apps in `deleting` or `deleted` status cannot be favorited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
 	//
-	// Corresponds with PUT /v1/apps/{appId}/favourite (the `FavouriteApp` operationId).
-	FavouriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with PUT /v1/apps/{appId}/favorite (the `FavoriteApp` operationId).
+	FavoriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartAsyncTaskWithBody Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2671,7 +2671,7 @@ type ClientInterface interface {
 
 	// StartAsyncTask Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2680,7 +2680,7 @@ type ClientInterface interface {
 
 	// StartSyncTaskWithBody Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2689,7 +2689,7 @@ type ClientInterface interface {
 
 	// StartSyncTask Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2710,7 +2710,7 @@ type ClientInterface interface {
 
 	// AttachAppSecretWithBody Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -2722,7 +2722,7 @@ type ClientInterface interface {
 
 	// AttachAppSecret Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -2793,21 +2793,21 @@ type ClientInterface interface {
 
 	// ListGpuTypes List supported GPU types and their pricing
 	//
-	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
+	// Returns the global GPU type catalog and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalog, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 	//
 	// Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 	ListGpuTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetGpuType Get a GPU type from the catalogue
+	// GetGpuType Get a GPU type from the catalog
 	//
-	// Returns an active entry from the global GPU type catalogue. Retired entries return `404`. The result is not organisation-specific, but the request still requires authentication.
+	// Returns an active entry from the global GPU type catalog. Retired entries return `404`. The result is not organization-specific, but the request still requires authentication.
 	//
 	// Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
 	GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLogEntries Read one page of a named log query
 	//
-	// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
+	// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighboring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalog.
 	//
 	// Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
 	GetLogEntries(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2821,7 +2821,7 @@ type ClientInterface interface {
 
 	// ListInsightsQueries List the metric and log queries this build can answer
 	//
-	// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+	// The catalog: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
 	//
 	// This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
 	//
@@ -2840,7 +2840,7 @@ type ClientInterface interface {
 	//
 	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 	//
-	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 	//
 	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 	//
@@ -2849,7 +2849,7 @@ type ClientInterface interface {
 
 	// ListReservedCapacity Report reserved capacity and its use
 	//
-	// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
+	// What the authenticated organization has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 	//
 	// One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 	//
@@ -2869,7 +2869,7 @@ type ClientInterface interface {
 
 	// CreateSecretWithBody Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2878,7 +2878,7 @@ type ClientInterface interface {
 
 	// CreateSecret Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2894,7 +2894,7 @@ type ClientInterface interface {
 
 	// UpdateSecretWithBody Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -2903,7 +2903,7 @@ type ClientInterface interface {
 
 	// UpdateSecret Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2963,21 +2963,21 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/usage (the `ListUsageEvents` operationId).
 	ListUsageEvents(ctx context.Context, params *ListUsageEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetUsageSummary Summarise usage over a time range
+	// GetUsageSummary Summarize usage over a time range
 	//
-	// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+	// GPU time and spend for the authenticated organization, aggregated over a half-open window and grouped by the dimensions asked for.
 	//
-	// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+	// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalog and the organization's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
 	//
-	// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+	// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalization rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalog rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organization holding a commitment sees a split here that the credit ledger has not yet applied.
 	//
 	// Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
 	GetUsageSummary(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-// GetAppSummary App summary metrics for the authenticated organisation
+// GetAppSummary App summary metrics for the authenticated organization
 //
-// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
+// Aggregate dashboard metrics across all apps owned by the authenticated organization. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 //
 // Corresponds with GET /v1/app-summary (the `GetAppSummary` operationId).
 func (c *Client) GetAppSummary(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2994,7 +2994,7 @@ func (c *Client) GetAppSummary(ctx context.Context, reqEditors ...RequestEditorF
 
 // ListApps List apps
 //
-// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
+// Returns a page of the organization's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favorited apps appear before non-favorited apps, with the selected ordering applied within each group.
 //
 // A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 //
@@ -3029,7 +3029,7 @@ func (c *Client) ListApps(ctx context.Context, params *ListAppsParams, reqEditor
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3064,7 +3064,7 @@ func (c *Client) CreateAppWithBody(ctx context.Context, contentType string, body
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3083,7 +3083,7 @@ func (c *Client) CreateApp(ctx context.Context, body CreateAppJSONRequestBody, r
 
 // DeleteApp Delete an app
 //
-// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
+// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, canceling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalization, audit, and usage history. Idempotent if the app is already `deleting`.
 //
 // The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
 //
@@ -3102,7 +3102,7 @@ func (c *Client) DeleteApp(ctx context.Context, appId AppId, reqEditors ...Reque
 
 // GetApp Get an app
 //
-// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
+// Returns the app the authenticated organization owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 //
 // Corresponds with GET /v1/apps/{appId} (the `GetApp` operationId).
 func (c *Client) GetApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3182,7 +3182,7 @@ func (c *Client) ListBuilds(ctx context.Context, appId AppId, params *ListBuilds
 
 // DeleteBuild Delete or cancel a build
 //
-// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the canceled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
 //
 // Corresponds with DELETE /v1/apps/{appId}/builds/{buildId} (the `DeleteBuild` operationId).
 func (c *Client) DeleteBuild(ctx context.Context, appId AppId, buildId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3214,7 +3214,7 @@ func (c *Client) GetBuild(ctx context.Context, appId AppId, buildId openapi_type
 
 // DeployVersionWithBody Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -3242,7 +3242,7 @@ func (c *Client) DeployVersionWithBody(ctx context.Context, appId AppId, content
 
 // DeployVersion Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -3342,7 +3342,7 @@ func (c *Client) DeleteAppEnvironmentVariable(ctx context.Context, appId AppId, 
 //
 // A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 //
-// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -3369,7 +3369,7 @@ func (c *Client) UpdateAppEnvironmentVariableWithBody(ctx context.Context, appId
 //
 // A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 //
-// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -3422,13 +3422,13 @@ func (c *Client) ListAppEvents(ctx context.Context, appId AppId, params *ListApp
 	return c.Client.Do(req)
 }
 
-// UnfavouriteApp Unfavourite an app
+// UnfavoriteApp Unfavorite an app
 //
-// Removes the organisation favourite pin from the app. Idempotent: unfavouriting an app that is not favourited succeeds and returns the app with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
+// Removes the organization favorite pin from the app. Idempotent: unfavoriting an app that is not favorited succeeds and returns the app with `isFavorite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
 //
-// Corresponds with DELETE /v1/apps/{appId}/favourite (the `UnfavouriteApp` operationId).
-func (c *Client) UnfavouriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUnfavouriteAppRequest(c.Server, appId)
+// Corresponds with DELETE /v1/apps/{appId}/favorite (the `UnfavoriteApp` operationId).
+func (c *Client) UnfavoriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnfavoriteAppRequest(c.Server, appId)
 	if err != nil {
 		return nil, err
 	}
@@ -3439,13 +3439,13 @@ func (c *Client) UnfavouriteApp(ctx context.Context, appId AppId, reqEditors ...
 	return c.Client.Do(req)
 }
 
-// FavouriteApp Favourite an app
+// FavoriteApp Favorite an app
 //
-// Pins the app as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited app succeeds and returns the app with `isFavourite: true`. Apps in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+// Pins the app as a favorite for the authenticated organization so the console can surface it in a Favorites section. Idempotent: favoriting an already-favorited app succeeds and returns the app with `isFavorite: true`. Apps in `deleting` or `deleted` status cannot be favorited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
 //
-// Corresponds with PUT /v1/apps/{appId}/favourite (the `FavouriteApp` operationId).
-func (c *Client) FavouriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewFavouriteAppRequest(c.Server, appId)
+// Corresponds with PUT /v1/apps/{appId}/favorite (the `FavoriteApp` operationId).
+func (c *Client) FavoriteApp(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFavoriteAppRequest(c.Server, appId)
 	if err != nil {
 		return nil, err
 	}
@@ -3458,7 +3458,7 @@ func (c *Client) FavouriteApp(ctx context.Context, appId AppId, reqEditors ...Re
 
 // StartAsyncTaskWithBody Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3477,7 +3477,7 @@ func (c *Client) StartAsyncTaskWithBody(ctx context.Context, appId AppId, endpoi
 
 // StartAsyncTask Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3496,7 +3496,7 @@ func (c *Client) StartAsyncTask(ctx context.Context, appId AppId, endpointPath E
 
 // StartSyncTaskWithBody Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3515,7 +3515,7 @@ func (c *Client) StartSyncTaskWithBody(ctx context.Context, appId AppId, endpoin
 
 // StartSyncTask Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3566,7 +3566,7 @@ func (c *Client) ListAppSecrets(ctx context.Context, appId AppId, params *ListAp
 
 // AttachAppSecretWithBody Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -3588,7 +3588,7 @@ func (c *Client) AttachAppSecretWithBody(ctx context.Context, appId AppId, conte
 
 // AttachAppSecret Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -3759,7 +3759,7 @@ func (c *Client) GetWorker(ctx context.Context, appId AppId, workerId WorkerId, 
 
 // ListGpuTypes List supported GPU types and their pricing
 //
-// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
+// Returns the global GPU type catalog and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalog, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 //
 // Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 func (c *Client) ListGpuTypes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3774,9 +3774,9 @@ func (c *Client) ListGpuTypes(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
-// GetGpuType Get a GPU type from the catalogue
+// GetGpuType Get a GPU type from the catalog
 //
-// Returns an active entry from the global GPU type catalogue. Retired entries return `404`. The result is not organisation-specific, but the request still requires authentication.
+// Returns an active entry from the global GPU type catalog. Retired entries return `404`. The result is not organization-specific, but the request still requires authentication.
 //
 // Corresponds with GET /v1/gpu-types/{gpuTypeId} (the `GetGpuType` operationId).
 func (c *Client) GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3793,7 +3793,7 @@ func (c *Client) GetGpuType(ctx context.Context, gpuTypeId GpuTypeId, reqEditors
 
 // GetLogEntries Read one page of a named log query
 //
-// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
+// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighboring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalog.
 //
 // Corresponds with GET /v1/logs/queries/{queryId}/entries (the `GetLogEntries` operationId).
 func (c *Client) GetLogEntries(ctx context.Context, queryId QueryId, params *GetLogEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3827,7 +3827,7 @@ func (c *Client) TailLogEntries(ctx context.Context, queryId QueryId, params *Ta
 
 // ListInsightsQueries List the metric and log queries this build can answer
 //
-// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+// The catalog: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
 //
 // This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
 //
@@ -3856,7 +3856,7 @@ func (c *Client) ListInsightsQueries(ctx context.Context, reqEditors ...RequestE
 //
 // `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 //
-// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 //
 // Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 //
@@ -3875,7 +3875,7 @@ func (c *Client) GetMetricSeries(ctx context.Context, queryId QueryId, params *G
 
 // ListReservedCapacity Report reserved capacity and its use
 //
-// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
+// What the authenticated organization has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 //
 // One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 //
@@ -3915,7 +3915,7 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams, req
 
 // CreateSecretWithBody Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3934,7 +3934,7 @@ func (c *Client) CreateSecretWithBody(ctx context.Context, contentType string, b
 
 // CreateSecret Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -3970,7 +3970,7 @@ func (c *Client) DeleteSecret(ctx context.Context, secretName SecretName, reqEdi
 
 // UpdateSecretWithBody Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type.
 //
@@ -3989,7 +3989,7 @@ func (c *Client) UpdateSecretWithBody(ctx context.Context, secretName SecretName
 
 // UpdateSecret Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4129,13 +4129,13 @@ func (c *Client) ListUsageEvents(ctx context.Context, params *ListUsageEventsPar
 	return c.Client.Do(req)
 }
 
-// GetUsageSummary Summarise usage over a time range
+// GetUsageSummary Summarize usage over a time range
 //
-// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+// GPU time and spend for the authenticated organization, aggregated over a half-open window and grouped by the dimensions asked for.
 //
-// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalog and the organization's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
 //
-// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalization rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalog rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organization holding a commitment sees a split here that the credit ledger has not yet applied.
 //
 // Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
 func (c *Client) GetUsageSummary(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5112,8 +5112,8 @@ func NewListAppEventsRequest(server string, appId AppId, params *ListAppEventsPa
 	return req, nil
 }
 
-// NewUnfavouriteAppRequest constructs an http.Request for the UnfavouriteApp method
-func NewUnfavouriteAppRequest(server string, appId AppId) (*http.Request, error) {
+// NewUnfavoriteAppRequest constructs an http.Request for the UnfavoriteApp method
+func NewUnfavoriteAppRequest(server string, appId AppId) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -5128,7 +5128,7 @@ func NewUnfavouriteAppRequest(server string, appId AppId) (*http.Request, error)
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/apps/%s/favourite", pathParam0)
+	operationPath := fmt.Sprintf("/v1/apps/%s/favorite", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -5146,8 +5146,8 @@ func NewUnfavouriteAppRequest(server string, appId AppId) (*http.Request, error)
 	return req, nil
 }
 
-// NewFavouriteAppRequest constructs an http.Request for the FavouriteApp method
-func NewFavouriteAppRequest(server string, appId AppId) (*http.Request, error) {
+// NewFavoriteAppRequest constructs an http.Request for the FavoriteApp method
+func NewFavoriteAppRequest(server string, appId AppId) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -5162,7 +5162,7 @@ func NewFavouriteAppRequest(server string, appId AppId) (*http.Request, error) {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/apps/%s/favourite", pathParam0)
+	operationPath := fmt.Sprintf("/v1/apps/%s/favorite", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -7040,9 +7040,9 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// GetAppSummaryWithResponse App summary metrics for the authenticated organisation
+	// GetAppSummaryWithResponse App summary metrics for the authenticated organization
 	//
-	// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
+	// Aggregate dashboard metrics across all apps owned by the authenticated organization. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7051,7 +7051,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAppsWithResponse List apps
 	//
-	// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
+	// Returns a page of the organization's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favorited apps appear before non-favorited apps, with the selected ordering applied within each group.
 	//
 	// A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 	//
@@ -7079,7 +7079,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+	// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7105,7 +7105,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 	//
-	// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+	// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7114,7 +7114,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteAppWithResponse Delete an app
 	//
-	// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
+	// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, canceling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalization, audit, and usage history. Idempotent if the app is already `deleting`.
 	//
 	// The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
 	//
@@ -7125,7 +7125,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetAppWithResponse Get an app
 	//
-	// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
+	// Returns the app the authenticated organization owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7169,7 +7169,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteBuildWithResponse Delete or cancel a build
 	//
-	// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+	// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the canceled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7185,7 +7185,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeployVersionWithBodyWithResponse Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -7201,7 +7201,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeployVersionWithResponse Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -7257,7 +7257,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 	//
-	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -7274,7 +7274,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 	//
-	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+	// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 	//
 	// An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 	//
@@ -7301,27 +7301,27 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/apps/{appId}/events (the `ListAppEvents` operationId).
 	ListAppEventsWithResponse(ctx context.Context, appId AppId, params *ListAppEventsParams, reqEditors ...RequestEditorFn) (*ListAppEventsResponse, error)
 
-	// UnfavouriteAppWithResponse Unfavourite an app
+	// UnfavoriteAppWithResponse Unfavorite an app
 	//
-	// Removes the organisation favourite pin from the app. Idempotent: unfavouriting an app that is not favourited succeeds and returns the app with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
+	// Removes the organization favorite pin from the app. Idempotent: unfavoriting an app that is not favorited succeeds and returns the app with `isFavorite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with DELETE /v1/apps/{appId}/favourite (the `UnfavouriteApp` operationId).
-	UnfavouriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*UnfavouriteAppResponse, error)
+	// Corresponds with DELETE /v1/apps/{appId}/favorite (the `UnfavoriteApp` operationId).
+	UnfavoriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*UnfavoriteAppResponse, error)
 
-	// FavouriteAppWithResponse Favourite an app
+	// FavoriteAppWithResponse Favorite an app
 	//
-	// Pins the app as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited app succeeds and returns the app with `isFavourite: true`. Apps in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+	// Pins the app as a favorite for the authenticated organization so the console can surface it in a Favorites section. Idempotent: favoriting an already-favorited app succeeds and returns the app with `isFavorite: true`. Apps in `deleting` or `deleted` status cannot be favorited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with PUT /v1/apps/{appId}/favourite (the `FavouriteApp` operationId).
-	FavouriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*FavouriteAppResponse, error)
+	// Corresponds with PUT /v1/apps/{appId}/favorite (the `FavoriteApp` operationId).
+	FavoriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*FavoriteAppResponse, error)
 
 	// StartAsyncTaskWithBodyWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7330,7 +7330,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7339,7 +7339,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithBodyWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7348,7 +7348,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7373,7 +7373,7 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppSecretWithBodyWithResponse Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -7385,7 +7385,7 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppSecretWithResponse Attach a secret to an app
 	//
-	// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -7474,16 +7474,16 @@ type ClientWithResponsesInterface interface {
 
 	// ListGpuTypesWithResponse List supported GPU types and their pricing
 	//
-	// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
+	// Returns the global GPU type catalog and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalog, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/gpu-types (the `ListGpuTypes` operationId).
 	ListGpuTypesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListGpuTypesResponse, error)
 
-	// GetGpuTypeWithResponse Get a GPU type from the catalogue
+	// GetGpuTypeWithResponse Get a GPU type from the catalog
 	//
-	// Returns an active entry from the global GPU type catalogue. Retired entries return `404`. The result is not organisation-specific, but the request still requires authentication.
+	// Returns an active entry from the global GPU type catalog. Retired entries return `404`. The result is not organization-specific, but the request still requires authentication.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7492,7 +7492,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetLogEntriesWithResponse Read one page of a named log query
 	//
-	// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
+	// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighboring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalog.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7510,7 +7510,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListInsightsQueriesWithResponse List the metric and log queries this build can answer
 	//
-	// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+	// The catalog: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
 	//
 	// This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
 	//
@@ -7531,7 +7531,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 	//
-	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 	//
 	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 	//
@@ -7542,7 +7542,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListReservedCapacityWithResponse Report reserved capacity and its use
 	//
-	// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
+	// What the authenticated organization has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 	//
 	// One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 	//
@@ -7566,7 +7566,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithBodyWithResponse Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7575,7 +7575,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithResponse Create a secret
 	//
-	// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7593,7 +7593,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSecretWithBodyWithResponse Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7602,7 +7602,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSecretWithResponse Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -7672,13 +7672,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/usage (the `ListUsageEvents` operationId).
 	ListUsageEventsWithResponse(ctx context.Context, params *ListUsageEventsParams, reqEditors ...RequestEditorFn) (*ListUsageEventsResponse, error)
 
-	// GetUsageSummaryWithResponse Summarise usage over a time range
+	// GetUsageSummaryWithResponse Summarize usage over a time range
 	//
-	// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+	// GPU time and spend for the authenticated organization, aggregated over a half-open window and grouped by the dimensions asked for.
 	//
-	// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+	// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalog and the organization's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
 	//
-	// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+	// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalization rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalog rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organization holding a commitment sees a split here that the credit ledger has not yet applied.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -9149,7 +9149,7 @@ func (r ListAppEventsResponse) ContentType() string {
 	return ""
 }
 
-type UnfavouriteAppResponse struct {
+type UnfavoriteAppResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
@@ -9165,37 +9165,37 @@ type UnfavouriteAppResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r UnfavouriteAppResponse) GetJSON200() *App {
+func (r UnfavoriteAppResponse) GetJSON200() *App {
 	return r.JSON200
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r UnfavouriteAppResponse) GetApplicationproblemJSON401() *Unauthorized {
+func (r UnfavoriteAppResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r UnfavouriteAppResponse) GetApplicationproblemJSON403() *Forbidden {
+func (r UnfavoriteAppResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r UnfavouriteAppResponse) GetApplicationproblemJSON404() *NotFound {
+func (r UnfavoriteAppResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
 }
 
 // GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r UnfavouriteAppResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+func (r UnfavoriteAppResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
 	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
-func (r UnfavouriteAppResponse) GetBody() []byte {
+func (r UnfavoriteAppResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r UnfavouriteAppResponse) Status() string {
+func (r UnfavoriteAppResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -9203,7 +9203,7 @@ func (r UnfavouriteAppResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r UnfavouriteAppResponse) StatusCode() int {
+func (r UnfavoriteAppResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -9211,14 +9211,14 @@ func (r UnfavouriteAppResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r UnfavouriteAppResponse) ContentType() string {
+func (r UnfavoriteAppResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
 }
 
-type FavouriteAppResponse struct {
+type FavoriteAppResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
@@ -9234,37 +9234,37 @@ type FavouriteAppResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r FavouriteAppResponse) GetJSON200() *App {
+func (r FavoriteAppResponse) GetJSON200() *App {
 	return r.JSON200
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r FavouriteAppResponse) GetApplicationproblemJSON401() *Unauthorized {
+func (r FavoriteAppResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r FavouriteAppResponse) GetApplicationproblemJSON403() *Forbidden {
+func (r FavoriteAppResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r FavouriteAppResponse) GetApplicationproblemJSON404() *NotFound {
+func (r FavoriteAppResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
 }
 
 // GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
-func (r FavouriteAppResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+func (r FavoriteAppResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
 	return r.ApplicationproblemJSON503
 }
 
 // GetBody returns the raw response body bytes
-func (r FavouriteAppResponse) GetBody() []byte {
+func (r FavoriteAppResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r FavouriteAppResponse) Status() string {
+func (r FavoriteAppResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -9272,7 +9272,7 @@ func (r FavouriteAppResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r FavouriteAppResponse) StatusCode() int {
+func (r FavoriteAppResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -9280,7 +9280,7 @@ func (r FavouriteAppResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r FavouriteAppResponse) ContentType() string {
+func (r FavoriteAppResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10831,7 +10831,7 @@ type ListInsightsQueriesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *QueryCatalogue
+	JSON200 *QueryCatalog
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
@@ -10845,7 +10845,7 @@ type ListInsightsQueriesResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListInsightsQueriesResponse) GetJSON200() *QueryCatalogue {
+func (r ListInsightsQueriesResponse) GetJSON200() *QueryCatalog {
 	return r.JSON200
 }
 
@@ -12027,9 +12027,9 @@ func (r GetUsageSummaryResponse) ContentType() string {
 	return ""
 }
 
-// GetAppSummaryWithResponse App summary metrics for the authenticated organisation
+// GetAppSummaryWithResponse App summary metrics for the authenticated organization
 //
-// Aggregate dashboard metrics across all apps owned by the authenticated organisation. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
+// Aggregate dashboard metrics across all apps owned by the authenticated organization. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12044,7 +12044,7 @@ func (c *ClientWithResponses) GetAppSummaryWithResponse(ctx context.Context, req
 
 // ListAppsWithResponse List apps
 //
-// Returns a page of the organisation's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favourited apps appear before non-favourited apps, with the selected ordering applied within each group.
+// Returns a page of the organization's apps. Filters combine with AND; soft-deleted apps are excluded unless `status=deleted` is requested explicitly. Favorited apps appear before non-favorited apps, with the selected ordering applied within each group.
 //
 // A `cursor` is only valid for the `sort` and filters it was issued under — reusing one across a different ordering or filter set returns `400`.
 //
@@ -12077,7 +12077,7 @@ func (c *ClientWithResponses) ListAppsWithResponse(ctx context.Context, params *
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12108,7 +12108,7 @@ func (c *ClientWithResponses) CreateAppWithBodyWithResponse(ctx context.Context,
 //
 // `activeVersionId` is null until a rollout completes: a version records what should run, and only a finished deploy says what does.
 //
-// `secrets` attaches organisation secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organisation, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
+// `secrets` attaches organization secrets that already exist. It is the app's initial attachment set, so the first rollout carries their values into the worker. This route does not create a secret — use `POST /v1/secrets` first. A name that is unknown to the organization, or that is not `active`, returns `404`. A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past the binding limit each return `422`. The whole set is checked before any build capacity is spent.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12123,7 +12123,7 @@ func (c *ClientWithResponses) CreateAppWithResponse(ctx context.Context, body Cr
 
 // DeleteAppWithResponse Delete an app
 //
-// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, cancelling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalisation, audit, and usage history. Idempotent if the app is already `deleting`.
+// Soft delete. Sets `status = deleting` and returns `202` once that intent is persisted. Router removal, canceling in-progress builds, and worker drain (`draining → stopping → stopped`) are performed asynchronously by the deployer/Scaler; `status` becomes `deleted` once all workers stop. All rows are retained for billing finalization, audit, and usage history. Idempotent if the app is already `deleting`.
 //
 // The `appId` is released once `status` reaches `deleted`, and not before: while the app is `deleting` its workload is still being torn down and the name stays taken. A new app created under a released name is a new app and inherits nothing — no version, no build, no event history, and no workers.
 //
@@ -12140,7 +12140,7 @@ func (c *ClientWithResponses) DeleteAppWithResponse(ctx context.Context, appId A
 
 // GetAppWithResponse Get an app
 //
-// Returns the app the authenticated organisation owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
+// Returns the app the authenticated organization owns under this `appId`. An unknown app and a soft-deleted one both return `404 Not Found`: a deleted app is gone to its owner, and its rows are retained only for billing and audit. To read deleted apps, list them with `status=deleted`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12208,7 +12208,7 @@ func (c *ClientWithResponses) ListBuildsWithResponse(ctx context.Context, appId 
 
 // DeleteBuildWithResponse Delete or cancel a build
 //
-// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the cancelled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
+// Cancels a queued or running build and records it as `superseded`. Deleting a queued or running build ends its current rollout without activating the canceled build, so any previous version keeps serving. A terminal build can be deleted once no live rollout still needs it. Ready builds remain while a version references them.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12236,7 +12236,7 @@ func (c *ClientWithResponses) GetBuildWithResponse(ctx context.Context, appId Ap
 
 // DeployVersionWithBodyWithResponse Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -12260,7 +12260,7 @@ func (c *ClientWithResponses) DeployVersionWithBodyWithResponse(ctx context.Cont
 
 // DeployVersionWithResponse Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and cancelling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber` — the operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image.
@@ -12348,7 +12348,7 @@ func (c *ClientWithResponses) DeleteAppEnvironmentVariableWithResponse(ctx conte
 //
 // A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 //
-// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -12371,7 +12371,7 @@ func (c *ClientWithResponses) UpdateAppEnvironmentVariableWithBodyWithResponse(c
 //
 // A write that changes the stored value records a new version carrying the live environment set and the same image. If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the app can take one (`active`, `initializing`, or `failed` which becomes `initializing`). A `stopped` or `stopping` app pins the version and rolls it on `resume`. A write that leaves the stored value unchanged records no version and does not roll.
 //
-// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialised behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+// A write while a rollout of this app is still in flight returns `409 Conflict` and does not store the value. Each changing write is serialized behind that rollout, so setting several variables one at a time is that many sequential rolls with `409`s between them. Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
 //
 // An app holds at most 100 environment bindings in total — plain variables plus attached secrets — the same combined ceiling `AppCreate.environmentVariables` declares (create rejects secrets in-request; attach grows the set later). Overwriting an existing variable is always allowed; adding one past the ceiling returns `422`.
 //
@@ -12416,39 +12416,39 @@ func (c *ClientWithResponses) ListAppEventsWithResponse(ctx context.Context, app
 	return ParseListAppEventsResponse(rsp)
 }
 
-// UnfavouriteAppWithResponse Unfavourite an app
+// UnfavoriteAppWithResponse Unfavorite an app
 //
-// Removes the organisation favourite pin from the app. Idempotent: unfavouriting an app that is not favourited succeeds and returns the app with `isFavourite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
+// Removes the organization favorite pin from the app. Idempotent: unfavoriting an app that is not favorited succeeds and returns the app with `isFavorite: false`. Valid in any status including `deleting` and `deleted` — unpinning is not an app lifecycle mutation. Missing apps return `404`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with DELETE /v1/apps/{appId}/favourite (the `UnfavouriteApp` operationId).
-func (c *ClientWithResponses) UnfavouriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*UnfavouriteAppResponse, error) {
-	rsp, err := c.UnfavouriteApp(ctx, appId, reqEditors...)
+// Corresponds with DELETE /v1/apps/{appId}/favorite (the `UnfavoriteApp` operationId).
+func (c *ClientWithResponses) UnfavoriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*UnfavoriteAppResponse, error) {
+	rsp, err := c.UnfavoriteApp(ctx, appId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUnfavouriteAppResponse(rsp)
+	return ParseUnfavoriteAppResponse(rsp)
 }
 
-// FavouriteAppWithResponse Favourite an app
+// FavoriteAppWithResponse Favorite an app
 //
-// Pins the app as a favourite for the authenticated organisation so the console can surface it in a Favourites section. Idempotent: favouriting an already-favourited app succeeds and returns the app with `isFavourite: true`. Apps in `deleting` or `deleted` status cannot be favourited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
+// Pins the app as a favorite for the authenticated organization so the console can surface it in a Favorites section. Idempotent: favoriting an already-favorited app succeeds and returns the app with `isFavorite: true`. Apps in `deleting` or `deleted` status cannot be favorited (`404`). Soft-delete clears any existing pin when status becomes `deleting`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with PUT /v1/apps/{appId}/favourite (the `FavouriteApp` operationId).
-func (c *ClientWithResponses) FavouriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*FavouriteAppResponse, error) {
-	rsp, err := c.FavouriteApp(ctx, appId, reqEditors...)
+// Corresponds with PUT /v1/apps/{appId}/favorite (the `FavoriteApp` operationId).
+func (c *ClientWithResponses) FavoriteAppWithResponse(ctx context.Context, appId AppId, reqEditors ...RequestEditorFn) (*FavoriteAppResponse, error) {
+	rsp, err := c.FavoriteApp(ctx, appId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseFavouriteAppResponse(rsp)
+	return ParseFavoriteAppResponse(rsp)
 }
 
 // StartAsyncTaskWithBodyWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12463,7 +12463,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithBodyWithResponse(ctx context.Con
 
 // StartAsyncTaskWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`; poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12478,7 +12478,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithResponse(ctx context.Context, ap
 
 // StartSyncTaskWithBodyWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12493,7 +12493,7 @@ func (c *ClientWithResponses) StartSyncTaskWithBodyWithResponse(ctx context.Cont
 
 // StartSyncTaskWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId` — poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending` — the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted. `stopped`, `deleting`, and `failed` return `409 Conflict`; unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12536,7 +12536,7 @@ func (c *ClientWithResponses) ListAppSecretsWithResponse(ctx context.Context, ap
 
 // AttachAppSecretWithBodyWithResponse Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -12554,7 +12554,7 @@ func (c *ClientWithResponses) AttachAppSecretWithBodyWithResponse(ctx context.Co
 
 // AttachAppSecretWithResponse Attach a secret to an app
 //
-// Records that an organisation secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that an organization secret is attached to an app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only — the next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of allowing a last-wins override later. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total — plain environment variables plus attached secrets — the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments — rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`.
@@ -12703,7 +12703,7 @@ func (c *ClientWithResponses) GetWorkerWithResponse(ctx context.Context, appId A
 
 // ListGpuTypesWithResponse List supported GPU types and their pricing
 //
-// Returns the global GPU type catalogue and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalogue, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
+// Returns the global GPU type catalog and pricing. The request requires authentication. Customer principals receive only GPU types with capacity currently offered to customers; a type whose hardware is not yet cleared for customer workloads is omitted. The Runware principal receives the full catalog, including retired types and types not yet offered. Retired entries carry `deletedAt`. Each entry's `pricing` is the price currently in effect.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12716,9 +12716,9 @@ func (c *ClientWithResponses) ListGpuTypesWithResponse(ctx context.Context, reqE
 	return ParseListGpuTypesResponse(rsp)
 }
 
-// GetGpuTypeWithResponse Get a GPU type from the catalogue
+// GetGpuTypeWithResponse Get a GPU type from the catalog
 //
-// Returns an active entry from the global GPU type catalogue. Retired entries return `404`. The result is not organisation-specific, but the request still requires authentication.
+// Returns an active entry from the global GPU type catalog. Retired entries return `404`. The result is not organization-specific, but the request still requires authentication.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12733,7 +12733,7 @@ func (c *ClientWithResponses) GetGpuTypeWithResponse(ctx context.Context, gpuTyp
 
 // GetLogEntriesWithResponse Read one page of a named log query
 //
-// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighbouring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalogue.
+// Returns one page of log entries in the requested `sort` order, newest first by default, with opaque cursors for the neighboring pages when they exist. `nextCursor` continues in the `sort` order and `prevCursor` goes back against it, so a client can walk a window in either direction from either end. A cursor is only valid for the `sort` it was issued under; reusing one under the other ordering returns `400`. Query ids and their supported selectors are listed by the insights catalog.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12763,7 +12763,7 @@ func (c *ClientWithResponses) TailLogEntriesWithResponse(ctx context.Context, qu
 
 // ListInsightsQueriesWithResponse List the metric and log queries this build can answer
 //
-// The catalogue: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
+// The catalog: every named query, its unit and aggregation, the selectors it accepts, the series it returns, and the windows actually backed by stored series.
 //
 // This is the source of query ids. Clients discover ids here rather than carrying a list of their own, and render window tabs from `windows` rather than from the full ladder, so a window whose storage tier has no backing series stays invisible instead of rendering a tab with nothing behind it.
 //
@@ -12790,7 +12790,7 @@ func (c *ClientWithResponses) ListInsightsQueriesWithResponse(ctx context.Contex
 //
 // `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 //
-// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalogue. Other queries reject `endpointId`. Other windows are not available for these queries.
+// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 //
 // Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts; `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time; and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another — summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 //
@@ -12807,7 +12807,7 @@ func (c *ClientWithResponses) GetMetricSeriesWithResponse(ctx context.Context, q
 
 // ListReservedCapacityWithResponse Report reserved capacity and its use
 //
-// What the authenticated organisation has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
+// What the authenticated organization has reserved, what it is using of it now, and what overflowed to pay-as-you-go.
 //
 // One entry per commitment scope — one GPU type in one region — because compatible terms add together and cover an allocation between them. The terms that make up the scope are listed with their own dates and quantities.
 //
@@ -12843,7 +12843,7 @@ func (c *ClientWithResponses) ListSecretsWithResponse(ctx context.Context, param
 
 // CreateSecretWithBodyWithResponse Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12858,7 +12858,7 @@ func (c *ClientWithResponses) CreateSecretWithBodyWithResponse(ctx context.Conte
 
 // CreateSecretWithResponse Create a secret
 //
-// Creates an organisation-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates an organization-scoped secret. Returns `409` if the name is already in use — including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value — there is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12888,7 +12888,7 @@ func (c *ClientWithResponses) DeleteSecretWithResponse(ctx context.Context, secr
 
 // UpdateSecretWithBodyWithResponse Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12903,7 +12903,7 @@ func (c *ClientWithResponses) UpdateSecretWithBodyWithResponse(ctx context.Conte
 
 // UpdateSecretWithResponse Update a secret
 //
-// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organisation whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organisation CryptoKey that seals the value is only minted when the tenancy is active. An organisation whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. If a rollout is already in progress when this commits, this change is not guaranteed to land on it — it reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden` — the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead — that state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13021,13 +13021,13 @@ func (c *ClientWithResponses) ListUsageEventsWithResponse(ctx context.Context, p
 	return ParseListUsageEventsResponse(rsp)
 }
 
-// GetUsageSummaryWithResponse Summarise usage over a time range
+// GetUsageSummaryWithResponse Summarize usage over a time range
 //
-// GPU time and spend for the authenticated organisation, aggregated over a half-open window and grouped by the dimensions asked for.
+// GPU time and spend for the authenticated organization, aggregated over a half-open window and grouped by the dimensions asked for.
 //
-// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalogue and the organisation's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
+// Every figure is derived on read from the immutable usage ledger, the effective-dated price catalog and the organization's capacity commitments. Two consequences follow. The window is bounded, because the read folds every event of every worker in it. And a worker whose recorded life cannot be priced fails the request rather than being left out of the totals, because a total that silently omits usage is a wrong number a caller cannot see is wrong. These failures return `500`, with no partial totals.
 //
-// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalisation rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalogue rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organisation holding a commitment sees a split here that the credit ledger has not yet applied.
+// `paygSpend` is provisional pay-as-you-go accrual, not a settled charge. It excludes whole-second finalization rounding and ledger adjustments. `paygEquivalentValue` prices the same time at the catalog rate whatever covered it, so the difference between them is what a capacity commitment saved. While commitment coverage is not yet applied by settlement, an organization holding a commitment sees a split here that the credit ledger has not yet applied.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -14227,15 +14227,15 @@ func ParseListAppEventsResponse(rsp *http.Response) (*ListAppEventsResponse, err
 	return response, nil
 }
 
-// ParseUnfavouriteAppResponse parses an HTTP response from a UnfavouriteAppWithResponse call
-func ParseUnfavouriteAppResponse(rsp *http.Response) (*UnfavouriteAppResponse, error) {
+// ParseUnfavoriteAppResponse parses an HTTP response from a UnfavoriteAppWithResponse call
+func ParseUnfavoriteAppResponse(rsp *http.Response) (*UnfavoriteAppResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &UnfavouriteAppResponse{
+	response := &UnfavoriteAppResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -14281,15 +14281,15 @@ func ParseUnfavouriteAppResponse(rsp *http.Response) (*UnfavouriteAppResponse, e
 	return response, nil
 }
 
-// ParseFavouriteAppResponse parses an HTTP response from a FavouriteAppWithResponse call
-func ParseFavouriteAppResponse(rsp *http.Response) (*FavouriteAppResponse, error) {
+// ParseFavoriteAppResponse parses an HTTP response from a FavoriteAppWithResponse call
+func ParseFavoriteAppResponse(rsp *http.Response) (*FavoriteAppResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &FavouriteAppResponse{
+	response := &FavoriteAppResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -15618,7 +15618,7 @@ func ParseListInsightsQueriesResponse(rsp *http.Response) (*ListInsightsQueriesR
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest QueryCatalogue
+		var dest QueryCatalog
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
