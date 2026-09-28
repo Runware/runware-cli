@@ -258,6 +258,11 @@ paths and an invoke example once the application is active.`,
 					return err
 				}
 			}
+			if cmd.Flags().Changed("name") {
+				if err := validateAppName(name); err != nil {
+					return err
+				}
+			}
 			if name == "" {
 				name = id
 			}

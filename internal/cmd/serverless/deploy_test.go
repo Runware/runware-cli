@@ -271,6 +271,17 @@ func TestValidateGPUsPerWorker(t *testing.T) {
 	}
 }
 
+func TestDeploy_RejectsPaddedNameBeforeUpload(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testModelFile, "--id", testAppID, "--name", " padded"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "non-whitespace") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestDeploy_RejectsInvalidGPUsPerWorkerBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})

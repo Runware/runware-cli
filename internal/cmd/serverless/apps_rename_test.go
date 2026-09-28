@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -65,15 +66,31 @@ func TestAppsRename_PatchesNameOnly(t *testing.T) {
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
 
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+
 	cmd := newAppsRenameCmd(log.New(io.Discard))
-	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{testAppID, wantName})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("rename: %v", err)
+	execErr := cmd.Execute()
+
+	_ = w.Close()
+	os.Stdout = old
+	var out bytes.Buffer
+	_, _ = out.ReadFrom(r)
+
+	if execErr != nil {
+		t.Fatalf("rename: %v", execErr)
 	}
 	if patches != 1 {
 		t.Fatalf("patches = %d, want 1", patches)
+	}
+	if !strings.Contains(out.String(), wantName) {
+		t.Fatalf("stdout = %q, want it to contain %q", out.String(), wantName)
 	}
 }
 
