@@ -67,6 +67,9 @@ stopped.`,
   runware serverless apps resume my-app --wait --timeout 5m`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateWaitFlags(cmd, wait, timeout); err != nil {
+				return err
+			}
 			return runLifecycle(cmd, logger, args[0], "Resuming", (*serverlessapi.Client).ResumeApp, waitOptions{
 				Wait:     wait,
 				Timeout:  timeout,

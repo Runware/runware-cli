@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -42,7 +43,7 @@ func TestAddAppWaitFlags(t *testing.T) {
 		pollInterval time.Duration
 	)
 	addAppWaitFlags(cmd, &wait, &timeout, &pollInterval)
-	if err := cmd.ParseFlags([]string{"--wait", "--timeout", "30s", "--poll-interval", "1s"}); err != nil {
+	if err := cmd.ParseFlags([]string{testWaitFlag, testTimeoutFlag, "30s", "--poll-interval", "1s"}); err != nil {
 		t.Fatalf("ParseFlags: %v", err)
 	}
 	if !wait || timeout != 30*time.Second || pollInterval != time.Second {
@@ -74,20 +75,50 @@ func TestWaitContext_TimeoutCancels(t *testing.T) {
 }
 
 func TestWaitTimeoutErr(t *testing.T) {
-	if err := waitTimeoutErr(nil, "application my-app", time.Second); err != nil {
+	parent := context.Background()
+	if err := waitTimeoutErr(parent, nil, "application my-app", time.Second); err != nil {
 		t.Fatalf("nil: %v", err)
 	}
-	if err := waitTimeoutErr(errors.New("boom"), "application my-app", time.Second); err == nil || err.Error() != "boom" {
+	if err := waitTimeoutErr(parent, errors.New("boom"), "application my-app", time.Second); err == nil || err.Error() != "boom" {
 		t.Fatalf("passthrough: %v", err)
 	}
+	// A slow request is also DeadlineExceeded, but the wait budget has not expired.
+	if err := waitTimeoutErr(parent, context.DeadlineExceeded, "application my-app", time.Minute); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("request timeout: %v", err)
+	}
 
-	err := waitTimeoutErr(context.DeadlineExceeded, "application my-app", 30*time.Second)
+	waitCtx, cancel := context.WithTimeout(parent, time.Nanosecond)
+	defer cancel()
+	<-waitCtx.Done()
+	err := waitTimeoutErr(waitCtx, context.DeadlineExceeded, "application my-app", 30*time.Second)
 	if err == nil || !strings.Contains(err.Error(), "timed out waiting for application my-app after 30s") {
 		t.Fatalf("timeout: %v", err)
 	}
-	err = waitTimeoutErr(context.DeadlineExceeded, "task t1", 0)
-	if err == nil || !strings.Contains(err.Error(), "timed out waiting for task t1") {
-		t.Fatalf("zero timeout: %v", err)
+}
+
+func TestWaitFlagsRejectMisuse(t *testing.T) {
+	deploy := newDeployCmd(nil)
+	deploy.SetOut(&bytes.Buffer{})
+	deploy.SetErr(&bytes.Buffer{})
+	deploy.SetArgs([]string{testIDFlag, testAppID, testTimeoutFlag, "1s"})
+	if err := deploy.Execute(); err == nil || !strings.Contains(err.Error(), "--timeout requires --wait") {
+		t.Fatalf("timeout without wait: %v", err)
+	}
+
+	negative := newDeployCmd(nil)
+	negative.SetOut(&bytes.Buffer{})
+	negative.SetErr(&bytes.Buffer{})
+	negative.SetArgs([]string{testIDFlag, testAppID, testWaitFlag, testTimeoutFlag, "-1s"})
+	if err := negative.Execute(); err == nil || !strings.Contains(err.Error(), "must not be negative") {
+		t.Fatalf("negative timeout: %v", err)
+	}
+
+	invoke := newAppsInvokeCmd(nil)
+	invoke.SetOut(&bytes.Buffer{})
+	invoke.SetErr(&bytes.Buffer{})
+	invoke.SetArgs([]string{testAppID, "infer", testTimeoutFlag, "1s"})
+	if err := invoke.Execute(); err == nil || !strings.Contains(err.Error(), "--timeout requires --wait or --sync") {
+		t.Fatalf("invoke timeout: %v", err)
 	}
 }
 

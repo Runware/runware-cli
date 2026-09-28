@@ -39,7 +39,8 @@ wait.
 
 --sync uses the sync invocation endpoint. If the platform wait window
 expires, the command polls the returned task id; it never treats expiry as
-a failure and never resubmits.
+a failure and never resubmits. --timeout bounds that sync call and the poll
+together, and requires --wait or --sync.
 
 A client-generated task id is sent with every invoke. Omit --task-id to
 generate one. Resubmitting the same id returns the task it already names
@@ -63,20 +64,26 @@ instead of starting a second run.`,
 			if err != nil {
 				return err
 			}
+			if err := validateWaitFlags(cmd, sync || wait, timeout); err != nil {
+				return err
+			}
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Invoking %s on %s...", endpointPath, appID))
 			spin.Start()
 
+			waitCtx, cancel := waitContext(cmd.Context(), timeout)
+			defer cancel()
+
 			var task *serverlessapi.Task
 			if sync {
-				task, err = client.InvokeSync(cmd.Context(), appID, endpointPath, taskID, payload)
+				task, err = client.InvokeSync(waitCtx, appID, endpointPath, taskID, payload)
 			} else {
 				task, err = client.InvokeAsync(cmd.Context(), appID, endpointPath, taskID, payload)
 			}
 			if err != nil {
 				spin.Stop()
-				return err
+				return waitTimeoutErr(waitCtx, err, "sync invocation", timeout)
 			}
 
 			shouldWait := sync || wait
@@ -84,12 +91,10 @@ instead of starting a second run.`,
 				waitedID := task.Id
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Task %s accepted; waiting...\n", waitedID)
 				spin.SetMessage(fmt.Sprintf("Waiting for task %s...", waitedID))
-				waitCtx, cancel := waitContext(cmd.Context(), timeout)
 				task, err = client.WaitTask(waitCtx, appID, waitedID, pollInterval)
-				cancel()
 				if err != nil {
 					spin.Stop()
-					return waitTimeoutErr(err, "task "+waitedID, timeout)
+					return waitTimeoutErr(waitCtx, err, "task "+waitedID, timeout)
 				}
 			}
 			spin.Stop()

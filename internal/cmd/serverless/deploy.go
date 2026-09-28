@@ -2,7 +2,6 @@ package serverless
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -249,6 +248,9 @@ paths and an invoke example once the application is active.`,
   runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait --timeout 10m`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateWaitFlags(cmd, wait, timeout); err != nil {
+				return err
+			}
 			if err := validateDeployArgs(cmd, args, containerDir); err != nil {
 				return err
 			}
@@ -369,12 +371,13 @@ paths and an invoke example once the application is active.`,
 				spin.Stop()
 				return err
 			}
+			appID := app.AppId
 			waitCtx, cancelWait := waitContext(cmd.Context(), timeout)
 			defer cancelWait()
 			if wait && !serverlessapi.AppDeployTerminal(app.Status) {
 				var lastStatus string
-				app, err = waitForAppDeploy(waitCtx, client, app.AppId, pollInterval, func(appStatus, buildStatus string) {
-					msg := deployWaitMessage(app.AppId, appStatus, buildStatus)
+				app, err = waitForAppDeploy(waitCtx, client, appID, pollInterval, func(appStatus, buildStatus string) {
+					msg := deployWaitMessage(appID, appStatus, buildStatus)
 					if msg == lastStatus {
 						return
 					}
@@ -384,7 +387,7 @@ paths and an invoke example once the application is active.`,
 				})
 				if err != nil {
 					spin.Stop()
-					return waitTimeoutErr(err, "application "+app.AppId, timeout)
+					return waitTimeoutErr(waitCtx, err, "application "+appID, timeout)
 				}
 			}
 			spin.Stop()
@@ -396,8 +399,8 @@ paths and an invoke example once the application is active.`,
 			// when it does.
 			if canCompare {
 				settled, err := waitForSubmittedVersion(waitCtx, client, app.AppId, versionBefore, pollInterval)
-				if errors.Is(err, context.DeadlineExceeded) {
-					return waitTimeoutErr(err, "application "+app.AppId, timeout)
+				if waitCtx.Err() == context.DeadlineExceeded {
+					return waitTimeoutErr(waitCtx, err, "application "+app.AppId, timeout)
 				}
 				if err == nil && activationMoved(versionBefore, settled.ActiveVersionId) {
 					if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {

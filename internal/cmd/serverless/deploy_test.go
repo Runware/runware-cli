@@ -24,6 +24,9 @@ const (
 	testPipPackage    = "torch"
 	testSourceID      = "019c7654-8b21-7abc-9123-abcdef123456"
 	testSrcDirFlag    = "--src-dir"
+	testIDFlag        = "--id"
+	testWaitFlag      = "--wait"
+	testTimeoutFlag   = "--timeout"
 )
 
 func TestValidateDeployArgs(t *testing.T) {
@@ -278,7 +281,7 @@ func TestDeploy_RejectsInvalidGPUsPerWorkerBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, "--id", testAppID, "--gpus-per-worker", "3"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--gpus-per-worker", "3"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), gpusPerWorkerValuesText()) {
 		t.Fatalf("err = %v", err)
@@ -303,7 +306,7 @@ func TestDeployCreate_RejectsAvailableWorkersPctBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, "--id", testAppID, "--available-workers-pct", "101"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--available-workers-pct", "101"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "0 and 100") {
 		t.Fatalf("err = %v", err)
@@ -362,7 +365,7 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 	cmd.SetArgs([]string{
 		testModelFile,
 		"--src-dir", dir,
-		"--id", testAppID,
+		testIDFlag, testAppID,
 		testGPUTypeFlag, testGPUType,
 		"--secret", "API_KEY=INFERENCE_KEY",
 		"--min-available-workers", "1",
@@ -445,7 +448,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--requirement", testPipPackage}},
 		{flags: []string{"--base-image", "python:3.12-slim"}},
 		{flags: []string{testSrcDirFlag, "."}},
-		{flags: []string{"--wait"}},
+		{flags: []string{testWaitFlag}},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.flags, " "), func(t *testing.T) {
@@ -464,6 +467,69 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 				t.Fatalf("got %v, want substring %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestDeployWait_TimeoutDoesNotPanic(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	stage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer stage.Close()
+
+	var gets int
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			gets++
+			if gets == 1 {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(strings.Replace(activeAppBody(""), `"status":"active"`, `"status":"initializing"`, 1)))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/source-uploads":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{
+				"upload": {"id":"` + testSourceID + `","declaredByteLength":1,"sha256":"00","sourceType":"code","state":"pending","expiresAt":"2026-09-02T12:00:00Z","createdAt":"2026-09-02T11:00:00Z","updatedAt":"2026-09-02T11:00:00Z"},
+				"transfer": {"mode":"singlePut","method":"PUT","url":"` + stage.URL + `/obj","headers":{"Content-Type":"application/zip"},"expiresAt":"2026-09-02T12:00:00Z"}
+			}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/complete"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"` + testSourceID + `","declaredByteLength":1,"sha256":"00","sourceType":"code","sourceId":"` + testSourceID + `","state":"ready","expiresAt":"2026-09-02T12:00:00Z","createdAt":"2026-09-02T11:00:00Z","updatedAt":"2026-09-02T11:00:00Z"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(strings.Replace(activeAppBody(""), `"status":"active"`, `"status":"initializing"`, 1)))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		testModelFile,
+		"--src-dir", dir,
+		testIDFlag, testAppID,
+		testGPUTypeFlag, testGPUType,
+		testWaitFlag,
+		testTimeoutFlag, "50ms",
+		"--poll-interval", "10ms",
+	})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "timed out waiting for application "+testAppID) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
