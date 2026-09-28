@@ -160,6 +160,7 @@ runware serverless apps invoke my-app infer -f payload.json --wait
 # Logs, events, and usage
 runware serverless apps logs my-app --follow
 runware serverless apps events my-app
+runware serverless apps errors my-app --window 1h --status-class 5xx
 runware serverless usage --for this-month --group-by app,day
 runware serverless apps usage my-app --for this-month
 

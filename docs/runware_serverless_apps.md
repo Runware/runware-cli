@@ -32,6 +32,7 @@ runware serverless apps [flags]
 * [runware serverless apps delete](runware_serverless_apps_delete.md)	 - Delete a serverless application
 * [runware serverless apps endpoints](runware_serverless_apps_endpoints.md)	 - List and inspect endpoints for a serverless application
 * [runware serverless apps env](runware_serverless_apps_env.md)	 - Manage plain-text environment variables for an application
+* [runware serverless apps errors](runware_serverless_apps_errors.md)	 - List failed requests for a serverless application
 * [runware serverless apps events](runware_serverless_apps_events.md)	 - List events for a serverless application
 * [runware serverless apps invoke](runware_serverless_apps_invoke.md)	 - Invoke an application endpoint
 * [runware serverless apps list](runware_serverless_apps_list.md)	 - List serverless applications
