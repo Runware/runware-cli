@@ -16,11 +16,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newSecretsCmd returns the "serverless secrets" command group for organisation
+// newSecretsCmd returns the "serverless secrets" command group for organization
 // secrets and their attachment to applications.
 func newSecretsCmd(logger *log.Logger) *cobra.Command {
-	cmd := stubGroup("secrets", "Manage organisation secrets for serverless applications")
-	cmd.Long = "Manage organisation-scoped encrypted secrets, and attach them to serverless applications."
+	cmd := stubGroup("secrets", "Manage organization secrets for serverless applications")
+	cmd.Long = "Manage organization-scoped encrypted secrets, and attach them to serverless applications."
 	cmd.AddCommand(
 		newSecretsListCmd(logger),
 		newSecretsSetCmd(logger),
@@ -40,11 +40,11 @@ func newSecretsListCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List organisation secrets",
-		Long: `List organisation secret metadata. Encrypted values are never returned.
+		Short: "List organization secrets",
+		Long: `List organization secret metadata. Encrypted values are never returned.
 
 To list secrets attached to an application, use 'secrets attachments'.`,
-		Example: `  # list organisation secrets
+		Example: `  # list organization secrets
   runware serverless secrets list
 
   # page through results
@@ -93,8 +93,8 @@ func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "set <name>",
-		Short: "Create or update an organisation secret",
-		Long: `Create an organisation-scoped secret, or update its value if the name already exists.
+		Short: "Create or update an organization secret",
+		Long: `Create an organization-scoped secret, or update its value if the name already exists.
 
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
@@ -145,10 +145,10 @@ in process lists; use --value-file - to read from stdin.`,
 func newSecretsRemoveCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
-		Short: "Remove an organisation secret",
-		Long: `Remove an organisation secret. Returns a conflict if any application still
+		Short: "Remove an organization secret",
+		Long: `Remove an organization secret. Returns a conflict if any application still
 has it attached — detach each holder with 'secrets detach' first.`,
-		Example: `  # remove an organisation secret
+		Example: `  # remove an organization secret
   runware serverless secrets remove FOO`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -224,11 +224,11 @@ func newSecretsAttachCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "attach <appId> <name>",
-		Short: "Attach an organisation secret to an application",
-		Long: `Record that an organisation secret is attached to an application, optionally
+		Short: "Attach an organization secret to an application",
+		Long: `Record that an organization secret is attached to an application, optionally
 under a different environment variable name.
 
-The organisation secret must already exist (see 'secrets set'). Attaching rolls
+The organization secret must already exist (see 'secrets set'). Attaching rolls
 the live deployment so a running worker picks up the value. If a rollout is
 already in progress, this attach reaches the worker on the next deploy. An
 application that is not live records the attachment only; the next deploy or
@@ -273,7 +273,7 @@ func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "detach <appId> <name>",
 		Short: "Detach a secret from an application",
-		Long: `Remove an organisation secret's attachment from an application. The organisation
+		Long: `Remove an organization secret's attachment from an application. The organization
 secret itself remains.
 
 Detaching rolls the live deployment so a running worker stops receiving the

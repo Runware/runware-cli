@@ -1,10 +1,10 @@
 ## runware serverless secrets list
 
-List organisation secrets
+List organization secrets
 
 ### Synopsis
 
-List organisation secret metadata. Encrypted values are never returned.
+List organization secret metadata. Encrypted values are never returned.
 
 To list secrets attached to an application, use 'secrets attachments'.
 
@@ -15,7 +15,7 @@ runware serverless secrets list [flags]
 ### Examples
 
 ```
-  # list organisation secrets
+  # list organization secrets
   runware serverless secrets list
 
   # page through results
@@ -41,5 +41,5 @@ runware serverless secrets list [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organisation secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
 

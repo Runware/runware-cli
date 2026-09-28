@@ -202,7 +202,7 @@ type WSTransport struct {
 // Connect is deferred until the first Send (or an explicit Connect call).
 // DialWS dials a WebSocket connection to the Runware API, performs the
 // authentication handshake, and returns a ready-to-use transport.
-// opts may be used to override reconnect behaviour, ping interval, etc.
+// opts may be used to override reconnect behavior, ping interval, etc.
 func DialWS(ctx context.Context, apiKey, baseURL string, logger *slog.Logger, opts ...WSOption) (*WSTransport, error) {
 	ua := buildinfo.UserAgent()
 	if agent := agents.Detect(); agent != "" {
@@ -523,7 +523,7 @@ func (t *WSTransport) Send(ctx context.Context, tasks []any) ([]json.RawMessage,
 	}
 	t.inflightMu.Unlock()
 
-	// Write the message; serialised with writeMu (gorilla: one concurrent writer).
+	// Write the message; serialized with writeMu (gorilla: one concurrent writer).
 	t.writeMu.Lock()
 	writeErr := conn.WriteMessage(websocket.TextMessage, body)
 	t.writeMu.Unlock()
@@ -574,7 +574,7 @@ var _ StreamSender = (*WSTransport)(nil)
 
 // SendStream implements [StreamSender]: it transmits a single task and
 // dispatches every result frame received for its taskUUID to onFrame, until
-// onFrame reports done or returns an error, the context is cancelled, or the
+// onFrame reports done or returns an error, the context is canceled, or the
 // transport shuts down. API error frames for the task are returned as Go
 // errors. The in-flight entry survives reconnects, like Send.
 func (t *WSTransport) SendStream(ctx context.Context, task any, onFrame func(frame json.RawMessage) (done bool, err error)) error {
@@ -876,7 +876,7 @@ func (t *WSTransport) reader(conn *websocket.Conn, connCancel context.CancelFunc
 
 // keepAlive sends periodic pings over conn to prevent the server from dropping
 // an idle connection, and triggers a reconnect if no inbound activity has been
-// seen for wsInactivityTimeout. It exits when ctx is cancelled.
+// seen for wsInactivityTimeout. It exits when ctx is canceled.
 func (t *WSTransport) keepAlive(ctx context.Context, conn *websocket.Conn) {
 	ticker := time.NewTicker(t.pingInterval)
 	defer ticker.Stop()

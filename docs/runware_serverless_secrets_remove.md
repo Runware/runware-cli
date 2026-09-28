@@ -1,10 +1,10 @@
 ## runware serverless secrets remove
 
-Remove an organisation secret
+Remove an organization secret
 
 ### Synopsis
 
-Remove an organisation secret. Returns a conflict if any application still
+Remove an organization secret. Returns a conflict if any application still
 has it attached — detach each holder with 'secrets detach' first.
 
 ```
@@ -14,7 +14,7 @@ runware serverless secrets remove <name> [flags]
 ### Examples
 
 ```
-  # remove an organisation secret
+  # remove an organization secret
   runware serverless secrets remove FOO
 ```
 
@@ -35,5 +35,5 @@ runware serverless secrets remove <name> [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organisation secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
 

@@ -19,6 +19,7 @@ func newAppsInvokeCmd(logger *log.Logger) *cobra.Command {
 	var (
 		sync         bool
 		wait         bool
+		timeout      time.Duration
 		bodyFile     string
 		taskID       string
 		pollInterval time.Duration
@@ -33,11 +34,13 @@ endpointPath is a bare lowercase segment as returned by apps endpoints
 (e.g. infer). A leading slash is rejected.
 
 The default is async: the command prints the accepted task id. Pass --wait
-to poll until the task is completed or failed.
+to poll until the task is completed or failed, and --timeout to bound that
+wait.
 
 --sync uses the sync invocation endpoint. If the platform wait window
 expires, the command polls the returned task id; it never treats expiry as
-a failure and never resubmits.
+a failure and never resubmits. --timeout bounds that sync call and the poll
+together, and requires --wait or --sync.
 
 A client-generated task id is sent with every invoke. Omit --task-id to
 generate one. Resubmitting the same id returns the task it already names
@@ -50,7 +53,7 @@ instead of starting a second run.`,
   runware serverless apps invoke my-app infer --sync -f payload.json
 
   # async invoke and poll
-  runware serverless apps invoke my-app infer --wait -f payload.json
+  runware serverless apps invoke my-app infer --wait --timeout 2m -f payload.json
 
   # retry a lost response without starting a second task
   runware serverless apps invoke my-app infer --task-id 7c9e6679-7425-40de-944b-e07fc1f90ae7 -f payload.json`,
@@ -61,30 +64,37 @@ instead of starting a second run.`,
 			if err != nil {
 				return err
 			}
+			if err := validateWaitFlags(cmd, sync || wait, timeout); err != nil {
+				return err
+			}
 
 			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Invoking %s on %s...", endpointPath, appID))
 			spin.Start()
 
+			waitCtx, cancel := waitContext(cmd.Context(), timeout)
+			defer cancel()
+
 			var task *serverlessapi.Task
 			if sync {
-				task, err = client.InvokeSync(cmd.Context(), appID, endpointPath, taskID, payload)
+				task, err = client.InvokeSync(waitCtx, appID, endpointPath, taskID, payload)
 			} else {
 				task, err = client.InvokeAsync(cmd.Context(), appID, endpointPath, taskID, payload)
 			}
 			if err != nil {
 				spin.Stop()
-				return err
+				return waitTimeoutErr(waitCtx, err, "sync invocation", timeout)
 			}
 
 			shouldWait := sync || wait
 			if shouldWait && task.Status == serverlessapi.TaskStatusPending {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Task %s accepted; waiting...\n", task.Id)
-				spin.SetMessage(fmt.Sprintf("Waiting for task %s...", task.Id))
-				task, err = client.WaitTask(cmd.Context(), appID, task.Id, pollInterval)
+				waitedID := task.Id
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Task %s accepted; waiting...\n", waitedID)
+				spin.SetMessage(fmt.Sprintf("Waiting for task %s...", waitedID))
+				task, err = client.WaitTask(waitCtx, appID, waitedID, pollInterval)
 				if err != nil {
 					spin.Stop()
-					return err
+					return waitTimeoutErr(waitCtx, err, "task "+waitedID, timeout)
 				}
 			}
 			spin.Stop()
@@ -98,6 +108,7 @@ instead of starting a second run.`,
 
 	cmd.Flags().BoolVar(&sync, "sync", false, "Use sync invocation and wait for a terminal task")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the task is completed or failed")
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait (0 = no limit)")
 	cmd.Flags().StringVarP(&bodyFile, "body", "f", "", "JSON payload file, or - for stdin (default {})")
 	cmd.Flags().StringVar(&taskID, "task-id", "", "Client task id (UUID); generated if omitted")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for a task")

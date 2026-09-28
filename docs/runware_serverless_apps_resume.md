@@ -7,8 +7,9 @@ Resume a stopped serverless application
 Resume a stopped serverless application.
 
 The server accepts the resume and returns immediately with status initializing.
-Worker start is asynchronous; this command does not wait until the application
-is active. The application must be stopped.
+Worker start is asynchronous. Pass --wait to poll until the application is
+active or failed, and --timeout to bound that wait. The application must be
+stopped.
 
 ```
 runware serverless apps resume <appId> [flags]
@@ -19,12 +20,18 @@ runware serverless apps resume <appId> [flags]
 ```
   # resume a stopped application
   runware serverless apps resume my-app
+
+  # wait until the application is active or failed
+  runware serverless apps resume my-app --wait --timeout 5m
 ```
 
 ### Options
 
 ```
-  -h, --help   help for resume
+  -h, --help                     help for resume
+      --poll-interval duration   Polling interval when waiting for the application (default 2s)
+      --timeout duration         Maximum time to wait (0 = no limit)
+      --wait                     Poll until the application is active or failed
 ```
 
 ### Options inherited from parent commands

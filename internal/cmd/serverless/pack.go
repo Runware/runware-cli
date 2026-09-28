@@ -15,7 +15,7 @@ import (
 )
 
 // maxPackEntryBytes is the maximum size of a single file we will put in the
-// archive. Keeps one accidental artefact — a checkpoint, a dataset someone left
+// archive. Keeps one accidental artifact — a checkpoint, a dataset someone left
 // in the project — from blowing memory, since the whole archive is held in
 // memory and base64 expands it by ~4/3.
 const maxPackEntryBytes int64 = 10 << 20 // 10 MiB

@@ -1,10 +1,10 @@
 ## runware serverless secrets
 
-Manage organisation secrets for serverless applications
+Manage organization secrets for serverless applications
 
 ### Synopsis
 
-Manage organisation-scoped encrypted secrets, and attach them to serverless applications.
+Manage organization-scoped encrypted secrets, and attach them to serverless applications.
 
 ```
 runware serverless secrets [flags]
@@ -28,10 +28,10 @@ runware serverless secrets [flags]
 ### SEE ALSO
 
 * [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
-* [runware serverless secrets attach](runware_serverless_secrets_attach.md)	 - Attach an organisation secret to an application
+* [runware serverless secrets attach](runware_serverless_secrets_attach.md)	 - Attach an organization secret to an application
 * [runware serverless secrets attachments](runware_serverless_secrets_attachments.md)	 - List secrets attached to an application
 * [runware serverless secrets detach](runware_serverless_secrets_detach.md)	 - Detach a secret from an application
-* [runware serverless secrets list](runware_serverless_secrets_list.md)	 - List organisation secrets
-* [runware serverless secrets remove](runware_serverless_secrets_remove.md)	 - Remove an organisation secret
-* [runware serverless secrets set](runware_serverless_secrets_set.md)	 - Create or update an organisation secret
+* [runware serverless secrets list](runware_serverless_secrets_list.md)	 - List organization secrets
+* [runware serverless secrets remove](runware_serverless_secrets_remove.md)	 - Remove an organization secret
+* [runware serverless secrets set](runware_serverless_secrets_set.md)	 - Create or update an organization secret
 

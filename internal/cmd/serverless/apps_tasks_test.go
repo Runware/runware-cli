@@ -37,7 +37,7 @@ func TestTaskResult_IncludesOutputAndError(t *testing.T) {
 		AppId:       testAppID,
 		Status:      serverlessapi.TaskStatusFailed,
 		Error:       &errMsg,
-		Output:      &output,
+		Output:      output,
 		CreatedAt:   created,
 		CompletedAt: &completed,
 	}
@@ -52,6 +52,17 @@ func TestTaskResult_IncludesOutputAndError(t *testing.T) {
 	if got["Output"] != `{"ok":true}` {
 		t.Fatalf("output = %#v", got["Output"])
 	}
+}
+
+func TestTaskResult_RendersScalarOutput(t *testing.T) {
+	r := taskResult{Output: "done"}
+	rows := r.Rows()
+	for _, row := range rows {
+		if row[0] == "Output" && row[1] == `"done"` {
+			return
+		}
+	}
+	t.Fatalf("scalar output missing from rows: %#v", rows)
 }
 
 func TestTasksResult_Headers(t *testing.T) {

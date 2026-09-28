@@ -9,7 +9,7 @@ import (
 )
 
 // Print outputs data in the specified format.
-// For JSON/YAML, data is serialised directly.
+// For JSON/YAML, data is serialized directly.
 // For table, data must implement Tabular; if it does not, an error is returned.
 func Print(format Format, data any) error {
 	switch format {

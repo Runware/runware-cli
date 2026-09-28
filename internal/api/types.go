@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// RunOptions configures the behaviour of Client.Run.
+// RunOptions configures the behavior of Client.Run.
 type RunOptions struct {
 	// TaskType overrides the task type detected from the model schema.
 	// Required when the schema is unavailable or does not encode a task type.
@@ -397,7 +397,7 @@ type ModelUploadResult struct {
 	AIR      string    `json:"air,omitempty"`
 }
 
-// ModelUploadOptions configures the behaviour of Client.ModelUpload.
+// ModelUploadOptions configures the behavior of Client.ModelUpload.
 type ModelUploadOptions struct {
 	// OnStatus is called for each intermediate pipeline status
 	// (validated, downloaded, optimized, stored). It may be nil.
