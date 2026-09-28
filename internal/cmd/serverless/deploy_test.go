@@ -277,6 +277,17 @@ func TestValidateGPUsPerWorker(t *testing.T) {
 	}
 }
 
+func TestDeploy_RejectsPaddedNameBeforeUpload(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--name", " padded"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "non-whitespace") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestDeploy_RejectsInvalidGPUsPerWorkerBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
@@ -444,7 +455,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--fallback-gpu-type", "l40s"}, wantErr: scaleHint},
 		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
 		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
-		{flags: []string{"--name", "My App"}, wantErr: "omit it"},
+		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
 		{flags: []string{"--requirement", testPipPackage}},
 		{flags: []string{"--base-image", "python:3.12-slim"}},
 		{flags: []string{testSrcDirFlag, "."}},

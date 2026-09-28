@@ -11,8 +11,9 @@ same --id uploads a new source, records version N+1, and rolls it when the
 build is ready. Create-only flags (--gpu-type, worker settings, --volume,
 --secret, --env, --env-file, --name) apply only to create; passing them when
 the application already exists is an error. Change workers with 'apps scale',
-attach a secret later with 'secrets attach', and change environment with
-'apps env'. A source update on a stopped application is 409.
+attach a secret later with 'secrets attach', change environment with
+'apps env', and the display name with 'apps rename'. A source update on a
+stopped application is 409.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
