@@ -36,6 +36,9 @@ const (
 	colGPUTime       = "GPU time"
 	colPAYGSpend     = "PAYG spend"
 	colPAYGValue     = "PAYG-equivalent value"
+	colEvent         = "Event"
+	colGPUs          = "GPUs"
+	colPricePerGPU   = "Price/s"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"

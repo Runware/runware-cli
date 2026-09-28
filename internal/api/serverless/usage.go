@@ -27,6 +27,12 @@ type MoneyAmount = gen.MoneyAmount
 // GetUsageSummaryParams are the query parameters of GET /v1/usage/summary.
 type GetUsageSummaryParams = gen.GetUsageSummaryParams
 
+// UsageEvent is one worker state transition in the billing ledger.
+type UsageEvent = gen.UsageEvent
+
+// ListUsageEventsParams are the query parameters of GET /v1/usage.
+type ListUsageEventsParams = gen.ListUsageEventsParams
+
 // Usage summary grouping dimensions.
 const (
 	UsageDimensionApp      = gen.UsageDimensionApp
@@ -71,5 +77,38 @@ func (c *Client) GetUsageSummary(ctx context.Context, params *GetUsageSummaryPar
 		return nil, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// ListUsageEvents returns one newest-first page of worker state transitions.
+// from and to bound occurredAt. An unknown appId selects an empty page.
+func (c *Client) ListUsageEvents(ctx context.Context, params *ListUsageEventsParams) (Page[UsageEvent], error) {
+	if c.apiKey == "" {
+		return Page[UsageEvent]{}, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.ListUsageEventsWithResponse(ctx, params)
+	if err != nil {
+		return Page[UsageEvent]{}, fmt.Errorf("list usage events: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return pageOf[UsageEvent](nil, nil), nil
+		}
+		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
+	case http.StatusBadRequest:
+		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
+	case http.StatusUnauthorized:
+		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusForbidden:
+		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusServiceUnavailable:
+		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
+	default:
+		return Page[UsageEvent]{}, problemFromBody(resp.Body, resp.StatusCode())
 	}
 }
