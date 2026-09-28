@@ -13,7 +13,8 @@ the latest page of the ledger. Spend over a window is 'serverless usage'.
 Price/s is the catalog rate per GPU-second at that moment, including time a
 reservation covered. Coverage itself is on the usage summary.
 
-Replay a cursor with the same --app, --from, --to, and --limit.
+An unknown --app is an empty page, not a missing app. Replay a cursor with
+the same --app, --from, --to, and --limit.
 
 ```
 runware serverless usage events [flags]

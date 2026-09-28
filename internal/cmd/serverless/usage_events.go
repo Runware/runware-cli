@@ -37,7 +37,8 @@ the latest page of the ledger. Spend over a window is 'serverless usage'.
 Price/s is the catalog rate per GPU-second at that moment, including time a
 reservation covered. Coverage itself is on the usage summary.
 
-Replay a cursor with the same --app, --from, --to, and --limit.`,
+An unknown --app is an empty page, not a missing app. Replay a cursor with
+the same --app, --from, --to, and --limit.`,
 		Example: `  # the latest page of the ledger
   runware serverless usage events
 
@@ -82,7 +83,8 @@ func usageEventParamsFromFlags(flags usageEventFlags) (*serverlessapi.ListUsageE
 	if err := validateListLimit(flags.limit); err != nil {
 		return nil, err
 	}
-	if flags.app != "" && strings.TrimSpace(flags.app) == "" {
+	app := strings.TrimSpace(flags.app)
+	if flags.app != "" && app == "" {
 		return nil, fmt.Errorf("invalid --app %q", flags.app)
 	}
 	from, err := parseUsageTime("--from", flags.from)
@@ -99,8 +101,7 @@ func usageEventParamsFromFlags(flags usageEventFlags) (*serverlessapi.ListUsageE
 
 	params := &serverlessapi.ListUsageEventsParams{}
 	params.Limit, params.Cursor = listPageParams(flags.limit, flags.cursor)
-	if flags.app != "" {
-		app := flags.app
+	if app != "" {
 		params.AppId = &app
 	}
 	params.From = from
@@ -112,7 +113,7 @@ func usageEventParamsFromFlags(flags usageEventFlags) (*serverlessapi.ListUsageE
 }
 
 func extraUsageEventCursorFlags(flags usageEventFlags) string {
-	parts := appendFlag(nil, "--app", flags.app)
+	parts := appendFlag(nil, "--app", strings.TrimSpace(flags.app))
 	parts = appendFlag(parts, "--from", flags.from)
 	parts = appendFlag(parts, "--to", flags.to)
 	if flags.limit > 0 {

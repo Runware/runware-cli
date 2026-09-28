@@ -39,6 +39,16 @@ func TestUsageEventParamsFromFlags(t *testing.T) {
 	}
 }
 
+func TestUsageEventParamsFromFlags_TrimsApp(t *testing.T) {
+	params, err := usageEventParamsFromFlags(usageEventFlags{app: " " + testAppID + " "})
+	if err != nil {
+		t.Fatalf("usageEventParamsFromFlags: %v", err)
+	}
+	if params == nil || params.AppId == nil || *params.AppId != testAppID {
+		t.Fatalf("AppId = %v, want %s", params, testAppID)
+	}
+}
+
 func TestUsageEventParamsFromFlags_Empty(t *testing.T) {
 	params, err := usageEventParamsFromFlags(usageEventFlags{})
 	if err != nil {
@@ -207,5 +217,10 @@ func TestExtraUsageEventCursorFlags(t *testing.T) {
 	want := "--app " + testAppID + " --from " + testUsageDate + " --to 2026-10-02 --limit 10"
 	if got != want {
 		t.Errorf("hint = %q, want %q", got, want)
+	}
+
+	padded := extraUsageEventCursorFlags(usageEventFlags{app: " " + testAppID + " "})
+	if padded != "--app "+testAppID {
+		t.Errorf("padded hint = %q, want trimmed app", padded)
 	}
 }
