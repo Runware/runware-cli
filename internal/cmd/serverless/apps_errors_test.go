@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -132,19 +131,9 @@ func TestPrintAppErrors_JSONIsThePage(t *testing.T) {
 		NextCursor: &next,
 	}
 
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	printErr := printAppErrors(output.FormatJSON, page, io.Discard, io.Discard, "")
-	_ = w.Close()
-	os.Stdout = old
 	var out bytes.Buffer
-	_, _ = out.ReadFrom(r)
-	if printErr != nil {
-		t.Fatalf("printAppErrors: %v", printErr)
+	if err := printAppErrors(output.FormatJSON, page, &out, io.Discard, ""); err != nil {
+		t.Fatalf("printAppErrors: %v", err)
 	}
 	if !strings.Contains(out.String(), `"data"`) || !strings.Contains(out.String(), `"nextCursor"`) || strings.Contains(out.String(), `"entries"`) {
 		t.Errorf("stdout = %q", out.String())

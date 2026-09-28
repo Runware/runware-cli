@@ -2,6 +2,7 @@ package output
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 
 	"github.com/jedib0t/go-pretty/v6/table"
@@ -12,38 +13,43 @@ import (
 // For JSON/YAML, data is serialized directly.
 // For table, data must implement Tabular; if it does not, an error is returned.
 func Print(format Format, data any) error {
+	return PrintTo(os.Stdout, format, data)
+}
+
+// PrintTo writes data to w in the specified format. Table output requires Tabular.
+func PrintTo(w io.Writer, format Format, data any) error {
 	switch format {
 	case FormatJSON:
-		return printJSON(data)
+		return printJSON(w, data)
 	case FormatYAML:
-		return printYAML(data)
+		return printYAML(w, data)
 	default:
 		t, ok := data.(Tabular)
 		if !ok {
 			return NotTabularError{Got: data}
 		}
-		printTable(t)
+		printTable(w, t)
 		return nil
 	}
 }
 
-func printJSON(data any) error {
-	enc := json.NewEncoder(os.Stdout)
+func printJSON(w io.Writer, data any) error {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(data)
 }
 
-func printYAML(data any) error {
-	enc := yaml.NewEncoder(os.Stdout)
+func printYAML(w io.Writer, data any) error {
+	enc := yaml.NewEncoder(w)
 	defer enc.Close() //nolint:errcheck,gosec
 
 	enc.SetIndent(2)
 	return enc.Encode(data)
 }
 
-func printTable(t Tabular) {
+func printTable(w io.Writer, t Tabular) {
 	tw := table.NewWriter()
-	tw.SetOutputMirror(os.Stdout)
+	tw.SetOutputMirror(w)
 	tw.SetStyle(table.StyleLight)
 
 	header := make(table.Row, len(t.Headers()))

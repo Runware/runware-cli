@@ -17,6 +17,9 @@ import (
 // appErrorStatusClasses lists the accepted --status-class values.
 const appErrorStatusClasses = "4xx or 5xx"
 
+// appErrorWindows lists the accepted --window values, in the order they are documented.
+const appErrorWindows = "1h, 6h, 24h, 7d, or 30d"
+
 // appErrorWindowDefault is the listAppErrors window when --window is omitted.
 const appErrorWindowDefault = "24h"
 
@@ -71,7 +74,7 @@ Replay a cursor with the same --window and --status-class.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&flags.window, "window", appErrorWindowDefault, "Time window to search ("+logWindows+")")
+	cmd.Flags().StringVar(&flags.window, "window", appErrorWindowDefault, "Time window to search ("+appErrorWindows+")")
 	cmd.Flags().StringVar(&flags.statusClass, "status-class", "", "Error class to include ("+appErrorStatusClasses+"; default both)")
 	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of errors to return (1-100)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --window/--status-class/--limit)")
@@ -87,12 +90,12 @@ func appErrorParams(appID string, flags appErrorFlags) (*serverlessapi.ListAppEr
 	if err := validateListLimit(flags.limit); err != nil {
 		return nil, err
 	}
-	window, err := parseValidFlag[serverlessapi.ListAppErrorsParamsWindow]("--window", flags.window, logWindows)
+	window, err := parseValidFlag[serverlessapi.ListAppErrorsParamsWindow]("--window", flags.window, appErrorWindows)
 	if err != nil {
 		return nil, err
 	}
 	if window == nil {
-		return nil, fmt.Errorf("--window is required (want %s)", logWindows)
+		return nil, fmt.Errorf("--window is required (want %s)", appErrorWindows)
 	}
 	statusClass, err := parseValidFlag[serverlessapi.ListAppErrorsParamsStatusClass]("--status-class", flags.statusClass, appErrorStatusClasses)
 	if err != nil {
@@ -120,7 +123,7 @@ func extraAppErrorCursorFlags(flags appErrorFlags) string {
 func printAppErrors(format output.Format, page serverlessapi.Page[serverlessapi.LogEntry], out, errOut io.Writer, extraCursorFlags string) error {
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
-		return output.Print(format, page)
+		return output.PrintTo(out, format, page)
 	default:
 		for _, entry := range page.Data {
 			if err := writeLogLine(out, entry); err != nil {
