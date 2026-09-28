@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -107,15 +108,24 @@ func newAppsVersionsShowCmd(logger *log.Logger) *cobra.Command {
 }
 
 func newAppsVersionsActivateCmd(logger *log.Logger) *cobra.Command {
-	return &cobra.Command{
+	var (
+		wait         bool
+		timeout      time.Duration
+		pollInterval time.Duration
+	)
+
+	cmd := &cobra.Command{
 		Use:   "activate <appId> <versionNumber>",
 		Short: "Activate a ready application version",
 		Long: `Activate a ready version by number, including rollback to an older version.
 
 The server accepts the deploy and returns immediately with the updated app.
-Worker rollout is asynchronous; this command does not wait until workers are
-healthy. Re-activating the currently active version is permitted and re-applies
-it. On a stopped app the version is recorded and applied on resume.
+Worker rollout is asynchronous. Pass --wait to poll until an in-progress
+rollout reaches active or failed, and --timeout to bound that wait.
+Re-activating the currently active version is permitted and re-applies it.
+An already-active app stays active while workers roll, so --wait cannot follow
+that case and reports that the rollout continues in the background.
+On a stopped or stopping app the version is recorded and applied on resume.
 
 A missing app is 404. A missing version, a version that is not ready, or an
 app that is deleting is 409.`,
@@ -124,12 +134,18 @@ app that is deleting is 409.`,
   runware serverless apps versions activate my-app 2
 
   # roll back to an older ready version
-  runware serverless apps versions activate my-app 1`,
+  runware serverless apps versions activate my-app 1
+
+  # wait until an in-progress rollout is active or failed
+  runware serverless apps versions activate my-app 2 --wait --timeout 5m`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appID := args[0]
 			n, err := parseVersionNumber(args[1])
 			if err != nil {
+				return err
+			}
+			if err := validateWaitFlags(cmd, wait, timeout); err != nil {
 				return err
 			}
 
@@ -142,11 +158,34 @@ app that is deleting is 409.`,
 				spin.Stop()
 				return err
 			}
+			background, ok := activateWaitNote(app.Status)
+			if wait && ok {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; %s.\n", app.AppId, app.Status, background)
+			} else if wait && !serverlessapi.AppDeployTerminal(app.Status) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; waiting...\n", app.AppId, app.Status)
+				spin.SetMessage(fmt.Sprintf("Waiting for application %s...", app.AppId))
+				app, err = waitForApp(cmd.Context(), client, app.AppId, pollInterval, timeout)
+				if err != nil {
+					spin.Stop()
+					return err
+				}
+			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+			if err := output.Print(cmdutil.FormatFor(cmd), appResult(*app)); err != nil {
+				return err
+			}
+			if !wait {
+				return nil
+			}
+			if _, skip := activateWaitNote(app.Status); skip {
+				return nil
+			}
+			return appFailedErr(cmd.Context(), client, app)
 		},
 	}
+	addAppWaitFlags(cmd, &wait, &timeout, &pollInterval)
+	return cmd
 }
 
 func newAppsVersionsDeleteCmd(logger *log.Logger) *cobra.Command {
@@ -209,6 +248,19 @@ Confirmation is required unless --yes or --force is passed.`,
 
 	addDeleteConfirmFlags(cmd, &yes, &force)
 	return cmd
+}
+
+// activateWaitNote describes rollouts --wait cannot observe. An already-active
+// app never leaves active, and a stopped app only rolls on resume.
+func activateWaitNote(status serverlessapi.AppStatus) (string, bool) {
+	switch status {
+	case serverlessapi.AppStatusActive:
+		return "the rollout continues in the background", true
+	case serverlessapi.AppStatusStopped, serverlessapi.AppStatusStopping:
+		return "the version is recorded and applied on resume", true
+	default:
+		return "", false
+	}
 }
 
 func parseVersionNumber(s string) (int32, error) {

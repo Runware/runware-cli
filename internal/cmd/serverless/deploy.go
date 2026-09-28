@@ -137,6 +137,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		envVars             []string
 		envFiles            []string
 		wait                bool
+		timeout             time.Duration
 		pollInterval        time.Duration
 	)
 
@@ -168,7 +169,8 @@ builds a hosted wrapper image from that archive; the version records a buildId,
 not a customer image reference. Invalid container.yaml is rejected on create
 (400 if it cannot be parsed, 422 if it breaks a rule). The app stays
 initializing until that first build rolls out. Pass --wait to poll until the
-application is active or failed. A successful wait is not a live worker:
+application is active or failed, and --timeout to bound that wait. A successful
+wait is not a live worker:
 minWorkers=0 stays scaled to zero until the first invoke.
 
 --container cannot be combined with an entry file, --src-dir, --base-image, or
@@ -243,9 +245,12 @@ paths and an invoke example once the application is active.`,
   runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper
 
   # wait until the first rollout is active or failed
-  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait`,
+  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait --timeout 10m`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateWaitFlags(cmd, wait, timeout); err != nil {
+				return err
+			}
 			if err := validateDeployArgs(cmd, args, containerDir); err != nil {
 				return err
 			}
@@ -366,10 +371,13 @@ paths and an invoke example once the application is active.`,
 				spin.Stop()
 				return err
 			}
+			appID := app.AppId
+			waitCtx, cancelWait := waitContext(cmd.Context(), timeout)
+			defer cancelWait()
 			if wait && !serverlessapi.AppDeployTerminal(app.Status) {
 				var lastStatus string
-				app, err = waitForAppDeploy(cmd.Context(), client, app.AppId, pollInterval, func(appStatus, buildStatus string) {
-					msg := deployWaitMessage(app.AppId, appStatus, buildStatus)
+				app, err = waitForAppDeploy(waitCtx, client, appID, pollInterval, func(appStatus, buildStatus string) {
+					msg := deployWaitMessage(appID, appStatus, buildStatus)
 					if msg == lastStatus {
 						return
 					}
@@ -379,7 +387,7 @@ paths and an invoke example once the application is active.`,
 				})
 				if err != nil {
 					spin.Stop()
-					return err
+					return waitTimeoutErr(waitCtx, err, "application "+appID, timeout)
 				}
 			}
 			spin.Stop()
@@ -390,7 +398,10 @@ paths and an invoke example once the application is active.`,
 			// says nothing about whether this deploy landed. The pin is what moves
 			// when it does.
 			if canCompare {
-				settled, err := waitForSubmittedVersion(cmd.Context(), client, app.AppId, versionBefore, pollInterval)
+				settled, err := waitForSubmittedVersion(waitCtx, client, app.AppId, versionBefore, pollInterval)
+				if waitCtx.Err() == context.DeadlineExceeded {
+					return waitTimeoutErr(waitCtx, err, "application "+app.AppId, timeout)
+				}
 				if err == nil && activationMoved(versionBefore, settled.ActiveVersionId) {
 					if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
 						reportEndpointSetChange(cmd.ErrOrStderr(), compareEndpointSets(endpointsBefore, paths))
@@ -432,6 +443,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().Int32Var(&minAvailableWorkers, "min-available-workers", 0, "Minimum idle workers kept as a buffer")
 	cmd.Flags().Int32Var(&availableWorkersPct, "available-workers-pct", 0, "Idle-worker buffer as a percentage of load (0-100)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the application is active or failed")
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait (0 = no limit)")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
 
 	if err := cmd.MarkFlagRequired("id"); err != nil {
