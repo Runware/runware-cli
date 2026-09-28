@@ -24,6 +24,7 @@ const (
 	testPipPackage    = "torch"
 	testSourceID      = "019c7654-8b21-7abc-9123-abcdef123456"
 	testSrcDirFlag    = "--src-dir"
+	testIDFlag        = "--id"
 )
 
 func TestValidateDeployArgs(t *testing.T) {
@@ -275,7 +276,7 @@ func TestDeploy_RejectsPaddedNameBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, "--id", testAppID, "--name", " padded"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--name", " padded"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "non-whitespace") {
 		t.Fatalf("err = %v", err)
@@ -286,7 +287,7 @@ func TestDeploy_RejectsInvalidGPUsPerWorkerBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, "--id", testAppID, "--gpus-per-worker", "3"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--gpus-per-worker", "3"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), gpusPerWorkerValuesText()) {
 		t.Fatalf("err = %v", err)
@@ -311,7 +312,7 @@ func TestDeployCreate_RejectsAvailableWorkersPctBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, "--id", testAppID, "--available-workers-pct", "101"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--available-workers-pct", "101"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "0 and 100") {
 		t.Fatalf("err = %v", err)
@@ -370,7 +371,7 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 	cmd.SetArgs([]string{
 		testModelFile,
 		"--src-dir", dir,
-		"--id", testAppID,
+		testIDFlag, testAppID,
 		testGPUTypeFlag, testGPUType,
 		"--secret", "API_KEY=INFERENCE_KEY",
 		"--min-available-workers", "1",
