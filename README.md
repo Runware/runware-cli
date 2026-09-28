@@ -161,6 +161,7 @@ runware serverless apps invoke my-app infer -f payload.json --wait
 runware serverless apps logs my-app --follow
 runware serverless apps events my-app
 runware serverless usage --for this-month --group-by app,day
+runware serverless usage events --app my-app --from 2026-09-01 --to 2026-09-02
 runware serverless apps usage my-app --for this-month
 
 # Environment, secrets, scale, and rename

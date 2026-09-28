@@ -6,6 +6,8 @@ Show account-wide usage and cost
 
 Show GPU time and spend for the authenticated organization over a time window.
 
+Worker transitions behind these figures are listed by 'usage events'.
+
 The window is half-open (--from inclusive, --to exclusive), at most 31 days,
 and clipped: a worker running across a boundary contributes only the part
 inside it. --for cannot be combined with --from or --to.
@@ -44,6 +46,9 @@ runware serverless usage [flags]
 
   # export
   runware serverless usage --for last-month --format json
+
+  # the ledger behind this report
+  runware serverless usage events
 ```
 
 ### Options
@@ -69,4 +74,5 @@ runware serverless usage [flags]
 ### SEE ALSO
 
 * [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
+* [runware serverless usage events](runware_serverless_usage_events.md)	 - List usage events
 

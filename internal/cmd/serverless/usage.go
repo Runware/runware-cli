@@ -53,6 +53,8 @@ func newUsageCmd(logger *log.Logger) *cobra.Command {
 		Short: "Show account-wide usage and cost",
 		Long: `Show GPU time and spend for the authenticated organization over a time window.
 
+Worker transitions behind these figures are listed by 'usage events'.
+
 ` + usageRulesLong,
 		Example: `  # last 24 hours, account-wide
   runware serverless usage
@@ -70,7 +72,10 @@ func newUsageCmd(logger *log.Logger) *cobra.Command {
   runware serverless usage --group-by gpuType,coverage
 
   # export
-  runware serverless usage --for last-month --format json`,
+  runware serverless usage --for last-month --format json
+
+  # the ledger behind this report
+  runware serverless usage events`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runUsage(cmd, logger, "", flags)
@@ -78,6 +83,7 @@ func newUsageCmd(logger *log.Logger) *cobra.Command {
 	}
 
 	addUsageFlags(cmd, &flags)
+	cmd.AddCommand(newUsageEventsCmd(logger))
 	return cmd
 }
 
