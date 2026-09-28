@@ -15,7 +15,8 @@ wait.
 
 --sync uses the sync invocation endpoint. If the platform wait window
 expires, the command polls the returned task id; it never treats expiry as
-a failure and never resubmits.
+a failure and never resubmits. --timeout bounds that sync call and the poll
+together, and requires --wait or --sync.
 
 A client-generated task id is sent with every invoke. Omit --task-id to
 generate one. Resubmitting the same id returns the task it already names

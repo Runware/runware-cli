@@ -7,10 +7,11 @@ Activate a ready application version
 Activate a ready version by number, including rollback to an older version.
 
 The server accepts the deploy and returns immediately with the updated app.
-Worker rollout is asynchronous. Pass --wait to poll until the application is
-active or failed, and --timeout to bound that wait. Re-activating the currently
-active version is permitted and re-applies it. On a stopped app the version is
-recorded and applied on resume.
+Worker rollout is asynchronous. Pass --wait to poll until an in-progress
+rollout reaches active or failed, and --timeout to bound that wait. An
+already-active app stays active while workers roll, so --wait cannot follow
+that case and reports that the rollout continues in the background.
+On a stopped or stopping app the version is recorded and applied on resume.
 
 A missing app is 404. A missing version, a version that is not ready, or an
 app that is deleting is 409.
@@ -29,7 +30,7 @@ runware serverless apps versions activate <appId> <versionNumber> [flags]
   # roll back to an older ready version
   runware serverless apps versions activate my-app 1
 
-  # wait until the rollout is active or failed
+  # wait until an in-progress rollout is active or failed
   runware serverless apps versions activate my-app 2 --wait --timeout 5m
 ```
 
