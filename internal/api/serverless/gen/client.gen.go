@@ -1276,11 +1276,8 @@ type ProblemDetails struct {
 	// RequestId Extension member. Correlation id for this request, echoed in the `X-Request-Id` response header; quote it when reporting problems.
 	RequestId *string `json:"requestId,omitempty"`
 
-	// Shortfall Extension member. Present on `402` credit refusals. The amount of credit to add before retrying the same request. Units match the platform credit display.
-	//
-	//
-	// Example: 12.50
-	Shortfall *string `json:"shortfall,omitempty"`
+	// Shortfall Extension member. Present on an `insufficient-credit` or a `credit-suspended` problem (`402`): the amount to add to the organization's balance before retrying. The request is unchanged by the refusal and succeeds as sent once the credit is there. Read this rather than parsing `detail`.
+	Shortfall *MoneyAmount `json:"shortfall,omitempty"`
 
 	// Status HTTP status code generated for this occurrence.
 	//
