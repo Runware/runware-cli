@@ -31,6 +31,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsBuildsCmd(logger),
 		newAppsLogsCmd(logger),
 		newAppsEventsCmd(logger),
+		newAppsErrorsCmd(logger),
 		newAppsWorkersCmd(logger),
 		newAppsScaleCmd(logger),
 		newAppsRenameCmd(logger),
