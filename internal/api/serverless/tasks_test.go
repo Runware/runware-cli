@@ -132,8 +132,39 @@ func TestInvokeSync_Completed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InvokeSync: %v", err)
 	}
-	if task.Status != TaskStatusCompleted || task.Output == nil || (*task.Output)["ok"] != true {
+	output, ok := task.Output.(map[string]any)
+	if task.Status != TaskStatusCompleted || !ok || output["ok"] != true {
 		t.Fatalf("unexpected task: %+v", task)
+	}
+}
+
+func TestInvokeAsync_CompletedDuplicateTaskAcceptsAnyJSONOutput(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+	}{
+		{name: "scalar", output: `"done"`},
+		{name: "list", output: `["done",1,false]`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"id":"` + testTaskID + `","status":"completed","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z","output":` + tc.output + `}`
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = w.Write([]byte(body))
+			}))
+			defer srv.Close()
+
+			c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+			task, err := c.InvokeAsync(context.Background(), testAppID, testEndpoint, testTaskID, nil)
+			if err != nil {
+				t.Fatalf("InvokeAsync: %v", err)
+			}
+			if task.Output == nil {
+				t.Fatal("expected output to be decoded")
+			}
+		})
 	}
 }
 
@@ -272,6 +303,23 @@ func TestListTasks_CursorAndStatus(t *testing.T) {
 	}
 	if page.NextCursor == nil || *page.NextCursor != testCursorPage3 {
 		t.Fatalf("unexpected nextCursor: %+v", page.NextCursor)
+	}
+}
+
+func TestListTasks_AcceptsScalarOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"` + testTaskID + `","status":"completed","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z","output":"done"}]}`))
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	page, err := c.ListTasks(context.Background(), testAppID, nil)
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(page.Data) != 1 || page.Data[0].Output != "done" {
+		t.Fatalf("unexpected tasks: %+v", page.Data)
 	}
 }
 
