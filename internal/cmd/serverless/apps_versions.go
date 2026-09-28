@@ -121,8 +121,9 @@ func newAppsVersionsActivateCmd(logger *log.Logger) *cobra.Command {
 
 The server accepts the deploy and returns immediately with the updated app.
 Worker rollout is asynchronous. Pass --wait to poll until an in-progress
-rollout reaches active or failed, and --timeout to bound that wait. An
-already-active app stays active while workers roll, so --wait cannot follow
+rollout reaches active or failed, and --timeout to bound that wait.
+Re-activating the currently active version is permitted and re-applies it.
+An already-active app stays active while workers roll, so --wait cannot follow
 that case and reports that the rollout continues in the background.
 On a stopped or stopping app the version is recorded and applied on resume.
 
