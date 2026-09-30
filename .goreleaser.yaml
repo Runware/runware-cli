@@ -42,8 +42,6 @@ homebrew_casks:
     homepage: https://runware.ai
     description: A command-line tool for interacting with the Runware inference API.
     license: MIT
-    url:
-      verified: github.com/Runware/runware-cli/releases/download
     repository:
       owner: Runware
       name: homebrew-tap

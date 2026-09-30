@@ -11,6 +11,8 @@ make build           # Build binary for current platform -> ./bin/runware
 make build-all       # Build all platforms -> ./bin
 make test            # Run all tests (go test -race ./...)
 make lint            # golangci-lint
+make fix             # Modernize Go code with go fix
+make check-go-fix    # Fail when go fix would change Go source
 make snapshot        # GoReleaser snapshot build
 make docs            # Generate command reference docs
 make install         # go install for current platform
@@ -42,6 +44,7 @@ make run ARGS="..."  # Run without building
 - Commit messages follow conventional commits (`feat:`, `fix:`, `docs:`, `test:`)
 - Tests live alongside source files (`*_test.go`)
 - Config shorthand keys in CLI map to nested yaml paths (e.g. `model` → `defaults.model`)
+- Run `make fix` after every change that touches Go code and retain its modernizations; `make check-go-fix` and CI reject code that `go fix` would change
 - Run `go fmt` on any files you modify before considering work complete
 - Run `make lint` before considering work complete; fix all lint errors
 - Error naming follows https://go.dev/wiki/Errors: error types end in `"Error"` (e.g. `type NotTabularError struct`), error variables start with `"Err"` (e.g. `var ErrNotFound = errors.New(...)`)
