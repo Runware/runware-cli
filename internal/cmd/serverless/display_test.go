@@ -339,6 +339,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 		colID:                  testAppID,
 		colName:                "My App",
 		colStatus:              "active",
+		colHealth:              "unknown",
 		colActiveVersion:       activeVersion.String(),
 		colCreated:             createdAt,
 		colUpdated:             createdAt,

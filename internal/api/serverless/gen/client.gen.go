@@ -43,6 +43,57 @@ func (e AppEventType) Valid() bool {
 	}
 }
 
+// Defines values for AppHealthReason.
+const (
+	AutoscalerUnhealthy AppHealthReason = "autoscaler_unhealthy"
+	CapacityBelowFloor  AppHealthReason = "capacity_below_floor"
+	DemandUnserved      AppHealthReason = "demand_unserved"
+	WorkloadMissing     AppHealthReason = "workload_missing"
+	WorkloadPresent     AppHealthReason = "workload_present"
+	WorkloadTerminating AppHealthReason = "workload_terminating"
+)
+
+// Valid indicates whether the value is a known member of the AppHealthReason enum.
+func (e AppHealthReason) Valid() bool {
+	switch e {
+	case AutoscalerUnhealthy:
+		return true
+	case CapacityBelowFloor:
+		return true
+	case DemandUnserved:
+		return true
+	case WorkloadMissing:
+		return true
+	case WorkloadPresent:
+		return true
+	case WorkloadTerminating:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppHealthState.
+const (
+	Degraded    AppHealthState = "degraded"
+	Healthy     AppHealthState = "healthy"
+	Unavailable AppHealthState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the AppHealthState enum.
+func (e AppHealthState) Valid() bool {
+	switch e {
+	case Degraded:
+		return true
+	case Healthy:
+		return true
+	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AppSort.
 const (
 	Activity  AppSort = "activity"
@@ -719,6 +770,13 @@ type App struct {
 	// EnvironmentVariables Plain-text environment variables for this app. Populated on single-app responses (get, update, stop, resume, delete, deploy, favorite). List of apps returns an empty array to avoid an N+1 per page row — use the `/environment-variables` endpoints to page the set.
 	EnvironmentVariables []EnvironmentVariable `json:"environmentVariables"`
 
+	// Health Whether the app's workload can serve, and why. `reason` covers more than capacity: a workload that is missing or being torn down also reports `state: unavailable`. Only `capacity_below_floor` and `demand_unserved` are the platform being short of workers, and only those refuse an invocation with `capacity-unavailable`. The others are refused with the plain `service-unavailable`, because retrying does not bring a removed workload back.
+	//
+	// Populated on the app reads only: `GET /v1/apps/{appId}` and `GET /v1/apps`. Every other response that carries an app omits it, because the verdict is observed from the cluster rather than changed by the request: read the app again after a mutation.
+	//
+	// Within those two reads it is absent for any of four reasons: the platform has not observed the app yet, which is normal for one that has never deployed. The app is in a lifecycle state whose verdict is not published, such as `stopped`, `failed`, or one that is draining. The verdict could not be read on this request, or the stored verdict carries a value this version of the API does not recognise. The four are not distinguished, so **absence is never a claim that the app is healthy**. The first two are stable, the third clears by itself, and the last persists until the API is upgraded.
+	Health *AppHealth `json:"health,omitempty"`
+
 	// IsFavorite Whether the authenticated organization has favorited this app. Favorited apps sort ahead of non-favorited apps; toggled via `PUT`/`DELETE` `/v1/apps/{appId}/favorite`.
 	IsFavorite bool `json:"isFavorite"`
 
@@ -778,6 +836,43 @@ type AppEvent struct {
 
 // AppEventType defines model for AppEventType.
 type AppEventType string
+
+// AppHealth The platform's last recorded verdict on whether the app can serve. It is observed from the cluster rather than requested, so it lags a change by one observation.
+type AppHealth struct {
+	// ObservedAt When the platform last looked. It is rewritten on every observation, so it reports the freshness of the verdict and not the age of the condition. A value far in the past means nothing has observed the app recently.
+	ObservedAt *time.Time `json:"observedAt,omitempty"`
+
+	// Reason Why the app holds its current health state.
+	//
+	// `capacity_below_floor` and `demand_unserved` are the two shapes of capacity exhaustion, and they differ in what the app asked for. `capacity_below_floor` means the app keeps a warm floor above zero and has fewer workers able to serve than that floor. `demand_unserved` means the app scales to zero, so it has no floor to be short of, and work is waiting on its queue with nothing running it.
+	//
+	// They behave differently during a cold start. An app waking from zero is given a grace period before it is called starved, so an ordinary wake-up is not reported as a fault. An app with a warm floor gets no such grace: it reports `capacity_below_floor` from the moment its workload is applied until its first worker is ready, so a normal first deploy reports it for the whole of its cold start. Use `since` to tell the two apart. A cold start clears within the app's startup time, and a real shortage does not. Neither names whose fault the shortfall is, and neither is a statement about charging. A worker the platform never placed holds no GPU and costs nothing, but the same two reasons also cover workers that were placed and cannot serve, and those hold a GPU. Some of those states are charged for and some are not: a container that crash-loops or one still loading is charged, while one still pulling its image is not. Read the app's workers to tell the cases apart.
+	//
+	// `autoscaler_unhealthy` means the autoscaler cannot act on the workload, so the app will not grow with demand. `workload_present` accompanies a healthy app. `workload_terminating` and `workload_missing` are a workload being removed or already gone, which a stop or a delete explains.
+	Reason AppHealthReason `json:"reason"`
+
+	// Since When the app entered this state. It moves only when `state` changes, so it answers how long the condition has held, the figure to quote when asking how long an app has been unable to serve.
+	Since *time.Time `json:"since,omitempty"`
+
+	// State Whether the app's workload can serve. `healthy` can serve. `degraded` can serve with less capacity than it asks for. `unavailable` has nothing able to serve. Read `AppHealthReason` for the cause.
+	//
+	// This is a report on the workload, not an admission rule. Only an `active` app is refused on it: an `initializing` app that already has a version to route to accepts invocations while it reports `unavailable`, which is the ordinary case during a first deploy, and a draining app is not gated on health at all. Do not read this field as whether the next invocation will be accepted.
+	State AppHealthState `json:"state"`
+}
+
+// AppHealthReason Why the app holds its current health state.
+//
+// `capacity_below_floor` and `demand_unserved` are the two shapes of capacity exhaustion, and they differ in what the app asked for. `capacity_below_floor` means the app keeps a warm floor above zero and has fewer workers able to serve than that floor. `demand_unserved` means the app scales to zero, so it has no floor to be short of, and work is waiting on its queue with nothing running it.
+//
+// They behave differently during a cold start. An app waking from zero is given a grace period before it is called starved, so an ordinary wake-up is not reported as a fault. An app with a warm floor gets no such grace: it reports `capacity_below_floor` from the moment its workload is applied until its first worker is ready, so a normal first deploy reports it for the whole of its cold start. Use `since` to tell the two apart. A cold start clears within the app's startup time, and a real shortage does not. Neither names whose fault the shortfall is, and neither is a statement about charging. A worker the platform never placed holds no GPU and costs nothing, but the same two reasons also cover workers that were placed and cannot serve, and those hold a GPU. Some of those states are charged for and some are not: a container that crash-loops or one still loading is charged, while one still pulling its image is not. Read the app's workers to tell the cases apart.
+//
+// `autoscaler_unhealthy` means the autoscaler cannot act on the workload, so the app will not grow with demand. `workload_present` accompanies a healthy app. `workload_terminating` and `workload_missing` are a workload being removed or already gone, which a stop or a delete explains.
+type AppHealthReason string
+
+// AppHealthState Whether the app's workload can serve. `healthy` can serve. `degraded` can serve with less capacity than it asks for. `unavailable` has nothing able to serve. Read `AppHealthReason` for the cause.
+//
+// This is a report on the workload, not an admission rule. Only an `active` app is refused on it: an `initializing` app that already has a version to route to accepts invocations while it reports `unavailable`, which is the ordinary case during a first deploy, and a draining app is not gated on health at all. Do not read this field as whether the next invocation will be accepted.
+type AppHealthState string
 
 // AppId Immutable app identifier. Unique among the authenticated organization's live apps: it cannot be changed after creation, and it becomes available again once the app it named reaches `deleted`.
 type AppId = string

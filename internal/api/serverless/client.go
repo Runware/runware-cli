@@ -40,6 +40,9 @@ type GpuType = gen.GpuType
 // App is a serverless application.
 type App = gen.App
 
+// AppHealth is the platform's last observed verdict on an app's ability to serve.
+type AppHealth = gen.AppHealth
+
 // AppCreate is the request body for createApp.
 type AppCreate = gen.AppCreate
 
