@@ -15,6 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const appHealthShowCommand = "show"
+
 const appHealthListCommand = "list"
 
 const appHealthActiveStatus = "active"
@@ -49,8 +51,8 @@ func TestAppsHealthFromAPI(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		for _, command := range []string{"show", appHealthListCommand} {
-			for _, format := range []string{"table", "json", "yaml"} {
+		for _, command := range []string{appHealthShowCommand, appHealthListCommand} {
+			for _, format := range []string{testTableFormat, "json", "yaml"} {
 				t.Run(tc.name+"/"+command+"/"+format, func(t *testing.T) {
 					body := appHealthResponse(tc.state, tc.reason)
 					if command == appHealthListCommand {
@@ -58,7 +60,7 @@ func TestAppsHealthFromAPI(t *testing.T) {
 					}
 					srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						path := "/v1/apps"
-						if command == "show" {
+						if command == appHealthShowCommand {
 							path += "/" + testAppID
 						}
 						if r.Method != http.MethodGet || r.URL.Path != path {
@@ -89,9 +91,9 @@ func TestAppsHealthRecovery(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
-	assertAppHealthOutput(t, runAppHealthCommand(t, "show", "json"), "show", "json", state, reason)
+	assertAppHealthOutput(t, runAppHealthCommand(t, appHealthShowCommand, "json"), appHealthShowCommand, "json", state, reason)
 	state, reason = "healthy", "workload_present"
-	assertAppHealthOutput(t, runAppHealthCommand(t, "show", "json"), "show", "json", state, reason)
+	assertAppHealthOutput(t, runAppHealthCommand(t, appHealthShowCommand, "json"), appHealthShowCommand, "json", state, reason)
 }
 
 func appHealthResponse(state, reason string) string {
@@ -113,6 +115,11 @@ func runAppHealthCommand(t *testing.T, command, format string) string {
 	}
 	cmd.PersistentFlags().String("format", format, "")
 	cmd.SetErr(io.Discard)
+	return captureServerlessCommandOutput(t, cmd)
+}
+
+func captureServerlessCommandOutput(t *testing.T, cmd *cobra.Command) string {
+	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "stdout")
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +133,7 @@ func runAppHealthCommand(t *testing.T, command, format string) string {
 	os.Stdout = f
 	defer func() { os.Stdout = old }()
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("%s: %v", command, err)
+		t.Fatalf("%s: %v", cmd.Name(), err)
 	}
 	b, err := os.ReadFile(f.Name())
 	if err != nil {
@@ -137,16 +144,20 @@ func runAppHealthCommand(t *testing.T, command, format string) string {
 
 func assertAppHealthOutput(t *testing.T, out, command, format, state, reason string) {
 	t.Helper()
-	if format == "table" {
+	if format == testTableFormat {
 		if state == "" {
 			state = "unknown"
 		}
-		for _, text := range []string{"health", appHealthActiveStatus, state, reason} {
+		texts := []string{"health", appHealthActiveStatus, state}
+		if command == appHealthShowCommand {
+			texts = append(texts, reason)
+		}
+		for _, text := range texts {
 			if !strings.Contains(strings.ToLower(out), text) {
 				t.Fatalf("table missing %q: %s", text, out)
 			}
 		}
-		if command == "show" && reason != "" {
+		if command == appHealthShowCommand && reason != "" {
 			for _, stamp := range []string{"2026-09-28T16:13:14Z", "2026-09-28T16:13:30Z"} {
 				if !strings.Contains(out, stamp) {
 					t.Fatalf("table missing %q: %s", stamp, out)

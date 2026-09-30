@@ -15,6 +15,7 @@ const (
 	colID             = "ID"
 	colName           = "Name"
 	colStatus         = "Status"
+	colStatusReason   = "Status reason"
 	colHealth         = "Health"
 	colHealthReason   = "Health reason"
 	colHealthSince    = "Health since"
@@ -138,7 +139,7 @@ func (r appResult) withRedactedEnv() serverlessapi.App {
 type appsResult []serverlessapi.App
 
 func (r appsResult) Headers() []string {
-	return []string{colID, colName, colStatus, colHealth, colHealthReason, colCreated}
+	return []string{colID, colName, colStatus, colHealth, colCreated}
 }
 
 func (r appsResult) Rows() [][]any {
@@ -150,7 +151,6 @@ func (r appsResult) Rows() [][]any {
 			d.AppName,
 			string(d.Status),
 			formatAppHealth(d.Health),
-			formatAppHealthReason(d.Health),
 			d.CreatedAt.Format(time.RFC3339),
 		}
 	}
@@ -164,13 +164,6 @@ func formatAppHealth(health *serverlessapi.AppHealth) string {
 		return "unknown"
 	}
 	return string(health.State)
-}
-
-func formatAppHealthReason(health *serverlessapi.AppHealth) string {
-	if health == nil {
-		return ""
-	}
-	return string(health.Reason)
 }
 
 // endpointsResult wraps endpoint lists for table display.
@@ -296,7 +289,7 @@ func (r eventsResult) Rows() [][]any {
 type workersResult []serverlessapi.Worker
 
 func (r workersResult) Headers() []string {
-	return []string{colID, colStatus, "Pod", "Node", "Last Seen"}
+	return []string{colID, colStatus, colStatusReason, "Pod", "Node", "Last Seen"}
 }
 
 func (r workersResult) Rows() [][]any {
@@ -306,6 +299,7 @@ func (r workersResult) Rows() [][]any {
 		rows[i] = []any{
 			w.Id.String(),
 			string(w.Status),
+			formatOptionalString(w.StatusReason),
 			w.PodName,
 			formatOptionalString(w.NodeName),
 			formatOptionalTime(w.LastSeenAt),
@@ -334,7 +328,7 @@ func (r workerResult) Rows() [][]any {
 		{"Last seen", formatOptionalTime(r.LastSeenAt)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 		{"Status occurred", r.StatusOccurredAt.Format(time.RFC3339)},
-		{"Status reason", formatOptionalString(r.StatusReason)},
+		{colStatusReason, formatOptionalString(r.StatusReason)},
 	}
 }
 
