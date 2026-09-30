@@ -1,0 +1,559 @@
+package serverless
+
+import (
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
+	"github.com/runware/runware-cli/internal/output"
+	"github.com/spf13/cobra"
+)
+
+// newAppsCmd returns the "serverless apps" command group for managing
+// deployed serverless applications.
+func newAppsCmd(logger *log.Logger) *cobra.Command {
+	cmd := stubGroup("apps", "Manage deployed serverless applications")
+	cmd.Long = "Manage deployed serverless applications on the Runware platform."
+	cmd.AddCommand(
+		newAppsListCmd(logger),
+		newAppsShowCmd(logger),
+		newAppsEndpointsCmd(logger),
+		newAppsInvokeCmd(logger),
+		newAppsTasksCmd(logger),
+		newAppsEnvCmd(logger),
+		newAppsVersionsCmd(logger),
+		newAppsBuildsCmd(logger),
+		newAppsLogsCmd(logger),
+		newAppsEventsCmd(logger),
+		newAppsErrorsCmd(logger),
+		newAppsWorkersCmd(logger),
+		newAppsScaleCmd(logger),
+		newAppsRenameCmd(logger),
+		newAppsUsageCmd(logger),
+		newAppsStopCmd(logger),
+		newAppsResumeCmd(logger),
+		newAppsDeleteCmd(logger),
+	)
+	return cmd
+}
+
+func newAppsListCmd(logger *log.Logger) *cobra.Command {
+	var (
+		limit   int
+		cursor  string
+		status  string
+		query   string
+		gpuType string
+		sort    string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List serverless applications",
+		Example: `  # list all serverless applications
+  runware serverless apps list
+
+  # filter by status
+  runware serverless apps list --status active
+
+  # filter by name or ID substring
+  runware serverless apps list --query demo --sort name
+
+  # filter by GPU type
+  runware serverless apps list --gpu-type h100 --status active
+
+  # page through results
+  runware serverless apps list --limit 20 --cursor <nextCursor>`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
+			sortVal, err := parseAppSort(sort)
+			if err != nil {
+				return err
+			}
+			statusVal, err := parseAppStatus(status)
+			if err != nil {
+				return err
+			}
+
+			var params *serverlessapi.ListAppsParams
+			if limit > 0 || cursor != "" || status != "" || query != "" || gpuType != "" || sort != "" {
+				params = &serverlessapi.ListAppsParams{}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
+				params.Status = statusVal
+				params.Sort = sortVal
+				params.Q = optionalStringPtr(query)
+				params.GpuType = optionalStringPtr(gpuType)
+			}
+
+			spin := cmdutil.NewSpinner("Fetching applications...")
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			page, err := client.ListApps(cmd.Context(), params)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return printPage(cmdutil.FormatFor(cmd), page, appsResult(page.Data), cmd.ErrOrStderr(), extraListCursorFlags(query, gpuType, sort, status))
+		},
+	}
+
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of applications to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --query/--gpu-type/--sort/--status)")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, initializing, stopped, …)")
+	cmd.Flags().StringVar(&query, "query", "", "Filter by substring on name or ID")
+	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "Filter by GPU type (see 'serverless gpus')")
+	cmd.Flags().StringVar(&sort, "sort", "", "Sort order ("+appListSortsHelp+")")
+
+	return cmd
+}
+
+func newAppsShowCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <appId>",
+		Short: "Show details for a serverless application",
+		Long: `Show details for a serverless application.
+
+JSON and YAML include environment variable names with each value replaced by
+[redacted]. Read a value with 'apps env list'.`,
+		Example: `  # show details for an application
+  runware serverless apps show my-app`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching application %s...", id))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			app, err := client.GetApp(cmd.Context(), id)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+		},
+	}
+}
+
+func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
+	var (
+		limit  int
+		cursor string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "endpoints <appId>",
+		Short: "List and inspect endpoints for a serverless application",
+		Long: `List the endpoints of the application's active version.
+
+The set is written by the source itself and is replaced atomically whenever a
+version activates. Empty while the app is initializing.`,
+		Example: `  # list endpoints for an application
+  runware serverless apps endpoints my-app
+
+  # page through results
+  runware serverless apps endpoints my-app --limit 20 --cursor <nextCursor>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
+			id := args[0]
+			var params *serverlessapi.ListEndpointsParams
+			if limit > 0 || cursor != "" {
+				params = &serverlessapi.ListEndpointsParams{}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching endpoints for %s...", id))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			page, err := client.ListEndpoints(cmd.Context(), id, params)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data), cmd.ErrOrStderr(), "")
+		},
+	}
+
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of endpoints to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.AddCommand(newAppsEndpointsShowCmd(logger))
+	return cmd
+}
+
+func newAppsEndpointsShowCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <appId> <endpointId>",
+		Short: "Show a single application endpoint",
+		Long:  "Show one endpoint of the application's active version by ID.",
+		Example: `  # show an endpoint
+  runware serverless apps endpoints show my-app 11111111-1111-1111-1111-111111111111`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			endpointID, err := uuid.Parse(args[1])
+			if err != nil {
+				return fmt.Errorf("invalid endpointId %q: %w", args[1], err)
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching endpoint %s...", endpointID))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			ep, err := client.GetEndpoint(cmd.Context(), appID, endpointID)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), endpointResult(*ep))
+		},
+	}
+}
+
+func newAppsEventsCmd(logger *log.Logger) *cobra.Command {
+	var (
+		limit     int
+		cursor    string
+		eventType string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "events <appId>",
+		Short: "List events for a serverless application",
+		Long: `List deploy, scaling, audit, and error events for an application.
+
+Events are the control-plane audit trail, not worker stdout; use apps logs
+for worker output.`,
+		Example: `  # list events for an application
+  runware serverless apps events my-app
+
+  # errors only
+  runware serverless apps events my-app --type error --limit 20
+
+  # page through results
+  runware serverless apps events my-app --type error --limit 20 --cursor <nextCursor>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
+			id := args[0]
+			typeVal, err := parseAppEventType(eventType)
+			if err != nil {
+				return err
+			}
+			var params *serverlessapi.ListAppEventsParams
+			if limit > 0 || cursor != "" || eventType != "" {
+				params = &serverlessapi.ListAppEventsParams{}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
+				params.Type = typeVal
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching events for %s...", id))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			page, err := client.ListAppEvents(cmd.Context(), id, params)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return printPage(cmdutil.FormatFor(cmd), page, eventsResult(page.Data), cmd.ErrOrStderr(), extraTypeCursorFlag(eventType))
+		},
+	}
+
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of events to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.Flags().StringVar(&eventType, "type", "", "Filter by type (deploy, scaling, audit, or error)")
+	return cmd
+}
+
+func newAppsWorkersCmd(logger *log.Logger) *cobra.Command {
+	var (
+		limit   int
+		cursor  string
+		status  string
+		state   string
+		version string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "workers <appId>",
+		Short: "List and inspect workers for a serverless application",
+		Long: `List workers observed for an application.
+
+The default page is the active version only. An application with no active
+version therefore answers an empty default page: it has no pinned version, not
+that it has no workers. Pass --version all to include every version, or
+--version <id> to scope to one.
+
+The default state is all: terminal stopped rows stay in the page until they
+are purged. Pass --state live to drop them. --state live with --status stopped
+is refused by the API (422), because an empty page would read as "this app
+has never run".`,
+		Example: `  # list workers for the active version
+  runware serverless apps workers my-app
+
+  # include workers from every version
+  runware serverless apps workers my-app --version all
+
+  # omit terminal stopped rows
+  runware serverless apps workers my-app --state live
+
+  # filter by status
+  runware serverless apps workers my-app --status ready
+
+  # page through results
+  runware serverless apps workers my-app --limit 20 --cursor <nextCursor>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateListLimit(limit); err != nil {
+				return err
+			}
+			id := args[0]
+			statusVal, err := parseWorkerStatus(status)
+			if err != nil {
+				return err
+			}
+			stateVal, err := parseWorkerState(state)
+			if err != nil {
+				return err
+			}
+			versionVal, err := parseWorkersVersion(version)
+			if err != nil {
+				return err
+			}
+			var params *serverlessapi.ListWorkersParams
+			if limit > 0 || cursor != "" || status != "" || state != "" || versionVal != "" {
+				params = &serverlessapi.ListWorkersParams{}
+				params.Limit, params.Cursor = listPageParams(limit, cursor)
+				params.Status = statusVal
+				params.State = stateVal
+				params.VersionId = optionalStringPtr(versionVal)
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching workers for %s...", id))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			page, err := client.ListWorkers(cmd.Context(), id, params)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraWorkersCursorFlags(state, status, versionVal))
+		},
+	}
+
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of workers to return (1-100)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status (ready, busy, pending, …)")
+	cmd.Flags().StringVar(&state, "state", "", "Include stopped rows (all, the API default) or drop them (live)")
+	cmd.Flags().StringVar(&version, "version", "", "Scope to a version ID, or all (default: the active version)")
+	cmd.AddCommand(newAppsWorkersShowCmd(logger))
+	return cmd
+}
+
+func newAppsWorkersShowCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <appId> <workerId>",
+		Short: "Show a single application worker",
+		Long: `Show one worker by ID within the application.
+
+The ID is the Kubernetes pod UID recorded by the reconciler.`,
+		Example: `  # show a worker
+  runware serverless apps workers show my-app 44444444-4444-4444-4444-444444444444`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			workerID, err := uuid.Parse(args[1])
+			if err != nil {
+				return fmt.Errorf("invalid workerId %q: %w", args[1], err)
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching worker %s...", workerID))
+			spin.Start()
+
+			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			w, err := client.GetWorker(cmd.Context(), appID, workerID)
+			if err != nil {
+				spin.Stop()
+				return err
+			}
+			spin.Stop()
+
+			return output.Print(cmdutil.FormatFor(cmd), workerResult(*w))
+		},
+	}
+}
+
+// validateListLimit checks --limit when set. Zero means unset (API default).
+func validateListLimit(limit int) error {
+	if limit == 0 {
+		return nil
+	}
+	if limit < 1 || limit > 100 {
+		return fmt.Errorf("--limit must be between 1 and 100")
+	}
+	return nil
+}
+
+// validListFlag is a generated enum used as a list-command filter.
+type validListFlag interface {
+	~string
+	Valid() bool
+}
+
+func parseValidFlag[T validListFlag](flag, value, want string) (*T, error) {
+	if value == "" {
+		return nil, nil
+	}
+	v := T(value)
+	if !v.Valid() {
+		return nil, fmt.Errorf("invalid %s %q (want %s)", flag, value, want)
+	}
+	return &v, nil
+}
+
+// appListSorts are the listApps orderings this CLI offers. activity and
+// errorRate stay in the API enum, but they rank on traffic metrics that are
+// not collected yet, so the server answers 422. They are omitted until that lands.
+var appListSorts = map[serverlessapi.AppSort]struct{}{
+	serverlessapi.AppSortCreatedAt: {},
+	serverlessapi.AppSortName:      {},
+}
+
+const appListSortsHelp = "createdAt (default) or name"
+
+func parseAppSort(sort string) (*serverlessapi.AppSort, error) {
+	if sort == "" {
+		return nil, nil
+	}
+	v := serverlessapi.AppSort(sort)
+	if _, ok := appListSorts[v]; !ok {
+		return nil, fmt.Errorf("invalid --sort %q (want %s)", sort, appListSortsHelp)
+	}
+	return &v, nil
+}
+
+func parseAppStatus(status string) (*serverlessapi.AppStatus, error) {
+	return parseValidFlag[serverlessapi.AppStatus]("--status", status, "active, initializing, stopping, stopped, deleting, deleted, or failed")
+}
+
+func parseWorkerStatus(status string) (*serverlessapi.WorkerStatus, error) {
+	return parseValidFlag[serverlessapi.WorkerStatus]("--status", status, "pending, pulling, loading, ready, busy, unhealthy, draining, stopping, or stopped")
+}
+
+func parseWorkerState(state string) (*serverlessapi.WorkerStateFilter, error) {
+	return parseValidFlag[serverlessapi.WorkerStateFilter]("--state", state, "live or all")
+}
+
+func parseAppEventType(value string) (*serverlessapi.AppEventType, error) {
+	return parseValidFlag[serverlessapi.AppEventType]("--type", value, "deploy, scaling, audit, or error")
+}
+
+// extraListCursorFlags repeats the apps-list filter flags a next-page --cursor is bound to.
+func extraListCursorFlags(query, gpuType, sort, status string) string {
+	parts := make([]string, 0, 4)
+	parts = appendFlag(parts, "--query", query)
+	parts = appendFlag(parts, "--gpu-type", gpuType)
+	parts = appendFlag(parts, "--sort", sort)
+	parts = appendFlag(parts, "--status", status)
+	return strings.Join(parts, " ")
+}
+
+// extraStatusCursorFlag formats --status for a next-page --cursor hint.
+func extraStatusCursorFlag(value string) string {
+	return strings.Join(appendFlag(nil, "--status", value), " ")
+}
+
+// parseWorkersVersion accepts "all" (any case) or a version UUID. A typo
+// fails here instead of as a 4xx from the API.
+func parseWorkersVersion(version string) (string, error) {
+	if version == "" {
+		return "", nil
+	}
+	if strings.EqualFold(version, "all") {
+		return "all", nil
+	}
+	if _, err := uuid.Parse(version); err != nil {
+		return "", fmt.Errorf("--version must be a version ID or all")
+	}
+	return version, nil
+}
+
+// extraWorkersCursorFlags repeats workers list filters a next-page --cursor is bound to.
+func extraWorkersCursorFlags(state, status, version string) string {
+	parts := appendFlag(nil, "--state", state)
+	parts = appendFlag(parts, "--status", status)
+	return strings.Join(appendFlag(parts, "--version", version), " ")
+}
+
+func extraTypeCursorFlag(value string) string {
+	return strings.Join(appendFlag(nil, "--type", value), " ")
+}
+
+func appendFlag(parts []string, name, value string) []string {
+	if value == "" {
+		return parts
+	}
+	if !isBareFlagValue(value) {
+		return append(parts, name+" "+strconv.Quote(value))
+	}
+	return append(parts, name+" "+value)
+}
+
+func isBareFlagValue(value string) bool {
+	for i := range len(value) {
+		c := value[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-' || c == '_' || c == '.' || c == ':' || c == '/':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// listPageParams builds shared limit/cursor query values for cursor-paginated list commands.
+func listPageParams(limit int, cursor string) (*serverlessapi.Limit, *serverlessapi.Cursor) {
+	var (
+		limitOut  *serverlessapi.Limit
+		cursorOut *serverlessapi.Cursor
+	)
+	if limit > 0 {
+		l := serverlessapi.Limit(limit)
+		limitOut = &l
+	}
+	if cursor != "" {
+		c := cursor
+		cursorOut = &c
+	}
+	return limitOut, cursorOut
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/runware/runware-cli/internal/cmd/ping"
 	"github.com/runware/runware-cli/internal/cmd/preset"
 	cmdrun "github.com/runware/runware-cli/internal/cmd/run"
+	"github.com/runware/runware-cli/internal/cmd/serverless"
 	cmdupload "github.com/runware/runware-cli/internal/cmd/upload"
 	cmdversion "github.com/runware/runware-cli/internal/cmd/version"
 	"github.com/runware/runware-cli/internal/config"
@@ -42,7 +43,7 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 		Use:   "runware",
 		Short: "CLI tool for the Runware API",
 		Long: `A command-line tool for interacting with the Runware API.
-Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, and more.
+Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, deploy serverless applications, and more.
 
 Use of Runware services is subject to our Terms of Service (https://runware.ai/terms) and Privacy Policy (https://runware.ai/privacy).`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -94,6 +95,7 @@ Use of Runware services is subject to our Terms of Service (https://runware.ai/t
 		cmdrun.NewCmd(logger),
 		cmdrun.NewResultCmd(logger),
 		media.NewCmd(logger),
+		serverless.NewCmd(logger),
 		cmdupload.NewCmd(logger),
 		cmdversion.NewCmd(),
 		cmdcompletion.NewCmd(),

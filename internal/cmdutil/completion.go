@@ -86,7 +86,7 @@ func MakeSchemaArgCompleter(modelArgIdx int) func(*cobra.Command, []string, stri
 		}
 
 		// Collect the full dot-notation key of every arg the user has already typed,
-		// normalised through NormalizeProvidedKey so that auto-index sugar (e.g.
+		// normalized through NormalizeProvidedKey so that auto-index sugar (e.g.
 		// "messages.role=user") is expanded to its canonical form ("messages.0.role")
 		// before being recorded. This ensures nextArrayIdx advances correctly and
 		// CollectCompletions doesn't re-suggest keys that are already set. Preset

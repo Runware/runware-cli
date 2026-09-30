@@ -5,7 +5,7 @@ CLI tool for the Runware API
 ### Synopsis
 
 A command-line tool for interacting with the Runware API.
-Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, and more.
+Run image generation, video generation, audio generation, 3D, upscaling, background removal, captioning, search models, deploy serverless applications, and more.
 
 Use of Runware services is subject to our Terms of Service (https://runware.ai/terms) and Privacy Policy (https://runware.ai/privacy).
 
@@ -31,5 +31,6 @@ Use of Runware services is subject to our Terms of Service (https://runware.ai/t
 * [runware preset](runware_preset.md)	 - Manage named presets
 * [runware result](runware_result.md)	 - Wait for and display the result of a task by taskUUID
 * [runware run](runware_run.md)	 - Run an inference request against any Runware model
+* [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
 * [runware version](runware_version.md)	 - Print version information
 

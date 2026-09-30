@@ -1,0 +1,197 @@
+package serverless
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/api/transport"
+	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
+	"github.com/runware/runware-cli/internal/output"
+	"github.com/spf13/cobra"
+	"golang.org/x/term"
+)
+
+var (
+	errDeleteCancelled    = errors.New("delete canceled")
+	errDeleteNeedsConfirm = errors.New("delete requires confirmation; re-run with --yes or --force")
+)
+
+func newAppsStopCmd(logger *log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop <appId>",
+		Short: "Stop a serverless application",
+		Long: `Stop a running serverless application.
+
+The server accepts the stop and returns immediately with status stopping.
+Worker drain is asynchronous; this command does not wait until the application
+is stopped. The application must be active.`,
+		Example: `  # stop a running application
+  runware serverless apps stop my-app`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLifecycle(cmd, logger, args[0], "Stopping", (*serverlessapi.Client).StopApp, waitOptions{})
+		},
+	}
+}
+
+func newAppsResumeCmd(logger *log.Logger) *cobra.Command {
+	var (
+		wait         bool
+		timeout      time.Duration
+		pollInterval time.Duration
+	)
+
+	cmd := &cobra.Command{
+		Use:   "resume <appId>",
+		Short: "Resume a stopped serverless application",
+		Long: `Resume a stopped serverless application.
+
+The server accepts the resume and returns immediately with status initializing.
+Worker start is asynchronous. Pass --wait to poll until the application is
+active or failed, and --timeout to bound that wait. The application must be
+stopped.`,
+		Example: `  # resume a stopped application
+  runware serverless apps resume my-app
+
+  # wait until the application is active or failed
+  runware serverless apps resume my-app --wait --timeout 5m`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateWaitFlags(cmd, wait, timeout); err != nil {
+				return err
+			}
+			return runLifecycle(cmd, logger, args[0], "Resuming", (*serverlessapi.Client).ResumeApp, waitOptions{
+				Wait:     wait,
+				Timeout:  timeout,
+				Interval: pollInterval,
+			})
+		},
+	}
+	addAppWaitFlags(cmd, &wait, &timeout, &pollInterval)
+	return cmd
+}
+
+func newAppsDeleteCmd(logger *log.Logger) *cobra.Command {
+	var (
+		yes   bool
+		force bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "delete <appId>",
+		Short: "Delete a serverless application",
+		Long: `Soft-delete a serverless application.
+
+The server accepts the delete and returns immediately with status deleting.
+Router removal and worker drain are asynchronous; this command does not wait
+until the application is deleted.
+
+Confirmation is required unless --yes or --force is passed.`,
+		Example: `  # delete an application (prompts for confirmation)
+  runware serverless apps delete my-app
+
+  # skip the confirmation prompt
+  runware serverless apps delete my-app --yes`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			if err := confirmDelete("application "+id, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
+				return err
+			}
+			return runLifecycle(cmd, logger, id, "Deleting", (*serverlessapi.Client).DeleteApp, waitOptions{})
+		},
+	}
+
+	addDeleteConfirmFlags(cmd, &yes, &force)
+	return cmd
+}
+
+type lifecycleAction func(*serverlessapi.Client, context.Context, string) (*serverlessapi.App, error)
+
+type waitOptions struct {
+	Wait     bool
+	Timeout  time.Duration
+	Interval time.Duration
+}
+
+func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, action lifecycleAction, wait waitOptions) error {
+	spin := cmdutil.NewSpinner(fmt.Sprintf("%s application %s...", verb, id))
+	spin.Start()
+
+	client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+	app, err := action(client, cmd.Context(), id)
+	if err != nil {
+		spin.Stop()
+		return err
+	}
+	if wait.Wait && !serverlessapi.AppDeployTerminal(app.Status) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; waiting...\n", app.AppId, app.Status)
+		spin.SetMessage(fmt.Sprintf("Waiting for application %s...", app.AppId))
+		app, err = waitForApp(cmd.Context(), client, app.AppId, wait.Interval, wait.Timeout)
+		if err != nil {
+			spin.Stop()
+			return err
+		}
+	}
+	spin.Stop()
+
+	if err := output.Print(cmdutil.FormatFor(cmd), appResult(*app)); err != nil {
+		return err
+	}
+	if !wait.Wait {
+		return nil
+	}
+	return appFailedErr(cmd.Context(), client, app)
+}
+
+func addDeleteConfirmFlags(cmd *cobra.Command, yes, force *bool) {
+	cmd.Flags().BoolVarP(yes, "yes", "y", false, "Skip the confirmation prompt")
+	cmd.Flags().BoolVar(force, "force", false, "Skip the confirmation prompt")
+}
+
+// confirmDelete fails closed without an API key so a prompt cannot succeed
+// and then fail with ErrNoAPIKey. skip (--yes/--force) bypasses the prompt.
+func confirmDelete(subject string, skip bool, in io.Reader, out io.Writer, isTTY bool, apiKey string) error {
+	if apiKey == "" {
+		return transport.ErrNoAPIKey
+	}
+	if skip {
+		return nil
+	}
+	if !isTTY {
+		return errDeleteNeedsConfirm
+	}
+
+	_, _ = fmt.Fprintf(out, "Delete %s? [y/N] ", subject)
+	scanner := bufio.NewScanner(in)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("read confirmation: %w", err)
+		}
+		return errDeleteCancelled
+	}
+	switch strings.ToLower(strings.TrimSpace(scanner.Text())) {
+	case "y", "yes":
+		return nil
+	default:
+		return errDeleteCancelled
+	}
+}
+
+func stdinIsTerminal(in io.Reader) bool {
+	f, ok := in.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
