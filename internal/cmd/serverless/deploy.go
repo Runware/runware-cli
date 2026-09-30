@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -499,10 +500,8 @@ func gpusPerWorkerValuesText() string {
 }
 
 func validateGPUsPerWorker(n int32) error {
-	for _, allowed := range gpusPerWorkerAllowed {
-		if n == allowed {
-			return nil
-		}
+	if slices.Contains(gpusPerWorkerAllowed, n) {
+		return nil
 	}
 	return fmt.Errorf("--gpus-per-worker must be %s", gpusPerWorkerValuesText())
 }

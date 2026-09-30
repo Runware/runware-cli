@@ -52,8 +52,7 @@ func TestAddAppWaitFlags(t *testing.T) {
 }
 
 func TestWaitContext_NoTimeoutUsesParent(t *testing.T) {
-	parent, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	parent := t.Context()
 	ctx, stop := waitContext(parent, 0)
 	defer stop()
 	if ctx != parent {

@@ -14,7 +14,7 @@ func TestRootLongMatchesReadme(t *testing.T) {
 	}
 	const prefix = "Run image generation"
 	var blurb string
-	for _, line := range strings.Split(string(readme), "\n") {
+	for line := range strings.SplitSeq(string(readme), "\n") {
 		if strings.HasPrefix(line, prefix) {
 			blurb = line
 			break

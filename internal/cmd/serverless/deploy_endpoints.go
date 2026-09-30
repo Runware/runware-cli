@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -190,11 +191,12 @@ func reportEndpointSetChange(w io.Writer, change endpointSetChange) {
 		clauses = append(clauses, "adds "+quotedPaths(change.added))
 	}
 
-	message := "This deploy " + clauses[0]
+	var message strings.Builder
+	message.WriteString("This deploy " + clauses[0])
 	for _, clause := range clauses[1:] {
-		message += " and " + clause
+		message.WriteString(" and " + clause)
 	}
-	_, _ = fmt.Fprintf(w, "Warning: %s.\n", message)
+	_, _ = fmt.Fprintf(w, "Warning: %s.\n", message.String())
 	if len(change.removed) > 0 {
 		// Source-neutral: a code app's paths come from its handler names and a
 		// container app's from container.yaml, and this report covers both.
@@ -215,12 +217,12 @@ func reportDeployEndpoints(w io.Writer, appID string, paths []string) {
 }
 
 func quotedPaths(paths []string) string {
-	out := ""
+	var out strings.Builder
 	for i, path := range paths {
 		if i > 0 {
-			out += ", "
+			out.WriteString(", ")
 		}
-		out += "'" + path + "'"
+		out.WriteString("'" + path + "'")
 	}
-	return out
+	return out.String()
 }
