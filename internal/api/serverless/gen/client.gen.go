@@ -45,28 +45,28 @@ func (e AppEventType) Valid() bool {
 
 // Defines values for AppHealthReason.
 const (
-	AutoscalerUnhealthy AppHealthReason = "autoscaler_unhealthy"
-	CapacityBelowFloor  AppHealthReason = "capacity_below_floor"
-	DemandUnserved      AppHealthReason = "demand_unserved"
-	WorkloadMissing     AppHealthReason = "workload_missing"
-	WorkloadPresent     AppHealthReason = "workload_present"
-	WorkloadTerminating AppHealthReason = "workload_terminating"
+	AppHealthReasonAutoscalerUnhealthy AppHealthReason = "autoscaler_unhealthy"
+	AppHealthReasonCapacityBelowFloor  AppHealthReason = "capacity_below_floor"
+	AppHealthReasonDemandUnserved      AppHealthReason = "demand_unserved"
+	AppHealthReasonWorkloadMissing     AppHealthReason = "workload_missing"
+	AppHealthReasonWorkloadPresent     AppHealthReason = "workload_present"
+	AppHealthReasonWorkloadTerminating AppHealthReason = "workload_terminating"
 )
 
 // Valid indicates whether the value is a known member of the AppHealthReason enum.
 func (e AppHealthReason) Valid() bool {
 	switch e {
-	case AutoscalerUnhealthy:
+	case AppHealthReasonAutoscalerUnhealthy:
 		return true
-	case CapacityBelowFloor:
+	case AppHealthReasonCapacityBelowFloor:
 		return true
-	case DemandUnserved:
+	case AppHealthReasonDemandUnserved:
 		return true
-	case WorkloadMissing:
+	case AppHealthReasonWorkloadMissing:
 		return true
-	case WorkloadPresent:
+	case AppHealthReasonWorkloadPresent:
 		return true
-	case WorkloadTerminating:
+	case AppHealthReasonWorkloadTerminating:
 		return true
 	default:
 		return false
@@ -75,19 +75,19 @@ func (e AppHealthReason) Valid() bool {
 
 // Defines values for AppHealthState.
 const (
-	Degraded    AppHealthState = "degraded"
-	Healthy     AppHealthState = "healthy"
-	Unavailable AppHealthState = "unavailable"
+	AppHealthStateDegraded    AppHealthState = "degraded"
+	AppHealthStateHealthy     AppHealthState = "healthy"
+	AppHealthStateUnavailable AppHealthState = "unavailable"
 )
 
 // Valid indicates whether the value is a known member of the AppHealthState enum.
 func (e AppHealthState) Valid() bool {
 	switch e {
-	case Degraded:
+	case AppHealthStateDegraded:
 		return true
-	case Healthy:
+	case AppHealthStateHealthy:
 		return true
-	case Unavailable:
+	case AppHealthStateUnavailable:
 		return true
 	default:
 		return false

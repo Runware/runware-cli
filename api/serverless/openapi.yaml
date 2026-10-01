@@ -3082,6 +3082,10 @@ components:
         - healthy
         - degraded
         - unavailable
+      x-enum-varnames:
+        - AppHealthStateHealthy
+        - AppHealthStateDegraded
+        - AppHealthStateUnavailable
     AppHealthReason:
       type: string
       description: >
@@ -3124,6 +3128,13 @@ components:
         - demand_unserved
         - workload_terminating
         - workload_missing
+      x-enum-varnames:
+        - AppHealthReasonWorkloadPresent
+        - AppHealthReasonAutoscalerUnhealthy
+        - AppHealthReasonCapacityBelowFloor
+        - AppHealthReasonDemandUnserved
+        - AppHealthReasonWorkloadTerminating
+        - AppHealthReasonWorkloadMissing
     AppHealth:
       type: object
       description: >
