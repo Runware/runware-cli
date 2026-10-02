@@ -15,6 +15,8 @@ import (
 	"github.com/runware/runware-cli/internal/output"
 )
 
+const testTableFormat = "table"
+
 const (
 	testAppID       = "my-app"
 	testEnvKey      = "MY_KEY"
@@ -339,6 +341,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 		colID:                  testAppID,
 		colName:                "My App",
 		colStatus:              "active",
+		colHealth:              "unknown",
 		colActiveVersion:       activeVersion.String(),
 		colCreated:             createdAt,
 		colUpdated:             createdAt,
@@ -613,8 +616,8 @@ func TestWorkersResult_NilNodeName(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("expected 1 row, got %d", len(rows))
 	}
-	if rows[0][3] != "" {
-		t.Fatalf("nil NodeName should render empty, got %#v", rows[0][3])
+	if rows[0][4] != "" {
+		t.Fatalf("nil NodeName should render empty, got %#v", rows[0][4])
 	}
 }
 

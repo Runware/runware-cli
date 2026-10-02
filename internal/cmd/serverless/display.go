@@ -12,33 +12,38 @@ import (
 )
 
 const (
-	colID            = "ID"
-	colName          = "Name"
-	colStatus        = "Status"
-	colActiveVersion = "Active version ID"
-	colVersion       = "Version"
-	colCreated       = "Created"
-	colUpdated       = "Updated"
-	colType          = "Type"
-	colField         = "Field"
-	colValue         = "Value"
-	colApp           = "App"
-	colKey           = "Key"
-	colEnvVar        = "Env var"
-	colError         = "Error"
-	colCompleted     = "Completed"
-	colTime          = "Time"
-	colMessage       = "Message"
-	colWorker        = "Worker"
-	colEndpoint      = "Endpoint"
-	colDay           = "Day"
-	colCoverage      = "Coverage"
-	colGPUTime       = "GPU time"
-	colPAYGSpend     = "PAYG spend"
-	colPAYGValue     = "PAYG-equivalent value"
-	colEvent         = "Event"
-	colGPUs          = "GPUs"
-	colPricePerGPU   = "Price/s"
+	colID             = "ID"
+	colName           = "Name"
+	colStatus         = "Status"
+	colStatusReason   = "Status reason"
+	colHealth         = "Health"
+	colHealthReason   = "Health reason"
+	colHealthSince    = "Health since"
+	colHealthObserved = "Health observed"
+	colActiveVersion  = "Active version ID"
+	colVersion        = "Version"
+	colCreated        = "Created"
+	colUpdated        = "Updated"
+	colType           = "Type"
+	colField          = "Field"
+	colValue          = "Value"
+	colApp            = "App"
+	colKey            = "Key"
+	colEnvVar         = "Env var"
+	colError          = "Error"
+	colCompleted      = "Completed"
+	colTime           = "Time"
+	colMessage        = "Message"
+	colWorker         = "Worker"
+	colEndpoint       = "Endpoint"
+	colDay            = "Day"
+	colCoverage       = "Coverage"
+	colGPUTime        = "GPU time"
+	colPAYGSpend      = "PAYG spend"
+	colPAYGValue      = "PAYG-equivalent value"
+	colEvent          = "Event"
+	colGPUs           = "GPUs"
+	colPricePerGPU    = "Price/s"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -72,10 +77,11 @@ func (r appResult) Headers() []string {
 
 func (r appResult) Rows() [][]any {
 	cfg := r.Configuration
-	return [][]any{
+	rows := [][]any{
 		{colID, r.AppId},
 		{colName, r.AppName},
 		{colStatus, string(r.Status)},
+		{colHealth, formatAppHealth(r.Health)},
 		{colActiveVersion, formatOptionalUUID(r.ActiveVersionId)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 		{colUpdated, r.UpdatedAt.Format(time.RFC3339)},
@@ -94,6 +100,14 @@ func (r appResult) Rows() [][]any {
 		{colQueueDepth, formatOptionalInt64(r.Runtime.QueueDepth)},
 		{colRequests24h, formatOptionalInt64(r.Runtime.Requests24h)},
 	}
+	if r.Health != nil {
+		rows = append(rows,
+			[]any{colHealthReason, string(r.Health.Reason)},
+			[]any{colHealthSince, formatOptionalTime(r.Health.Since)},
+			[]any{colHealthObserved, formatOptionalTime(r.Health.ObservedAt)},
+		)
+	}
+	return rows
 }
 
 // MarshalJSON redacts plaintext environment values. The table already omits
@@ -125,7 +139,7 @@ func (r appResult) withRedactedEnv() serverlessapi.App {
 type appsResult []serverlessapi.App
 
 func (r appsResult) Headers() []string {
-	return []string{colID, colName, colStatus, colCreated}
+	return []string{colID, colName, colStatus, colHealth, colCreated}
 }
 
 func (r appsResult) Rows() [][]any {
@@ -136,10 +150,20 @@ func (r appsResult) Rows() [][]any {
 			d.AppId,
 			d.AppName,
 			string(d.Status),
+			formatAppHealth(d.Health),
 			d.CreatedAt.Format(time.RFC3339),
 		}
 	}
 	return rows
+}
+
+// An absent verdict never means healthy. Older servers and lifecycle transitions
+// can omit health, so keep that uncertainty visible in table output.
+func formatAppHealth(health *serverlessapi.AppHealth) string {
+	if health == nil {
+		return "unknown"
+	}
+	return string(health.State)
 }
 
 // endpointsResult wraps endpoint lists for table display.
@@ -265,7 +289,7 @@ func (r eventsResult) Rows() [][]any {
 type workersResult []serverlessapi.Worker
 
 func (r workersResult) Headers() []string {
-	return []string{colID, colStatus, "Pod", "Node", "Last Seen"}
+	return []string{colID, colStatus, colStatusReason, "Pod", "Node", "Last Seen"}
 }
 
 func (r workersResult) Rows() [][]any {
@@ -275,6 +299,7 @@ func (r workersResult) Rows() [][]any {
 		rows[i] = []any{
 			w.Id.String(),
 			string(w.Status),
+			formatOptionalString(w.StatusReason),
 			w.PodName,
 			formatOptionalString(w.NodeName),
 			formatOptionalTime(w.LastSeenAt),
@@ -303,7 +328,7 @@ func (r workerResult) Rows() [][]any {
 		{"Last seen", formatOptionalTime(r.LastSeenAt)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 		{"Status occurred", r.StatusOccurredAt.Format(time.RFC3339)},
-		{"Status reason", formatOptionalString(r.StatusReason)},
+		{colStatusReason, formatOptionalString(r.StatusReason)},
 	}
 }
 
