@@ -2,8 +2,27 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Environment overrides:
+#   RUNWARE_INSTALL_DIR       where the binary goes (default: ~/.local/bin)
+#   RUNWARE_RELEASE_BASE_URL  where releases come from (default: the GitHub
+#                             releases of Runware/runware-cli). With an
+#                             override, the script reads the latest version
+#                             from <base>/latest, as JSON with a "tag_name"
+#                             field, and the release files from
+#                             <base>/download/<tag>/<file>. A GitHub releases
+#                             page does not serve that JSON, so the override
+#                             must point at a mirror or a test server.
+
 REPO="Runware/runware-cli"
 CLI_NAME="runware"
+
+if [ -n "$RUNWARE_RELEASE_BASE_URL" ]; then
+  RELEASE_BASE_URL="${RUNWARE_RELEASE_BASE_URL%/}"
+  LATEST_URL="$RELEASE_BASE_URL/latest"
+else
+  RELEASE_BASE_URL="https://github.com/$REPO/releases"
+  LATEST_URL="https://api.github.com/repos/$REPO/releases/latest"
+fi
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
@@ -40,7 +59,7 @@ fi
 echo "==> 🔍 Detected OS: $OS, Architecture: $ARCH"
 
 echo "==> 🌐 Fetching latest version..."
-LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+LATEST_TAG=$(curl -s "$LATEST_URL" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ -z "$LATEST_TAG" ]; then
   echo "❌ Error: Could not fetch latest release."
@@ -50,8 +69,8 @@ fi
 echo "==> 📦 Latest version is $LATEST_TAG"
 
 TARBALL="${CLI_NAME}_${OS}_${ARCH}.tar.gz"
-DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$TARBALL"
-CHECKSUMS_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/checksums.txt"
+DOWNLOAD_URL="$RELEASE_BASE_URL/download/$LATEST_TAG/$TARBALL"
+CHECKSUMS_URL="$RELEASE_BASE_URL/download/$LATEST_TAG/checksums.txt"
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
@@ -86,7 +105,7 @@ fi
 
 tar -xzf "$TARBALL_PATH" -C "$TMP_DIR"
 
-INSTALL_DIR="$HOME/.local/bin"
+INSTALL_DIR="${RUNWARE_INSTALL_DIR:-$HOME/.local/bin}"
 
 mkdir -p "$INSTALL_DIR"
 
@@ -101,12 +120,20 @@ case ":$PATH:" in
     echo "==> ✅ Success! Run '$CLI_NAME --help' to get started."
     ;;
   *)
+    # Keep $HOME unexpanded for the default directory, so the line works in
+    # any shell config file.
+    if [ "$INSTALL_DIR" = "$HOME/.local/bin" ]; then
+      # shellcheck disable=SC2016
+      PATH_ENTRY='$HOME/.local/bin'
+    else
+      PATH_ENTRY=$INSTALL_DIR
+    fi
     echo "==> ✅ Installed to $INSTALL_DIR/$CLI_NAME"
     echo "==> ⚠️  $INSTALL_DIR is not in your PATH."
     echo ""
     echo "To use the CLI from anywhere, add this line to your ~/.bashrc, ~/.zshrc, or ~/.profile:"
     echo ""
-    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo "    export PATH=\"$PATH_ENTRY:\$PATH\""
     echo ""
     echo "Then restart your terminal or run: source ~/.bashrc (or your respective config file)."
     ;;

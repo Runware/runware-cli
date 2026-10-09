@@ -1,0 +1,355 @@
+// Package installtest runs the install scripts in public/ as a black box. It
+// serves a fake CLI release over HTTP, runs a script with sh against it, and
+// exposes what a test can observe afterwards: the script's output and exit
+// status, the requests the release received and the argv the stub CLI recorded.
+package installtest
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// DefaultTag is the version a fake release reports as latest when the test
+// names none.
+const DefaultTag = "v9.9.9"
+
+// StubScript stands in for the runware binary. Each call appends its argv to
+// the file named by RUNWARE_STUB_LOG, one call per line with every argument
+// terminated by the ASCII unit separator, and exits 0.
+const StubScript = `#!/bin/sh
+{
+  for arg do
+    printf '%s\037' "$arg"
+  done
+  printf '\n'
+} >> "${RUNWARE_STUB_LOG:-/dev/null}"
+`
+
+// systemPath holds the standard tools an install script needs (curl, tar,
+// shasum or sha256sum) and leaves out the directories Homebrew installs into,
+// so a script run on macOS takes the direct-download path.
+const systemPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+// runTimeout bounds one script run so that a hung download fails the test.
+const runTimeout = 30 * time.Second
+
+// releaseTargets are the OS and architecture names the install scripts put in
+// an archive name. The fake release has a checksum entry for each of them, so
+// a script finds its archive on any machine that runs the tests.
+var releaseTargets = []string{
+	"darwin_amd64",
+	"darwin_arm64",
+	"linux_amd64",
+	"linux_arm64",
+}
+
+// ReleaseConfig shapes a fake release. The zero value serves DefaultTag with
+// StubScript as the runware binary and correct checksums.
+type ReleaseConfig struct {
+	// Tag is the version the latest-version lookup reports.
+	Tag string
+	// Stub is the content of the runware binary in the archive.
+	Stub string
+	// BadChecksum makes checksums.txt list a digest that does not match the
+	// archive, as a tampered download would.
+	BadChecksum bool
+}
+
+// Release is a fake CLI release served over HTTP. Its URL is the value a
+// script reads from RUNWARE_RELEASE_BASE_URL: the latest-version lookup is
+// at URL/latest and the release files are at URL/download/<tag>/<file>.
+type Release struct {
+	URL string
+
+	mu       sync.Mutex
+	requests []string
+}
+
+// NewRelease starts a fake release that stops when the test ends.
+func NewRelease(t testing.TB, cfg ReleaseConfig) *Release {
+	t.Helper()
+
+	if cfg.Tag == "" {
+		cfg.Tag = DefaultTag
+	}
+	if cfg.Stub == "" {
+		cfg.Stub = StubScript
+	}
+
+	archive := releaseArchive(t, cfg.Stub)
+	digest := sha256.Sum256(archive)
+	if cfg.BadChecksum {
+		digest = sha256.Sum256([]byte("tampered"))
+	}
+	var checksums strings.Builder
+	for _, target := range releaseTargets {
+		fmt.Fprintf(&checksums, "%s  runware_%s.tar.gz\n", hex.EncodeToString(digest[:]), target)
+	}
+
+	// GitHub pretty-prints this response; the scripts read tag_name from its
+	// own line, so the fake must match that layout.
+	latest, err := json.MarshalIndent(latestRelease{
+		TagName: cfg.Tag,
+	}, "", "  ")
+	if err != nil {
+		t.Fatalf("encode latest release: %v", err)
+	}
+
+	r := &Release{}
+	download := "/download/" + cfg.Tag + "/"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		r.record(req.URL.Path)
+		switch name, ok := strings.CutPrefix(req.URL.Path, download); {
+		case req.URL.Path == "/latest":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(latest)
+		case ok && name == "checksums.txt":
+			_, _ = w.Write([]byte(checksums.String()))
+		case ok && strings.HasPrefix(name, "runware_") && strings.HasSuffix(name, ".tar.gz"):
+			_, _ = w.Write(archive)
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	r.URL = srv.URL
+	return r
+}
+
+// latestRelease is the part of GitHub's latest-release response the scripts
+// read.
+type latestRelease struct {
+	TagName string `json:"tag_name"`
+}
+
+func (r *Release) record(path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.requests = append(r.requests, path)
+}
+
+// Requests returns the path of every request the release received, in order.
+func (r *Release) Requests() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.requests)
+}
+
+// releaseArchive builds a tarball shaped like a GoReleaser archive, with the
+// runware binary at its root.
+func releaseArchive(t testing.TB, stub string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{
+		Name:     "runware",
+		Mode:     0o755,
+		Size:     int64(len(stub)),
+		Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatalf("write archive header: %v", err)
+	}
+	if _, err := tw.Write([]byte(stub)); err != nil {
+		t.Fatalf("write archive body: %v", err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close archive: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("close gzip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// Invocation describes one run of an install script.
+type Invocation struct {
+	// Script is the path of the script to run.
+	Script string
+	// Args are the script's positional arguments.
+	Args []string
+	// Env sets environment variables for the script. It can override HOME
+	// and TMPDIR, which otherwise point at fresh temporary directories.
+	Env map[string]string
+	// PathDirs come before the standard tool directories on PATH.
+	PathDirs []string
+}
+
+// Result is what a script run left behind.
+type Result struct {
+	ExitCode int
+	// Output is stdout and stderr combined.
+	Output string
+
+	stubLog string
+}
+
+// RunSh runs a POSIX install script with sh. The script sees only the
+// environment the invocation gives it, so the developer's own RUNWARE_*
+// variables and Homebrew never leak in. The test skips where sh or curl is
+// missing, and on Windows, which the POSIX scripts do not support.
+func RunSh(t testing.TB, inv Invocation) Result {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the POSIX install scripts support only Linux and macOS")
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh not found")
+	}
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl not found")
+	}
+
+	stubLog := filepath.Join(t.TempDir(), "runware-calls")
+	env := map[string]string{
+		"HOME":             t.TempDir(),
+		"TMPDIR":           t.TempDir(),
+		"PATH":             strings.Join(append(slices.Clone(inv.PathDirs), systemPath), string(os.PathListSeparator)),
+		"RUNWARE_STUB_LOG": stubLog,
+	}
+	maps.Copy(env, inv.Env)
+
+	ctx, cancel := context.WithTimeout(t.Context(), runTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, sh, append([]string{inv.Script}, inv.Args...)...) //nolint:gosec // the test names the script it runs
+	cmd.Env = make([]string, 0, len(env))
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	out, err := cmd.CombinedOutput()
+
+	res := Result{
+		Output:  string(out),
+		stubLog: stubLog,
+	}
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+	case errors.As(err, &exitErr) && ctx.Err() == nil:
+		res.ExitCode = exitErr.ExitCode()
+	default:
+		t.Fatalf("run %s: %v\n%s", inv.Script, err, out)
+	}
+	return res
+}
+
+// StubCalls returns the argv of every call to a stub CLI during the run, in
+// order. It is empty when no stub ran.
+func (r Result) StubCalls(t testing.TB) [][]string {
+	t.Helper()
+
+	data, err := os.ReadFile(r.stubLog)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read stub log: %v", err)
+	}
+	var calls [][]string
+	for line := range strings.Lines(string(data)) {
+		line = strings.TrimSuffix(line, "\n")
+		args := strings.Split(line, "\x1f")
+		// Every argument ends with a separator, so the last field is empty.
+		calls = append(calls, args[:len(args)-1])
+	}
+	return calls
+}
+
+// GitHubShim is a directory holding a curl that stands in for the real one.
+// It sends the default GitHub release URLs to a fake release and logs every
+// URL it was asked for. Put Dir first on PATH to run a script with no
+// RUNWARE_RELEASE_BASE_URL and still stay offline.
+type GitHubShim struct {
+	Dir string
+
+	log string
+}
+
+// githubShimScript rewrites the URLs in curl's arguments and then runs the
+// real curl. Its %s verbs take the base URL of the fake release, the log path
+// and the real curl, each already quoted for sh.
+const githubShimScript = `#!/bin/sh
+base=%s
+log=%s
+n=$#
+for arg do
+  case $arg in
+    https://*)
+      printf '%%s\n' "$arg" >> "$log"
+      case $arg in
+        https://api.github.com/repos/Runware/runware-cli/releases/latest)
+          arg="$base/latest" ;;
+        https://github.com/Runware/runware-cli/releases/*)
+          arg="$base/${arg#https://github.com/Runware/runware-cli/releases/}" ;;
+        *)
+          arg="$base/unexpected" ;;
+      esac
+      ;;
+  esac
+  set -- "$@" "$arg"
+done
+shift "$n"
+exec %s "$@"
+`
+
+// GitHubShim writes a curl shim that routes the GitHub release URLs to r. The
+// test skips where there is no curl to run behind the shim.
+func (r *Release) GitHubShim(t testing.TB) GitHubShim {
+	t.Helper()
+
+	curl, err := exec.LookPath("curl")
+	if err != nil {
+		t.Skip("curl not found")
+	}
+	shim := GitHubShim{
+		Dir: t.TempDir(),
+		log: filepath.Join(t.TempDir(), "curl-urls"),
+	}
+	script := fmt.Sprintf(githubShimScript, shellQuote(r.URL), shellQuote(shim.log), shellQuote(curl))
+	if err := os.WriteFile(filepath.Join(shim.Dir, "curl"), []byte(script), 0o700); err != nil { //nolint:gosec // test executable
+		t.Fatalf("write curl shim: %v", err)
+	}
+	return shim
+}
+
+// URLs returns every URL the shim was asked for, in order, before any
+// rewrite.
+func (s GitHubShim) URLs(t testing.TB) []string {
+	t.Helper()
+
+	data, err := os.ReadFile(s.log)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read curl shim log: %v", err)
+	}
+	return strings.Fields(string(data))
+}
+
+// shellQuote quotes s as one sh word.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
