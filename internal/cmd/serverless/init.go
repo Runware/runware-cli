@@ -26,13 +26,20 @@ const (
 	// defaultProjectName names a project whose directory name has no letters or
 	// digits to derive one from.
 	defaultProjectName = "app"
-
-	// uvProjectEnvironment redirects uv's project environment away from
-	// .venv. Set globally -- a container image that points it at /usr/local is
-	// the common case -- it would install the Serverless library into a system
-	// environment, which init never does (ADR 0001).
-	uvProjectEnvironment = "UV_PROJECT_ENVIRONMENT"
 )
+
+// uvProjectOverrides are the uv variables that point it at another project,
+// directory or environment than the App directory and its .venv. Inherited
+// from the shell -- a container image that sets UV_PROJECT_ENVIRONMENT to
+// /usr/local is the common case -- they would make init install the
+// Serverless library somewhere else, which it never does (ADR 0001). Keys are
+// upper case and compared case-insensitively, as Windows does.
+var uvProjectOverrides = map[string]struct{}{
+	"UV_PROJECT":             {},
+	"UV_PROJECT_ENVIRONMENT": {},
+	"UV_WORKING_DIR":         {},
+	"UV_WORKING_DIRECTORY":   {},
+}
 
 // appIDPattern is the API's AppId rule. A directory name that does not fit
 // leaves a placeholder in the printed deploy command rather than an ID the
@@ -234,17 +241,24 @@ func writeNewFile(path, content string) error {
 	return nil
 }
 
+// createFile removes what it created when the write fails. A truncated file
+// left behind would stay for good: a re-run keeps an existing pyproject.toml,
+// and writes no app.py next to another .py file.
 func createFile(path, content string) error {
 	//nolint:gosec // customer source files, readable like any other in the project
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
-	if _, err := f.WriteString(content); err != nil {
-		_ = f.Close()
+	_, err = f.WriteString(content)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(path)
 		return err
 	}
-	return f.Close()
+	return nil
 }
 
 func pyprojectFor(dir string) string {
@@ -287,9 +301,7 @@ func uvAddLibrary(ctx context.Context, uv, dir string, w io.Writer) error {
 	c.Dir = dir
 	c.Stdout = w
 	c.Stderr = w
-	c.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool {
-		return strings.HasPrefix(kv, uvProjectEnvironment+"=")
-	})
+	c.Env = slices.DeleteFunc(os.Environ(), isUVProjectOverride)
 	if err := c.Run(); err != nil {
 		return fmt.Errorf("%s failed in %s: %w (uv's output is above)", uvAddCommand(), dir, err)
 	}
@@ -305,6 +317,12 @@ var uvAddArgs = []string{
 
 func uvAddCommand() string {
 	return toolchainUV + " " + strings.Join(uvAddArgs, " ")
+}
+
+func isUVProjectOverride(kv string) bool {
+	key, _, _ := strings.Cut(kv, "=")
+	_, ok := uvProjectOverrides[strings.ToUpper(key)]
+	return ok
 }
 
 // finishCommand is what the customer runs to finish by hand when init could

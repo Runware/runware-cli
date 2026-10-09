@@ -17,10 +17,11 @@ import (
 const goosWindows = "windows"
 
 // fakeUVScript stands in for uv. It records its working directory, argv and
-// UV_PROJECT_ENVIRONMENT as one log line, and creates .venv as `uv add` does. A
-// non-empty failMessage makes it print that to stderr and exit 2 instead.
+// the uv variables that move it to another project as one log line, and
+// creates .venv as `uv add` does. A non-empty failMessage makes it print that
+// to stderr and exit 2 instead.
 const fakeUVScript = `#!/bin/sh
-echo "cwd=$(pwd -P) argv=$* project_env=${UV_PROJECT_ENVIRONMENT-}" >> '%LOG%'
+echo "cwd=$(pwd -P) argv=$* overrides=${UV_PROJECT-}${UV_PROJECT_ENVIRONMENT-}${UV_WORKING_DIR-}${UV_WORKING_DIRECTORY-}" >> '%LOG%'
 if [ -n '%FAIL%' ]; then
   echo '%FAIL%' >&2
   exit 2
@@ -85,7 +86,7 @@ func (h *initHarness) uvCalls() []string {
 // uvAddCall is the log line for `uv add --dev runware-serverless` run in dir.
 func uvAddCall(t *testing.T, dir string) string {
 	t.Helper()
-	return "cwd=" + physicalPath(t, dir) + " argv=add --dev runware-serverless project_env="
+	return "cwd=" + physicalPath(t, dir) + " argv=add --dev runware-serverless overrides="
 }
 
 func readInitFile(t *testing.T, path string) string {
@@ -352,11 +353,16 @@ func TestInit_NoUVKeepsFilesAndSaysHowToFinish(t *testing.T) {
 	}
 }
 
-// TestInit_IgnoresUVProjectEnvironment: a global UV_PROJECT_ENVIRONMENT would
-// point uv away from the App directory's .venv (ADR 0001).
-func TestInit_IgnoresUVProjectEnvironment(t *testing.T) {
+// TestInit_IgnoresUVProjectOverrides: an inherited uv variable that names
+// another project, directory or environment would make uv install somewhere
+// other than the App directory's .venv (ADR 0001).
+func TestInit_IgnoresUVProjectOverrides(t *testing.T) {
 	h := newInitHarness(t, "")
+	other := t.TempDir()
+	t.Setenv("UV_PROJECT", other)
 	t.Setenv("UV_PROJECT_ENVIRONMENT", "/usr/local")
+	t.Setenv("UV_WORKING_DIR", other)
+	t.Setenv("UV_WORKING_DIRECTORY", other)
 	dir := t.TempDir()
 
 	if err := h.run(dir); err != nil {
@@ -419,6 +425,23 @@ func TestProjectName(t *testing.T) {
 	for dir, want := range cases {
 		if got := projectName(dir); got != want {
 			t.Errorf("projectName(%q) = %q, want %q", dir, got, want)
+		}
+	}
+}
+
+func TestIsUVProjectOverride(t *testing.T) {
+	cases := map[string]bool{
+		"UV_PROJECT=/x":            true,
+		"uv_project_environment=x": true,
+		"Uv_Working_Dir=/x":        true,
+		"UV_WORKING_DIRECTORY=/x":  true,
+		"UV_PROJECTS=/x":           false,
+		"UV_CACHE_DIR=/x":          false,
+		"PATH=/bin":                false,
+	}
+	for kv, want := range cases {
+		if got := isUVProjectOverride(kv); got != want {
+			t.Errorf("isUVProjectOverride(%q) = %v, want %v", kv, got, want)
 		}
 	}
 }
