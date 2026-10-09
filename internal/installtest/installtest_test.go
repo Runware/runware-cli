@@ -1,10 +1,14 @@
 package installtest_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/runware/runware-cli/internal/installtest"
 )
@@ -64,4 +68,51 @@ func TestRunSh_ASecondScriptCanInstallFromTheSameReleaseAndRunTheStub(t *testing
 	if len(calls) != 1 || !slices.Equal(calls[0], wantCall) {
 		t.Errorf("stub calls = %q, want one call %q", calls, wantCall)
 	}
+}
+
+// TestRunSh_TimeoutStopsAScriptWhoseChildHangs runs a script whose child
+// never finishes, as a stalled curl would, and checks that the run fails the
+// test at its timeout instead of waiting for the child.
+func TestRunSh_TimeoutStopsAScriptWhoseChildHangs(t *testing.T) {
+	t.Parallel()
+
+	script := filepath.Join(t.TempDir(), "hang.sh")
+	if err := os.WriteFile(script, []byte("sleep 10\n"), 0o600); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	rec := &fatalRecorder{
+		TB: t,
+	}
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		installtest.RunSh(rec, installtest.Invocation{
+			Script:  script,
+			Timeout: 200 * time.Millisecond,
+		})
+	}()
+	<-done
+
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("run returned after %s, want soon after its 200ms timeout", elapsed)
+	}
+	if !strings.Contains(rec.fatal, "did not finish within 200ms") {
+		t.Errorf("fatal message = %q, want it to report the timeout", rec.fatal)
+	}
+}
+
+// fatalRecorder stands in for the test in a harness call that is expected to
+// fail it. It records the message and stops the calling goroutine, as
+// t.Fatalf does, but leaves the real test running.
+type fatalRecorder struct {
+	testing.TB
+
+	fatal string
+}
+
+func (r *fatalRecorder) Fatalf(format string, args ...any) {
+	r.fatal = fmt.Sprintf(format, args...)
+	runtime.Goexit()
 }

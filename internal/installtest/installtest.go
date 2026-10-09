@@ -49,8 +49,9 @@ const StubScript = `#!/bin/sh
 // so a script run on macOS takes the direct-download path.
 const systemPath = "/usr/bin:/bin:/usr/sbin:/sbin"
 
-// runTimeout bounds one script run so that a hung download fails the test.
-const runTimeout = 30 * time.Second
+// defaultTimeout bounds one script run so that a hung download fails the
+// test.
+const defaultTimeout = 30 * time.Second
 
 // releaseTargets are the OS and architecture names the install scripts put in
 // an archive name. The fake release has a checksum entry for each of them, so
@@ -193,6 +194,8 @@ type Invocation struct {
 	Env map[string]string
 	// PathDirs come before the standard tool directories on PATH.
 	PathDirs []string
+	// Timeout bounds the run. Zero means 30 seconds.
+	Timeout time.Duration
 }
 
 // Result is what a script run left behind.
@@ -231,9 +234,17 @@ func RunSh(t testing.TB, inv Invocation) Result {
 	}
 	maps.Copy(env, inv.Env)
 
-	ctx, cancel := context.WithTimeout(t.Context(), runTimeout)
+	timeout := inv.Timeout
+	if timeout == 0 {
+		timeout = defaultTimeout
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, sh, append([]string{inv.Script}, inv.Args...)...) //nolint:gosec // the test names the script it runs
+	killGroupOnCancel(cmd)
+	// A child that left the process group can still hold the output pipe
+	// open, so stop waiting for output soon after the kill.
+	cmd.WaitDelay = time.Second
 	cmd.Env = make([]string, 0, len(env))
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
@@ -246,8 +257,10 @@ func RunSh(t testing.TB, inv Invocation) Result {
 	}
 	var exitErr *exec.ExitError
 	switch {
+	case ctx.Err() != nil:
+		t.Fatalf("%s did not finish within %s\n%s", inv.Script, timeout, out)
 	case err == nil:
-	case errors.As(err, &exitErr) && ctx.Err() == nil:
+	case errors.As(err, &exitErr):
 		res.ExitCode = exitErr.ExitCode()
 	default:
 		t.Fatalf("run %s: %v\n%s", inv.Script, err, out)
