@@ -45,24 +45,16 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 
 				spin := cmdutil.NewSpinner("Checking auth status...")
 				spin.Start()
+				err := verifyCredentials(cmd, slog.New(logger))
+				spin.Stop()
 
-				t, err := cmdutil.NewTransport(cmd, slog.New(logger))
-				if err != nil {
-					spin.Stop()
+				switch {
+				case err == nil:
+					status = "valid"
+				case transport.IsAuthError(err):
+					status = "invalid"
+				default:
 					status = "unreachable"
-				} else {
-					defer t.Close() //nolint:errcheck
-					client := api.NewClient(t, slog.New(logger))
-					_, err = client.Ping(cmd.Context())
-					spin.Stop()
-					switch {
-					case err == nil:
-						status = "valid"
-					case transport.IsAuthError(err):
-						status = "invalid"
-					default:
-						status = "unreachable"
-					}
 				}
 			}
 
@@ -72,4 +64,15 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 			})
 		},
 	}
+}
+
+func verifyCredentials(cmd *cobra.Command, logger *slog.Logger) error {
+	t, err := cmdutil.NewTransport(cmd, logger)
+	if err != nil {
+		return err
+	}
+	defer t.Close() //nolint:errcheck
+	client := api.NewClient(t, logger)
+	_, err = client.Ping(cmd.Context())
+	return err
 }
