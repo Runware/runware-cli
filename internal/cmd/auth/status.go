@@ -12,9 +12,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// credentialStatus is the outcome of checking the configured API key against the API.
+type credentialStatus string
+
+const (
+	statusNotConfigured credentialStatus = "not configured"
+	statusValid         credentialStatus = "valid"
+	statusInvalid       credentialStatus = "invalid"
+	statusUnreachable   credentialStatus = "unreachable"
+	statusError         credentialStatus = "error"
+)
+
 type authStatusResult struct {
-	APIKey string `json:"api_key"`
-	Status string `json:"status"`
+	APIKey string           `json:"api_key"`
+	Status credentialStatus `json:"status"`
 }
 
 func (r authStatusResult) Headers() []string {
@@ -24,7 +35,7 @@ func (r authStatusResult) Headers() []string {
 func (r authStatusResult) Rows() [][]any {
 	return [][]any{
 		{"API Key", r.APIKey},
-		{"Status", r.Status},
+		{"Status", string(r.Status)},
 	}
 }
 
@@ -37,7 +48,7 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := config.GetAPIKey()
 
-			status := "not configured"
+			status := statusNotConfigured
 			maskedKey := "none"
 
 			if key != "" {
@@ -48,19 +59,13 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 				err := verifyCredentials(cmd, slog.New(logger))
 				spin.Stop()
 
-				switch {
-				case err == nil:
-					status = "valid"
-				case transport.IsAuthError(err):
-					status = "invalid"
-				case transport.IsConnectionError(err):
-					status = "unreachable"
-				default:
-					status = "error"
+				if ctxErr := cmd.Context().Err(); ctxErr != nil {
+					return ctxErr
 				}
 				if err != nil {
 					logger.Debug("credential check failed", "err", err)
 				}
+				status = classifyCredentialError(err)
 			}
 
 			return output.Print(cmdutil.FormatFor(cmd), authStatusResult{
@@ -80,4 +85,17 @@ func verifyCredentials(cmd *cobra.Command, logger *slog.Logger) error {
 	client := api.NewClient(t, logger)
 	_, err = client.Ping(cmd.Context())
 	return err
+}
+
+func classifyCredentialError(err error) credentialStatus {
+	switch {
+	case err == nil:
+		return statusValid
+	case transport.IsAuthError(err):
+		return statusInvalid
+	case transport.IsConnectionError(err):
+		return statusUnreachable
+	default:
+		return statusError
+	}
 }

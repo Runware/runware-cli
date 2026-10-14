@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/url"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -475,8 +475,7 @@ func IsConnectionError(err error) bool {
 	if re, ok := errors.AsType[*RunwareError](err); ok {
 		return re.Code == CodeConnection || re.Code == CodeTimeout
 	}
-	// The HTTP transport returns the client's own error for network failures.
-	_, ok := errors.AsType[*url.Error](err)
+	_, ok := errors.AsType[net.Error](err)
 	return ok
 }
 

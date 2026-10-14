@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"testing"
@@ -38,12 +39,45 @@ func TestIsConnectionError(t *testing.T) {
 		err      error
 		expected bool
 	}{
-		{"websocket dial failure", CreateRunwareError("connectionFailed", "dial failed", RunwareErrorDetails{}), true},
-		{"auth timeout", CreateRunwareError("timeout", "no auth reply", RunwareErrorDetails{}), true},
-		{"http network failure", fmt.Errorf("request failed: %w", &url.Error{Op: "Post", URL: "https://api", Err: errors.New("connection refused")}), true},
-		{"API auth error", CreateRunwareError("invalidApiKey", "bad key", RunwareErrorDetails{}), false},
-		{"server error", CreateRunwareError("internalServerError", "boom", RunwareErrorDetails{}), false},
-		{"generic error", fmt.Errorf("failed to parse response"), false},
+		{
+			name:     "websocket dial failure",
+			err:      CreateRunwareError("connectionFailed", "dial failed", RunwareErrorDetails{}),
+			expected: true,
+		},
+		{
+			name:     "timeout code",
+			err:      CreateRunwareError("timeout", "no reply", RunwareErrorDetails{}),
+			expected: true,
+		},
+		{
+			name: "http network failure",
+			err: fmt.Errorf("request failed: %w", &url.Error{
+				Op:  "Post",
+				URL: "https://api",
+				Err: errors.New("connection refused"),
+			}),
+			expected: true,
+		},
+		{
+			name:     "http timeout while reading the body",
+			err:      fmt.Errorf("failed to read response: %w", os.ErrDeadlineExceeded),
+			expected: true,
+		},
+		{
+			name:     "API auth error",
+			err:      CreateRunwareError("invalidApiKey", "bad key", RunwareErrorDetails{}),
+			expected: false,
+		},
+		{
+			name:     "server error",
+			err:      CreateRunwareError("internalServerError", "boom", RunwareErrorDetails{}),
+			expected: false,
+		},
+		{
+			name:     "generic error",
+			err:      fmt.Errorf("failed to parse response"),
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"testing"
 	"time"
 
@@ -58,19 +59,41 @@ func rawJSON(t *testing.T, v any) json.RawMessage {
 
 // TestClientPoll_TransientErrorKeepsPolling: non-fatal errors are retried.
 func TestClientPoll_TransientErrorKeepsPolling(t *testing.T) {
-	mock := &mockTransport{
-		responses: []mockResponse{
-			{err: fmt.Errorf("temporary error")},
-			{data: []json.RawMessage{successItem(t, nil)}},
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "plain error",
+			err:  fmt.Errorf("temporary error"),
+		},
+		{
+			name: "http network failure",
+			err: fmt.Errorf("request failed: %w", &url.Error{
+				Op:  "Post",
+				URL: "https://api",
+				Err: errors.New("connection reset"),
+			}),
 		},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &mockTransport{
+				responses: []mockResponse{
+					{err: tc.err},
+					{data: []json.RawMessage{successItem(t, nil)}},
+				},
+			}
 
-	results, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(results) != 1 {
-		t.Errorf("expected 1 result, got %d", len(results))
+			results, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(results) != 1 {
+				t.Errorf("expected 1 result, got %d", len(results))
+			}
+		})
 	}
 }
 
