@@ -53,8 +53,13 @@ func newStatusCmd(logger *log.Logger) *cobra.Command {
 					status = "valid"
 				case transport.IsAuthError(err):
 					status = "invalid"
-				default:
+				case transport.IsConnectionError(err):
 					status = "unreachable"
+				default:
+					status = "error"
+				}
+				if err != nil {
+					logger.Debug("credential check failed", "err", err)
 				}
 			}
 

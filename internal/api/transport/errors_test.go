@@ -2,7 +2,9 @@ package transport
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"slices"
 	"testing"
@@ -25,6 +27,30 @@ func TestIsAuthError(t *testing.T) {
 			got := IsAuthError(tt.err)
 			if got != tt.expected {
 				t.Errorf("IsAuthError(%v) = %v, want %v", tt.err, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsConnectionError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"websocket dial failure", CreateRunwareError("connectionFailed", "dial failed", RunwareErrorDetails{}), true},
+		{"auth timeout", CreateRunwareError("timeout", "no auth reply", RunwareErrorDetails{}), true},
+		{"http network failure", fmt.Errorf("request failed: %w", &url.Error{Op: "Post", URL: "https://api", Err: errors.New("connection refused")}), true},
+		{"API auth error", CreateRunwareError("invalidApiKey", "bad key", RunwareErrorDetails{}), false},
+		{"server error", CreateRunwareError("internalServerError", "boom", RunwareErrorDetails{}), false},
+		{"generic error", fmt.Errorf("failed to parse response"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsConnectionError(tt.err)
+			if got != tt.expected {
+				t.Errorf("IsConnectionError(%v) = %v, want %v", tt.err, got, tt.expected)
 			}
 		})
 	}

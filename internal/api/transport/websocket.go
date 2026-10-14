@@ -353,7 +353,7 @@ func (t *WSTransport) connect(ctx context.Context) error {
 	if t.sessionUUID == "" {
 		conn.Close() //nolint:errcheck,gosec
 		return CreateRunwareError(
-			"authFailed",
+			"unrecognizedResponse",
 			"authentication succeeded but missing connectionSessionUUID",
 			RunwareErrorDetails{},
 		)

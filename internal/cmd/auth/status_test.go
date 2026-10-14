@@ -19,14 +19,18 @@ const (
 	validKey   = "valid-key"
 	invalidKey = "invalid-key"
 
-	invalidKeyReply = `{"errors":[{"code":"invalidApiKey","message":"invalid key"}]}`
-	pongReply       = `{"data":[{"taskType":"ping","pong":true}]}`
-	wsAuthReply     = `{"data":[{"taskType":"authentication","connectionSessionUUID":"session"}]}`
+	invalidKeyReply   = `{"errors":[{"code":"invalidApiKey","message":"invalid key"}]}`
+	serverErrorReply  = `{"errors":[{"code":"internalServerError","message":"boom"}]}`
+	pongReply         = `{"data":[{"taskType":"ping","pong":true}]}`
+	wsAuthReply       = `{"data":[{"taskType":"authentication","connectionSessionUUID":"session"}]}`
+	wsAuthNoSessReply = `{"data":[{"taskType":"authentication"}]}`
 )
 
 // fakeAPI answers ping over HTTP and WebSocket, accepting only validKey.
 type fakeAPI struct {
 	upgrader websocket.Upgrader
+	// broken makes the API accept the key and then fail every task.
+	broken bool
 }
 
 func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -37,6 +41,11 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "Bearer "+validKey {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(invalidKeyReply))
+		return
+	}
+	if f.broken {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(serverErrorReply))
 		return
 	}
 	_, _ = w.Write([]byte(pongReply))
@@ -61,6 +70,10 @@ func (f *fakeAPI) serveWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(invalidKeyReply))
 		return
 	}
+	if f.broken {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(wsAuthNoSessReply))
+		return
+	}
 	_ = conn.WriteMessage(websocket.TextMessage, []byte(wsAuthReply))
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
@@ -73,6 +86,8 @@ func (f *fakeAPI) serveWS(w http.ResponseWriter, r *http.Request) {
 func TestStatus_ReportsKeyState(t *testing.T) {
 	api := httptest.NewServer(&fakeAPI{})
 	defer api.Close()
+	broken := httptest.NewServer(&fakeAPI{broken: true})
+	defer broken.Close()
 	down := httptest.NewServer(http.NotFoundHandler())
 	down.Close()
 
@@ -110,6 +125,20 @@ func TestStatus_ReportsKeyState(t *testing.T) {
 			key:        invalidKey,
 			apiURL:     api.URL,
 			wantStatus: "invalid",
+		},
+		{
+			name:       "accepted key but server error over http",
+			transport:  transport.SchemeHTTP,
+			key:        validKey,
+			apiURL:     broken.URL,
+			wantStatus: "error",
+		},
+		{
+			name:       "accepted key but no session id over websocket",
+			transport:  transport.SchemeWS,
+			key:        validKey,
+			apiURL:     broken.URL,
+			wantStatus: "error",
 		},
 		{
 			name:       "api down over http",
