@@ -36,6 +36,8 @@ type fakeAPI struct {
 	// broken makes the API accept the key but answer unusably: HTTP 500, or a
 	// WebSocket auth reply with no connectionSessionUUID.
 	broken bool
+	// onPing, when set, runs as the ping arrives, and the ping is never answered.
+	onPing func()
 }
 
 func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +61,14 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.broken {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(serverErrorReply))
+		return
+	}
+	if f.onPing != nil {
+		// Reading the body first lets the server see the client go away;
+		// otherwise httptest.Server.Close blocks on this handler.
+		_, _ = io.Copy(io.Discard, r.Body)
+		f.onPing()
+		<-r.Context().Done()
 		return
 	}
 	_, _ = w.Write([]byte(pongReply))
@@ -92,9 +102,22 @@ func (f *fakeAPI) serveWS(w http.ResponseWriter, r *http.Request) {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			return
 		}
+		if f.onPing != nil {
+			f.onPing()
+			continue
+		}
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(pongReply))
 	}
 }
+
+// apiState is how the fake API behaves for a test case.
+type apiState int
+
+const (
+	apiHealthy apiState = iota
+	apiBroken
+	apiDown
+)
 
 func TestStatus_ReportsKeyState(t *testing.T) {
 	down := httptest.NewServer(http.NotFoundHandler())
@@ -104,106 +127,122 @@ func TestStatus_ReportsKeyState(t *testing.T) {
 		name       string
 		transport  string
 		key        string
-		broken     bool
-		apiDown    bool
-		wantStatus credentialStatus
+		api        apiState
+		wantStatus string
 	}{
+		{
+			name:       "no key configured",
+			transport:  transport.SchemeWS,
+			key:        "",
+			api:        apiHealthy,
+			wantStatus: "not configured",
+		},
 		{
 			name:       "valid key over http",
 			transport:  transport.SchemeHTTP,
 			key:        validKey,
-			wantStatus: statusValid,
+			api:        apiHealthy,
+			wantStatus: "valid",
 		},
 		{
 			name:       "valid key over websocket",
 			transport:  transport.SchemeWS,
 			key:        validKey,
-			wantStatus: statusValid,
+			api:        apiHealthy,
+			wantStatus: "valid",
 		},
 		{
 			name:       "invalid key over http",
 			transport:  transport.SchemeHTTP,
 			key:        invalidKey,
-			wantStatus: statusInvalid,
+			api:        apiHealthy,
+			wantStatus: "invalid",
 		},
 		{
 			name:       "invalid key over websocket",
 			transport:  transport.SchemeWS,
 			key:        invalidKey,
-			wantStatus: statusInvalid,
+			api:        apiHealthy,
+			wantStatus: "invalid",
 		},
 		{
 			name:       "accepted key but server error over http",
 			transport:  transport.SchemeHTTP,
 			key:        validKey,
-			broken:     true,
-			wantStatus: statusError,
+			api:        apiBroken,
+			wantStatus: "error",
 		},
 		{
 			name:       "accepted key but no session id over websocket",
 			transport:  transport.SchemeWS,
 			key:        validKey,
-			broken:     true,
-			wantStatus: statusError,
+			api:        apiBroken,
+			wantStatus: "error",
 		},
 		{
 			name:       "api down over http",
 			transport:  transport.SchemeHTTP,
 			key:        validKey,
-			apiDown:    true,
-			wantStatus: statusUnreachable,
+			api:        apiDown,
+			wantStatus: "unreachable",
 		},
 		{
 			name:       "api down over websocket",
 			transport:  transport.SchemeWS,
 			key:        validKey,
-			apiDown:    true,
-			wantStatus: statusUnreachable,
+			api:        apiDown,
+			wantStatus: "unreachable",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			apiURL := down.URL
-			if !tc.apiDown {
-				api := httptest.NewServer(&fakeAPI{scheme: tc.transport, broken: tc.broken})
+			if tc.api != apiDown {
+				api := httptest.NewServer(&fakeAPI{
+					scheme: tc.transport,
+					broken: tc.api == apiBroken,
+				})
 				defer api.Close()
 				apiURL = api.URL
 			}
-			t.Setenv("HOME", t.TempDir())
-			t.Setenv("RUNWARE_API_KEY", tc.key)
-			t.Setenv("RUNWARE_BASE_URL", apiURL)
-			t.Setenv("RUNWARE_WS_BASE_URL", "ws"+strings.TrimPrefix(apiURL, "http"))
+			useAPI(t, tc.key, apiURL)
 
 			got, err := runStatus(context.Background(), t, tc.transport)
 
 			if err != nil {
 				t.Fatalf("auth status: %v", err)
 			}
-			if got.Status != tc.wantStatus {
+			if string(got.Status) != tc.wantStatus {
 				t.Errorf("status = %q, want %q", got.Status, tc.wantStatus)
 			}
 		})
 	}
 }
 
-func TestStatus_CancelledCheckFailsInsteadOfReportingAStatus(t *testing.T) {
+func TestStatus_CancelDuringCheckFailsInsteadOfReportingAStatus(t *testing.T) {
 	cases := []struct {
 		name      string
 		transport string
 	}{
-		{name: "over http", transport: transport.SchemeHTTP},
-		{name: "over websocket", transport: transport.SchemeWS},
+		{
+			name:      "over http",
+			transport: transport.SchemeHTTP,
+		},
+		{
+			name:      "over websocket",
+			transport: transport.SchemeWS,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			api := httptest.NewServer(&fakeAPI{scheme: tc.transport})
-			defer api.Close()
-			t.Setenv("HOME", t.TempDir())
-			t.Setenv("RUNWARE_API_KEY", validKey)
-			t.Setenv("RUNWARE_BASE_URL", api.URL)
-			t.Setenv("RUNWARE_WS_BASE_URL", "ws"+strings.TrimPrefix(api.URL, "http"))
 			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
+			defer cancel()
+			api := httptest.NewServer(&fakeAPI{
+				scheme: tc.transport,
+				onPing: cancel,
+			})
+			defer api.Close()
+			useAPI(t, validKey, api.URL)
 
 			_, err := runStatus(ctx, t, tc.transport)
 
@@ -212,6 +251,15 @@ func TestStatus_CancelledCheckFailsInsteadOfReportingAStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// useAPI points the CLI at apiURL with key as the configured API key.
+func useAPI(t *testing.T, key, apiURL string) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", key)
+	t.Setenv("RUNWARE_BASE_URL", apiURL)
+	t.Setenv("RUNWARE_WS_BASE_URL", "ws"+strings.TrimPrefix(apiURL, "http"))
 }
 
 func runStatus(ctx context.Context, t *testing.T, transportScheme string) (authStatusResult, error) {

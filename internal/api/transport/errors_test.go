@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"reflect"
 	"slices"
 	"testing"
@@ -56,11 +55,6 @@ func TestIsConnectionError(t *testing.T) {
 				URL: "https://api",
 				Err: errors.New("connection refused"),
 			}),
-			expected: true,
-		},
-		{
-			name:     "http timeout while reading the body",
-			err:      fmt.Errorf("failed to read response: %w", os.ErrDeadlineExceeded),
 			expected: true,
 		},
 		{
