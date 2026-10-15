@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// credentialStatus is the outcome of checking the configured API key against the API.
+// credentialStatus is what auth status reports about the configured API key.
 type credentialStatus string
 
 const (

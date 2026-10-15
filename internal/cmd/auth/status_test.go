@@ -110,7 +110,7 @@ func (f *fakeAPI) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// apiState is how the fake API behaves for a test case.
+// apiState is how the API behaves for a test case.
 type apiState int
 
 const (
@@ -219,28 +219,44 @@ func TestStatus_ReportsKeyState(t *testing.T) {
 	}
 }
 
-func TestStatus_CancelDuringCheckFailsInsteadOfReportingAStatus(t *testing.T) {
+func TestStatus_CancelFailsInsteadOfReportingAStatus(t *testing.T) {
 	cases := []struct {
-		name      string
-		transport string
+		name         string
+		transport    string
+		cancelOnPing bool
 	}{
 		{
-			name:      "over http",
-			transport: transport.SchemeHTTP,
+			name:         "before the check over http",
+			transport:    transport.SchemeHTTP,
+			cancelOnPing: false,
 		},
 		{
-			name:      "over websocket",
-			transport: transport.SchemeWS,
+			name:         "before the check over websocket",
+			transport:    transport.SchemeWS,
+			cancelOnPing: false,
+		},
+		{
+			name:         "during the check over http",
+			transport:    transport.SchemeHTTP,
+			cancelOnPing: true,
+		},
+		{
+			name:         "during the check over websocket",
+			transport:    transport.SchemeWS,
+			cancelOnPing: true,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			api := httptest.NewServer(&fakeAPI{
-				scheme: tc.transport,
-				onPing: cancel,
-			})
+			fake := &fakeAPI{scheme: tc.transport}
+			if tc.cancelOnPing {
+				fake.onPing = cancel
+			} else {
+				cancel()
+			}
+			api := httptest.NewServer(fake)
 			defer api.Close()
 			useAPI(t, validKey, api.URL)
 

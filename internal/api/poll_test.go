@@ -69,6 +69,7 @@ func TestClientPoll_TransientErrorKeepsPolling(t *testing.T) {
 	}
 
 	results, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
+
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,6 +79,7 @@ func TestClientPoll_TransientErrorKeepsPolling(t *testing.T) {
 }
 
 func TestClientPoll_HTTPConnectionDropKeepsPolling(t *testing.T) {
+	successReply := rawJSON(t, map[string]any{"data": []json.RawMessage{successItem(t, nil)}})
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requests.Add(1) == 1 {
@@ -89,13 +91,10 @@ func TestClientPoll_HTTPConnectionDropKeepsPolling(t *testing.T) {
 			_ = conn.Close()
 			return
 		}
-		_, _ = w.Write(rawJSON(t, map[string]any{"data": []json.RawMessage{successItem(t, nil)}}))
+		_, _ = w.Write(successReply)
 	}))
 	defer srv.Close()
-	tr, err := transport.DialHTTP(context.Background(), "key", srv.URL, slog.Default())
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	tr := dialHTTP(t, "key", srv.URL)
 
 	results, err := NewClient(tr, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
 
