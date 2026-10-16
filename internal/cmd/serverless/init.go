@@ -23,6 +23,7 @@ const (
 	pyprojectFile     = "pyproject.toml"
 	starterAppFile    = "app.py"
 	toolchainUV       = "uv"
+	goosWindows       = "windows"
 
 	// defaultProjectName names a project whose directory name has no letters or
 	// digits to derive one from.
@@ -107,10 +108,24 @@ init writes what is missing and nothing else:
   .venv           the directory's own environment, with runware-serverless
                   added as a dev dependency
 
-The toolchain is uv, which must be on PATH. init runs
+The toolchain is uv when it is on PATH. init runs
 'uv add --dev runware-serverless' inside the App directory, which creates .venv
-and uv.lock and records the dependency in pyproject.toml. init never installs
-into a global, user or tool environment, so PEP 668 does not apply.
+and uv.lock and records the dependency in pyproject.toml.
+
+Without uv, init uses the first Python 3.10 or newer it finds: python3, then
+python, and on Windows also 'py -3'. That Python creates .venv with
+'-m venv .venv'. Then the interpreter inside .venv runs
+'-m pip install runware-serverless', and init adds runware-serverless to the
+dev list under [dependency-groups] in pyproject.toml. An older Python does not
+count, and the error names its version. An existing .venv on an older Python
+is refused too: remove it and run init again.
+
+With neither uv nor a suitable Python, init keeps the files it wrote, prints
+the command that finishes the setup, and exits non-zero. Run init again after
+you install either toolchain.
+
+init never installs into a global, user or tool environment, so PEP 668 does
+not apply.
 
 A directory that already has a pyproject.toml is an App directory: init keeps
 that file and adds only what is missing, so running it again is safe. A
@@ -152,20 +167,14 @@ func runInit(cmd *cobra.Command, dirArg string, force bool) error {
 		return err
 	}
 
-	uv, err := exec.LookPath(toolchainUV)
+	toolchain, err := addLibrary(cmd.Context(), dir, cmd.ErrOrStderr())
 	if err != nil {
-		return fmt.Errorf(
-			"uv was not found on PATH. %s has its files, but the Serverless library is not installed. Install uv from https://docs.astral.sh/uv/, then run %q in that directory",
-			dir, uvAddCommand(),
-		)
-	}
-	if err := uvAddLibrary(cmd.Context(), uv, dir, cmd.ErrOrStderr()); err != nil {
 		return err
 	}
 
 	if err := output.PrintTo(cmd.OutOrStdout(), cmdutil.FormatFor(cmd), initResult{
 		AppDirectory: dir,
-		Toolchain:    toolchainUV,
+		Toolchain:    toolchain,
 		Created:      created,
 	}); err != nil {
 		return err
@@ -257,9 +266,9 @@ func pyprojectFor(dir string) string {
 	return fmt.Sprintf(`[project]
 name = %q
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=%s"
 dependencies = []
-`, projectName(dir))
+`, projectName(dir), minPythonVersion)
 }
 
 // projectName derives a normalized Python project name from the directory
@@ -285,19 +294,54 @@ func projectName(dir string) string {
 	return b.String()
 }
 
+// addLibrary installs the Serverless library into the App directory's .venv
+// and records it as a dev dependency. It uses uv, or Python when uv is not on
+// PATH, and returns the toolchain it used. Toolchain output goes to w, which
+// is stderr.
+func addLibrary(ctx context.Context, dir string, w io.Writer) (string, error) {
+	if uv, err := exec.LookPath(toolchainUV); err == nil {
+		return toolchainUV, uvAddLibrary(ctx, uv, dir, w)
+	}
+	python, tooOld, ok := findPython(ctx, runtime.GOOS)
+	if !ok {
+		return "", noToolchainError(dir, tooOld)
+	}
+	_, _ = fmt.Fprintf(w, "uv is not on PATH, so init uses Python %s (%s) and pip.\n", python.version, python.path)
+	return toolchainPython, pythonAddLibrary(ctx, python, dir, runtime.GOOS, w)
+}
+
+// noToolchainError says how to finish an App directory whose files init wrote
+// but whose library it could not install. tooOld names each Python that was
+// found but is older than minPythonVersion.
+func noToolchainError(dir string, tooOld []string) error {
+	found := ""
+	if len(tooOld) > 0 {
+		found = fmt.Sprintf(" (%s, which is too old)", strings.Join(tooOld, ", "))
+	}
+	return fmt.Errorf(
+		"uv was not found on PATH, and no Python %s or newer was found either%s. %s has its files, but the Serverless library is not installed. To finish, install uv from https://docs.astral.sh/uv/ and run %q in that directory, or install Python %s or newer and run: runware serverless init %s",
+		minPythonVersion, found, dir, uvAddCommand(), minPythonVersion, quoteArg(dir, runtime.GOOS),
+	)
+}
+
 // uvAddLibrary adds the Serverless library as a dev dependency of the App
 // directory. uv's own output goes to w, which is stderr: stdout carries the
 // result --format json promises.
 func uvAddLibrary(ctx context.Context, uv, dir string, w io.Writer) error {
-	c := exec.CommandContext(ctx, uv, uvAddArgs...)
-	c.Dir = dir
-	c.Stdout = w
-	c.Stderr = w
-	c.Env = slices.DeleteFunc(os.Environ(), isUVProjectOverride)
-	if err := c.Run(); err != nil {
+	env := slices.DeleteFunc(os.Environ(), isUVProjectOverride)
+	if err := runIn(exec.CommandContext(ctx, uv, uvAddArgs...), dir, env, w); err != nil {
 		return fmt.Errorf("%s failed in %s: %w (uv's output is above)", uvAddCommand(), dir, err)
 	}
 	return nil
+}
+
+// runIn runs c in dir with env, with both of its output streams on w.
+func runIn(c *exec.Cmd, dir string, env []string, w io.Writer) error {
+	c.Dir = dir
+	c.Stdout = w
+	c.Stderr = w
+	c.Env = env
+	return c.Run()
 }
 
 // uvAddArgs adds the Serverless library as a dev dependency.
@@ -343,7 +387,7 @@ func reportInitNextSteps(w io.Writer, dir, cdArg string) {
 // PowerShell and cmd both read a double-quoted path, and a Windows path cannot
 // hold a double quote.
 func quoteArg(s, goos string) string {
-	if goos == "windows" {
+	if goos == goosWindows {
 		if windowsSafePattern.MatchString(s) {
 			return s
 		}
