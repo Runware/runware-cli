@@ -348,12 +348,11 @@ func (t *WSTransport) connect(ctx context.Context) error {
 		}
 	}
 
-	// Require connectionSessionUUID; without it session resumption is impossible
-	// and the authentication may not have fully succeeded.
+	// Require connectionSessionUUID; without it session resumption is impossible.
 	if t.sessionUUID == "" {
 		conn.Close() //nolint:errcheck,gosec
 		return CreateRunwareError(
-			"authFailed",
+			"unrecognizedResponse",
 			"authentication succeeded but missing connectionSessionUUID",
 			RunwareErrorDetails{},
 		)

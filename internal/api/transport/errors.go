@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -467,6 +468,15 @@ func ParseAPIError(raw json.RawMessage, statusCode int) *RunwareError {
 	}
 	re.StatusCode = statusCode
 	return &re
+}
+
+// IsConnectionError reports whether err means the API could not be reached or did not answer in time.
+func IsConnectionError(err error) bool {
+	if re, ok := errors.AsType[*RunwareError](err); ok {
+		return re.Code == CodeConnection || re.Code == CodeTimeout
+	}
+	_, ok := errors.AsType[net.Error](err)
+	return ok
 }
 
 // IsAuthError reports whether err is an authentication or authorisation error.

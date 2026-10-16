@@ -2,7 +2,9 @@ package transport
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"slices"
 	"testing"
@@ -25,6 +27,58 @@ func TestIsAuthError(t *testing.T) {
 			got := IsAuthError(tt.err)
 			if got != tt.expected {
 				t.Errorf("IsAuthError(%v) = %v, want %v", tt.err, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsConnectionError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "websocket dial failure",
+			err:      CreateRunwareError("connectionFailed", "dial failed", RunwareErrorDetails{}),
+			expected: true,
+		},
+		{
+			name:     "timeout code",
+			err:      CreateRunwareError("timeout", "no reply", RunwareErrorDetails{}),
+			expected: true,
+		},
+		{
+			name: "http network failure",
+			err: fmt.Errorf("request failed: %w", &url.Error{
+				Op:  "Post",
+				URL: "https://api",
+				Err: errors.New("connection refused"),
+			}),
+			expected: true,
+		},
+		{
+			name:     "API auth error",
+			err:      CreateRunwareError("invalidApiKey", "bad key", RunwareErrorDetails{}),
+			expected: false,
+		},
+		{
+			name:     "server error",
+			err:      CreateRunwareError("internalServerError", "boom", RunwareErrorDetails{}),
+			expected: false,
+		},
+		{
+			name:     "generic error",
+			err:      fmt.Errorf("failed to parse response"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsConnectionError(tt.err)
+			if got != tt.expected {
+				t.Errorf("IsConnectionError(%v) = %v, want %v", tt.err, got, tt.expected)
 			}
 		})
 	}
