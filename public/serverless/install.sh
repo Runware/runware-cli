@@ -186,7 +186,9 @@ echo "==> 🏗️  Creating the App directory $APP_DIR..."
 # Keep going after a failed init, so that the PATH fix still prints. The
 # script exits with init's status at the end.
 INIT_STATUS=0
-"$RUNWARE" serverless init "$APP_DIR" || INIT_STATUS=$?
+# The "--" ends flag parsing, so that a directory such as --force stays a
+# directory.
+"$RUNWARE" serverless init -- "$APP_DIR" || INIT_STATUS=$?
 
 if [ "$DOWNLOADED" = 1 ]; then
   CURRENT=$(command -v "$CLI_NAME" 2>/dev/null || true)

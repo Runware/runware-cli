@@ -220,7 +220,10 @@
     Write-Host "==> Creating the App directory $appDir..."
     # Keep going after a failed init, so that the PATH fix still prints. The
     # script fails with init's status at the end.
-    & $runware serverless init $appDir
+    # The "--" ends flag parsing, so that a directory such as --force stays
+    # a directory. An array passes "--" to the CLI as it is.
+    $initArgs = @('serverless', 'init', '--', $appDir)
+    & $runware @initArgs
     $initStatus = $LASTEXITCODE
 
     if ($downloaded) {
@@ -237,6 +240,12 @@
             $env:PATH = "$dir;$env:PATH"
             Write-Host "==> Installed to $runware"
             Write-Host "==> Added $dir to your user PATH. Open a new terminal to use 'runware' there."
+            if ($current) {
+                # The machine PATH comes before the user PATH, so an older
+                # CLI there still runs first in a new terminal.
+                Write-Host "==> Another CLI at $current can still come first in a new terminal."
+                Write-Host "    Remove it, so that 'runware' runs the version installed now."
+            }
         } else {
             Write-Host "==> Installed to $runware"
             Write-Host "==> $dir is not in your PATH."
@@ -246,6 +255,9 @@
             Write-Host "    export PATH=`"${dir}:`$PATH`""
             Write-Host ''
             Write-Host 'Then restart your terminal or run: source ~/.bashrc (or your respective config file).'
+            if ($current) {
+                Write-Host "Put it before the directory of the older CLI at $current."
+            }
         }
     }
 

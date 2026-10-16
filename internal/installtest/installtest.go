@@ -67,11 +67,15 @@ if [ "$1" = serverless ] && [ "$2" = init ]; then
     printf 'Usage:\n  runware serverless [command]\n'
     exit 0
   fi
-  if [ "$3" = --help ]; then
+  shift 2
+  if [ "$1" = --help ]; then
     printf 'Usage:\n  runware serverless init [dir] [flags]\n'
     exit 0
   fi
-  echo "stub serverless init $3"
+  if [ "$1" = -- ]; then
+    shift
+  fi
+  echo "stub serverless init $1"
   exit %d
 fi
 `
@@ -93,13 +97,15 @@ func WriteStub(t testing.TB, cfg StubConfig) string {
 	return dir
 }
 
-// InitArgs is the argv of a serverless init call with one argument: an App
-// directory, or a flag such as --help.
-func InitArgs(arg string) []string {
+// InitArgs is the argv of a serverless init call for the App directory dir.
+// The "--" ends flag parsing, so that a directory such as --force stays a
+// directory.
+func InitArgs(dir string) []string {
 	return []string{
 		"serverless",
 		"init",
-		arg,
+		"--",
+		dir,
 	}
 }
 

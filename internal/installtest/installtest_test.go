@@ -20,7 +20,7 @@ const minimalInstaller = `#!/bin/sh
 set -e
 tag=$(curl -fsS "$RUNWARE_RELEASE_BASE_URL/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 curl -fsS "$RUNWARE_RELEASE_BASE_URL/download/$tag/runware_linux_amd64.tar.gz" | tar -xzf - -C "$1"
-"$1/runware" serverless init "my app"
+"$1/runware" serverless init -- "my app"
 `
 
 // TestRunSh_ASecondScriptCanInstallFromTheSameReleaseAndRunTheStub checks the
@@ -131,7 +131,7 @@ func TestStub_AnswersAsACLIWithOrWithoutInit(t *testing.T) {
 			cfg: installtest.StubConfig{
 				Name: "new",
 			},
-			args:    installtest.InitArgs("--help"),
+			args:    initHelp,
 			wantOut: "runware serverless init [dir] [flags]",
 		},
 		{
@@ -140,7 +140,7 @@ func TestStub_AnswersAsACLIWithOrWithoutInit(t *testing.T) {
 				Name:        "old",
 				WithoutInit: true,
 			},
-			args:    installtest.InitArgs("--help"),
+			args:    initHelp,
 			wantOut: "runware serverless [command]",
 		},
 		{
@@ -190,6 +190,13 @@ func TestStub_AnswersAsACLIWithOrWithoutInit(t *testing.T) {
 			}
 		})
 	}
+}
+
+// initHelp is the argv of the probe that asks a CLI for the help of init.
+var initHelp = []string{
+	"serverless",
+	"init",
+	"--help",
 }
 
 // stubCase is one call to a stub CLI and what it must answer.

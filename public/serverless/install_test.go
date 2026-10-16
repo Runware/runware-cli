@@ -363,3 +363,22 @@ func TestInstall_LatestReleaseWithoutInitFailsBeforeInit(t *testing.T) {
 		}
 	})
 }
+
+// TestInstall_FlagShapedDirectoryIsPassedAsADirectory gives an App directory
+// that looks like a flag of init. The script must end flag parsing before the
+// directory, or --force would make init use the current directory and skip
+// its check for a non-empty directory.
+func TestInstall_FlagShapedDirectoryIsPassedAsADirectory(t *testing.T) {
+	t.Parallel()
+
+	eachInstaller(t, func(t *testing.T, inst installer) {
+		o := runScenario(t, inst, scenario{
+			appDir: "--force",
+		})
+
+		if o.ExitCode != 0 {
+			t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
+		}
+		o.assertLastInit(t, installtest.ReleaseStubName, "--force")
+	})
+}
