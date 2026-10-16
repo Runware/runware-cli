@@ -198,6 +198,18 @@ type Invocation struct {
 	Timeout time.Duration
 }
 
+// onPath reports whether sh would find an executable file named name in the
+// directories of path.
+func onPath(name, path string) bool {
+	for _, dir := range filepath.SplitList(path) {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // Result is what a script run left behind.
 type Result struct {
 	ExitCode int
@@ -209,8 +221,9 @@ type Result struct {
 
 // RunSh runs a POSIX install script with sh. The script sees only the
 // environment the invocation gives it, so the developer's own RUNWARE_*
-// variables and Homebrew never leak in. The test skips where sh or curl is
-// missing, and on Windows, which the POSIX scripts do not support.
+// variables and Homebrew never leak in. The test skips where sh is missing,
+// where the script's PATH has no curl, and on Windows, which the POSIX
+// scripts do not support.
 func RunSh(t testing.TB, inv Invocation) Result {
 	t.Helper()
 
@@ -221,15 +234,16 @@ func RunSh(t testing.TB, inv Invocation) Result {
 	if err != nil {
 		t.Skip("sh not found")
 	}
-	if _, err := exec.LookPath("curl"); err != nil {
-		t.Skip("curl not found")
+	path := strings.Join(append(slices.Clone(inv.PathDirs), systemPath), string(os.PathListSeparator))
+	if !onPath("curl", path) {
+		t.Skip("curl not found on the script's PATH")
 	}
 
 	stubLog := filepath.Join(t.TempDir(), "runware-calls")
 	env := map[string]string{
 		"HOME":             t.TempDir(),
 		"TMPDIR":           t.TempDir(),
-		"PATH":             strings.Join(append(slices.Clone(inv.PathDirs), systemPath), string(os.PathListSeparator)),
+		"PATH":             path,
 		"RUNWARE_STUB_LOG": stubLog,
 	}
 	maps.Copy(env, inv.Env)

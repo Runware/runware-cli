@@ -9,9 +9,7 @@ set -e
 #                             override, the script reads the latest version
 #                             from <base>/latest, as JSON with a "tag_name"
 #                             field, and the release files from
-#                             <base>/download/<tag>/<file>. A GitHub releases
-#                             page does not serve that JSON, so the override
-#                             must point at a mirror or a test server.
+#                             <base>/download/<tag>/<file>.
 
 REPO="Runware/runware-cli"
 CLI_NAME="runware"
