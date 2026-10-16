@@ -6,7 +6,7 @@
 #
 # The only argument is the App directory (default: my-app). The script never
 # runs pip, uv or python: init installs the Serverless library into the App
-# directory's own environment (docs/adr/0001).
+# directory's own environment.
 #
 # Environment overrides:
 #   RUNWARE_INSTALL_DIR       where the binary goes (default: ~/.local/bin)
@@ -127,10 +127,7 @@ download_install() {
   DOWNLOADED=1
 }
 
-# has_init reports whether the CLI at $1 has 'serverless init'. The exit
-# status alone cannot tell: a CLI from before init prints the help of the
-# serverless group for 'serverless init --help' and exits 0. Only init's own
-# help names the init command in its usage line.
+# has_init reports whether the help of the CLI at $1 names 'serverless init'.
 has_init() {
   "$1" serverless init --help 2>/dev/null | grep -q 'serverless init'
 }
@@ -175,8 +172,6 @@ else
   download_install
 fi
 
-# A release from before init would print help for 'serverless init <dir>' and
-# exit 0, so check before delegating to it.
 if ! has_init "$RUNWARE"; then
   echo "❌ Error: The CLI at $RUNWARE has no 'serverless init', even after the install. The latest release may not include init yet."
   exit 1

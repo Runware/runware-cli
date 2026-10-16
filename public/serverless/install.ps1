@@ -4,7 +4,7 @@
 #   irm https://serverless.runware.ai/install.ps1 | iex
 #
 # The script never runs pip, uv or python: init installs the Serverless
-# library into the App directory's own environment (docs/adr/0001).
+# library into the App directory's own environment.
 #
 # Environment overrides:
 #   RUNWARE_APP_DIR           the App directory (default: my-app)
@@ -27,6 +27,9 @@
 
 & {
     $ErrorActionPreference = 'Stop'
+    # A user who turned this on would make a failed init throw before the
+    # PATH fix prints.
+    $PSNativeCommandUseErrorActionPreference = $false
     $ProgressPreference = 'SilentlyContinue'
 
     $repo = 'Runware/runware-cli'
@@ -58,10 +61,7 @@
         Join-Path $HOME '.local/bin'
     }
 
-    # Test-Init reports whether the CLI at $Path has 'serverless init'. The
-    # exit status alone cannot tell: a CLI from before init prints the help
-    # of the serverless group for 'serverless init --help' and exits 0. Only
-    # init's own help names the init command in its usage line.
+    # Test-Init reports whether the help of the CLI at $Path names 'serverless init'.
     function Test-Init([string]$Path) {
         try {
             $help = & $Path serverless init --help 2>$null | Out-String
@@ -211,8 +211,6 @@
         $downloaded = $true
     }
 
-    # A release from before init would print help for 'serverless init <dir>'
-    # and exit 0, so check before delegating to it.
     if (-not (Test-Init $runware)) {
         throw "The CLI at $runware has no 'serverless init', even after the install. The latest release may not include init yet."
     }

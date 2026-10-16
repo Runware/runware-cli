@@ -10,9 +10,9 @@ import (
 	"github.com/runware/runware-cli/internal/installtest"
 )
 
-// forbiddenTools are the tools ADR 0001 keeps out of the install scripts:
-// init installs the Serverless library, so a script never runs pip, uv or
-// python itself.
+// forbiddenTools are the tools the install scripts must never run: init
+// installs the Serverless library, so a script never runs pip, uv or python
+// itself.
 var forbiddenTools = []string{
 	"pip",
 	"pip3",
@@ -123,13 +123,22 @@ func runScenario(t *testing.T, inst installer, sc scenario) outcome {
 	res := inst.run(t, inv)
 
 	if calls := tw.Calls(t); len(calls) > 0 {
-		t.Errorf("%s ran tools that ADR 0001 forbids: %q\n%s", inst.script, calls, res.Output)
+		t.Errorf("%s ran tools the install scripts must never run: %q\n%s", inst.script, calls, res.Output)
 	}
 	return outcome{
 		Result:     res,
 		release:    release,
 		installDir: installDir,
 		calls:      res.StubCalls(t),
+	}
+}
+
+// assertSuccess stops the test unless the script exited 0.
+func (o outcome) assertSuccess(t *testing.T) {
+	t.Helper()
+
+	if o.ExitCode != 0 {
+		t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
 	}
 }
 
@@ -168,9 +177,7 @@ func TestInstall_FreshInstallRunsInitWithTheGivenDirectory(t *testing.T) {
 			appDir: "my app",
 		})
 
-		if o.ExitCode != 0 {
-			t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
-		}
+		o.assertSuccess(t)
 		if !o.installed() {
 			t.Errorf("no CLI in %s\n%s", o.installDir, o.Output)
 		}
@@ -186,9 +193,7 @@ func TestInstall_NoDirectoryArgumentInitsMyApp(t *testing.T) {
 	eachInstaller(t, func(t *testing.T, inst installer) {
 		o := runScenario(t, inst, scenario{})
 
-		if o.ExitCode != 0 {
-			t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
-		}
+		o.assertSuccess(t)
 		o.assertLastInit(t, installtest.ReleaseStubName, "my-app")
 	})
 }
@@ -206,9 +211,7 @@ func TestInstall_CLIWithInitOnPathIsReused(t *testing.T) {
 			},
 		})
 
-		if o.ExitCode != 0 {
-			t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
-		}
+		o.assertSuccess(t)
 		if got := o.release.Requests(); len(got) > 0 {
 			t.Errorf("release requests = %q, want none", got)
 		}
@@ -235,9 +238,7 @@ func TestInstall_CLIWithoutInitOnPathIsReplacedByAFreshInstall(t *testing.T) {
 			},
 		})
 
-		if o.ExitCode != 0 {
-			t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
-		}
+		o.assertSuccess(t)
 		if !strings.Contains(o.Output, "too old") {
 			t.Errorf("output does not say the CLI on PATH is too old:\n%s", o.Output)
 		}
@@ -292,9 +293,7 @@ func TestInstall_InstallDirectoryNotOnPathRunsInitThenPrintsThePathFix(t *testin
 			appDir: "my-app",
 		})
 
-		if o.ExitCode != 0 {
-			t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
-		}
+		o.assertSuccess(t)
 		initAt := strings.Index(o.Output, "stub serverless init my-app")
 		if initAt < 0 {
 			t.Fatalf("init did not run:\n%s", o.Output)
@@ -376,9 +375,7 @@ func TestInstall_FlagShapedDirectoryIsPassedAsADirectory(t *testing.T) {
 			appDir: "--force",
 		})
 
-		if o.ExitCode != 0 {
-			t.Fatalf("exit code = %d, want 0\n%s", o.ExitCode, o.Output)
-		}
+		o.assertSuccess(t)
 		o.assertLastInit(t, installtest.ReleaseStubName, "--force")
 	})
 }
