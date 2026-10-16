@@ -25,8 +25,7 @@ const (
 	devGroup        = "dev"
 	dependencyGroup = "dependency-groups"
 
-	// minPythonMinor is the lowest Python 3 minor version an App supports,
-	// the same as the requires-python init writes.
+	// minPythonMinor is the lowest Python 3 minor version an App supports.
 	minPythonMinor = 10
 
 	// pythonVersionProbe prints the interpreter's version. It runs on Python 2
@@ -45,6 +44,10 @@ const (
 	// Serverless library. find_spec looks without running the library.
 	libraryImportCheck = `import importlib.util, sys; sys.exit(importlib.util.find_spec("` + libraryImportName + `") is None)`
 )
+
+// minPythonVersion is minPythonMinor as the requires-python that init writes
+// and its errors spell it.
+var minPythonVersion = "3." + strconv.Itoa(minPythonMinor)
 
 // pipLocationOverrides are the pip variables that send an install somewhere
 // other than the environment of the interpreter that runs pip. PIP_PYTHON is
@@ -168,6 +171,13 @@ func venvPython(dir, goos string) string {
 // Python only creates the venv: a venv is not externally managed, so PEP 668
 // does not block the install. Python's output goes to w, which is stderr.
 func pythonAddLibrary(ctx context.Context, python pythonInterpreter, dir, goos string, w io.Writer) error {
+	// A pyproject.toml init cannot edit stops it before it touches .venv.
+	pyproject := filepath.Join(dir, pyprojectFile)
+	updated, changed, err := devDependencyEdit(pyproject)
+	if err != nil {
+		return err
+	}
+
 	// venv and ensurepip bootstrap pip with pip itself, so every step drops
 	// the overrides.
 	env := slices.DeleteFunc(os.Environ(), isPipLocationOverride)
@@ -189,8 +199,7 @@ func pythonAddLibrary(ctx context.Context, python pythonInterpreter, dir, goos s
 		return fmt.Errorf("%s %s failed in %s: %w (pip's output is above)", interpreter, strings.Join(pipInstallArgs, " "), dir, err)
 	}
 	// Settings in pip's configuration files, such as target or user, can send
-	// the install out of .venv while pip reports success. init keeps those
-	// files, because they also hold the package index some customers need.
+	// the install out of .venv while pip reports success.
 	if runIn(venvCommand(ctx, interpreter, "-c", libraryImportCheck), dir, env, io.Discard) != nil {
 		return fmt.Errorf(
 			"pip reported success, but %s cannot import %s, so the library is not in %s. A pip configuration setting such as target or user can cause this: find it with '%s -m pip config list', remove it, and run init again",
@@ -198,7 +207,10 @@ func pythonAddLibrary(ctx context.Context, python pythonInterpreter, dir, goos s
 		)
 	}
 
-	return recordDevDependency(filepath.Join(dir, pyprojectFile))
+	if !changed {
+		return nil
+	}
+	return replaceFile(pyproject, updated)
 }
 
 // venvCommand runs the .venv interpreter in isolated mode. The tools run with
@@ -228,14 +240,16 @@ func createVenv(ctx context.Context, python pythonInterpreter, dir string, env [
 // checkVenvPython refuses an existing .venv whose Python is older than an App
 // supports. The Python on PATH can be new enough while the .venv is not.
 func checkVenvPython(ctx context.Context, interpreter string) error {
-	version, err := pythonVersion(venvCommand(ctx, interpreter, "-c", pythonVersionProbe))
+	// Without -I, like the probe in findPython, so an old Python can answer.
+	//nolint:gosec // the interpreter of the App directory's own .venv
+	version, err := pythonVersion(exec.CommandContext(ctx, interpreter, "-c", pythonVersionProbe))
 	if err != nil {
 		return fmt.Errorf("init could not run %s: %w. Remove %s and run init again", interpreter, err, venvDir)
 	}
 	if !supportedPython(version) {
 		return fmt.Errorf(
-			"%s uses Python %s, and an App needs Python 3.10 or newer. Remove %s and run init again",
-			venvDir, version, venvDir,
+			"%s uses Python %s, and an App needs Python %s or newer. Remove %s and run init again",
+			venvDir, version, minPythonVersion, venvDir,
 		)
 	}
 	return nil
@@ -272,24 +286,23 @@ func isPipLocationOverride(kv string) bool {
 	return ok
 }
 
-// recordDevDependency lists the Serverless library under [dependency-groups]
-// dev, as `uv add --dev` does, so uv and the editor see the same project.
-func recordDevDependency(path string) error {
+// devDependencyEdit returns the pyproject.toml at path with the Serverless
+// library under [dependency-groups] dev, as `uv add --dev` records it, so uv
+// and the editor see the same project. It also returns whether that differs
+// from the file.
+func devDependencyEdit(path string) (string, bool, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // the App directory's own pyproject.toml
 	if err != nil {
-		return fmt.Errorf("read %s: %w", pyprojectFile, err)
+		return "", false, fmt.Errorf("read %s: %w", pyprojectFile, err)
 	}
 	updated, changed, err := withDevDependency(string(raw))
 	if err != nil {
-		return fmt.Errorf(
-			"the Serverless library is installed in %s, but init could not record it in %s: %w. Add %q to the dev list under [dependency-groups] yourself",
-			venvDir, pyprojectFile, err, serverlessLibrary,
+		return "", false, fmt.Errorf(
+			"init cannot record the Serverless library in %s: %w. Add %q to the dev list under [dependency-groups] yourself, then run init again",
+			pyprojectFile, err, serverlessLibrary,
 		)
 	}
-	if !changed {
-		return nil
-	}
-	return replaceFile(path, updated)
+	return updated, changed, nil
 }
 
 // replaceFile writes content next to path and renames it into place, so a
@@ -340,16 +353,16 @@ func withDevDependency(pyproject string) (string, bool, error) {
 
 	after := map[string]any{}
 	if err := toml.Unmarshal([]byte(updated), &after); err != nil ||
-		!reflect.DeepEqual(after, withServerlessLibrary(before)) {
+		!reflect.DeepEqual(after, addServerlessLibrary(before)) {
 		return "", false, errors.New("its [dependency-groups] layout is not one init can edit safely")
 	}
 	return updated, true, nil
 }
 
-// withServerlessLibrary is the parsed document insertDevDependency should
-// produce: the library first in the dev group, and nothing else changed. It
-// changes doc.
-func withServerlessLibrary(doc map[string]any) map[string]any {
+// addServerlessLibrary changes doc into the parsed document that
+// insertDevDependency should produce: the library first in the dev group, and
+// nothing else changed. It returns doc.
+func addServerlessLibrary(doc map[string]any) map[string]any {
 	groups, ok := doc[dependencyGroup].(map[string]any)
 	if !ok {
 		groups = map[string]any{}

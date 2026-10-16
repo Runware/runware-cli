@@ -46,7 +46,13 @@ fi
 // venv or pip failure makes that step print it and exit 1.
 const fakePythonScript = `#!/bin/sh
 echo "exe=$0 cwd=$(pwd -P) argv=$* pip=${PIP_USER-}${PIP_TARGET-}${PIP_PREFIX-}${PIP_ROOT-}${PIP_PYTHON-}" >> '%LOG%'
-[ "$1" = -I ] && shift
+if [ "$1" = -I ]; then
+  if [ -n '%NOISOLATED%' ]; then
+    echo 'Unknown option: -I' >&2
+    exit 2
+  fi
+  shift
+fi
 pip_marker="${0%/bin/python}/pip"
 library_marker="${0%/bin/python}/runware_serverless"
 case "$1 $2 $3" in
@@ -108,6 +114,20 @@ type fakePython struct {
 	// pipElsewhere makes pip report success without installing into the
 	// venv, as a pip.conf target setting does.
 	pipElsewhere string
+	// noIsolatedMode makes -I an unknown option, as on Python 2.
+	noIsolatedMode string
+}
+
+// script is fakePythonScript for p, logging to log.
+func (p fakePython) script(log string) string {
+	return strings.NewReplacer(
+		"%LOG%", log,
+		"%VERSION%", p.version,
+		"%VENVFAIL%", p.venvFail,
+		"%PIPFAIL%", p.pipFail,
+		"%PIPELSEWHERE%", p.pipElsewhere,
+		"%NOISOLATED%", p.noIsolatedMode,
+	).Replace(fakePythonScript)
 }
 
 // initHarness runs `serverless init` in-process. PATH holds only the fake
@@ -168,13 +188,7 @@ func (h *initHarness) addUV(failMessage string) {
 
 func (h *initHarness) addPython(p fakePython) {
 	h.t.Helper()
-	h.writeExecutable(p.name, strings.NewReplacer(
-		"%LOG%", h.pythonLog,
-		"%VERSION%", p.version,
-		"%VENVFAIL%", p.venvFail,
-		"%PIPFAIL%", p.pipFail,
-		"%PIPELSEWHERE%", p.pipElsewhere,
-	).Replace(fakePythonScript))
+	h.writeExecutable(p.name, p.script(h.pythonLog))
 }
 
 func (h *initHarness) writeExecutable(name, script string) {
@@ -235,22 +249,15 @@ func (h *initHarness) pythonSetupCalls() []string {
 	})
 }
 
-// writePipLessVenv gives dir a .venv whose interpreter is the given Python
-// version and has no pip, as `uv add` makes it.
-func (h *initHarness) writePipLessVenv(dir, version string) {
+// writePipLessVenv gives dir a .venv whose interpreter is p and has no pip,
+// as `uv add` makes it. p.name is not used.
+func (h *initHarness) writePipLessVenv(dir string, p fakePython) {
 	h.t.Helper()
 	bin := filepath.Join(dir, ".venv", "bin")
 	if err := os.MkdirAll(bin, 0o750); err != nil {
 		h.t.Fatal(err)
 	}
-	script := strings.NewReplacer(
-		"%LOG%", h.pythonLog,
-		"%VERSION%", version,
-		"%VENVFAIL%", "",
-		"%PIPFAIL%", "",
-		"%PIPELSEWHERE%", "",
-	).Replace(fakePythonScript)
-	if err := os.WriteFile(filepath.Join(bin, "python"), []byte(script), 0o700); err != nil { //nolint:gosec // test executable
+	if err := os.WriteFile(filepath.Join(bin, "python"), []byte(p.script(h.pythonLog)), 0o700); err != nil { //nolint:gosec // test executable
 		h.t.Fatal(err)
 	}
 }
@@ -836,22 +843,33 @@ func TestInit_PythonRecordsDevDependencyAndKeepsPyproject(t *testing.T) {
 	}
 }
 
-// TestInit_PythonRefusesPyprojectItCannotEditSafely: a dependency-groups
-// table written as dotted keys is left alone, and the error says what to add.
+// TestInit_PythonRefusesPyprojectItCannotEditSafely: init edits only a
+// [dependency-groups] table header. It leaves dotted keys and inline tables
+// alone, says what to add, and stops before it creates .venv or runs pip.
 func TestInit_PythonRefusesPyprojectItCannotEditSafely(t *testing.T) {
-	h := newPythonInitHarness(t)
-	dir := t.TempDir()
-	const pyproject = "dependency-groups.dev = [\"pytest\"]\n\n[project]\nname = \"mine\"\n"
-	writeTree(t, dir, map[string]string{
-		pyprojectFile: pyproject,
-	})
-
-	err := h.run(dir)
-	if err == nil || !strings.Contains(err.Error(), `Add "runware-serverless" to the dev list`) {
-		t.Fatalf("err = %v, want it to say what to add by hand", err)
+	cases := map[string]string{
+		"dotted keys":  "dependency-groups.dev = [\"pytest\"]\n\n[project]\nname = \"mine\"\n",
+		"inline table": "dependency-groups = { dev = [\"pytest\"] }\n\n[project]\nname = \"mine\"\n",
 	}
-	if got := readInitFile(t, filepath.Join(dir, pyprojectFile)); got != pyproject {
-		t.Errorf("pyproject.toml changed:\n%s", got)
+	for name, pyproject := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newPythonInitHarness(t)
+			dir := t.TempDir()
+			writeTree(t, dir, map[string]string{
+				pyprojectFile: pyproject,
+			})
+
+			err := h.run(dir)
+			if err == nil || !strings.Contains(err.Error(), `Add "runware-serverless" to the dev list`) {
+				t.Fatalf("err = %v, want it to say what to add by hand", err)
+			}
+			if got := readInitFile(t, filepath.Join(dir, pyprojectFile)); got != pyproject {
+				t.Errorf("pyproject.toml changed:\n%s", got)
+			}
+			if calls := h.pythonSetupCalls(); len(calls) != 0 {
+				t.Errorf("init set up .venv for a pyproject.toml it cannot edit: %q", calls)
+			}
+		})
 	}
 }
 
@@ -902,7 +920,9 @@ func TestInit_PythonAddsPipToUVVenv(t *testing.T) {
 	writeTree(t, dir, map[string]string{
 		pyprojectFile: minimalPyproject,
 	})
-	h.writePipLessVenv(dir, fakePythonVersion)
+	h.writePipLessVenv(dir, fakePython{
+		version: fakePythonVersion,
+	})
 
 	if err := h.run(dir); err != nil {
 		t.Fatalf("init: %v\nstderr: %s", err, h.stderr.String())
@@ -913,27 +933,41 @@ func TestInit_PythonAddsPipToUVVenv(t *testing.T) {
 	}
 }
 
-// TestInit_PythonRefusesOldVenv: an existing .venv on Python 3.9 stays as it
-// is, even with a new enough Python on PATH, and the error says to recreate it.
+// TestInit_PythonRefusesOldVenv: an existing .venv on an old Python stays as
+// it is, even with a new enough Python on PATH. The error names the version,
+// also for a Python 2 that does not know -I, and says to recreate the venv.
 func TestInit_PythonRefusesOldVenv(t *testing.T) {
-	h := newPythonInitHarness(t)
-	dir := t.TempDir()
-	writeTree(t, dir, map[string]string{
-		pyprojectFile: minimalPyproject,
-	})
-	h.writePipLessVenv(dir, "3.9.18")
+	cases := map[string]fakePython{
+		"python 3.9": {
+			version: "3.9.18",
+		},
+		"python 2 without -I": {
+			version:        "2.7.18",
+			noIsolatedMode: "1",
+		},
+	}
+	for name, venvPython := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newPythonInitHarness(t)
+			dir := t.TempDir()
+			writeTree(t, dir, map[string]string{
+				pyprojectFile: minimalPyproject,
+			})
+			h.writePipLessVenv(dir, venvPython)
 
-	err := h.run(dir)
-	if err == nil {
-		t.Fatal("init succeeded with a Python 3.9 .venv")
-	}
-	for _, want := range []string{"Python 3.9.18", "Remove .venv"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("err = %v\nwant it to contain %q", err, want)
-		}
-	}
-	if calls := h.pythonSetupCalls(); len(calls) != 0 {
-		t.Errorf("init changed a Python 3.9 .venv: %q", calls)
+			err := h.run(dir)
+			if err == nil {
+				t.Fatalf("init succeeded with a Python %s .venv", venvPython.version)
+			}
+			for _, want := range []string{"Python " + venvPython.version, "Remove .venv"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v\nwant it to contain %q", err, want)
+				}
+			}
+			if calls := h.pythonSetupCalls(); len(calls) != 0 {
+				t.Errorf("init changed an old .venv: %q", calls)
+			}
+		})
 	}
 }
 

@@ -266,9 +266,9 @@ func pyprojectFor(dir string) string {
 	return fmt.Sprintf(`[project]
 name = %q
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=%s"
 dependencies = []
-`, projectName(dir))
+`, projectName(dir), minPythonVersion)
 }
 
 // projectName derives a normalized Python project name from the directory
@@ -312,15 +312,15 @@ func addLibrary(ctx context.Context, dir string, w io.Writer) (string, error) {
 
 // noToolchainError says how to finish an App directory whose files init wrote
 // but whose library it could not install. tooOld names each Python that was
-// found but is older than 3.10.
+// found but is older than minPythonVersion.
 func noToolchainError(dir string, tooOld []string) error {
 	found := ""
 	if len(tooOld) > 0 {
 		found = fmt.Sprintf(" (%s, which is too old)", strings.Join(tooOld, ", "))
 	}
 	return fmt.Errorf(
-		"uv was not found on PATH, and no Python 3.10 or newer was found either%s. %s has its files, but the Serverless library is not installed. To finish, install uv from https://docs.astral.sh/uv/ and run %q in that directory, or install Python 3.10 or newer and run: runware serverless init %s",
-		found, dir, uvAddCommand(), quoteArg(dir, runtime.GOOS),
+		"uv was not found on PATH, and no Python %s or newer was found either%s. %s has its files, but the Serverless library is not installed. To finish, install uv from https://docs.astral.sh/uv/ and run %q in that directory, or install Python %s or newer and run: runware serverless init %s",
+		minPythonVersion, found, dir, uvAddCommand(), minPythonVersion, quoteArg(dir, runtime.GOOS),
 	)
 }
 
