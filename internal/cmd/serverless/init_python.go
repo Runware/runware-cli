@@ -32,12 +32,26 @@ const (
 	// pythonVersionProbe prints the interpreter's version. It runs on Python 2
 	// as well, so an old python on PATH reports its version instead of failing.
 	pythonVersionProbe = `import sys; sys.stdout.write("%d.%d.%d" % sys.version_info[:3])`
+
+	// pythonIsolated is Python's isolated mode: no working directory, user
+	// site or PYTHON* variables on the import path. The version probe runs
+	// without it, because Python 2 does not know -I.
+	pythonIsolated = "-I"
+
+	// libraryImportName is the module the Serverless library installs.
+	libraryImportName = "runware_serverless"
+
+	// libraryImportCheck exits non-zero when the interpreter cannot find the
+	// Serverless library. find_spec looks without running the library.
+	libraryImportCheck = `import importlib.util, sys; sys.exit(importlib.util.find_spec("` + libraryImportName + `") is None)`
 )
 
 // pipLocationOverrides are the pip variables that send an install somewhere
-// other than the environment of the interpreter that runs pip.
+// other than the environment of the interpreter that runs pip. PIP_PYTHON is
+// pip's --python, which re-runs pip under another interpreter.
 var pipLocationOverrides = map[string]struct{}{
 	"PIP_PREFIX": {},
+	"PIP_PYTHON": {},
 	"PIP_ROOT":   {},
 	"PIP_TARGET": {},
 	"PIP_USER":   {},
@@ -110,11 +124,10 @@ func findPython(ctx context.Context, goos string) (pythonInterpreter, []string, 
 		}
 		// A command that is not a working Python, such as the Windows store
 		// stub, fails the probe and counts as not found.
-		out, err := p.command(ctx, "-c", pythonVersionProbe).Output()
+		p.version, err = pythonVersion(p.command(ctx, "-c", pythonVersionProbe))
 		if err != nil {
 			continue
 		}
-		p.version = strings.TrimSpace(string(out))
 		if !supportedPython(p.version) {
 			tooOld = append(tooOld, fmt.Sprintf("%s is Python %s", candidate, p.version))
 			continue
@@ -122,6 +135,13 @@ func findPython(ctx context.Context, goos string) (pythonInterpreter, []string, 
 		return p, tooOld, true
 	}
 	return pythonInterpreter{}, tooOld, false
+}
+
+// pythonVersion runs probe, a Python command that runs pythonVersionProbe,
+// and returns the version it prints.
+func pythonVersion(probe *exec.Cmd) (string, error) {
+	out, err := probe.Output()
+	return strings.TrimSpace(string(out)), err
 }
 
 func supportedPython(version string) bool {
@@ -156,23 +176,44 @@ func pythonAddLibrary(ctx context.Context, python pythonInterpreter, dir, goos s
 		if err := createVenv(ctx, python, dir, env, w); err != nil {
 			return err
 		}
-	} else if err := ensureVenvPip(ctx, interpreter, dir, env, w); err != nil {
-		return err
+	} else {
+		if err := checkVenvPython(ctx, interpreter); err != nil {
+			return err
+		}
+		if err := ensureVenvPip(ctx, interpreter, dir, env, w); err != nil {
+			return err
+		}
 	}
 
-	//nolint:gosec // the interpreter of the App directory's own .venv
-	if err := runIn(exec.CommandContext(ctx, interpreter, pipInstallArgs...), dir, env, w); err != nil {
+	if err := runIn(venvCommand(ctx, interpreter, pipInstallArgs...), dir, env, w); err != nil {
 		return fmt.Errorf("%s %s failed in %s: %w (pip's output is above)", interpreter, strings.Join(pipInstallArgs, " "), dir, err)
+	}
+	// Settings in pip's configuration files, such as target or user, can send
+	// the install out of .venv while pip reports success. init keeps those
+	// files, because they also hold the package index some customers need.
+	if runIn(venvCommand(ctx, interpreter, "-c", libraryImportCheck), dir, env, io.Discard) != nil {
+		return fmt.Errorf(
+			"pip reported success, but %s cannot import %s, so the library is not in %s. A pip configuration setting such as target or user can cause this: find it with '%s -m pip config list', remove it, and run init again",
+			interpreter, libraryImportName, venvDir, interpreter,
+		)
 	}
 
 	return recordDevDependency(filepath.Join(dir, pyprojectFile))
+}
+
+// venvCommand runs the .venv interpreter in isolated mode. The tools run with
+// the App directory as their working directory, and -I keeps the customer's
+// own pip.py or venv.py there, and PYTHONPATH, from shadowing them.
+func venvCommand(ctx context.Context, interpreter string, args ...string) *exec.Cmd {
+	//nolint:gosec // the interpreter of the App directory's own .venv
+	return exec.CommandContext(ctx, interpreter, append([]string{pythonIsolated}, args...)...)
 }
 
 func createVenv(ctx context.Context, python pythonInterpreter, dir string, env []string, w io.Writer) error {
 	venv := filepath.Join(dir, venvDir)
 	_, statErr := os.Stat(venv)
 	venvExisted := statErr == nil
-	if err := runIn(python.command(ctx, "-m", "venv", venvDir), dir, env, w); err != nil {
+	if err := runIn(python.command(ctx, pythonIsolated, "-m", "venv", venvDir), dir, env, w); err != nil {
 		// Debian's python3 without its venv package leaves an interpreter
 		// with no pip and no ensurepip. A re-run must create the venv again
 		// rather than try to repair that one.
@@ -184,15 +225,29 @@ func createVenv(ctx context.Context, python pythonInterpreter, dir string, env [
 	return nil
 }
 
+// checkVenvPython refuses an existing .venv whose Python is older than an App
+// supports. The Python on PATH can be new enough while the .venv is not.
+func checkVenvPython(ctx context.Context, interpreter string) error {
+	version, err := pythonVersion(venvCommand(ctx, interpreter, "-c", pythonVersionProbe))
+	if err != nil {
+		return fmt.Errorf("init could not run %s: %w. Remove %s and run init again", interpreter, err, venvDir)
+	}
+	if !supportedPython(version) {
+		return fmt.Errorf(
+			"%s uses Python %s, and an App needs Python 3.10 or newer. Remove %s and run init again",
+			venvDir, version, venvDir,
+		)
+	}
+	return nil
+}
+
 // ensureVenvPip gives an existing .venv pip when it has none: uv makes its
 // venvs without pip.
 func ensureVenvPip(ctx context.Context, interpreter, dir string, env []string, w io.Writer) error {
-	//nolint:gosec // the interpreter of the App directory's own .venv
-	if runIn(exec.CommandContext(ctx, interpreter, "-m", "pip", "--version"), dir, env, io.Discard) == nil {
+	if runIn(venvCommand(ctx, interpreter, "-m", "pip", "--version"), dir, env, io.Discard) == nil {
 		return nil
 	}
-	//nolint:gosec // the interpreter of the App directory's own .venv
-	if err := runIn(exec.CommandContext(ctx, interpreter, "-m", "ensurepip"), dir, env, w); err != nil {
+	if err := runIn(venvCommand(ctx, interpreter, "-m", "ensurepip"), dir, env, w); err != nil {
 		return fmt.Errorf(
 			"%s in %s has no pip, and %s -m ensurepip failed: %w (Python's output is above). Remove %s and run init again",
 			venvDir, dir, interpreter, err, venvDir,

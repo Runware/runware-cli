@@ -41,12 +41,18 @@ fi
 // elsewhere as one log line. It answers the version probe with its version,
 // creates a venv by copying itself in, and pretends to pip install. A venv's
 // interpreter has pip only when the venv has a pip marker file, which venv
-// creation and ensurepip write. A non-empty venv or pip failure makes that
-// step print it and exit 1.
+// creation and ensurepip write. A pip install writes a library marker that
+// the import check reads, unless the install goes elsewhere. A non-empty
+// venv or pip failure makes that step print it and exit 1.
 const fakePythonScript = `#!/bin/sh
-echo "exe=$0 cwd=$(pwd -P) argv=$* pip=${PIP_USER-}${PIP_TARGET-}${PIP_PREFIX-}${PIP_ROOT-}" >> '%LOG%'
+echo "exe=$0 cwd=$(pwd -P) argv=$* pip=${PIP_USER-}${PIP_TARGET-}${PIP_PREFIX-}${PIP_ROOT-}${PIP_PYTHON-}" >> '%LOG%'
+[ "$1" = -I ] && shift
 pip_marker="${0%/bin/python}/pip"
+library_marker="${0%/bin/python}/runware_serverless"
 case "$1 $2 $3" in
+'-c '*find_spec*)
+  [ -f "$library_marker" ]
+  ;;
 '-c '*)
   echo '%VERSION%'
   ;;
@@ -77,6 +83,7 @@ case "$1 $2 $3" in
     echo '%PIPFAIL%' >&2
     exit 1
   fi
+  [ -n '%PIPELSEWHERE%' ] || : > "$library_marker"
   echo "Successfully installed $4"
   ;;
 *)
@@ -85,6 +92,9 @@ case "$1 $2 $3" in
   ;;
 esac
 `
+
+// minimalPyproject is a customer pyproject.toml with no dependency groups.
+const minimalPyproject = "[project]\nname = \"mine\"\n"
 
 // fakePythonVersion is the version of a fake Python new enough for an App.
 const fakePythonVersion = "3.12.4"
@@ -95,6 +105,9 @@ type fakePython struct {
 	version  string
 	venvFail string
 	pipFail  string
+	// pipElsewhere makes pip report success without installing into the
+	// venv, as a pip.conf target setting does.
+	pipElsewhere string
 }
 
 // initHarness runs `serverless init` in-process. PATH holds only the fake
@@ -160,6 +173,7 @@ func (h *initHarness) addPython(p fakePython) {
 		"%VERSION%", p.version,
 		"%VENVFAIL%", p.venvFail,
 		"%PIPFAIL%", p.pipFail,
+		"%PIPELSEWHERE%", p.pipElsewhere,
 	).Replace(fakePythonScript))
 }
 
@@ -212,18 +226,18 @@ func uvAddCall(t *testing.T, dir string) string {
 	return "cwd=" + physicalPath(t, dir) + " argv=add --dev runware-serverless overrides="
 }
 
-// pythonSetupCalls drops the version and pip probes from pythonCalls, which
-// leaves the runs that create the venv and install into it.
+// pythonSetupCalls drops the version, pip and import probes from pythonCalls,
+// which leaves the runs that create the venv and install into it.
 func (h *initHarness) pythonSetupCalls() []string {
 	h.t.Helper()
 	return slices.DeleteFunc(h.pythonCalls(), func(call string) bool {
-		return strings.Contains(call, " argv=-c ") || strings.Contains(call, " argv=-m pip --version ")
+		return strings.Contains(call, "argv=-c ") || strings.Contains(call, "argv=-I -c ") || strings.Contains(call, " argv=-I -m pip --version ")
 	})
 }
 
-// writePipLessVenv gives dir a .venv whose interpreter has no pip, as
-// `uv add` makes it.
-func (h *initHarness) writePipLessVenv(dir string) {
+// writePipLessVenv gives dir a .venv whose interpreter is the given Python
+// version and has no pip, as `uv add` makes it.
+func (h *initHarness) writePipLessVenv(dir, version string) {
 	h.t.Helper()
 	bin := filepath.Join(dir, ".venv", "bin")
 	if err := os.MkdirAll(bin, 0o750); err != nil {
@@ -231,9 +245,10 @@ func (h *initHarness) writePipLessVenv(dir string) {
 	}
 	script := strings.NewReplacer(
 		"%LOG%", h.pythonLog,
-		"%VERSION%", fakePythonVersion,
+		"%VERSION%", version,
 		"%VENVFAIL%", "",
 		"%PIPFAIL%", "",
+		"%PIPELSEWHERE%", "",
 	).Replace(fakePythonScript)
 	if err := os.WriteFile(filepath.Join(bin, "python"), []byte(script), 0o700); err != nil { //nolint:gosec // test executable
 		h.t.Fatal(err)
@@ -245,14 +260,14 @@ func (h *initHarness) writePipLessVenv(dir string) {
 func ensurePipCall(t *testing.T, dir string) string {
 	t.Helper()
 	return "exe=" + filepath.Join(dir, ".venv", "bin", "python") + " cwd=" + physicalPath(t, dir) +
-		" argv=-m ensurepip pip="
+		" argv=-I -m ensurepip pip="
 }
 
 // venvCall is the log line for `<interpreter> -m venv .venv` run in dir by the
 // fake Python on PATH named interpreter.
 func (h *initHarness) venvCall(interpreter, dir string) string {
 	h.t.Helper()
-	return "exe=" + filepath.Join(h.bin, interpreter) + " cwd=" + physicalPath(h.t, dir) + " argv=-m venv .venv pip="
+	return "exe=" + filepath.Join(h.bin, interpreter) + " cwd=" + physicalPath(h.t, dir) + " argv=-I -m venv .venv pip="
 }
 
 // pipInstallCall is the log line for the venv's own interpreter installing the
@@ -260,7 +275,7 @@ func (h *initHarness) venvCall(interpreter, dir string) string {
 func pipInstallCall(t *testing.T, dir string) string {
 	t.Helper()
 	return "exe=" + filepath.Join(dir, ".venv", "bin", "python") + " cwd=" + physicalPath(t, dir) +
-		" argv=-m pip install runware-serverless pip="
+		" argv=-I -m pip install runware-serverless pip="
 }
 
 func readInitFile(t *testing.T, path string) string {
@@ -476,7 +491,7 @@ func TestInit_NoStarterAppWhenPythonFilesExist(t *testing.T) {
 	h := newInitHarness(t, "")
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{
-		pyprojectFile: "[project]\nname = \"mine\"\n",
+		pyprojectFile: minimalPyproject,
 		"model.py":    testPySource,
 	})
 
@@ -885,9 +900,9 @@ func TestInit_PythonAddsPipToUVVenv(t *testing.T) {
 	h := newPythonInitHarness(t)
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{
-		pyprojectFile: "[project]\nname = \"mine\"\n",
+		pyprojectFile: minimalPyproject,
 	})
-	h.writePipLessVenv(dir)
+	h.writePipLessVenv(dir, fakePythonVersion)
 
 	if err := h.run(dir); err != nil {
 		t.Fatalf("init: %v\nstderr: %s", err, h.stderr.String())
@@ -895,6 +910,56 @@ func TestInit_PythonAddsPipToUVVenv(t *testing.T) {
 	want := []string{ensurePipCall(t, dir), pipInstallCall(t, dir)}
 	if got := h.pythonSetupCalls(); !slices.Equal(got, want) {
 		t.Errorf("python calls = %q, want %q", got, want)
+	}
+}
+
+// TestInit_PythonRefusesOldVenv: an existing .venv on Python 3.9 stays as it
+// is, even with a new enough Python on PATH, and the error says to recreate it.
+func TestInit_PythonRefusesOldVenv(t *testing.T) {
+	h := newPythonInitHarness(t)
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		pyprojectFile: minimalPyproject,
+	})
+	h.writePipLessVenv(dir, "3.9.18")
+
+	err := h.run(dir)
+	if err == nil {
+		t.Fatal("init succeeded with a Python 3.9 .venv")
+	}
+	for _, want := range []string{"Python 3.9.18", "Remove .venv"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v\nwant it to contain %q", err, want)
+		}
+	}
+	if calls := h.pythonSetupCalls(); len(calls) != 0 {
+		t.Errorf("init changed a Python 3.9 .venv: %q", calls)
+	}
+}
+
+// TestInit_PipInstallOutsideVenvIsAnError: a pip configuration file can send
+// an install somewhere other than .venv while pip reports success. init
+// checks that the .venv interpreter can import the library, and records
+// nothing when it cannot.
+func TestInit_PipInstallOutsideVenvIsAnError(t *testing.T) {
+	h := newBareInitHarness(t)
+	h.addPython(fakePython{
+		name:         python3Command,
+		version:      fakePythonVersion,
+		pipElsewhere: "1",
+	})
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		pyprojectFile: minimalPyproject,
+	})
+
+	err := h.run(dir)
+	if err == nil || !strings.Contains(err.Error(), "cannot import runware_serverless") ||
+		!strings.Contains(err.Error(), "pip config list") {
+		t.Fatalf("err = %v, want the failed import check and how to find the pip setting", err)
+	}
+	if got := readInitFile(t, filepath.Join(dir, pyprojectFile)); strings.Contains(got, "dependency-groups") {
+		t.Errorf("dev dependency recorded although the library is not in .venv:\n%s", got)
 	}
 }
 
@@ -907,7 +972,7 @@ func TestInit_PipFailureIsSurfaced(t *testing.T) {
 	})
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{
-		pyprojectFile: "[project]\nname = \"mine\"\n",
+		pyprojectFile: minimalPyproject,
 	})
 
 	err := h.run(dir)
@@ -958,6 +1023,7 @@ func TestInit_IgnoresPipLocationOverrides(t *testing.T) {
 	t.Setenv("PIP_TARGET", t.TempDir())
 	t.Setenv("PIP_PREFIX", "/usr/local")
 	t.Setenv("PIP_ROOT", "/")
+	t.Setenv("PIP_PYTHON", "/usr/bin/python3")
 	dir := t.TempDir()
 
 	if err := h.run(dir); err != nil {

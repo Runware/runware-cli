@@ -26,7 +26,8 @@ python, and on Windows also 'py -3'. That Python creates .venv with
 '-m venv .venv'. Then the interpreter inside .venv runs
 '-m pip install runware-serverless', and init adds runware-serverless to the
 dev list under [dependency-groups] in pyproject.toml. An older Python does not
-count, and the error names its version.
+count, and the error names its version. An existing .venv on an older Python
+is refused too: remove it and run init again.
 
 With neither uv nor a suitable Python, init keeps the files it wrote, prints
 the command that finishes the setup, and exits non-zero. Run init again after
