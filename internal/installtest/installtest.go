@@ -7,6 +7,7 @@ package installtest
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -122,14 +123,80 @@ const systemPath = "/usr/bin:/bin:/usr/sbin:/sbin"
 // test.
 const defaultTimeout = 30 * time.Second
 
-// releaseTargets are the OS and architecture names the install scripts put in
-// an archive name. The fake release has a checksum entry for each of them, so
+// ChecksumsName is the name of the file in a release that lists the SHA-256
+// digest of each archive.
+const ChecksumsName = "checksums.txt"
+
+// windows is the GOOS of Windows. Its archives are zips that hold
+// runware.exe.
+const windows = "windows"
+
+// releaseTarget is an OS and an architecture that a release has an archive
+// for, named as the install scripts put them in an archive name.
+type releaseTarget struct {
+	goos   string
+	goarch string
+}
+
+// releaseTargets are the targets the fake release serves an archive for, so
 // a script finds its archive on any machine that runs the tests.
-var releaseTargets = []string{
-	"darwin_amd64",
-	"darwin_arm64",
-	"linux_amd64",
-	"linux_arm64",
+var releaseTargets = []releaseTarget{
+	{
+		goos:   "darwin",
+		goarch: "amd64",
+	},
+	{
+		goos:   "darwin",
+		goarch: "arm64",
+	},
+	{
+		goos:   "linux",
+		goarch: "amd64",
+	},
+	{
+		goos:   "linux",
+		goarch: "arm64",
+	},
+	{
+		goos:   windows,
+		goarch: "amd64",
+	},
+	{
+		goos:   windows,
+		goarch: "arm64",
+	},
+}
+
+// ReleaseArchive is one archive in a release.
+type ReleaseArchive struct {
+	// Name is the file name of the archive.
+	Name string
+	// Binary is the name of the runware binary at the root of the archive.
+	Binary string
+}
+
+// archive returns the archive a release has for target. Windows gets a zip
+// that holds runware.exe, every other OS a tarball that holds runware.
+func (target releaseTarget) archive() ReleaseArchive {
+	if target.goos == windows {
+		return ReleaseArchive{
+			Name:   "runware_windows_" + target.goarch + ".zip",
+			Binary: "runware.exe",
+		}
+	}
+	return ReleaseArchive{
+		Name:   "runware_" + target.goos + "_" + target.goarch + ".tar.gz",
+		Binary: "runware",
+	}
+}
+
+// ReleaseArchives returns every archive a fake release serves.
+func ReleaseArchives() []ReleaseArchive {
+	archives := make([]ReleaseArchive, 0, len(releaseTargets))
+	for _, target := range releaseTargets {
+		archives = append(archives, target.archive())
+	}
+	return archives
 }
 
 // ReleaseConfig shapes a fake release. The zero value serves DefaultTag with
@@ -140,8 +207,8 @@ type ReleaseConfig struct {
 	// Stub is the content of the runware binary in the archive, usually
 	// from Stub.
 	Stub string
-	// BadChecksum makes checksums.txt list a digest that does not match the
-	// archive, as a tampered download would.
+	// BadChecksum makes checksums.txt list, for every archive, a digest that
+	// does not match it, as a tampered download would.
 	BadChecksum bool
 }
 
@@ -168,14 +235,17 @@ func NewRelease(t testing.TB, cfg ReleaseConfig) *Release {
 		})
 	}
 
-	archive := releaseArchive(t, cfg.Stub)
-	digest := sha256.Sum256(archive)
-	if cfg.BadChecksum {
-		digest = sha256.Sum256([]byte("tampered"))
-	}
+	archives := make(map[string][]byte, len(releaseTargets))
 	var checksums strings.Builder
 	for _, target := range releaseTargets {
-		fmt.Fprintf(&checksums, "%s  runware_%s.tar.gz\n", hex.EncodeToString(digest[:]), target)
+		archive := target.archive()
+		body := target.pack(t, cfg.Stub)
+		archives[archive.Name] = body
+		digest := sha256.Sum256(body)
+		if cfg.BadChecksum {
+			digest = sha256.Sum256([]byte("tampered"))
+		}
+		fmt.Fprintf(&checksums, "%s  %s\n", hex.EncodeToString(digest[:]), archive.Name)
 	}
 
 	// GitHub pretty-prints this response; the scripts read tag_name from its
@@ -195,10 +265,10 @@ func NewRelease(t testing.TB, cfg ReleaseConfig) *Release {
 		case req.URL.Path == "/latest":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(latest)
-		case ok && name == "checksums.txt":
+		case ok && name == ChecksumsName:
 			_, _ = w.Write([]byte(checksums.String()))
-		case ok && strings.HasPrefix(name, "runware_") && strings.HasSuffix(name, ".tar.gz"):
-			_, _ = w.Write(archive)
+		case ok && archives[name] != nil:
+			_, _ = w.Write(archives[name])
 		default:
 			http.NotFound(w, req)
 		}
@@ -227,16 +297,28 @@ func (r *Release) Requests() []string {
 	return slices.Clone(r.requests)
 }
 
-// releaseArchive builds a tarball shaped like a GoReleaser archive, with the
-// runware binary at its root.
-func releaseArchive(t testing.TB, stub string) []byte {
+// pack builds the archive a release has for target, shaped like a
+// GoReleaser archive: a zip on Windows and a tarball elsewhere, with stub as
+// the binary at its root.
+func (target releaseTarget) pack(t testing.TB, stub string) []byte {
+	t.Helper()
+
+	binary := target.archive().Binary
+	if target.goos == windows {
+		return zipArchive(t, binary, stub)
+	}
+	return tarArchive(t, binary, stub)
+}
+
+// tarArchive builds a gzipped tarball that holds one executable file.
+func tarArchive(t testing.TB, binary, stub string) []byte {
 	t.Helper()
 
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 	if err := tw.WriteHeader(&tar.Header{
-		Name:     "runware",
+		Name:     binary,
 		Mode:     0o755,
 		Size:     int64(len(stub)),
 		Typeflag: tar.TypeReg,
@@ -251,6 +333,30 @@ func releaseArchive(t testing.TB, stub string) []byte {
 	}
 	if err := gz.Close(); err != nil {
 		t.Fatalf("close gzip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// zipArchive builds a zip that holds one executable file.
+func zipArchive(t testing.TB, binary, stub string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	hdr := &zip.FileHeader{
+		Name:   binary,
+		Method: zip.Deflate,
+	}
+	hdr.SetMode(0o755)
+	w, err := zw.CreateHeader(hdr)
+	if err != nil {
+		t.Fatalf("write zip header: %v", err)
+	}
+	if _, err := w.Write([]byte(stub)); err != nil {
+		t.Fatalf("write zip body: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
 	}
 	return buf.Bytes()
 }
@@ -299,7 +405,7 @@ type Result struct {
 func RunSh(t testing.TB, inv Invocation) Result {
 	t.Helper()
 
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windows {
 		t.Skip("the POSIX install scripts support only Linux and macOS")
 	}
 	sh, err := exec.LookPath("sh")
@@ -327,7 +433,7 @@ const iexCommand = `Get-Content -Raw -LiteralPath $env:RUNWARE_TEST_SCRIPT | Inv
 func RunPwsh(t testing.TB, inv Invocation) Result {
 	t.Helper()
 
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == windows {
 		t.Skip("the stub CLI is a sh script, which Windows cannot run")
 	}
 	if len(inv.Args) > 0 {
