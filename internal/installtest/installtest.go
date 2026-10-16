@@ -1,7 +1,8 @@
 // Package installtest runs the install scripts in public/ as a black box. It
-// serves a fake CLI release over HTTP, runs a script with sh against it, and
-// exposes what a test can observe afterwards: the script's output and exit
-// status, the requests the release received and the argv the stub CLI recorded.
+// serves a fake CLI release over HTTP, runs a script with sh or pwsh against
+// it, and exposes what a test can observe afterwards: the script's output and
+// exit status, the requests the release received and the argv each stub CLI
+// recorded.
 package installtest
 
 import (
@@ -32,17 +33,79 @@ import (
 // names none.
 const DefaultTag = "v9.9.9"
 
-// StubScript stands in for the runware binary. Each call appends its argv to
-// the file named by RUNWARE_STUB_LOG, one call per line with every argument
-// terminated by the ASCII unit separator, and exits 0.
-const StubScript = `#!/bin/sh
+// StubConfig shapes a stub runware binary. The zero value is a CLI that has
+// serverless init and whose init succeeds.
+type StubConfig struct {
+	// Name labels the calls this stub records, so that a test with more than
+	// one stub can tell them apart.
+	Name string
+	// WithoutInit makes the stub act as a CLI from before serverless init.
+	// Then "serverless init --help" prints the help of the serverless group
+	// and exits 0, as Cobra does for an unknown subcommand.
+	WithoutInit bool
+	// InitExit is the exit status of a serverless init call that does not ask
+	// for help.
+	InitExit int
+}
+
+// stubTemplate is the body of a stub CLI. Each call appends one line to the
+// file named by RUNWARE_STUB_LOG: the stub's name and then its argv, with
+// every field terminated by the ASCII unit separator. Its verbs take the
+// name, already quoted for sh, whether the stub has init, and the exit status
+// of init.
+const stubTemplate = `#!/bin/sh
 {
+  printf '%%s\037' %s
   for arg do
-    printf '%s\037' "$arg"
+    printf '%%s\037' "$arg"
   done
   printf '\n'
 } >> "${RUNWARE_STUB_LOG:-/dev/null}"
+has_init=%t
+if [ "$1" = serverless ] && [ "$2" = init ]; then
+  if [ "$has_init" = false ]; then
+    printf 'Usage:\n  runware serverless [command]\n'
+    exit 0
+  fi
+  if [ "$3" = --help ]; then
+    printf 'Usage:\n  runware serverless init [dir] [flags]\n'
+    exit 0
+  fi
+  echo "stub serverless init $3"
+  exit %d
+fi
 `
+
+// Stub returns the content of a stub runware binary shaped by cfg.
+func Stub(cfg StubConfig) string {
+	return fmt.Sprintf(stubTemplate, shellQuote(cfg.Name), !cfg.WithoutInit, cfg.InitExit)
+}
+
+// WriteStub writes a stub runware binary into a new directory and returns
+// the directory, for a test to put on PATH.
+func WriteStub(t testing.TB, cfg StubConfig) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "runware"), []byte(Stub(cfg)), 0o700); err != nil { //nolint:gosec // test executable
+		t.Fatalf("write stub CLI: %v", err)
+	}
+	return dir
+}
+
+// InitArgs is the argv of a serverless init call with one argument: an App
+// directory, or a flag such as --help.
+func InitArgs(arg string) []string {
+	return []string{
+		"serverless",
+		"init",
+		arg,
+	}
+}
+
+// ReleaseStubName is the name of the stub in a fake release when the test
+// gives no stub of its own.
+const ReleaseStubName = "release"
 
 // systemPath holds the standard tools an install script needs (curl, tar,
 // shasum or sha256sum) and leaves out the directories Homebrew installs into,
@@ -64,11 +127,12 @@ var releaseTargets = []string{
 }
 
 // ReleaseConfig shapes a fake release. The zero value serves DefaultTag with
-// StubScript as the runware binary and correct checksums.
+// correct checksums and a stub named ReleaseStubName that has init.
 type ReleaseConfig struct {
 	// Tag is the version the latest-version lookup reports.
 	Tag string
-	// Stub is the content of the runware binary in the archive.
+	// Stub is the content of the runware binary in the archive, usually
+	// from Stub.
 	Stub string
 	// BadChecksum makes checksums.txt list a digest that does not match the
 	// archive, as a tampered download would.
@@ -93,7 +157,9 @@ func NewRelease(t testing.TB, cfg ReleaseConfig) *Release {
 		cfg.Tag = DefaultTag
 	}
 	if cfg.Stub == "" {
-		cfg.Stub = StubScript
+		cfg.Stub = Stub(StubConfig{
+			Name: ReleaseStubName,
+		})
 	}
 
 	archive := releaseArchive(t, cfg.Stub)
@@ -234,10 +300,61 @@ func RunSh(t testing.TB, inv Invocation) Result {
 	if err != nil {
 		t.Skip("sh not found")
 	}
-	path := strings.Join(append(slices.Clone(inv.PathDirs), systemPath), string(os.PathListSeparator))
+	path := scriptPath(inv)
 	if !onPath("curl", path) {
 		t.Skip("curl not found on the script's PATH")
 	}
+
+	return runInterpreter(t, inv, path, nil, sh, append([]string{inv.Script}, inv.Args...)...)
+}
+
+// iexCommand runs the script the way 'irm <url> | iex' does: as one string
+// given to Invoke-Expression, not as a script file. A script that only works
+// as a file, for example one that reads $args or calls exit, fails here as
+// it would for a user.
+const iexCommand = `Get-Content -Raw -LiteralPath $env:RUNWARE_TEST_SCRIPT | Invoke-Expression`
+
+// RunPwsh runs a PowerShell install script with pwsh, in the same clean
+// environment as RunSh. Such a script takes no arguments, so inv.Args must be
+// empty. The test skips where pwsh is missing, and on Windows: there the stub
+// CLI, a sh script, cannot run as runware.exe.
+func RunPwsh(t testing.TB, inv Invocation) Result {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub CLI is a sh script, which Windows cannot run")
+	}
+	if len(inv.Args) > 0 {
+		t.Fatalf("a PowerShell install script takes no arguments, got %q", inv.Args)
+	}
+	pwsh, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh not found")
+	}
+	script, err := filepath.Abs(inv.Script)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", inv.Script, err)
+	}
+
+	env := map[string]string{
+		"RUNWARE_TEST_SCRIPT":         script,
+		"POWERSHELL_TELEMETRY_OPTOUT": "1",
+		"POWERSHELL_UPDATECHECK":      "Off",
+	}
+	return runInterpreter(t, inv, scriptPath(inv), env, pwsh, "-NoProfile", "-NonInteractive", "-Command", iexCommand)
+}
+
+// scriptPath is the PATH a script gets: the invocation's directories, then
+// the standard tool directories.
+func scriptPath(inv Invocation) string {
+	return strings.Join(append(slices.Clone(inv.PathDirs), systemPath), string(os.PathListSeparator))
+}
+
+// runInterpreter runs name with args as the interpreter of inv.Script. The environment
+// holds fresh HOME and TMPDIR directories, path, the stub log, then extra,
+// then inv.Env.
+func runInterpreter(t testing.TB, inv Invocation, path string, extra map[string]string, name string, args ...string) Result {
+	t.Helper()
 
 	stubLog := filepath.Join(t.TempDir(), "runware-calls")
 	env := map[string]string{
@@ -246,6 +363,7 @@ func RunSh(t testing.TB, inv Invocation) Result {
 		"PATH":             path,
 		"RUNWARE_STUB_LOG": stubLog,
 	}
+	maps.Copy(env, extra)
 	maps.Copy(env, inv.Env)
 
 	timeout := inv.Timeout
@@ -254,7 +372,7 @@ func RunSh(t testing.TB, inv Invocation) Result {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, sh, append([]string{inv.Script}, inv.Args...)...) //nolint:gosec // the test names the script it runs
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // the test names the script it runs
 	killGroupOnCancel(cmd)
 	// A child that left the process group can still hold the output pipe
 	// open, so stop waiting for output soon after the kill.
@@ -282,9 +400,16 @@ func RunSh(t testing.TB, inv Invocation) Result {
 	return res
 }
 
-// StubCalls returns the argv of every call to a stub CLI during the run, in
-// order. It is empty when no stub ran.
-func (r Result) StubCalls(t testing.TB) [][]string {
+// StubCall is one call to a stub CLI.
+type StubCall struct {
+	// Stub is the StubConfig.Name of the stub that ran.
+	Stub string
+	Args []string
+}
+
+// StubCalls returns every call to a stub CLI during the run, in order. It is
+// empty when no stub ran.
+func (r Result) StubCalls(t testing.TB) []StubCall {
 	t.Helper()
 
 	data, err := os.ReadFile(r.stubLog)
@@ -294,14 +419,71 @@ func (r Result) StubCalls(t testing.TB) [][]string {
 	if err != nil {
 		t.Fatalf("read stub log: %v", err)
 	}
-	var calls [][]string
+	var calls []StubCall
 	for line := range strings.Lines(string(data)) {
 		line = strings.TrimSuffix(line, "\n")
-		args := strings.Split(line, "\x1f")
-		// Every argument ends with a separator, so the last field is empty.
-		calls = append(calls, args[:len(args)-1])
+		fields := strings.Split(line, "\x1f")
+		// Every field ends with a separator, so the last one is empty.
+		fields = fields[:len(fields)-1]
+		calls = append(calls, StubCall{
+			Stub: fields[0],
+			Args: fields[1:],
+		})
 	}
 	return calls
+}
+
+// Tripwires is a directory of tools that a script must never run. Each one
+// logs its command line and exits 1. Put Dir first on PATH, and check Calls
+// after the run.
+type Tripwires struct {
+	Dir string
+
+	log string
+}
+
+// forbiddenToolTemplate logs the command line of a tool that should not have run.
+// Its verbs take the tool's name and the log path, each already quoted for
+// sh.
+const forbiddenToolTemplate = `#!/bin/sh
+{
+  printf '%%s' %s
+  [ "$#" -eq 0 ] || printf ' %%s' "$*"
+  printf '\n'
+} >> %s
+echo "tripwire: $0 must not run" >&2
+exit 1
+`
+
+// NewTripwires writes a tripwire for each of the named tools.
+func NewTripwires(t testing.TB, names ...string) Tripwires {
+	t.Helper()
+
+	tw := Tripwires{
+		Dir: t.TempDir(),
+		log: filepath.Join(t.TempDir(), "tripwire-calls"),
+	}
+	for _, name := range names {
+		script := fmt.Sprintf(forbiddenToolTemplate, shellQuote(name), shellQuote(tw.log))
+		if err := os.WriteFile(filepath.Join(tw.Dir, name), []byte(script), 0o700); err != nil { //nolint:gosec // test executable
+			t.Fatalf("write tripwire %s: %v", name, err)
+		}
+	}
+	return tw
+}
+
+// Calls returns the command line of every tripwire that ran, in order.
+func (tw Tripwires) Calls(t testing.TB) []string {
+	t.Helper()
+
+	data, err := os.ReadFile(tw.log)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read tripwire log: %v", err)
+	}
+	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 }
 
 // GitHubShim is a directory holding a curl that stands in for the real one.
