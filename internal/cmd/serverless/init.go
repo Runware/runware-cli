@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -28,12 +29,7 @@ const (
 	defaultProjectName = "app"
 )
 
-// uvProjectOverrides are the uv variables that point it at another project,
-// directory or environment than the App directory and its .venv. Inherited
-// from the shell -- a container image that sets UV_PROJECT_ENVIRONMENT to
-// /usr/local is the common case -- they would make init install the
-// Serverless library somewhere else, which it never does (ADR 0001). Keys are
-// upper case and compared case-insensitively, as Windows does.
+// uvProjectOverrides are the uv variables that point uv away from the App directory.
 var uvProjectOverrides = map[string]struct{}{
 	"UV_PROJECT":             {},
 	"UV_PROJECT_ENVIRONMENT": {},
@@ -46,9 +42,12 @@ var uvProjectOverrides = map[string]struct{}{
 // create would reject.
 var appIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
 
-// shellSafePattern matches arguments that need no quoting in the printed next
-// steps.
-var shellSafePattern = regexp.MustCompile(`^[A-Za-z0-9_./~+,:@%=-]+$`)
+// posixSafePattern and windowsSafePattern match arguments that need no quoting
+// in the printed next steps, in a POSIX shell and in PowerShell or cmd.
+var (
+	posixSafePattern   = regexp.MustCompile(`^[A-Za-z0-9_./~+,:@%=-]+$`)
+	windowsSafePattern = regexp.MustCompile(`^[A-Za-z0-9_.\\/:~+,@=-]+$`)
+)
 
 const starterApp = `from runware_serverless import endpoint, serve
 
@@ -156,8 +155,8 @@ func runInit(cmd *cobra.Command, dirArg string, force bool) error {
 	uv, err := exec.LookPath(toolchainUV)
 	if err != nil {
 		return fmt.Errorf(
-			"uv was not found on PATH. %s has its files, but the Serverless library is not installed. Install uv from https://docs.astral.sh/uv/, then run: %s",
-			dir, finishCommand(dirArg),
+			"uv was not found on PATH. %s has its files, but the Serverless library is not installed. Install uv from https://docs.astral.sh/uv/, then run %q in that directory",
+			dir, uvAddCommand(),
 		)
 	}
 	if err := uvAddLibrary(cmd.Context(), uv, dir, cmd.ErrOrStderr()); err != nil {
@@ -233,22 +232,15 @@ func prepareAppDirectory(dir string, force bool) ([]string, error) {
 }
 
 // writeNewFile refuses to replace a file, so a race with another writer can
-// never cost the customer their own copy.
+// never cost the customer their own copy. It removes what it created when the
+// write fails: a truncated file left behind would stay for good, because a
+// re-run keeps an existing pyproject.toml and writes no app.py next to another
+// .py file.
 func writeNewFile(path, content string) error {
-	if err := createFile(path, content); err != nil {
-		return fmt.Errorf("write %s: %w", filepath.Base(path), err)
-	}
-	return nil
-}
-
-// createFile removes what it created when the write fails. A truncated file
-// left behind would stay for good: a re-run keeps an existing pyproject.toml,
-// and writes no app.py next to another .py file.
-func createFile(path, content string) error {
 	//nolint:gosec // customer source files, readable like any other in the project
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return err
+		return fmt.Errorf("write %s: %w", filepath.Base(path), err)
 	}
 	_, err = f.WriteString(content)
 	if closeErr := f.Close(); err == nil {
@@ -256,7 +248,7 @@ func createFile(path, content string) error {
 	}
 	if err != nil {
 		_ = os.Remove(path)
-		return err
+		return fmt.Errorf("write %s: %w", filepath.Base(path), err)
 	}
 	return nil
 }
@@ -319,20 +311,11 @@ func uvAddCommand() string {
 	return toolchainUV + " " + strings.Join(uvAddArgs, " ")
 }
 
+// isUVProjectOverride compares names case-insensitively, as Windows does.
 func isUVProjectOverride(kv string) bool {
 	key, _, _ := strings.Cut(kv, "=")
 	_, ok := uvProjectOverrides[strings.ToUpper(key)]
 	return ok
-}
-
-// finishCommand is what the customer runs to finish by hand when init could
-// not install the Serverless library.
-func finishCommand(dirArg string) string {
-	add := uvAddCommand()
-	if dirArg == "" {
-		return add
-	}
-	return "cd " + shellQuote(dirArg) + " && " + add
 }
 
 // reportInitNextSteps prints the commands from a ready App directory to a
@@ -349,15 +332,24 @@ func reportInitNextSteps(w io.Writer, dir, cdArg string) {
 
 	_, _ = fmt.Fprintln(w, "Next steps:")
 	if cdArg != "" {
-		_, _ = fmt.Fprintf(w, "  cd %s\n", shellQuote(cdArg))
+		_, _ = fmt.Fprintf(w, "  cd %s\n", quoteArg(cdArg, runtime.GOOS))
 	}
 	_, _ = fmt.Fprintln(w, "  runware auth login")
 	_, _ = fmt.Fprintf(w, "  runware serverless deploy %s --id %s --gpu-type <gpu>\n", entry, appID)
 	_, _ = fmt.Fprintln(w, "List GPU types with 'runware serverless gpus'.")
 }
 
-func shellQuote(s string) string {
-	if shellSafePattern.MatchString(s) {
+// quoteArg quotes s for the shell the customer most likely runs on goos.
+// PowerShell and cmd both read a double-quoted path, and a Windows path cannot
+// hold a double quote.
+func quoteArg(s, goos string) string {
+	if goos == "windows" {
+		if windowsSafePattern.MatchString(s) {
+			return s
+		}
+		return `"` + s + `"`
+	}
+	if posixSafePattern.MatchString(s) {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"

@@ -17,9 +17,10 @@ import (
 const goosWindows = "windows"
 
 // fakeUVScript stands in for uv. It records its working directory, argv and
-// the uv variables that move it to another project as one log line, and
-// creates .venv as `uv add` does. A non-empty failMessage makes it print that
-// to stderr and exit 2 instead.
+// the uv variables that move it to another project as one log line. Then it
+// does what `uv add --dev` does: it creates .venv, records the dev dependency
+// in pyproject.toml once, and writes uv.lock when there is none. A non-empty
+// failMessage makes it print that to stderr and exit 2 instead.
 const fakeUVScript = `#!/bin/sh
 echo "cwd=$(pwd -P) argv=$* overrides=${UV_PROJECT-}${UV_PROJECT_ENVIRONMENT-}${UV_WORKING_DIR-}${UV_WORKING_DIRECTORY-}" >> '%LOG%'
 if [ -n '%FAIL%' ]; then
@@ -29,6 +30,10 @@ fi
 echo 'Resolved 2 packages'
 /bin/mkdir -p .venv
 echo 'home = /fake' > .venv/pyvenv.cfg
+if ! /usr/bin/grep -q runware-serverless pyproject.toml; then
+  printf '\n[dependency-groups]\ndev = [\n    "runware-serverless>=0.1.0",\n]\n' >> pyproject.toml
+fi
+[ -f uv.lock ] || echo 'version = 1' > uv.lock
 `
 
 // initHarness runs `serverless init` in-process with a fake uv first on PATH.
@@ -282,7 +287,7 @@ func TestInit_KeepsExistingPyprojectAndRerunChangesNothing(t *testing.T) {
 	if err := h.run(dir); err != nil {
 		t.Fatalf("first init: %v", err)
 	}
-	if got := readInitFile(t, filepath.Join(dir, pyprojectFile)); got != ownPyproject {
+	if got := readInitFile(t, filepath.Join(dir, pyprojectFile)); !strings.HasPrefix(got, ownPyproject) {
 		t.Errorf("pyproject.toml overwritten:\n%s", got)
 	}
 	before := snapshotAppDir(t, dir)
@@ -355,7 +360,7 @@ func TestInit_NoUVKeepsFilesAndSaysHowToFinish(t *testing.T) {
 
 // TestInit_IgnoresUVProjectOverrides: an inherited uv variable that names
 // another project, directory or environment would make uv install somewhere
-// other than the App directory's .venv (ADR 0001).
+// other than the App directory's .venv.
 func TestInit_IgnoresUVProjectOverrides(t *testing.T) {
 	h := newInitHarness(t, "")
 	other := t.TempDir()
@@ -395,7 +400,7 @@ func TestInit_DeployArchiveExcludesVenv(t *testing.T) {
 		t.Fatalf("packDirectory: %v", err)
 	}
 	got := names(unpack(t, raw))
-	if want := []string{starterAppFile, pyprojectFile}; !slices.Equal(got, want) {
+	if want := []string{starterAppFile, pyprojectFile, "uv.lock"}; !slices.Equal(got, want) {
 		t.Errorf("archive = %q, want %q", got, want)
 	}
 }
@@ -442,6 +447,25 @@ func TestIsUVProjectOverride(t *testing.T) {
 	for kv, want := range cases {
 		if got := isUVProjectOverride(kv); got != want {
 			t.Errorf("isUVProjectOverride(%q) = %v, want %v", kv, got, want)
+		}
+	}
+}
+
+func TestQuoteArg(t *testing.T) {
+	cases := []struct {
+		arg  string
+		goos string
+		want string
+	}{
+		{arg: "demo", goos: "linux", want: "demo"},
+		{arg: "my app", goos: "linux", want: "'my app'"},
+		{arg: "it's", goos: "darwin", want: `'it'\''s'`},
+		{arg: `C:\code\demo`, goos: goosWindows, want: `C:\code\demo`},
+		{arg: `C:\My Apps\demo`, goos: goosWindows, want: `"C:\My Apps\demo"`},
+	}
+	for _, tc := range cases {
+		if got := quoteArg(tc.arg, tc.goos); got != tc.want {
+			t.Errorf("quoteArg(%q, %s) = %s, want %s", tc.arg, tc.goos, got, tc.want)
 		}
 	}
 }
