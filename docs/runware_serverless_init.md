@@ -17,10 +17,23 @@ init writes what is missing and nothing else:
   .venv           the directory's own environment, with runware-serverless
                   added as a dev dependency
 
-The toolchain is uv, which must be on PATH. init runs
+The toolchain is uv when it is on PATH. init runs
 'uv add --dev runware-serverless' inside the App directory, which creates .venv
-and uv.lock and records the dependency in pyproject.toml. init never installs
-into a global, user or tool environment, so PEP 668 does not apply.
+and uv.lock and records the dependency in pyproject.toml.
+
+Without uv, init uses the first Python 3.10 or newer it finds: python3, then
+python, and on Windows also 'py -3'. That Python creates .venv with
+'-m venv .venv'. Then the interpreter inside .venv runs
+'-m pip install runware-serverless', and init adds runware-serverless to the
+dev list under [dependency-groups] in pyproject.toml. An older Python does not
+count, and the error names its version.
+
+With neither uv nor a suitable Python, init keeps the files it wrote, prints
+the command that finishes the setup, and exits non-zero. Run init again after
+you install either toolchain.
+
+init never installs into a global, user or tool environment, so PEP 668 does
+not apply.
 
 A directory that already has a pyproject.toml is an App directory: init keeps
 that file and adds only what is missing, so running it again is safe. A
