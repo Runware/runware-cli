@@ -6,6 +6,36 @@ Run image generation, video generation, audio generation, 3D, upscaling, backgro
 
 ## Install
 
+The Serverless install below installs the CLI and creates an App directory. The other install methods install only the CLI. If you do not need an App directory (for example, for inference only), use one of them.
+
+### Serverless
+
+To build and deploy an App on Runware Serverless, use the one-command install. It installs the CLI, or uses the CLI that you already have. If that CLI is too old, the install updates it. Then the install creates an App directory with `runware serverless init`.
+
+macOS / Linux:
+
+```shell
+curl -fsSL https://serverless.runware.ai/install.sh | sh -s -- my-app
+```
+
+Windows (PowerShell):
+
+```powershell
+$env:RUNWARE_APP_DIR = "my-app"; irm https://serverless.runware.ai/install.ps1 | iex
+```
+
+If you already have the CLI:
+
+```shell
+runware serverless init my-app
+```
+
+`init` creates the App directory `my-app` with a `pyproject.toml`, a starter `app.py` and a `.venv` that has the Serverless library (`runware-serverless`) as a dev dependency. `init` installs nothing globally: the Serverless library goes only into the App directory's `.venv`. If `uv` is on your `PATH`, `init` uses `uv`. If not, `init` uses Python 3.10 or newer.
+
+To use a different App name, replace `my-app` in each command. The name is also the App ID for `deploy --id`. An App ID has 6 to 30 characters: lowercase letters, digits and `-`. It starts with a letter and ends with a letter or a digit.
+
+To continue, see [Serverless quick start](#serverless-quick-start).
+
 ### Homebrew (macOS)
 
 ```shell
@@ -45,11 +75,26 @@ runware ping
 # Generate an image
 runware run runware:400@1 positivePrompt="a chess match in the park" width=1024 height=1024
 
-# Deploy a serverless application
-runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait
-
 # Check your account details
 runware account details
+```
+
+### Serverless quick start
+
+After the [Serverless install](#serverless), go into the App directory, log in, and deploy the starter App:
+
+```shell
+# Go into the App directory
+cd my-app
+
+# Authenticate
+runware auth login
+
+# List GPU types and per-second pricing
+runware serverless gpus
+
+# Deploy the starter App
+runware serverless deploy app.py --id my-app --gpu-type <gpu>
 ```
 
 ## Commands
