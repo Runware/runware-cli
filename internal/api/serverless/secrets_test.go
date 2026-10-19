@@ -40,7 +40,7 @@ func TestListSecrets(t *testing.T) {
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListSecrets(context.Background(), &ListSecretsParams{
+	page, err := c.ListSecrets(context.Background(), ListSecretsParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 	})
@@ -60,7 +60,7 @@ func TestListSecrets(t *testing.T) {
 
 func TestListSecrets_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListSecrets(context.Background(), nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListSecrets(context.Background(), ListSecretsParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
@@ -243,7 +243,7 @@ func TestListAppSecrets(t *testing.T) {
 	limit := Limit(5)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListAppSecrets(context.Background(), testAppID, &ListAppSecretsParams{
+	page, err := c.ListAppSecrets(context.Background(), testAppID, ListAppSecretsParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 	})
@@ -263,7 +263,7 @@ func TestListAppSecrets(t *testing.T) {
 
 func TestListAppSecrets_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListAppSecrets(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListAppSecrets(context.Background(), testAppID, ListAppSecretsParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }

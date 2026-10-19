@@ -1,15 +1,14 @@
 package serverless
 
 import (
+	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -37,8 +36,9 @@ the latest page of the ledger. Spend over a window is 'serverless usage'.
 Price/s is the catalog rate per GPU-second at that moment, including time a
 reservation covered. Coverage itself is on the usage summary.
 
-An unknown --app is an empty page, not a missing app. Replay a cursor with
-the same --app, --from, --to, and --limit.`,
+An unknown --app is an empty page, not a missing app. --app reports the
+production copy unless --env names another environment; --env needs --app.
+Replay a cursor with the same --env, --app, --from, --to, and --limit.`,
 		Example: `  # the latest page of the ledger
   runware serverless usage events
 
@@ -49,6 +49,9 @@ the same --app, --from, --to, and --limit.`,
   runware serverless usage events --limit 50 --cursor <nextCursor>`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if commandEnvironment(cmd) != "" && flags.app == "" {
+				return errUsageEventsEnvironmentNeedsApp
+			}
 			params, err := usageEventParamsFromFlags(flags)
 			if err != nil {
 				return err
@@ -57,7 +60,7 @@ the same --app, --from, --to, and --limit.`,
 			spin := cmdutil.NewSpinner("Fetching usage events...")
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListUsageEvents(cmd.Context(), params)
 			if err != nil {
 				spin.Stop()
@@ -65,7 +68,7 @@ the same --app, --from, --to, and --limit.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, usageEventsResult(page.Data), cmd.ErrOrStderr(), extraUsageEventCursorFlags(flags))
+			return printPage(cmdutil.FormatFor(cmd), page, usageEventsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, extraUsageEventCursorFlags(flags)))
 		},
 	}
 
@@ -73,42 +76,43 @@ the same --app, --from, --to, and --limit.`,
 	cmd.Flags().StringVar(&flags.from, "from", "", "Inclusive start on event time (RFC 3339 or YYYY-MM-DD UTC)")
 	cmd.Flags().StringVar(&flags.to, "to", "", "Exclusive end on event time (RFC 3339 or YYYY-MM-DD UTC)")
 	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of events to return (1-100)")
-	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --app/--from/--to/--limit)")
+	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --env/--app/--from/--to/--limit)")
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
+// errUsageEventsEnvironmentNeedsApp refuses --env alone, which the API would
+// ignore and answer with every environment's events.
+var errUsageEventsEnvironmentNeedsApp = errors.New("--env needs --app: without an app the ledger covers every environment")
+
 // usageEventParamsFromFlags maps the events flags onto GET /v1/usage.
-// An empty flag set returns nil so the request carries no query string.
-func usageEventParamsFromFlags(flags usageEventFlags) (*serverlessapi.ListUsageEventsParams, error) {
+func usageEventParamsFromFlags(flags usageEventFlags) (serverlessapi.ListUsageEventsParams, error) {
 	if err := validateListLimit(flags.limit); err != nil {
-		return nil, err
+		return serverlessapi.ListUsageEventsParams{}, err
 	}
 	app := strings.TrimSpace(flags.app)
 	if flags.app != "" && app == "" {
-		return nil, fmt.Errorf("invalid --app %q", flags.app)
+		return serverlessapi.ListUsageEventsParams{}, fmt.Errorf("invalid --app %q", flags.app)
 	}
 	from, err := parseUsageTime("--from", flags.from)
 	if err != nil {
-		return nil, err
+		return serverlessapi.ListUsageEventsParams{}, err
 	}
 	to, err := parseUsageTime("--to", flags.to)
 	if err != nil {
-		return nil, err
+		return serverlessapi.ListUsageEventsParams{}, err
 	}
 	if from != nil && to != nil && !from.Before(*to) {
-		return nil, fmt.Errorf("--from must be before --to")
+		return serverlessapi.ListUsageEventsParams{}, fmt.Errorf("--from must be before --to")
 	}
 
-	params := &serverlessapi.ListUsageEventsParams{}
+	params := serverlessapi.ListUsageEventsParams{}
 	params.Limit, params.Cursor = listPageParams(flags.limit, flags.cursor)
 	if app != "" {
 		params.AppId = &app
 	}
 	params.From = from
 	params.To = to
-	if params.Limit == nil && params.Cursor == nil && params.AppId == nil && params.From == nil && params.To == nil {
-		return nil, nil
-	}
 	return params, nil
 }
 
@@ -127,7 +131,7 @@ func extraUsageEventCursorFlags(flags usageEventFlags) string {
 type usageEventsResult []serverlessapi.UsageEvent
 
 func (r usageEventsResult) Headers() []string {
-	return []string{colTime, colApp, colWorker, colEvent, colGPUs, colGPUType, colPricePerGPU}
+	return []string{colTime, colApp, colEnvironment, colWorker, colEvent, colGPUs, colGPUType, colPricePerGPU}
 }
 
 func (r usageEventsResult) Rows() [][]any {
@@ -145,6 +149,7 @@ func (r usageEventsResult) Rows() [][]any {
 		rows[i] = []any{
 			e.OccurredAt.UTC().Format(time.RFC3339),
 			e.AppId,
+			e.Environment,
 			e.WorkerId.String(),
 			string(e.EventType),
 			e.GpuCount,

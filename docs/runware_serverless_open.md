@@ -11,12 +11,16 @@ runware serverless open <appId> [flags]
 ```
   # open an application's dashboard page in your browser
   runware serverless open my-model-abc
+
+  # open the staging copy
+  runware serverless open my-model-abc --env staging
 ```
 
 ### Options
 
 ```
-  -h, --help   help for open
+  -e, --env name   Environment the app runs in (default production)
+  -h, --help       help for open
 ```
 
 ### Options inherited from parent commands

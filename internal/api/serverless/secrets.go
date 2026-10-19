@@ -37,12 +37,12 @@ type ListSecretsParams = gen.ListSecretsParams
 type ListAppSecretsParams = gen.ListAppSecretsParams
 
 // ListSecrets returns a page of organization secret metadata.
-func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Page[Secret], error) {
+func (c *Client) ListSecrets(ctx context.Context, params ListSecretsParams) (Page[Secret], error) {
 	if c.apiKey == "" {
 		return Page[Secret]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListSecretsWithResponse(ctx, params)
+	resp, err := c.inner.ListSecretsWithResponse(ctx, &params)
 	if err != nil {
 		return Page[Secret]{}, fmt.Errorf("list secrets: %w", err)
 	}
@@ -59,8 +59,6 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Pa
 		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusUnprocessableEntity:
 		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
@@ -171,12 +169,13 @@ func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 }
 
 // ListAppSecrets returns a page of secrets attached to an app.
-func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListAppSecretsParams) (Page[SecretAttachment], error) {
+func (c *Client) ListAppSecrets(ctx context.Context, appID string, params ListAppSecretsParams) (Page[SecretAttachment], error) {
 	if c.apiKey == "" {
 		return Page[SecretAttachment]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListAppSecretsWithResponse(ctx, appID, params)
+	params.Environment = c.scopedEnvironment(params.Environment)
+	resp, err := c.inner.ListAppSecretsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[SecretAttachment]{}, fmt.Errorf("list app secrets: %w", err)
 	}
@@ -193,8 +192,6 @@ func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListA
 		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:
@@ -211,7 +208,9 @@ func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretA
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.AttachAppSecretWithResponse(ctx, appID, body)
+	resp, err := c.inner.AttachAppSecretWithResponse(ctx, appID, &gen.AttachAppSecretParams{
+		Environment: c.environmentParam(),
+	}, body)
 	if err != nil {
 		return fmt.Errorf("attach secret: %w", err)
 	}
@@ -246,7 +245,9 @@ func (c *Client) DetachAppSecret(ctx context.Context, appID, secretName string) 
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DetachAppSecretWithResponse(ctx, appID, secretName)
+	resp, err := c.inner.DetachAppSecretWithResponse(ctx, appID, secretName, &gen.DetachAppSecretParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return fmt.Errorf("detach secret: %w", err)
 	}

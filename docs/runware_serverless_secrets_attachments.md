@@ -25,6 +25,7 @@ runware serverless secrets attachments <appId> [flags]
 
 ```
       --cursor string   Pagination cursor from a previous nextCursor
+  -e, --env name        Environment the app runs in (default production)
   -h, --help            help for attachments
       --limit int       Maximum number of secrets to return (1-100)
 ```

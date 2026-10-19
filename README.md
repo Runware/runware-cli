@@ -193,6 +193,10 @@ runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper --wa
 # Later deploys with the same --id upload a new source and roll version N+1
 runware serverless deploy ./app.py --id my-app --wait
 
+# The same --id runs once per environment; --env picks the copy (default production)
+runware serverless deploy ./app.py --id my-app --gpu-type h100 --env staging --wait
+runware serverless apps invoke my-app infer -f payload.json --env staging --wait
+
 # Inspect
 runware serverless apps list
 runware serverless apps show my-app
@@ -210,8 +214,8 @@ runware serverless usage --for this-month --group-by app,day
 runware serverless usage events --app my-app --from 2026-09-01 --to 2026-09-02
 runware serverless apps usage my-app --for this-month
 
-# Environment, secrets, scale, and rename
-runware serverless apps env set my-app MY_KEY --value-file ./value.txt
+# Environment variables, secrets, scale, and rename
+runware serverless apps env-vars set my-app MY_KEY --value-file ./value.txt
 runware serverless secrets set FOO --value-file ./foo.txt
 runware serverless secrets attach my-app FOO
 runware serverless apps scale my-app --max-workers 2
@@ -223,7 +227,9 @@ runware serverless apps resume my-app
 runware serverless open my-app
 ```
 
-`--volume`, `--env`, `--env-file`, and `--name` apply on create only. Change `--gpu-type` and other worker settings with `apps scale`, environment with `apps env`, and the display name with `apps rename`. An environment change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
+`--volume`, `--env-var`, `--env-file`, and `--name` apply on create only. Change `--gpu-type` and other worker settings with `apps scale`, environment variables with `apps env-vars`, and the display name with `apps rename`. An environment variable change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
+
+Every app command takes `--env <name>` (`-e`) to address the copy in that environment. Without it, commands address `production`. Org-wide `usage`, `gpus`, and organization `secrets` commands take no environment. `usage events` takes `--env` only together with `--app`.
 
 `.env` files are never packed into the source archive. Prefer `--env-file` and `secrets set --value-file` so values stay out of the process list.
 

@@ -347,21 +347,49 @@ func TestDeployEndpointPathsSurfacesTheError(t *testing.T) {
 
 func TestReportDeployEndpoints_SaysNothingWhenThereAreNoPaths(t *testing.T) {
 	var out bytes.Buffer
-	reportDeployEndpoints(&out, testAppID, nil)
+	reportDeployEndpoints(&out, &serverlessapi.App{
+		AppId: testAppID,
+	}, nil)
 	if out.Len() != 0 {
 		t.Fatalf("empty set wrote %q", out.String())
 	}
 }
 
-func TestReportDeployEndpoints_PrintsPathsAndAnInvokeExample(t *testing.T) {
-	var out bytes.Buffer
-	reportDeployEndpoints(&out, testAppID, []string{testEndpointPath, testOtherEndpointPath})
-	got := out.String()
-	if !strings.Contains(got, "'"+testEndpointPath+"'") || !strings.Contains(got, "'"+testOtherEndpointPath+"'") {
-		t.Fatalf("paths missing: %q", got)
+type invokeExampleCase struct {
+	name        string
+	environment string
+	wantInvoke  string
+}
+
+func TestReportDeployEndpoints_PrintsPathsAndAnInvokeExampleForTheSameCopy(t *testing.T) {
+	cases := []invokeExampleCase{
+		{
+			name:        "production copy",
+			environment: testProductionEnvironment,
+			wantInvoke:  "Invoke: runware serverless apps invoke " + testAppID + " " + testEndpointPath + " -f payload.json\n",
+		},
+		{
+			name:        "staging copy",
+			environment: testEnvironment,
+			wantInvoke:  "Invoke: runware serverless apps invoke " + testAppID + " " + testEndpointPath + " -f payload.json --env " + testEnvironment + "\n",
+		},
 	}
-	wantInvoke := "Invoke: runware serverless apps invoke " + testAppID + " " + testEndpointPath + " -f payload.json\n"
-	if !strings.Contains(got, wantInvoke) {
-		t.Fatalf("invoke example missing: %q", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+
+			reportDeployEndpoints(&out, &serverlessapi.App{
+				AppId:       testAppID,
+				Environment: tc.environment,
+			}, []string{testEndpointPath, testOtherEndpointPath})
+
+			got := out.String()
+			if !strings.Contains(got, "'"+testEndpointPath+"'") || !strings.Contains(got, "'"+testOtherEndpointPath+"'") {
+				t.Fatalf("paths missing: %q", got)
+			}
+			if !strings.Contains(got, tc.wantInvoke) {
+				t.Fatalf("output = %q, want it to contain %q", got, tc.wantInvoke)
+			}
+		})
 	}
 }

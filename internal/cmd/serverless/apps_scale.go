@@ -2,12 +2,10 @@ package serverless
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -61,7 +59,7 @@ increase without enough credit returns 402.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Updating application %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			app, err := client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
 				Configuration: patch,
 			})

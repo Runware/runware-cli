@@ -58,7 +58,9 @@ func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath, taskID st
 		return nil, err
 	}
 
-	resp, err := c.inner.StartAsyncTaskWithResponse(ctx, appID, endpointPath, invocation)
+	resp, err := c.inner.StartAsyncTaskWithResponse(ctx, appID, endpointPath, &gen.StartAsyncTaskParams{
+		Environment: c.environmentParam(),
+	}, invocation)
 	if err != nil {
 		return nil, fmt.Errorf("invoke async: %w", err)
 	}
@@ -105,7 +107,9 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 		return nil, err
 	}
 
-	resp, err := c.innerWithMinTimeout(invokeSyncTimeout).StartSyncTaskWithResponse(ctx, appID, endpointPath, invocation)
+	resp, err := c.innerWithMinTimeout(invokeSyncTimeout).StartSyncTaskWithResponse(ctx, appID, endpointPath, &gen.StartSyncTaskParams{
+		Environment: c.environmentParam(),
+	}, invocation)
 	if err != nil {
 		return nil, fmt.Errorf("invoke sync: %w", err)
 	}
@@ -157,7 +161,9 @@ func (c *Client) GetTask(ctx context.Context, appID, taskID string) (*Task, erro
 		return nil, err
 	}
 
-	resp, err := c.inner.GetTaskWithResponse(ctx, appID, id)
+	resp, err := c.inner.GetTaskWithResponse(ctx, appID, id, &gen.GetTaskParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get task: %w", err)
 	}
@@ -172,8 +178,6 @@ func (c *Client) GetTask(ctx context.Context, appID, taskID string) (*Task, erro
 		return resp.JSON200, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusServiceUnavailable:
@@ -184,12 +188,13 @@ func (c *Client) GetTask(ctx context.Context, appID, taskID string) (*Task, erro
 }
 
 // ListTasks returns a page of tasks for an app.
-func (c *Client) ListTasks(ctx context.Context, appID string, params *ListTasksParams) (Page[Task], error) {
+func (c *Client) ListTasks(ctx context.Context, appID string, params ListTasksParams) (Page[Task], error) {
 	if c.apiKey == "" {
 		return Page[Task]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListTasksWithResponse(ctx, appID, params)
+	params.Environment = c.scopedEnvironment(params.Environment)
+	resp, err := c.inner.ListTasksWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Task]{}, fmt.Errorf("list tasks: %w", err)
 	}
@@ -206,8 +211,6 @@ func (c *Client) ListTasks(ctx context.Context, appID string, params *ListTasksP
 		return Page[Task]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[Task]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[Task]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[Task]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:

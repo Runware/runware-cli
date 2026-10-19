@@ -2,7 +2,6 @@ package serverless
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/charmbracelet/log"
 	"github.com/google/uuid"
@@ -47,16 +46,13 @@ The table omits log tail; use 'builds show' for error detail and log tail.`,
 				return err
 			}
 			id := args[0]
-			var params *serverlessapi.ListBuildsParams
-			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListBuildsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-			}
+			var params serverlessapi.ListBuildsParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching builds for %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListBuilds(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
@@ -64,7 +60,7 @@ The table omits log tail; use 'builds show' for error detail and log tail.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, buildsResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, buildsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, ""))
 		},
 	}
 
@@ -94,7 +90,7 @@ supported.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching build %s...", buildID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			b, err := client.GetBuild(cmd.Context(), appID, buildID)
 			if err != nil {
 				spin.Stop()
@@ -138,7 +134,7 @@ Confirmation is required unless --yes or --force is passed.`,
 				return fmt.Errorf("invalid buildId %q: %w", args[1], err)
 			}
 			if err := confirmDelete(
-				fmt.Sprintf("build %s of application %s", buildID, appID),
+				deleteSubject(cmd, fmt.Sprintf("build %s of application %s", buildID, appID)),
 				yes || force,
 				cmd.InOrStdin(),
 				cmd.ErrOrStderr(),
@@ -151,7 +147,7 @@ Confirmation is required unless --yes or --force is passed.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Deleting build %s...", buildID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.DeleteBuild(cmd.Context(), appID, buildID); err != nil {
 				spin.Stop()
 				return err

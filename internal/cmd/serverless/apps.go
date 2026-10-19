@@ -2,7 +2,6 @@ package serverless
 
 import (
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -26,7 +24,8 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsEndpointsCmd(logger),
 		newAppsInvokeCmd(logger),
 		newAppsTasksCmd(logger),
-		newAppsEnvCmd(logger),
+		newAppsEnvVarsCmd(logger),
+		newDeprecatedAppsEnvCmd(logger),
 		newAppsVersionsCmd(logger),
 		newAppsBuildsCmd(logger),
 		newAppsLogsCmd(logger),
@@ -40,6 +39,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsResumeCmd(logger),
 		newAppsDeleteCmd(logger),
 	)
+	addEnvironmentFlag(cmd, cmd.PersistentFlags(), logger)
 	return cmd
 }
 
@@ -56,8 +56,14 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List serverless applications",
+		Long: `List the serverless applications in one environment, production unless
+--env names another. A next-page cursor is valid only in the environment it
+came from.`,
 		Example: `  # list all serverless applications
   runware serverless apps list
+
+  # list the applications in staging
+  runware serverless apps list --env staging
 
   # filter by status
   runware serverless apps list --status active
@@ -84,20 +90,17 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 
-			var params *serverlessapi.ListAppsParams
-			if limit > 0 || cursor != "" || status != "" || query != "" || gpuType != "" || sort != "" {
-				params = &serverlessapi.ListAppsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-				params.Status = statusVal
-				params.Sort = sortVal
-				params.Q = optionalStringPtr(query)
-				params.GpuType = optionalStringPtr(gpuType)
-			}
+			var params serverlessapi.ListAppsParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
+			params.Status = statusVal
+			params.Sort = sortVal
+			params.Q = optionalStringPtr(query)
+			params.GpuType = optionalStringPtr(gpuType)
 
 			spin := cmdutil.NewSpinner("Fetching applications...")
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListApps(cmd.Context(), params)
 			if err != nil {
 				spin.Stop()
@@ -105,12 +108,12 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, appsResult(page.Data), cmd.ErrOrStderr(), extraListCursorFlags(query, gpuType, sort, status))
+			return printPage(cmdutil.FormatFor(cmd), page, appsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, extraListCursorFlags(query, gpuType, sort, status)))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of applications to return (1-100)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --query/--gpu-type/--sort/--status)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --env/--query/--gpu-type/--sort/--status)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (active, initializing, stopped, …)")
 	cmd.Flags().StringVar(&query, "query", "", "Filter by substring on name or ID")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "Filter by GPU type (see 'serverless gpus')")
@@ -126,7 +129,7 @@ func newAppsShowCmd(logger *log.Logger) *cobra.Command {
 		Long: `Show details for a serverless application.
 
 JSON and YAML include environment variable names with each value replaced by
-[redacted]. Read a value with 'apps env list'.`,
+[redacted]. Read a value with 'apps env-vars list'.`,
 		Example: `  # show details for an application
   runware serverless apps show my-app`,
 		Args: cobra.ExactArgs(1),
@@ -136,7 +139,7 @@ JSON and YAML include environment variable names with each value replaced by
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching application %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			app, err := client.GetApp(cmd.Context(), id)
 			if err != nil {
 				spin.Stop()
@@ -173,16 +176,13 @@ version activates. Empty while the app is initializing.`,
 				return err
 			}
 			id := args[0]
-			var params *serverlessapi.ListEndpointsParams
-			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListEndpointsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-			}
+			var params serverlessapi.ListEndpointsParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching endpoints for %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListEndpoints(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
@@ -190,7 +190,7 @@ version activates. Empty while the app is initializing.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, endpointsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, ""))
 		},
 	}
 
@@ -218,7 +218,7 @@ func newAppsEndpointsShowCmd(logger *log.Logger) *cobra.Command {
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching endpoint %s...", endpointID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			ep, err := client.GetEndpoint(cmd.Context(), appID, endpointID)
 			if err != nil {
 				spin.Stop()
@@ -263,17 +263,14 @@ for worker output.`,
 			if err != nil {
 				return err
 			}
-			var params *serverlessapi.ListAppEventsParams
-			if limit > 0 || cursor != "" || eventType != "" {
-				params = &serverlessapi.ListAppEventsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-				params.Type = typeVal
-			}
+			var params serverlessapi.ListAppEventsParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
+			params.Type = typeVal
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching events for %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListAppEvents(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
@@ -281,7 +278,7 @@ for worker output.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, eventsResult(page.Data), cmd.ErrOrStderr(), extraTypeCursorFlag(eventType))
+			return printPage(cmdutil.FormatFor(cmd), page, eventsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, extraTypeCursorFlag(eventType)))
 		},
 	}
 
@@ -346,19 +343,16 @@ has never run".`,
 			if err != nil {
 				return err
 			}
-			var params *serverlessapi.ListWorkersParams
-			if limit > 0 || cursor != "" || status != "" || state != "" || versionVal != "" {
-				params = &serverlessapi.ListWorkersParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-				params.Status = statusVal
-				params.State = stateVal
-				params.VersionId = optionalStringPtr(versionVal)
-			}
+			var params serverlessapi.ListWorkersParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
+			params.Status = statusVal
+			params.State = stateVal
+			params.VersionId = optionalStringPtr(versionVal)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching workers for %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListWorkers(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
@@ -366,7 +360,7 @@ has never run".`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), extraWorkersCursorFlags(state, status, versionVal))
+			return printPage(cmdutil.FormatFor(cmd), page, workersResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, extraWorkersCursorFlags(state, status, versionVal)))
 		},
 	}
 
@@ -399,7 +393,7 @@ The ID is the Kubernetes pod UID recorded by the reconciler.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching worker %s...", workerID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			w, err := client.GetWorker(cmd.Context(), appID, workerID)
 			if err != nil {
 				spin.Stop()

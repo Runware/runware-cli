@@ -3,14 +3,12 @@ package serverless
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -95,7 +93,8 @@ func newAppsUsageCmd(logger *log.Logger) *cobra.Command {
 		Short: "Show usage and cost for a serverless application",
 		Long: `Show GPU time and spend for one application over a time window.
 
-This is the account-wide report filtered to one appId. The filter narrows what
+This is the account-wide report filtered to one appId in the environment --env
+selects, production unless --env names another. The filter narrows what
 is reported, not what is measured: commitment coverage depends on every app's
 concurrent GPUs, so a per-app split between commitment and PAYG reflects the
 organization-wide allocation.
@@ -139,7 +138,7 @@ func runUsage(cmd *cobra.Command, logger *log.Logger, appID string, flags usageF
 	spin := cmdutil.NewSpinner("Fetching usage...")
 	spin.Start()
 
-	client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+	client := newServerlessClient(cmd, logger)
 	summary, err := client.GetUsageSummary(cmd.Context(), params)
 	if err != nil {
 		spin.Stop()
@@ -156,30 +155,30 @@ func runUsage(cmd *cobra.Command, logger *log.Logger, appID string, flags usageF
 
 // usageParamsFromFlags maps the usage flags 1:1 onto the getUsageSummary query.
 // now anchors --for so the derived window is deterministic in tests.
-func usageParamsFromFlags(flags usageFlags, appID string, now time.Time) (*serverlessapi.GetUsageSummaryParams, error) {
-	params := &serverlessapi.GetUsageSummaryParams{}
+func usageParamsFromFlags(flags usageFlags, appID string, now time.Time) (serverlessapi.GetUsageSummaryParams, error) {
+	params := serverlessapi.GetUsageSummaryParams{}
 
 	if flags.forRange != "" {
 		if flags.from != "" || flags.to != "" {
-			return nil, fmt.Errorf("--for cannot be combined with --from or --to")
+			return serverlessapi.GetUsageSummaryParams{}, fmt.Errorf("--for cannot be combined with --from or --to")
 		}
 		from, to, err := usageRange(flags.forRange, now)
 		if err != nil {
-			return nil, err
+			return serverlessapi.GetUsageSummaryParams{}, err
 		}
 		params.From = &from
 		params.To = to
 	} else {
 		from, err := parseUsageTime("--from", flags.from)
 		if err != nil {
-			return nil, err
+			return serverlessapi.GetUsageSummaryParams{}, err
 		}
 		to, err := parseUsageTime("--to", flags.to)
 		if err != nil {
-			return nil, err
+			return serverlessapi.GetUsageSummaryParams{}, err
 		}
 		if from != nil && to != nil && !from.Before(*to) {
-			return nil, fmt.Errorf("--from must be before --to")
+			return serverlessapi.GetUsageSummaryParams{}, fmt.Errorf("--from must be before --to")
 		}
 		params.From = from
 		params.To = to
@@ -195,7 +194,7 @@ func usageParamsFromFlags(flags usageFlags, appID string, now time.Time) (*serve
 
 	groupBy, err := parseUsageDimensions(flags.groupBy)
 	if err != nil {
-		return nil, err
+		return serverlessapi.GetUsageSummaryParams{}, err
 	}
 	if len(groupBy) > 0 {
 		params.GroupBy = &groupBy
@@ -331,32 +330,107 @@ func (r usageResult) columns() []serverlessapi.UsageDimension {
 	return cols
 }
 
-func (r usageResult) Headers() []string {
-	cols := r.columns()
-	headers := make([]string, 0, len(cols)+3)
-	for _, d := range cols {
-		headers = append(headers, usageDimensionHeader(d))
+// usageAmountHeaders are the columns appendUsageAmounts adds after the dimensions.
+var usageAmountHeaders = []string{colGPUTime, colPAYGSpend, colPAYGValue}
+
+// usageColumn is one table column a dimension renders.
+type usageColumn struct {
+	header string
+	value  func(*serverlessapi.UsageBucket) string
+}
+
+// usageDimensionColumns are the columns one dimension renders. The app
+// dimension adds the environment, since one app id is a separate bucket per
+// environment.
+func usageDimensionColumns(d serverlessapi.UsageDimension) []usageColumn {
+	switch d {
+	case serverlessapi.UsageDimensionApp:
+		return []usageColumn{
+			{
+				header: colApp,
+				value:  func(b *serverlessapi.UsageBucket) string { return formatOptionalString(b.AppId) },
+			},
+			{
+				header: colEnvironment,
+				value:  func(b *serverlessapi.UsageBucket) string { return formatOptionalString(b.Environment) },
+			},
+		}
+	case serverlessapi.UsageDimensionGpuType:
+		return []usageColumn{
+			{
+				header: colGPUType,
+				value:  func(b *serverlessapi.UsageBucket) string { return formatOptionalString(b.GpuType) },
+			},
+		}
+	case serverlessapi.UsageDimensionDay:
+		return []usageColumn{
+			{
+				header: colDay,
+				value: func(b *serverlessapi.UsageBucket) string {
+					if b.Day == nil {
+						return ""
+					}
+					return b.Day.Format(time.DateOnly)
+				},
+			},
+		}
+	case serverlessapi.UsageDimensionCoverage:
+		return []usageColumn{
+			{
+				header: colCoverage,
+				value: func(b *serverlessapi.UsageBucket) string {
+					if b.Coverage == nil {
+						return ""
+					}
+					return string(*b.Coverage)
+				},
+			},
+		}
+	default:
+		return []usageColumn{
+			{
+				header: string(d),
+				value:  func(*serverlessapi.UsageBucket) string { return "" },
+			},
+		}
 	}
-	return append(headers, colGPUTime, colPAYGSpend, colPAYGValue)
+}
+
+func (r usageResult) dimensionColumns() []usageColumn {
+	var cols []usageColumn
+	for _, d := range r.columns() {
+		cols = append(cols, usageDimensionColumns(d)...)
+	}
+	return cols
+}
+
+func (r usageResult) Headers() []string {
+	cols := r.dimensionColumns()
+	headers := make([]string, 0, len(cols)+len(usageAmountHeaders))
+	for _, c := range cols {
+		headers = append(headers, c.header)
+	}
+	return append(headers, usageAmountHeaders...)
 }
 
 func (r usageResult) Rows() [][]any {
-	cols := r.columns()
+	cols := r.dimensionColumns()
 	if len(cols) == 0 {
 		return [][]any{appendUsageAmounts(nil, &r.summary.Total)}
 	}
+	width := len(cols) + len(usageAmountHeaders)
 
 	rows := make([][]any, 0, len(r.summary.Buckets)+1)
 	for i := range r.summary.Buckets {
 		b := &r.summary.Buckets[i]
-		row := make([]any, 0, len(cols)+3)
-		for _, d := range cols {
-			row = append(row, usageDimensionValue(d, b))
+		row := make([]any, 0, width)
+		for _, c := range cols {
+			row = append(row, c.value(b))
 		}
 		rows = append(rows, appendUsageAmounts(row, b))
 	}
 
-	total := make([]any, 0, len(cols)+3)
+	total := make([]any, 0, width)
 	total = append(total, "Total")
 	for range cols[1:] {
 		total = append(total, "")
@@ -366,43 +440,6 @@ func (r usageResult) Rows() [][]any {
 
 func appendUsageAmounts(row []any, b *serverlessapi.UsageBucket) []any {
 	return append(row, formatGPUTime(b.GpuMilliseconds), formatMoney(b.PaygSpend), formatMoney(b.PaygEquivalentValue))
-}
-
-func usageDimensionHeader(d serverlessapi.UsageDimension) string {
-	switch d {
-	case serverlessapi.UsageDimensionApp:
-		return colApp
-	case serverlessapi.UsageDimensionGpuType:
-		return colGPUType
-	case serverlessapi.UsageDimensionDay:
-		return colDay
-	case serverlessapi.UsageDimensionCoverage:
-		return colCoverage
-	default:
-		return string(d)
-	}
-}
-
-// usageDimensionValue reads the bucket field a dimension groups on.
-func usageDimensionValue(d serverlessapi.UsageDimension, b *serverlessapi.UsageBucket) string {
-	switch d {
-	case serverlessapi.UsageDimensionApp:
-		return formatOptionalString(b.AppId)
-	case serverlessapi.UsageDimensionGpuType:
-		return formatOptionalString(b.GpuType)
-	case serverlessapi.UsageDimensionDay:
-		if b.Day == nil {
-			return ""
-		}
-		return b.Day.Format(time.DateOnly)
-	case serverlessapi.UsageDimensionCoverage:
-		if b.Coverage == nil {
-			return ""
-		}
-		return string(*b.Coverage)
-	default:
-		return ""
-	}
 }
 
 // Millisecond spans of the units formatGPUTime prints.

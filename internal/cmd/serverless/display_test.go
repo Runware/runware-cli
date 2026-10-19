@@ -317,6 +317,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 	activeVersion := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	r := appResult{
 		AppId:           testAppID,
+		Environment:     testEnvironment,
 		AppName:         "My App",
 		Status:          "active",
 		ActiveVersionId: &activeVersion,
@@ -339,6 +340,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 	createdAt := created.Format(time.RFC3339)
 	want := map[string]any{
 		colID:                  testAppID,
+		colEnvironment:         testEnvironment,
 		colName:                "My App",
 		colStatus:              "active",
 		colHealth:              "unknown",
@@ -374,7 +376,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 	}
 }
 
-func TestAppResult_RedactsEnvironmentValues(t *testing.T) {
+func TestAppResult_RedactsEnvironmentVariableValues(t *testing.T) {
 	r := appResult{
 		AppId: testAppID,
 		EnvironmentVariables: []serverlessapi.EnvironmentVariable{

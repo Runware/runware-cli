@@ -63,7 +63,7 @@ func TestGetUsageSummary(t *testing.T) {
 	gpuType := testGPUType
 	groupBy := []UsageDimension{UsageDimensionApp, UsageDimensionDay}
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	summary, err := c.GetUsageSummary(context.Background(), &GetUsageSummaryParams{
+	summary, err := c.GetUsageSummary(context.Background(), GetUsageSummaryParams{
 		From:    &from,
 		To:      &to,
 		AppId:   &appID,
@@ -102,7 +102,7 @@ func TestGetUsageSummary_NoFiltersSendsNoQuery(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	if _, err := c.GetUsageSummary(context.Background(), &GetUsageSummaryParams{}); err != nil {
+	if _, err := c.GetUsageSummary(context.Background(), GetUsageSummaryParams{}); err != nil {
 		t.Fatalf("GetUsageSummary: %v", err)
 	}
 }
@@ -123,7 +123,7 @@ func TestGetUsageSummary_ProblemStatuses(t *testing.T) {
 		}))
 
 		c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-		_, err := c.GetUsageSummary(context.Background(), &GetUsageSummaryParams{})
+		_, err := c.GetUsageSummary(context.Background(), GetUsageSummaryParams{})
 		srv.Close()
 
 		var re *transport.RunwareError
@@ -138,7 +138,7 @@ func TestGetUsageSummary_ProblemStatuses(t *testing.T) {
 
 func TestGetUsageSummary_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.GetUsageSummary(context.Background(), &GetUsageSummaryParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.GetUsageSummary(context.Background(), GetUsageSummaryParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
@@ -200,7 +200,7 @@ func TestListUsageEvents(t *testing.T) {
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListUsageEvents(context.Background(), &ListUsageEventsParams{
+	page, err := c.ListUsageEvents(context.Background(), ListUsageEventsParams{
 		From:   &from,
 		To:     &to,
 		AppId:  &appID,
@@ -243,7 +243,7 @@ func TestListUsageEvents_NoFiltersSendsNoQuery(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListUsageEvents(context.Background(), nil)
+	page, err := c.ListUsageEvents(context.Background(), ListUsageEventsParams{})
 	if err != nil {
 		t.Fatalf("ListUsageEvents: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestListUsageEvents_NoFiltersSendsNoQuery(t *testing.T) {
 
 func TestListUsageEvents_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListUsageEvents(context.Background(), nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListUsageEvents(context.Background(), ListUsageEventsParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }

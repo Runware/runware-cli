@@ -2,7 +2,6 @@ package serverless
 
 import (
 	"fmt"
-	"log/slog"
 	"strconv"
 	"time"
 
@@ -49,16 +48,13 @@ The Build column is empty for container-sourced versions.`,
 				return err
 			}
 			id := args[0]
-			var params *serverlessapi.ListVersionsParams
-			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListVersionsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-			}
+			var params serverlessapi.ListVersionsParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching versions for %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListVersions(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
@@ -66,7 +62,7 @@ The Build column is empty for container-sourced versions.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, versionsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, ""))
 		},
 	}
 
@@ -93,7 +89,7 @@ func newAppsVersionsShowCmd(logger *log.Logger) *cobra.Command {
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching version %d...", n))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			v, err := client.GetVersion(cmd.Context(), appID, n)
 			if err != nil {
 				spin.Stop()
@@ -152,7 +148,7 @@ app that is deleting is 409.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Activating version %d on %s...", n, appID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			app, err := client.DeployVersion(cmd.Context(), appID, n)
 			if err != nil {
 				spin.Stop()
@@ -219,7 +215,7 @@ Confirmation is required unless --yes or --force is passed.`,
 				return err
 			}
 			if err := confirmDelete(
-				fmt.Sprintf("version %d of application %s", n, appID),
+				deleteSubject(cmd, fmt.Sprintf("version %d of application %s", n, appID)),
 				yes || force,
 				cmd.InOrStdin(),
 				cmd.ErrOrStderr(),
@@ -232,7 +228,7 @@ Confirmation is required unless --yes or --force is passed.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Deleting version %d on %s...", n, appID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.DeleteVersion(cmd.Context(), appID, n); err != nil {
 				spin.Stop()
 				return err

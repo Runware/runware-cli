@@ -101,6 +101,7 @@ func (c *Client) GetLogEntries(ctx context.Context, queryID string, params GetLo
 		params.Limit = &limit
 	}
 
+	params.Environment = c.scopedEnvironment(params.Environment)
 	resp, err := c.inner.GetLogEntriesWithResponse(ctx, queryID, &params)
 	if err != nil {
 		return LogEntryPage{}, fmt.Errorf("get log entries: %w", err)
@@ -122,8 +123,6 @@ func (c *Client) GetLogEntries(ctx context.Context, queryID string, params GetLo
 		return LogEntryPage{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return LogEntryPage{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return LogEntryPage{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return LogEntryPage{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:
@@ -152,7 +151,8 @@ func (c *Client) TailLogs(ctx context.Context, queryID, appID string, emit func(
 	}
 
 	params := gen.TailLogEntriesParams{
-		Deployment: appID,
+		Deployment:  appID,
+		Environment: c.environmentParam(),
 	}
 	resp, err := c.streamInner().TailLogEntries(ctx, queryID, &params)
 	if err != nil {

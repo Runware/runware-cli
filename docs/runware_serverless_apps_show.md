@@ -7,7 +7,7 @@ Show details for a serverless application
 Show details for a serverless application.
 
 JSON and YAML include environment variable names with each value replaced by
-[redacted]. Read a value with 'apps env list'.
+[redacted]. Read a value with 'apps env-vars list'.
 
 ```
 runware serverless apps show <appId> [flags]
@@ -30,6 +30,7 @@ runware serverless apps show <appId> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the app runs in (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

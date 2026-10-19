@@ -25,7 +25,8 @@ runware serverless secrets detach <appId> <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for detach
+  -e, --env name   Environment the app runs in (default production)
+  -h, --help       help for detach
 ```
 
 ### Options inherited from parent commands

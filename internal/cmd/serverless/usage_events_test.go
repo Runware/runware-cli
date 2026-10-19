@@ -44,8 +44,8 @@ func TestUsageEventParamsFromFlags_TrimsApp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usageEventParamsFromFlags: %v", err)
 	}
-	if params == nil || params.AppId == nil || *params.AppId != testAppID {
-		t.Fatalf("AppId = %v, want %s", params, testAppID)
+	if params.AppId == nil || *params.AppId != testAppID {
+		t.Fatalf("AppId = %v, want %s", params.AppId, testAppID)
 	}
 }
 
@@ -54,8 +54,8 @@ func TestUsageEventParamsFromFlags_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usageEventParamsFromFlags: %v", err)
 	}
-	if params != nil {
-		t.Errorf("params = %+v, want nil", params)
+	if params != (serverlessapi.ListUsageEventsParams{}) {
+		t.Errorf("params = %+v, want no query parameters", params)
 	}
 }
 
@@ -87,6 +87,7 @@ func TestUsageEventsResult(t *testing.T) {
 	r := usageEventsResult{
 		{
 			AppId:          testAppID,
+			Environment:    testEnvironment,
 			WorkerId:       worker,
 			EventType:      testLogBodyReady,
 			GpuCount:       1,
@@ -95,14 +96,15 @@ func TestUsageEventsResult(t *testing.T) {
 			OccurredAt:     when,
 		},
 		{
-			AppId:      testAppID,
-			WorkerId:   worker,
-			EventType:  "stopped",
-			GpuCount:   0,
-			OccurredAt: when.Add(time.Hour),
+			AppId:       testAppID,
+			Environment: testEnvironment,
+			WorkerId:    worker,
+			EventType:   "stopped",
+			GpuCount:    0,
+			OccurredAt:  when.Add(time.Hour),
 		},
 	}
-	wantHeaders := []string{colTime, colApp, colWorker, colEvent, colGPUs, colGPUType, colPricePerGPU}
+	wantHeaders := []string{colTime, colApp, colEnvironment, colWorker, colEvent, colGPUs, colGPUType, colPricePerGPU}
 	if strings.Join(r.Headers(), ",") != strings.Join(wantHeaders, ",") {
 		t.Fatalf("headers = %v", r.Headers())
 	}
@@ -110,10 +112,10 @@ func TestUsageEventsResult(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d", len(rows))
 	}
-	if rows[0][3] != testLogBodyReady || rows[0][4] != int32(1) || rows[0][5] != testGPUType || rows[0][6] != "0.000767 USD" {
+	if rows[0][2] != testEnvironment || rows[0][4] != testLogBodyReady || rows[0][5] != int32(1) || rows[0][6] != testGPUType || rows[0][7] != "0.000767 USD" {
 		t.Errorf("priced row = %#v", rows[0])
 	}
-	if rows[1][3] != "stopped" || rows[1][5] != "" || rows[1][6] != "" {
+	if rows[1][4] != "stopped" || rows[1][6] != "" || rows[1][7] != "" {
 		t.Errorf("unpriced row = %#v", rows[1])
 	}
 }

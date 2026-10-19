@@ -166,14 +166,10 @@ func (c *Client) DeleteSourceUpload(ctx context.Context, uploadID SourceUploadID
 		return problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusConflict:
 		return problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
-	case http.StatusUnprocessableEntity:
-		return problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
 		return problemFromBody(resp.Body, resp.StatusCode())
 	}

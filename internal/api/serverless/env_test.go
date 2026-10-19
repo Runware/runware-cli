@@ -46,7 +46,7 @@ func TestListAppEnvironmentVariables(t *testing.T) {
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListAppEnvironmentVariables(context.Background(), testAppID, &ListAppEnvironmentVariablesParams{
+	page, err := c.ListAppEnvironmentVariables(context.Background(), testAppID, ListAppEnvironmentVariablesParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 	})
@@ -66,7 +66,7 @@ func TestListAppEnvironmentVariables(t *testing.T) {
 
 func TestListAppEnvironmentVariables_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListAppEnvironmentVariables(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListAppEnvironmentVariables(context.Background(), testAppID, ListAppEnvironmentVariablesParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }

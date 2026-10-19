@@ -28,6 +28,7 @@ const (
 	colField          = "Field"
 	colValue          = "Value"
 	colApp            = "App"
+	colEnvironment    = "Environment"
 	colKey            = "Key"
 	colEnvVar         = "Env var"
 	colError          = "Error"
@@ -64,8 +65,8 @@ const (
 	colP99                 = "p99 (s)"
 )
 
-// redactedEnvValue replaces a plaintext environment value in JSON and YAML
-// app output. apps env list is the command that prints the real value.
+// redactedEnvValue replaces a plaintext environment variable value in JSON and
+// YAML app output. apps env-vars list is the command that prints the real value.
 const redactedEnvValue = "[redacted]"
 
 // appResult wraps a single app for table/json/yaml display.
@@ -79,6 +80,7 @@ func (r appResult) Rows() [][]any {
 	cfg := r.Configuration
 	rows := [][]any{
 		{colID, r.AppId},
+		{colEnvironment, r.Environment},
 		{colName, r.AppName},
 		{colStatus, string(r.Status)},
 		{colHealth, formatAppHealth(r.Health)},
@@ -110,13 +112,13 @@ func (r appResult) Rows() [][]any {
 	return rows
 }
 
-// MarshalJSON redacts plaintext environment values. The table already omits
+// MarshalJSON redacts plaintext environment variable values. The table already omits
 // them; JSON would otherwise print the value field from the app payload.
 func (r appResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.withRedactedEnv())
 }
 
-// MarshalYAML redacts plaintext environment values, matching MarshalJSON.
+// MarshalYAML redacts plaintext environment variable values, matching MarshalJSON.
 func (r appResult) MarshalYAML() (any, error) {
 	return r.withRedactedEnv(), nil
 }

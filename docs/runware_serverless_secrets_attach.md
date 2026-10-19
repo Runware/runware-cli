@@ -30,6 +30,7 @@ runware serverless secrets attach <appId> <name> [flags]
 ### Options
 
 ```
+  -e, --env name              Environment the app runs in (default production)
       --env-var-name string   Environment variable name (omit to use the secret name)
   -h, --help                  help for attach
 ```

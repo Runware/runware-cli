@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -55,7 +53,7 @@ To list secrets attached to an application, use 'secrets attachments'.`,
 				return err
 			}
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			return listOrgSecrets(cmd, client, limit, cursor)
 		},
 	}
@@ -66,11 +64,8 @@ To list secrets attached to an application, use 'secrets attachments'.`,
 }
 
 func listOrgSecrets(cmd *cobra.Command, client *serverlessapi.Client, limit int, cursor string) error {
-	var params *serverlessapi.ListSecretsParams
-	if limit > 0 || cursor != "" {
-		params = &serverlessapi.ListSecretsParams{}
-		params.Limit, params.Cursor = listPageParams(limit, cursor)
-	}
+	var params serverlessapi.ListSecretsParams
+	params.Limit, params.Cursor = listPageParams(limit, cursor)
 
 	spin := cmdutil.NewSpinner("Fetching secrets...")
 	spin.Start()
@@ -123,7 +118,7 @@ in process lists; use --value-file - to read from stdin.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Saving secret %s...", name))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			sec, err := createOrUpdateSecret(cmd.Context(), client, name, secretValue)
 			if err != nil {
 				spin.Stop()
@@ -147,7 +142,7 @@ func newSecretsRemoveCmd(logger *log.Logger) *cobra.Command {
 		Use:   "remove <name>",
 		Short: "Remove an organization secret",
 		Long: `Remove an organization secret. Returns a conflict if any application still
-has it attached — detach each holder with 'secrets detach' first.`,
+has it attached — detach each holder first with 'secrets detach <appId> <name>'.`,
 		Example: `  # remove an organization secret
   runware serverless secrets remove FOO`,
 		Args: cobra.ExactArgs(1),
@@ -157,7 +152,7 @@ has it attached — detach each holder with 'secrets detach' first.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Removing secret %s...", name))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.DeleteSecret(cmd.Context(), name); err != nil {
 				spin.Stop()
 				return err
@@ -193,16 +188,13 @@ Encrypted values are never returned.`,
 			}
 			app := args[0]
 
-			var params *serverlessapi.ListAppSecretsParams
-			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListAppSecretsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-			}
+			var params serverlessapi.ListAppSecretsParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching secrets attached to %s...", app))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListAppSecrets(cmd.Context(), app, params)
 			if err != nil {
 				spin.Stop()
@@ -210,12 +202,13 @@ Encrypted values are never returned.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, secretAttachmentsResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, secretAttachmentsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, ""))
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of secrets to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -250,7 +243,7 @@ resume reads it.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Attaching secret %s to %s...", name, app))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.AttachAppSecret(cmd.Context(), app, body); err != nil {
 				spin.Stop()
 				return err
@@ -266,6 +259,7 @@ resume reads it.`,
 	}
 
 	cmd.Flags().StringVar(&envVarName, "env-var-name", "", "Environment variable name (omit to use the secret name)")
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -289,7 +283,7 @@ the next deploy. An application that is not live records the removal only.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Detaching secret %s from %s...", name, app))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.DetachAppSecret(cmd.Context(), app, name); err != nil {
 				spin.Stop()
 				return err
@@ -302,6 +296,7 @@ the next deploy. An application that is not live records the removal only.`,
 			})
 		},
 	}
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 

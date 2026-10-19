@@ -3,6 +3,12 @@ header = ""
 body = """
 {% if version %}\
 ## {{ version }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% if commits | filter(attribute="breaking", value=true) | length > 0 %}
+### Breaking Changes
+{% for commit in commits | filter(attribute="breaking", value=true) %}
+- {{ commit.breaking_description | replace(from="\n", to=" ") | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/runware/runware-cli/commit/{{ commit.id }}))
+{%- endfor %}
+{% endif %}\
 {% if commits | filter(attribute="group", value="Features") | length > 0 %}
 ### Features
 {% for commit in commits | filter(attribute="group", value="Features") %}
@@ -49,7 +55,7 @@ commit_parsers = [
   { message = "^refactor", skip = true },
   { message = "^.*", group = "Other" },
 ]
-protect_breaking_commits = false
+protect_breaking_commits = true
 filter_commits = true
 tag_pattern = "v[0-9].*"
 skip_tags = ""

@@ -6,7 +6,8 @@ Show usage and cost for a serverless application
 
 Show GPU time and spend for one application over a time window.
 
-This is the account-wide report filtered to one appId. The filter narrows what
+This is the account-wide report filtered to one appId in the environment --env
+selects, production unless --env names another. The filter narrows what
 is reported, not what is measured: commitment coverage depends on every app's
 concurrent GPUs, so a per-app split between commitment and PAYG reflects the
 organization-wide allocation.
@@ -57,6 +58,7 @@ runware serverless apps usage <appId> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the app runs in (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
