@@ -5,7 +5,8 @@ Remove an organization secret
 ### Synopsis
 
 Remove an organization secret. Returns a conflict if any application still
-has it attached — detach each holder first with 'secrets detach <appId> <name>'.
+has it attached — detach each holder first with
+'secrets detach <appId> <name> [--env <name>]'.
 
 ```
 runware serverless secrets remove <name> [flags]

@@ -38,6 +38,7 @@ const (
 	testInitCommand           = "init"
 	testDeployCommand         = "deploy"
 	testSetCommand            = "set"
+	testDeleteCommand         = "delete"
 	testStagingHint           = testEnvFlag + " " + testEnvironment
 	testEnvironmentBody       = `{"name":"` + testEnvironment + `","createdAt":"2026-09-01T00:00:00Z","budgetAlertPercents":[]}`
 )
@@ -235,7 +236,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "apps versions delete",
-			args: []string{testAppsGroup, testVersionsGroup, "delete", testAppID, "1", testYesFlag},
+			args: []string{testAppsGroup, testVersionsGroup, testDeleteCommand, testAppID, "1", testYesFlag},
 		},
 		{
 			name: "apps builds list",
@@ -247,7 +248,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "apps builds delete",
-			args: []string{testAppsGroup, testBuildsGroup, "delete", testAppID, testUUID, testYesFlag},
+			args: []string{testAppsGroup, testBuildsGroup, testDeleteCommand, testAppID, testUUID, testYesFlag},
 		},
 		{
 			name: "apps logs",
@@ -291,7 +292,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "apps delete",
-			args: []string{testAppsGroup, "delete", testAppID, testYesFlag},
+			args: []string{testAppsGroup, testDeleteCommand, testAppID, testYesFlag},
 		},
 		{
 			name: "usage events",
@@ -954,5 +955,70 @@ func TestEnvironmentCompletionGivesUpWhenTheAPIDoesNotAnswer(t *testing.T) {
 	}
 	if len(names) != 0 || directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Fatalf("names = %v, directive = %v, want no names and no file completion", names, directive)
+	}
+}
+
+func TestOpenLinksTheConsoleToTheChosenCopy(t *testing.T) {
+	t.Setenv("PATH", "")
+	t.Setenv("BROWSER", "")
+
+	run := runServerless(t, "open", testAppID, testEnvFlag, testEnvironment)
+
+	if run.err != nil {
+		t.Fatalf("open: %v", run.err)
+	}
+	if !strings.Contains(run.stdout, "environment="+testEnvironment) {
+		t.Fatalf("stdout = %q, want the link to carry environment=%s", run.stdout, testEnvironment)
+	}
+}
+
+type deleteSubjectCase struct {
+	name    string
+	args    []string
+	subject string
+	want    string
+}
+
+func TestDeletePromptNamesTheEnvironmentTheCommandAddresses(t *testing.T) {
+	cases := []deleteSubjectCase{
+		{
+			name:    "apps delete in staging",
+			args:    []string{testDeleteCommand, testEnvFlag, testEnvironment},
+			subject: "application " + testAppID,
+			want:    "application " + testAppID + " in " + testEnvironment,
+		},
+		{
+			name:    "apps delete in production",
+			args:    []string{testDeleteCommand},
+			subject: "application " + testAppID,
+			want:    "application " + testAppID,
+		},
+		{
+			name:    "apps builds delete in staging",
+			args:    []string{testBuildsGroup, testDeleteCommand, testEnvFlag, testEnvironment},
+			subject: "build of application " + testAppID,
+			want:    "build of application " + testAppID + " in " + testEnvironment,
+		},
+		{
+			name:    "apps versions delete in staging",
+			args:    []string{testVersionsGroup, testDeleteCommand, testEnvFlag, testEnvironment},
+			subject: "version 1 of application " + testAppID,
+			want:    "version 1 of application " + testAppID + " in " + testEnvironment,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			del, flags, err := newAppsCmd(log.New(io.Discard)).Find(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := del.ParseFlags(flags); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := deleteSubject(del, tc.subject); got != tc.want {
+				t.Fatalf("subject = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

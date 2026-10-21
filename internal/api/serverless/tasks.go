@@ -193,7 +193,7 @@ func (c *Client) ListTasks(ctx context.Context, appID string, params ListTasksPa
 		return Page[Task]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListTasksWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Task]{}, fmt.Errorf("list tasks: %w", err)

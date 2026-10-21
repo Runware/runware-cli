@@ -26,7 +26,7 @@ func (c *Client) ListAppEnvironmentVariables(ctx context.Context, appID string, 
 		return Page[EnvironmentVariable]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListAppEnvironmentVariablesWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[EnvironmentVariable]{}, fmt.Errorf("list environment variables: %w", err)

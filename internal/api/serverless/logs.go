@@ -101,7 +101,7 @@ func (c *Client) GetLogEntries(ctx context.Context, queryID string, params GetLo
 		params.Limit = &limit
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.GetLogEntriesWithResponse(ctx, queryID, &params)
 	if err != nil {
 		return LogEntryPage{}, fmt.Errorf("get log entries: %w", err)

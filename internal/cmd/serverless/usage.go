@@ -316,7 +316,7 @@ type usageResult struct {
 	dims    []serverlessapi.UsageDimension
 }
 
-func (r usageResult) columns() []serverlessapi.UsageDimension {
+func (r usageResult) dimensions() []serverlessapi.UsageDimension {
 	requested := make(map[serverlessapi.UsageDimension]struct{}, len(r.dims))
 	for _, d := range r.dims {
 		requested[d] = struct{}{}
@@ -398,7 +398,7 @@ func usageDimensionColumns(d serverlessapi.UsageDimension) []usageColumn {
 
 func (r usageResult) dimensionColumns() []usageColumn {
 	var cols []usageColumn
-	for _, d := range r.columns() {
+	for _, d := range r.dimensions() {
 		cols = append(cols, usageDimensionColumns(d)...)
 	}
 	return cols

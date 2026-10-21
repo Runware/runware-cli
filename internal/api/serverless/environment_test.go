@@ -2,10 +2,15 @@ package serverless
 
 import (
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -14,16 +19,17 @@ import (
 
 const testEnvironment = "staging"
 
+// environmentCall is one client call, named by the generated operation it sends.
 type environmentCall struct {
-	name string
-	call func(context.Context, *Client) error
+	operation string
+	call      func(context.Context, *Client) error
 }
 
 func appScopedCalls() []environmentCall {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	return []environmentCall{
 		{
-			name: "create app",
+			operation: "CreateApp",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.CreateApp(ctx, AppCreate{
 					AppId: testAppID,
@@ -32,145 +38,145 @@ func appScopedCalls() []environmentCall {
 			},
 		},
 		{
-			name: "list apps",
+			operation: "ListApps",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListApps(ctx, ListAppsParams{})
 				return err
 			},
 		},
 		{
-			name: "get app",
+			operation: "GetApp",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.GetApp(ctx, testAppID)
 				return err
 			},
 		},
 		{
-			name: "update app",
+			operation: "UpdateApp",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.UpdateApp(ctx, testAppID, AppUpdate{})
 				return err
 			},
 		},
 		{
-			name: "stop app",
+			operation: "StopApp",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.StopApp(ctx, testAppID)
 				return err
 			},
 		},
 		{
-			name: "resume app",
+			operation: "ResumeApp",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ResumeApp(ctx, testAppID)
 				return err
 			},
 		},
 		{
-			name: "delete app",
+			operation: "DeleteApp",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.DeleteApp(ctx, testAppID)
 				return err
 			},
 		},
 		{
-			name: "deploy version",
+			operation: "DeployVersion",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.DeployVersion(ctx, testAppID, 2)
 				return err
 			},
 		},
 		{
-			name: "list endpoints",
+			operation: "ListEndpoints",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListEndpoints(ctx, testAppID, ListEndpointsParams{})
 				return err
 			},
 		},
 		{
-			name: "get endpoint",
+			operation: "GetEndpoint",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.GetEndpoint(ctx, testAppID, id)
 				return err
 			},
 		},
 		{
-			name: "list versions",
+			operation: "ListVersions",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListVersions(ctx, testAppID, ListVersionsParams{})
 				return err
 			},
 		},
 		{
-			name: "get version",
+			operation: "GetVersion",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.GetVersion(ctx, testAppID, 1)
 				return err
 			},
 		},
 		{
-			name: "delete version",
+			operation: "DeleteVersion",
 			call: func(ctx context.Context, c *Client) error {
 				return c.DeleteVersion(ctx, testAppID, 1)
 			},
 		},
 		{
-			name: "list builds",
+			operation: "ListBuilds",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListBuilds(ctx, testAppID, ListBuildsParams{})
 				return err
 			},
 		},
 		{
-			name: "get build",
+			operation: "GetBuild",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.GetBuild(ctx, testAppID, id)
 				return err
 			},
 		},
 		{
-			name: "delete build",
+			operation: "DeleteBuild",
 			call: func(ctx context.Context, c *Client) error {
 				return c.DeleteBuild(ctx, testAppID, id)
 			},
 		},
 		{
-			name: "list workers",
+			operation: "ListWorkers",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListWorkers(ctx, testAppID, ListWorkersParams{})
 				return err
 			},
 		},
 		{
-			name: "get worker",
+			operation: "GetWorker",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.GetWorker(ctx, testAppID, id)
 				return err
 			},
 		},
 		{
-			name: "list events",
+			operation: "ListAppEvents",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListAppEvents(ctx, testAppID, ListAppEventsParams{})
 				return err
 			},
 		},
 		{
-			name: "list errors",
+			operation: "ListAppErrors",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListAppErrors(ctx, testAppID, ListAppErrorsParams{})
 				return err
 			},
 		},
 		{
-			name: "list env vars",
+			operation: "ListAppEnvironmentVariables",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListAppEnvironmentVariables(ctx, testAppID, ListAppEnvironmentVariablesParams{})
 				return err
 			},
 		},
 		{
-			name: "set env var",
+			operation: "UpdateAppEnvironmentVariable",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.UpdateAppEnvironmentVariable(ctx, testAppID, "KEY", EnvironmentVariableUpdate{
 					Value: "v",
@@ -179,20 +185,20 @@ func appScopedCalls() []environmentCall {
 			},
 		},
 		{
-			name: "unset env var",
+			operation: "DeleteAppEnvironmentVariable",
 			call: func(ctx context.Context, c *Client) error {
 				return c.DeleteAppEnvironmentVariable(ctx, testAppID, "KEY")
 			},
 		},
 		{
-			name: "list app secrets",
+			operation: "ListAppSecrets",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListAppSecrets(ctx, testAppID, ListAppSecretsParams{})
 				return err
 			},
 		},
 		{
-			name: "attach secret",
+			operation: "AttachAppSecret",
 			call: func(ctx context.Context, c *Client) error {
 				return c.AttachAppSecret(ctx, testAppID, SecretAttach{
 					SecretName: "TOKEN",
@@ -200,41 +206,41 @@ func appScopedCalls() []environmentCall {
 			},
 		},
 		{
-			name: "detach secret",
+			operation: "DetachAppSecret",
 			call: func(ctx context.Context, c *Client) error {
 				return c.DetachAppSecret(ctx, testAppID, "TOKEN")
 			},
 		},
 		{
-			name: "invoke async",
+			operation: "StartAsyncTask",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.InvokeAsync(ctx, testAppID, "infer", "", TaskPayload{})
 				return err
 			},
 		},
 		{
-			name: "invoke sync",
+			operation: "StartSyncTask",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.InvokeSync(ctx, testAppID, "infer", "", TaskPayload{})
 				return err
 			},
 		},
 		{
-			name: "get task",
+			operation: "GetTask",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.GetTask(ctx, testAppID, id.String())
 				return err
 			},
 		},
 		{
-			name: "list tasks",
+			operation: "ListTasks",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListTasks(ctx, testAppID, ListTasksParams{})
 				return err
 			},
 		},
 		{
-			name: "log entries",
+			operation: "GetLogEntries",
 			call: func(ctx context.Context, c *Client) error {
 				app := testAppID
 				_, err := c.GetLogEntries(ctx, LogQueryRuntime, GetLogEntriesParams{
@@ -245,13 +251,13 @@ func appScopedCalls() []environmentCall {
 			},
 		},
 		{
-			name: "tail logs",
+			operation: "TailLogEntries",
 			call: func(ctx context.Context, c *Client) error {
 				return c.TailLogs(ctx, LogQueryRuntimeTail, testAppID, func(LogEntry) error { return nil })
 			},
 		},
 		{
-			name: "usage summary",
+			operation: "GetUsageSummary",
 			call: func(ctx context.Context, c *Client) error {
 				app := testAppID
 				_, err := c.GetUsageSummary(ctx, GetUsageSummaryParams{
@@ -261,7 +267,7 @@ func appScopedCalls() []environmentCall {
 			},
 		},
 		{
-			name: "usage events",
+			operation: "ListUsageEvents",
 			call: func(ctx context.Context, c *Client) error {
 				app := testAppID
 				_, err := c.ListUsageEvents(ctx, ListUsageEventsParams{
@@ -276,41 +282,41 @@ func appScopedCalls() []environmentCall {
 func orgScopedCalls() []environmentCall {
 	return []environmentCall{
 		{
-			name: "list gpu types",
+			operation: "ListGpuTypes",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListGpuTypes(ctx)
 				return err
 			},
 		},
 		{
-			name: "list environments",
+			operation: "ListEnvironments",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListEnvironments(ctx)
 				return err
 			},
 		},
 		{
-			name: "get environment",
+			operation: "GetEnvironment",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.GetEnvironment(ctx, testEnvironment)
 				return err
 			},
 		},
 		{
-			name: "list secrets",
+			operation: "ListSecrets",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListSecrets(ctx, ListSecretsParams{})
 				return err
 			},
 		},
 		{
-			name: "delete secret",
+			operation: "DeleteSecret",
 			call: func(ctx context.Context, c *Client) error {
 				return c.DeleteSecret(ctx, "TOKEN")
 			},
 		},
 		{
-			name: "create source upload",
+			operation: "CreateSourceUpload",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.CreateSourceUpload(ctx, SourceUploadCreate{})
 				return err
@@ -349,7 +355,7 @@ func recordQueries(t *testing.T, environment EnvironmentName, call func(context.
 
 func TestAppScopedRequestsCarryTheClientEnvironment(t *testing.T) {
 	for _, tc := range appScopedCalls() {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.operation, func(t *testing.T) {
 			for _, q := range recordQueries(t, testEnvironment, tc.call) {
 				if got := q.Get("environment"); got != testEnvironment {
 					t.Fatalf("environment = %q, want %q (query %v)", got, testEnvironment, q)
@@ -361,7 +367,7 @@ func TestAppScopedRequestsCarryTheClientEnvironment(t *testing.T) {
 
 func TestAppScopedRequestsOmitTheEnvironmentWhenUnset(t *testing.T) {
 	for _, tc := range appScopedCalls() {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.operation, func(t *testing.T) {
 			for _, q := range recordQueries(t, "", tc.call) {
 				if q.Has("environment") {
 					t.Fatalf("environment sent without one set: %v", q)
@@ -371,54 +377,9 @@ func TestAppScopedRequestsOmitTheEnvironmentWhenUnset(t *testing.T) {
 	}
 }
 
-type requestedEnvironmentCase struct {
-	name      string
-	client    EnvironmentName
-	requested EnvironmentName
-	want      string
-}
-
-func TestListRequestKeepsTheEnvironmentTheCallerSet(t *testing.T) {
-	cases := []requestedEnvironmentCase{
-		{
-			name:      "unscoped client",
-			requested: testEnvironment,
-			want:      testEnvironment,
-		},
-		{
-			name:      "client scoped elsewhere",
-			client:    "production",
-			requested: testEnvironment,
-			want:      testEnvironment,
-		},
-		{
-			name:   "caller leaves it unset",
-			client: testEnvironment,
-			want:   testEnvironment,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			params := ListAppsParams{}
-			if tc.requested != "" {
-				params.Environment = &tc.requested
-			}
-
-			queries := recordQueries(t, tc.client, func(ctx context.Context, c *Client) error {
-				_, err := c.ListApps(ctx, params)
-				return err
-			})
-
-			if got := queries[0].Get("environment"); got != tc.want {
-				t.Fatalf("environment = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestOrganizationRequestsNeverCarryAnEnvironment(t *testing.T) {
 	for _, tc := range orgScopedCalls() {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.operation, func(t *testing.T) {
 			for _, q := range recordQueries(t, testEnvironment, tc.call) {
 				if q.Has("environment") {
 					t.Fatalf("organization request scoped to an environment: %v", q)
@@ -442,5 +403,59 @@ func TestWithEnvironmentLeavesTheOriginalClientUnscoped(t *testing.T) {
 	}
 	if rec.queries[0].Has("environment") {
 		t.Fatalf("base client sent environment: %v", rec.queries[0])
+	}
+}
+
+// unwrappedOperations take an environment in the spec but have no client
+// wrapper, so no command can send them.
+var unwrappedOperations = []string{
+	"FavoriteApp",
+	"GetMetricSeries",
+	"StartDefaultAsyncTask",
+	"StartDefaultSyncTask",
+	"UnfavoriteApp",
+}
+
+// environmentOperations are the generated operations whose params carry an
+// environment field.
+func environmentOperations(t *testing.T) []string {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), "gen/client.gen.go", nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var operations []string
+	for _, decl := range file.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			ts := spec.(*ast.TypeSpec)
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok || !strings.HasSuffix(ts.Name.Name, "Params") {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				if len(field.Names) == 1 && field.Names[0].Name == "Environment" {
+					operations = append(operations, strings.TrimSuffix(ts.Name.Name, "Params"))
+				}
+			}
+		}
+	}
+	slices.Sort(operations)
+	return operations
+}
+
+func TestEveryOperationWithAnEnvironmentIsCovered(t *testing.T) {
+	var covered []string
+	for _, c := range appScopedCalls() {
+		covered = append(covered, c.operation)
+	}
+	covered = append(covered, unwrappedOperations...)
+	slices.Sort(covered)
+
+	if want := environmentOperations(t); !slices.Equal(covered, want) {
+		t.Fatalf("operations with an environment = %v\ncovered by appScopedCalls or unwrappedOperations = %v", want, covered)
 	}
 }

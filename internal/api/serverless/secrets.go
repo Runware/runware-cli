@@ -174,7 +174,7 @@ func (c *Client) ListAppSecrets(ctx context.Context, appID string, params ListAp
 		return Page[SecretAttachment]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListAppSecretsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[SecretAttachment]{}, fmt.Errorf("list app secrets: %w", err)

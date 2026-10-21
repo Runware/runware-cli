@@ -224,9 +224,8 @@ type Client struct {
 	doer    gen.HttpRequestDoer
 	inner   *gen.ClientWithResponses
 	logger  *slog.Logger
-	// environment selects the app copy of every app-scoped request whose
-	// params name none. Empty sends no parameter, which the API reads as
-	// production.
+	// environment selects the app copy of every app-scoped request. Empty
+	// sends no parameter, which the API reads as production.
 	environment EnvironmentName
 }
 
@@ -236,15 +235,6 @@ func (c *Client) WithEnvironment(name EnvironmentName) *Client {
 	scoped := *c
 	scoped.environment = name
 	return &scoped
-}
-
-// scopedEnvironment is the environment a request with query params sends:
-// the caller's when it set one, otherwise the client's.
-func (c *Client) scopedEnvironment(requested *gen.AppEnvironment) *gen.AppEnvironment {
-	if requested != nil {
-		return requested
-	}
-	return c.environmentParam()
 }
 
 func (c *Client) environmentParam() *gen.AppEnvironment {
@@ -437,7 +427,7 @@ func (c *Client) ListApps(ctx context.Context, params ListAppsParams) (Page[App]
 		return Page[App]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListAppsWithResponse(ctx, &params)
 	if err != nil {
 		return Page[App]{}, fmt.Errorf("list apps: %w", err)
@@ -670,7 +660,7 @@ func (c *Client) ListEndpoints(ctx context.Context, appID string, params ListEnd
 		return Page[Endpoint]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListEndpointsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Endpoint]{}, fmt.Errorf("list endpoints: %w", err)
@@ -731,7 +721,7 @@ func (c *Client) ListVersions(ctx context.Context, appID string, params ListVers
 		return Page[Version]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListVersionsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Version]{}, fmt.Errorf("list versions: %w", err)
@@ -823,7 +813,7 @@ func (c *Client) ListBuilds(ctx context.Context, appID string, params ListBuilds
 		return Page[Build]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListBuildsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Build]{}, fmt.Errorf("list builds: %w", err)
@@ -915,7 +905,7 @@ func (c *Client) ListWorkers(ctx context.Context, appID string, params ListWorke
 		return Page[Worker]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListWorkersWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Worker]{}, fmt.Errorf("list workers: %w", err)
@@ -976,7 +966,7 @@ func (c *Client) ListAppEvents(ctx context.Context, appID string, params ListApp
 		return Page[AppEvent]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListAppEventsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[AppEvent]{}, fmt.Errorf("list app events: %w", err)
@@ -1014,7 +1004,7 @@ func (c *Client) ListAppErrors(ctx context.Context, appID string, params ListApp
 		return Page[LogEntry]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListAppErrorsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[LogEntry]{}, fmt.Errorf("list app errors: %w", err)

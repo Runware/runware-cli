@@ -142,7 +142,8 @@ func newSecretsRemoveCmd(logger *log.Logger) *cobra.Command {
 		Use:   "remove <name>",
 		Short: "Remove an organization secret",
 		Long: `Remove an organization secret. Returns a conflict if any application still
-has it attached — detach each holder first with 'secrets detach <appId> <name>'.`,
+has it attached — detach each holder first with
+'secrets detach <appId> <name> [--env <name>]'.`,
 		Example: `  # remove an organization secret
   runware serverless secrets remove FOO`,
 		Args: cobra.ExactArgs(1),

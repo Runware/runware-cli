@@ -50,7 +50,7 @@ func (c *Client) GetUsageSummary(ctx context.Context, params GetUsageSummaryPara
 		return nil, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.GetUsageSummaryWithResponse(ctx, &params)
 	if err != nil {
 		return nil, fmt.Errorf("get usage summary: %w", err)
@@ -86,7 +86,7 @@ func (c *Client) ListUsageEvents(ctx context.Context, params ListUsageEventsPara
 		return Page[UsageEvent]{}, transport.ErrNoAPIKey
 	}
 
-	params.Environment = c.scopedEnvironment(params.Environment)
+	params.Environment = c.environmentParam()
 	resp, err := c.inner.ListUsageEventsWithResponse(ctx, &params)
 	if err != nil {
 		return Page[UsageEvent]{}, fmt.Errorf("list usage events: %w", err)
