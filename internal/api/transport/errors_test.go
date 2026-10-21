@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"reflect"
 	"slices"
@@ -55,6 +56,11 @@ func TestIsConnectionError(t *testing.T) {
 				URL: "https://api",
 				Err: errors.New("connection refused"),
 			}),
+			expected: true,
+		},
+		{
+			name:     "connection dropped mid-response",
+			err:      fmt.Errorf("failed to read response: %w", io.ErrUnexpectedEOF),
 			expected: true,
 		},
 		{

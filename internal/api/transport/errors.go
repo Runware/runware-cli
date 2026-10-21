@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"slices"
@@ -470,10 +471,14 @@ func ParseAPIError(raw json.RawMessage, statusCode int) *RunwareError {
 	return &re
 }
 
-// IsConnectionError reports whether err means the API could not be reached or did not answer in time.
+// IsConnectionError reports whether err means the API could not be reached,
+// dropped the connection, or did not answer in time.
 func IsConnectionError(err error) bool {
 	if re, ok := errors.AsType[*RunwareError](err); ok {
 		return re.Code == CodeConnection || re.Code == CodeTimeout
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
 	}
 	_, ok := errors.AsType[net.Error](err)
 	return ok
