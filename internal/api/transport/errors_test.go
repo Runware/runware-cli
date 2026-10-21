@@ -64,6 +64,11 @@ func TestIsConnectionError(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "invalid base URL",
+			err:      ErrInvalidBaseURL,
+			expected: false,
+		},
+		{
 			name:     "API auth error",
 			err:      CreateRunwareError("invalidApiKey", "bad key", RunwareErrorDetails{}),
 			expected: false,

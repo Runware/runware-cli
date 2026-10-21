@@ -33,6 +33,9 @@ const (
 // ErrNoAPIKey is returned when no API key is present in the local configuration.
 var ErrNoAPIKey = errors.New("no API key configured")
 
+// ErrInvalidBaseURL is returned when the configured API base URL cannot be used by the transport.
+var ErrInvalidBaseURL = errors.New("invalid base URL")
+
 var safetyCodes = map[string]struct{}{
 	"contentPolicyViolation":         {},
 	"providerContentPolicyViolation": {},

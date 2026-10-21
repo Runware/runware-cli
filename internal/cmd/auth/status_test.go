@@ -28,6 +28,16 @@ const (
 	wsAuthNoSessReply = `{"data":[{"taskType":"authentication"}]}`
 )
 
+// Statuses as auth status prints them. They repeat the production values
+// rather than reuse them, otherwise a changed value would still pass.
+const (
+	printedNotConfigured = "not configured"
+	printedValid         = "valid"
+	printedInvalid       = "invalid"
+	printedUnreachable   = "unreachable"
+	printedError         = "error"
+)
+
 // fakeAPI answers ping over exactly one transport, accepting only validKey.
 type fakeAPI struct {
 	upgrader websocket.Upgrader
@@ -117,6 +127,7 @@ const (
 	apiHealthy apiState = iota
 	apiBroken
 	apiDown
+	apiURLMalformed
 )
 
 func TestStatus_ReportsKeyState(t *testing.T) {
@@ -135,69 +146,87 @@ func TestStatus_ReportsKeyState(t *testing.T) {
 			transport:  transport.SchemeWS,
 			key:        "",
 			api:        apiHealthy,
-			wantStatus: "not configured",
+			wantStatus: printedNotConfigured,
 		},
 		{
 			name:       "valid key over http",
 			transport:  transport.SchemeHTTP,
 			key:        validKey,
 			api:        apiHealthy,
-			wantStatus: "valid",
+			wantStatus: printedValid,
 		},
 		{
 			name:       "valid key over websocket",
 			transport:  transport.SchemeWS,
 			key:        validKey,
 			api:        apiHealthy,
-			wantStatus: "valid",
+			wantStatus: printedValid,
 		},
 		{
 			name:       "invalid key over http",
 			transport:  transport.SchemeHTTP,
 			key:        invalidKey,
 			api:        apiHealthy,
-			wantStatus: "invalid",
+			wantStatus: printedInvalid,
 		},
 		{
 			name:       "invalid key over websocket",
 			transport:  transport.SchemeWS,
 			key:        invalidKey,
 			api:        apiHealthy,
-			wantStatus: "invalid",
+			wantStatus: printedInvalid,
 		},
 		{
 			name:       "accepted key but server error over http",
 			transport:  transport.SchemeHTTP,
 			key:        validKey,
 			api:        apiBroken,
-			wantStatus: "error",
+			wantStatus: printedError,
 		},
 		{
 			name:       "accepted key but no session id over websocket",
 			transport:  transport.SchemeWS,
 			key:        validKey,
 			api:        apiBroken,
-			wantStatus: "error",
+			wantStatus: printedError,
 		},
 		{
 			name:       "api down over http",
 			transport:  transport.SchemeHTTP,
 			key:        validKey,
 			api:        apiDown,
-			wantStatus: "unreachable",
+			wantStatus: printedUnreachable,
 		},
 		{
 			name:       "api down over websocket",
 			transport:  transport.SchemeWS,
 			key:        validKey,
 			api:        apiDown,
-			wantStatus: "unreachable",
+			wantStatus: printedUnreachable,
+		},
+		{
+			name:       "malformed api url over http",
+			transport:  transport.SchemeHTTP,
+			key:        validKey,
+			api:        apiURLMalformed,
+			wantStatus: printedError,
+		},
+		{
+			name:       "malformed api url over websocket",
+			transport:  transport.SchemeWS,
+			key:        validKey,
+			api:        apiURLMalformed,
+			wantStatus: printedError,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			apiURL := down.URL
-			if tc.api != apiDown {
+			switch tc.api {
+			case apiDown:
+			case apiURLMalformed:
+				apiURL = "htps://api.runware.ai/v1"
+			default:
 				api := httptest.NewServer(&fakeAPI{
 					scheme: tc.transport,
 					broken: tc.api == apiBroken,
