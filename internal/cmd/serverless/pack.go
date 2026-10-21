@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 )
@@ -504,6 +505,18 @@ func writeArchive(root string, files []packedFile) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// packedModTime is every entry's modification time: the zip format's epoch.
+var packedModTime = time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// packedMode is the mode an entry is archived with: 0755 for an executable,
+// 0644 for anything else.
+func packedMode(mode fs.FileMode) fs.FileMode {
+	if mode&0o111 != 0 {
+		return 0o755
+	}
+	return 0o644
+}
+
 func writeArchiveEntry(zw *zip.Writer, root string, f packedFile) (int64, error) {
 	path := filepath.Join(root, filepath.FromSlash(f.rel))
 	src, err := os.Open(path)
@@ -527,6 +540,13 @@ func writeArchiveEntry(zw *zip.Writer, root string, f packedFile) (int64, error)
 	}
 	header.Name = f.rel
 	header.Method = zip.Deflate
+	// What the archive keeps from the file must not depend on the machine: a
+	// fresh checkout stamps every file with when it was written and with the
+	// local umask, so the same commit would pack to a different archive, with a
+	// different digest, on every clone. The executable bit is the one mode bit
+	// git tracks, and the one the build needs.
+	header.Modified = packedModTime
+	header.SetMode(packedMode(info.Mode()))
 
 	w, err := zw.CreateHeader(header)
 	if err != nil {

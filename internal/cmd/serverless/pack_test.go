@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // writeTree materialises files under dir. Keys are slash-separated relative
@@ -397,6 +398,42 @@ func TestPackDirectory_Deterministic(t *testing.T) {
 	}
 	if !bytes.Equal(first, second) {
 		t.Error("packing the same tree twice produced different archives")
+	}
+}
+
+// TestPackDirectory_SameTreeOnAnotherMachine packs two copies of one tree that
+// differ only in what a checkout decides — modification times and the
+// non-executable permission bits — and expects identical archives: the
+// archive's digest is what lets an unchanged redeploy reuse its build.
+func TestPackDirectory_SameTreeOnAnotherMachine(t *testing.T) {
+	tree := map[string]string{
+		testModelFile: testPySource,
+		"a/one.py":    "x = 1\n",
+	}
+	pack := func(mtime time.Time, mode os.FileMode) []byte {
+		t.Helper()
+		dir := t.TempDir()
+		writeTree(t, dir, tree)
+		for rel := range tree {
+			path := filepath.Join(dir, filepath.FromSlash(rel))
+			if err := os.Chmod(path, mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(path, mtime, mtime); err != nil {
+				t.Fatal(err)
+			}
+		}
+		raw, _, err := packDirectory(dir, filepath.Join(dir, testModelFile))
+		if err != nil {
+			t.Fatalf("packDirectory: %v", err)
+		}
+		return raw
+	}
+
+	first := pack(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 0o600)
+	second := pack(time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC), 0o664)
+	if !bytes.Equal(first, second) {
+		t.Error("the same tree checked out twice packed to different archives")
 	}
 }
 
