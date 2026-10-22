@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,8 +69,37 @@ func TestClientPoll_TransientErrorKeepsPolling(t *testing.T) {
 	}
 
 	results, err := NewClient(mock, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
+
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
+	}
+}
+
+func TestClientPoll_HTTPConnectionDropKeepsPolling(t *testing.T) {
+	successReply := rawJSON(t, map[string]any{"data": []json.RawMessage{successItem(t, nil)}})
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
+		_, _ = w.Write(successReply)
+	}))
+	defer srv.Close()
+	tr := dialHTTP(t, "key", srv.URL)
+
+	results, err := NewClient(tr, slog.Default()).Poll(context.Background(), uuid.Nil, time.Millisecond, 1, nil)
+
+	if err != nil {
+		t.Fatalf("Poll stopped on a dropped connection: %v", err)
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 result, got %d", len(results))

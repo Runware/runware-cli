@@ -55,6 +55,9 @@ func WithHTTPClient(c *http.Client) HTTPTransportOption {
 // is stateless and requires no connection handshake.
 // Default timeout is 120s. Use WithTimeout or WithHTTPClient to override.
 func DialHTTP(_ context.Context, apiKey, baseURL string, logger *slog.Logger, opts ...HTTPTransportOption) (*HTTPTransport, error) {
+	if err := checkBaseURL(baseURL, "http", "https"); err != nil {
+		return nil, err
+	}
 	o := httpTransportOptions{
 		timeout: 120 * time.Second,
 	}

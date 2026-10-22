@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -31,6 +33,15 @@ func ValidTransport(s string) bool {
 	default:
 		return false
 	}
+}
+
+// checkBaseURL returns ErrInvalidBaseURL unless raw is an absolute URL using one of schemes.
+func checkBaseURL(raw string, schemes ...string) error {
+	u, err := url.Parse(raw)
+	if err != nil || !slices.Contains(schemes, u.Scheme) || u.Host == "" {
+		return fmt.Errorf("%w %q: must be an absolute %s URL", ErrInvalidBaseURL, raw, strings.Join(schemes, " or "))
+	}
+	return nil
 }
 
 // APIResponse is the top-level envelope returned by the Runware API.

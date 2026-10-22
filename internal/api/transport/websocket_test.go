@@ -557,8 +557,11 @@ func TestWSTransport_DialAuthNoSession(t *testing.T) {
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *RunwareError, got %T: %v", err, re)
 	}
-	if re.Code != CodeAuth {
-		t.Errorf("expected CodeAuth, got %v", re.Code)
+	if re.Code != CodeServerError {
+		t.Errorf("expected CodeServerError, got %v", re.Code)
+	}
+	if IsAuthError(err) {
+		t.Errorf("an accepted key must not be reported as an auth error: %v", err)
 	}
 }
 

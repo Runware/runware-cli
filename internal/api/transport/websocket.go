@@ -204,6 +204,9 @@ type WSTransport struct {
 // authentication handshake, and returns a ready-to-use transport.
 // opts may be used to override reconnect behavior, ping interval, etc.
 func DialWS(ctx context.Context, apiKey, baseURL string, logger *slog.Logger, opts ...WSOption) (*WSTransport, error) {
+	if err := checkBaseURL(baseURL, "ws", "wss"); err != nil {
+		return nil, err
+	}
 	ua := buildinfo.UserAgent()
 	if agent := agents.Detect(); agent != "" {
 		ua += " agent/" + string(agent)
@@ -348,12 +351,11 @@ func (t *WSTransport) connect(ctx context.Context) error {
 		}
 	}
 
-	// Require connectionSessionUUID; without it session resumption is impossible
-	// and the authentication may not have fully succeeded.
+	// Require connectionSessionUUID; without it session resumption is impossible.
 	if t.sessionUUID == "" {
 		conn.Close() //nolint:errcheck,gosec
 		return CreateRunwareError(
-			"authFailed",
+			"unrecognizedResponse",
 			"authentication succeeded but missing connectionSessionUUID",
 			RunwareErrorDetails{},
 		)

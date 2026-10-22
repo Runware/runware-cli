@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +32,9 @@ const (
 
 // ErrNoAPIKey is returned when no API key is present in the local configuration.
 var ErrNoAPIKey = errors.New("no API key configured")
+
+// ErrInvalidBaseURL is returned when the configured API base URL cannot be used by the transport.
+var ErrInvalidBaseURL = errors.New("invalid base URL")
 
 var safetyCodes = map[string]struct{}{
 	"contentPolicyViolation":         {},
@@ -467,6 +472,19 @@ func ParseAPIError(raw json.RawMessage, statusCode int) *RunwareError {
 	}
 	re.StatusCode = statusCode
 	return &re
+}
+
+// IsConnectionError reports whether err means the API could not be reached,
+// dropped the connection, or did not answer in time.
+func IsConnectionError(err error) bool {
+	if re, ok := errors.AsType[*RunwareError](err); ok {
+		return re.Code == CodeConnection || re.Code == CodeTimeout
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	_, ok := errors.AsType[net.Error](err)
+	return ok
 }
 
 // IsAuthError reports whether err is an authentication or authorisation error.
