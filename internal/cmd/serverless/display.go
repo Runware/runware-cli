@@ -521,7 +521,7 @@ func formatOptionalUUID(id *uuid.UUID) string {
 	return id.String()
 }
 
-// secretResult wraps a single organization secret for table/json/yaml display.
+// secretResult wraps a single secret for table/json/yaml display.
 // JSON/YAML serialize the API Secret (metadata only; no value).
 type secretResult serverlessapi.Secret
 
@@ -537,7 +537,7 @@ func (r secretResult) Rows() [][]any {
 	}}
 }
 
-// secretsResult wraps an organization secret list for table display.
+// secretsResult wraps a secret list for table display.
 type secretsResult []serverlessapi.Secret
 
 func (r secretsResult) Headers() []string {
@@ -578,7 +578,7 @@ func (r secretAttachmentsResult) Rows() [][]any {
 	return rows
 }
 
-// secretRemovedResult is the success payload for removing an organization secret.
+// secretRemovedResult is the success payload for removing a secret.
 type secretRemovedResult struct {
 	Name string `json:"name" yaml:"name"`
 }

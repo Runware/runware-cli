@@ -57,11 +57,16 @@ tags:
   - name: Workers
     description: Running worker instances (read-only runtime state)
   - name: Secrets
-    description: Organization-scoped encrypted secrets
+    description: Encrypted secrets, each in one environment; the `/v1/secrets` routes address the one named by `environment`, `production` when omitted
   - name: Environments
     description: >
       Named deployment contexts inside an organization, and the organization defaults they inherit.
-      Caps, the monthly budget, budget alerts, pause at budget and unauthenticated access are stored
+      The worker and GPU caps are checked on create, on a source change to an initializing, active or failed app, on a configuration change that
+      adds workers or GPUs or restarts a failed app, on an environment variable write that restarts a failed app,
+      on a deploy that rolls out, and on resume, against what the
+      environment's apps hold: each the larger of its live workers and its keep-warm floor. A request past
+      one is refused with `environment-cap-reached`. They do not bound autoscaling. Budget alerts are emailed
+      from each environment's settled spend once the organization is charged. Pause at budget and unauthenticated access are stored
       and reported here; the platform does not enforce them yet.
   - name: EnvironmentVariables
     description: Plain-text environment variables scoped to an app
@@ -536,6 +541,8 @@ paths:
         the same `appId` may already run in another environment, and that copy is not touched.
         Create never updates: an `appId` that already runs in the named environment returns `409`, and
         `PATCH /v1/apps/{appId}` with the same `environment` updates that copy.
+        A create that would take the environment past its worker or GPU cap returns `409` typed
+        `environment-cap-reached`.
         The app starts in `initializing`, and what happens next depends on the app source type:
 
 
@@ -556,11 +563,11 @@ paths:
         finished deploy says what does.
 
 
-        `secrets` attaches organization secrets that already exist.
+        `secrets` attaches secrets of the app's environment that already exist.
         It is the app's initial attachment set, so the first rollout carries their values into the worker.
         This route does not create a secret.
         Use `POST /v1/secrets` first.
-        A name that is unknown to the organization, or that is not `active`, returns `404`.
+        A name that is unknown to the environment, or that is not `active`, returns `404`.
         A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past
         the binding limit each return `422`.
         The whole set is checked before any build capacity is spent.
@@ -591,7 +598,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/AppConflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
@@ -660,8 +667,15 @@ paths:
         already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its
         failed rollout are still stopping.
         A name-only or `secrets`-only change does not.
+        A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap
+        returns `409` typed `environment-cap-reached`.
 
         `appSource` starts a build and records version N+1 with a new image tag.
+        A `code` source whose build inputs equal those of the app's newest build — the same archive
+        bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and
+        platform build — records version N+1 on that build's image instead, with its `buildId`, and
+        starts no build. Unpinned requirements are therefore not re-resolved by such an update; change
+        any input to build again.
         The deploy queue carries the build-then-deploy tail.
         `activeVersionId` moves only when that rollout completes.
         A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke
@@ -724,7 +738,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/AppConflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
@@ -1054,6 +1068,8 @@ paths:
           One app rolls to one version at a time. Retry once it completes.
         - A deploy to a `failed` app while the workers of its failed rollout are still
           stopping returns `409 Conflict`. Retry once they have stopped.
+        - A deploy that would take the environment past its worker or GPU cap returns `409 Conflict`
+          typed `environment-cap-reached`.
         - Deploy to a non-existent or `deleted` app returns `404 Not Found`
       operationId: deployVersion
       parameters:
@@ -1083,7 +1099,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/AppConflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
@@ -1148,6 +1164,8 @@ paths:
         Tasks that remained queued when the app stopped are consumed as workers come online.
         Precondition:
         `status = stopped`.
+        A resume that would take the environment past its worker or GPU cap returns `409` typed
+        `environment-cap-reached`.
       operationId: resumeApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1168,7 +1186,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/AppConflict'
         '422':
           $ref: '#/components/responses/ValidationError'
         '500':
@@ -1249,14 +1267,17 @@ paths:
     get:
       tags:
         - Apps
-      summary: App summary metrics for the authenticated organization
+      summary: App summary metrics for one environment
       description: >
-        Aggregate dashboard metrics across all apps owned by the authenticated organization.
+        Aggregate dashboard metrics across the apps of one environment of the authenticated organization,
+        the environment the app list shows.
         App and worker tallies are always present.
         Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer
         rather than reported as zero.
         Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
       operationId: getAppSummary
+      parameters:
+        - $ref: '#/components/parameters/AppEnvironment'
       responses:
         '200':
           description: App summary
@@ -1266,6 +1287,10 @@ paths:
                 $ref: '#/components/schemas/AppSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -1747,7 +1772,7 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
 
   # ---------------------------------------------------------------------------
-  # Secrets (organization-scoped)
+  # Secrets (environment-scoped)
   # ---------------------------------------------------------------------------
   /v1/secrets:
     get:
@@ -1757,11 +1782,12 @@ paths:
       description: Returns secret metadata only. Encrypted values are never returned.
       operationId: listSecrets
       parameters:
+        - $ref: '#/components/parameters/SecretEnvironment'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: A page of the authenticated organization's secrets
+          description: A page of the environment's secrets
           content:
             application/json:
               schema:
@@ -1777,6 +1803,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
         '500':
@@ -1788,9 +1816,11 @@ paths:
         - Secrets
       summary: Create a secret
       description: >
-        Creates an organization-scoped secret.
-        Returns `409` if the name is already in use, including when a secret of that name is
-        `pending_destroy`.
+        Creates a secret in the environment named by `environment`, `production` when omitted.
+        A secret of the same name in another environment is a different secret, so copying one is a create
+        in the destination with the value: the API never returns a value to copy from.
+        Returns `409` if the name is already in use in the environment, including when a secret of that
+        name is `pending_destroy`.
         List only shows active secrets, so a name can appear free while create still conflicts for as long as
         that row remains.
         A `pending_destroy` row is removed, and its name released, by a background sweep once no running
@@ -1803,6 +1833,8 @@ paths:
         An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead.
         That state is retryable, not a revocation, and clears once provisioning finishes.
       operationId: createSecret
+      parameters:
+        - $ref: '#/components/parameters/SecretEnvironment'
       requestBody:
         required: true
         content:
@@ -1822,6 +1854,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '413':
@@ -1842,6 +1876,7 @@ paths:
       summary: Update a secret
       description: >
         Re-encrypts the value under the same name (no rename).
+        A secret of the same name in another environment is not changed.
         Rolls every live deployment that attaches this secret in place so a running worker picks up the new
         value.
         If a rollout is already in progress when this commits, this change is not guaranteed to land on it.
@@ -1854,6 +1889,7 @@ paths:
       operationId: updateSecret
       parameters:
         - $ref: '#/components/parameters/SecretName'
+        - $ref: '#/components/parameters/SecretEnvironment'
       requestBody:
         required: true
         content:
@@ -1900,13 +1936,14 @@ paths:
         value, rather than assuming every roll a detach started actually landed.
         A deployment that was not live when detached has nothing to roll until it resumes, so the sweep is the
         actual backstop, not the detach.
-        While the row remains `pending_destroy` the name stays reserved, so create may return `409` even
-        though list no longer shows the secret.
+        While the row remains `pending_destroy` the name stays reserved in the environment, so create may
+        return `409` (already in use in the environment) even though list no longer shows the secret.
         Retries on an already-pending name are safe when no attachments remain (`204`).
         They still return `409` while attached.
       operationId: deleteSecret
       parameters:
         - $ref: '#/components/parameters/SecretName'
+        - $ref: '#/components/parameters/SecretEnvironment'
       responses:
         '204':
           description: >
@@ -1933,10 +1970,10 @@ paths:
         - Secrets
       summary: Create secrets
       description: >
-        Creates organization-scoped secrets.
+        Creates secrets in the environment named by `environment`, `production` when omitted.
         The batch is one write: every secret is created, or none are.
-        Returns `409` when any name is already in use, including when a secret of that name is
-        `pending_destroy`, and `errors[]` names each conflicting item.
+        Returns `409` when any name is already in use in the environment, including when a secret of that
+        name is `pending_destroy`, and `errors[]` names each conflicting item.
         List only shows active secrets, so a name can appear free while create still conflicts for as long as
         that row remains.
         A `pending_destroy` row is removed, and its name released, by a background sweep once no running
@@ -1950,6 +1987,8 @@ paths:
         An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead.
         That state is retryable, not a revocation, and clears once provisioning finishes.
       operationId: createSecretBatch
+      parameters:
+        - $ref: '#/components/parameters/SecretEnvironment'
       requestBody:
         required: true
         content:
@@ -1969,6 +2008,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '413':
@@ -2027,9 +2068,9 @@ paths:
         - Secrets
       summary: Attach a secret to an app
       description: >
-        Records that an organization secret is attached to an app under a resolved env-var name, and rolls the
-        app's live deployment in place so a running worker picks up the value without waiting for an unrelated
-        deploy.
+        Records that a secret of the app's environment is attached to the app under a resolved env-var name,
+        and rolls the app's live deployment in place so a running worker picks up the value without waiting for
+        an unrelated deploy.
         If a rollout is already in progress when this commits, this attach is not guaranteed to land on it.
         It reaches the worker on a later redeploy instead.
         A deployment that is not live records the attachment only.
@@ -2038,8 +2079,8 @@ paths:
 
         The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain
         environment variable on this app (`deployment_configs.key`).
-        Both sources use the same pod env namespace, so the server rejects the collision with `422` instead of
-        allowing a last-wins override later.
+        Only one value can reach the app under a name, so the server rejects the collision with `422` instead
+        of letting one value silently shadow the other.
         The reverse check applies when setting a plain environment variable.
 
         An app holds at most 100 environment bindings in total, plain environment variables plus attached
@@ -2165,8 +2206,7 @@ paths:
       summary: Update an app environment variable
       description: >-
         Sets one environment variable, creating it if absent.
-        Names the platform sets on the serving container itself are rejected with `422`, as they are on
-        create.
+        Names the platform sets in the worker's environment are rejected with `422`, as they are on create.
 
 
         A write that changes the stored value records a new version carrying the live environment set and the
@@ -2182,6 +2222,8 @@ paths:
         Each changing write is serialised behind that rollout, so setting several variables one at a time is
         that many sequential rolls with `409`s between them.
         Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
+        A write to a `failed` app past the environment's worker or GPU cap returns `409` typed
+        `environment-cap-reached` and does not store the value, as that `PATCH` does.
 
 
         An app holds at most 100 environment bindings in total, plain variables plus attached secrets, the
@@ -2193,8 +2235,9 @@ paths:
 
         The name must not collide with a secret already attached to this app (the secret's injected env var
         name).
-        Secrets and plain env vars share the pod environment.
-        A duplicate would be resolved last-wins by kubelet with no error, so the server rejects it with `422`.
+        Secrets and plain env vars reach the app as one set of environment variables.
+        Only one value can reach the app under a name.
+        A duplicate would leave one value silently shadowing the other, so the server rejects it with `422`.
         The reverse check applies on attach.
       operationId: updateAppEnvironmentVariable
       parameters:
@@ -2227,7 +2270,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/AppConflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
@@ -2252,6 +2295,8 @@ paths:
         of a `failed` app's failed rollout are still stopping, returns `409 Conflict` and does not remove the
         value.
         A name that is not present returns `404` even during that window.
+        A delete on a `failed` app past the environment's worker or GPU cap returns `409` typed
+        `environment-cap-reached` and does not remove the value.
       operationId: deleteAppEnvironmentVariable
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2271,7 +2316,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/AppConflict'
         '422':
           $ref: '#/components/responses/ValidationError'
         '500':
@@ -2536,8 +2581,8 @@ paths:
         - Environments
       summary: Delete an environment
       description: >
-        Deletes an environment that has no live app.
-        An environment that still has one answers `409`, and so does `production`, which every organization
+        Deletes an environment that has no live app and no secret.
+        An environment that still has either answers `409`, and so does `production`, which every organization
         keeps.
         The name becomes available to a new environment; a deleted app's history still names the environment
         it ran in.
@@ -2571,7 +2616,10 @@ paths:
       description: >
         Returns the limits and the access setting an environment inherits for every field it leaves empty.
         An organization that has never set them has no caps and allows unauthenticated access.
-        These settings are stored but not yet enforced.
+        The worker and GPU caps are checked on create, on a source change to an initializing, active or failed app, on a configuration change that
+        adds workers or GPUs or restarts a failed app, on a deploy that rolls out, and on resume, against each app's
+        larger of its live workers and its keep-warm floor; they do not bound autoscaling.
+        Unauthenticated access is stored but not yet enforced.
       operationId: getEnvironmentDefaults
       responses:
         '200':
@@ -2693,8 +2741,11 @@ paths:
         - Billing
       summary: Summarize usage over a time range
       description: >
-        GPU time and spend for the authenticated organization, aggregated over a half-open window and grouped
-        by the dimensions asked for.
+        GPU time and spend for the authenticated organization, or for one of its environments, aggregated over a
+        half-open window and grouped by the dimensions asked for.
+        `environment` narrows what is reported, not what is measured: a capacity commitment covers the
+        organization's concurrent GPUs in every environment, so one environment's figures are its share of
+        that coverage.
 
 
         Every figure is derived on read from the immutable usage ledger, the effective-dated price catalog and
@@ -2745,7 +2796,7 @@ paths:
             GPUs.
           schema:
             $ref: '#/components/schemas/AppId'
-        - $ref: '#/components/parameters/AppEnvironment'
+        - $ref: '#/components/parameters/UsageEnvironment'
         - name: gpuType
           in: query
           required: false
@@ -3243,10 +3294,33 @@ components:
         The environment the request addresses.
         An app id names one copy per environment, so this parameter completes the app's address:
         `appId` together with `environment` selects the copy.
-        The app list is limited to the environment, and an app, build, endpoint, worker, event or usage cursor
-        is valid only in the environment it came from.
+        The app list and the app summary are limited to the environment, and an app, build, endpoint, worker,
+        event, usage or attached-secret cursor is valid only in the environment it came from.
         A metric or log query that names no app covers the whole organization; one expanded by app returns
         only the apps live in this environment.
+        Omitted means `production`.
+        A name the organization has no live environment under returns `404`.
+      schema:
+        $ref: '#/components/schemas/EnvironmentName'
+    UsageEnvironment:
+      name: environment
+      in: query
+      required: false
+      description: >
+        Report only this environment's usage.
+        Omitted, the report covers every environment of the organization, except that `appId` alone names
+        the app's `production` copy.
+        A name the organization has no live environment under returns `404`.
+      schema:
+        $ref: '#/components/schemas/EnvironmentName'
+    SecretEnvironment:
+      name: environment
+      in: query
+      required: false
+      description: >
+        The environment the secret belongs to.
+        The same name in two environments is two secrets: a write to one never changes the other, and a list
+        cursor is valid only in the environment it came from.
         Omitted means `production`.
         A name the organization has no live environment under returns `404`.
       schema:
@@ -3298,7 +3372,7 @@ components:
       name: secretName
       in: path
       required: true
-      description: Secret name, unique within the authenticated organization.
+      description: Secret name, unique within an environment (the one named by `environment` on `/v1/secrets`, `production` when omitted; the app's on an app route).
       schema:
         $ref: '#/components/schemas/SecretName'
     Limit:
@@ -3712,6 +3786,34 @@ components:
                 title: Conflict
                 status: 409
                 detail: a rollout is already in progress
+    AppConflict:
+      description: >
+        `conflict` means the app's state refuses the request.
+        `environment-cap-reached` means the request would take the environment past its resolved worker or
+        GPU cap: what the environment's other apps hold (each the larger of its live workers and its keep-warm
+        floor, counted as at least one while initializing and as `minWorkers` while active), plus the workers
+        this request starts (at least one, or its keep-warm floor when higher) and their GPUs.
+        Nothing is changed. After a cap is lowered this can refuse deploys until workers fall or the cap is
+        raised. Stop or scale down another app, or raise the cap, then retry.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            conflict:
+              summary: The app's state refuses the request
+              value:
+                type: https://docs.runware.ai/serverless/errors#conflict
+                title: Conflict
+                status: 409
+                detail: a rollout is already in progress
+            environment-cap-reached:
+              summary: The request would pass the environment's worker or GPU cap
+              value:
+                type: https://docs.runware.ai/serverless/errors#environment-cap-reached
+                title: Conflict
+                status: 409
+                detail: "the environment's worker cap is 4; it holds 3 and this request adds 2"
     PayloadTooLarge:
       description: >
         The request body exceeds its size limit: 10 MiB on `invoke-sync` and `invoke-async`, whose body
@@ -4361,15 +4463,15 @@ components:
     SecretName:
       type: string
       description: >
-        Organization-scoped secret name.
+        Secret name, unique within an environment.
         The shape matches `EnvironmentVariableName` and the `secrets.name` / `deployment_secrets.env_var_name`
         column CHECKs, one rule for the contract and the schema, because an attached secret is injected as an
         environment variable under this name, or under `envVarName` when that override is set.
 
-        Names the platform sets on the serving container (`RUNTIME`, `DISABLE_NGINX`, `MLFLOW_MODELS_WORKERS`,
-        `UVICORN_HOST`) are rejected with `422`: the deployer appends customer env after its own and the
-        kubelet resolves duplicates last-wins, so an accepted collision would silently replace a platform
-        value.
+        Names the platform sets in the worker's environment (for example `RUNTIME`, `DISABLE_NGINX`,
+        `MLFLOW_MODELS_WORKERS`, `UVICORN_HOST`) are rejected with `422`: an accepted collision would replace
+        a platform value the app depends on, be silently dropped in its favour, or reach the app under a name
+        the platform uses for its own value, with no error anywhere.
         Same guard as plain environment variables.
         Enforced by the server (not expressible as a pattern here).
       minLength: 1
@@ -4911,8 +5013,7 @@ components:
     AppSummary:
       type: object
       description: >
-        Aggregate dashboard metrics for every app in the authenticated organization, across every environment:
-        an app id running in two environments counts as two apps.
+        Aggregate dashboard metrics for the apps of one environment, the one the request names.
         App and worker tallies are always present (zero when empty).
         Request and error-rate totals are omitted when the metrics store cannot be read, rather than reported
         as zero.
@@ -4927,17 +5028,17 @@ components:
         activeApps:
           type: integer
           format: int64
-          description: Apps currently in the `active` status.
+          description: Apps in the environment currently in the `active` status.
         totalApps:
           type: integer
           format: int64
-          description: All apps in the organization excluding soft-deleted ones.
+          description: All apps in the environment excluding soft-deleted ones.
         activeWorkers:
           type: integer
           format: int64
           description: >
             Non-terminal workers (`status` other than `stopped`) across every app and version in the
-            organization.
+            environment.
         provisionedGpuCount:
           type: integer
           format: int64
@@ -4947,9 +5048,10 @@ components:
           type: integer
           format: int64
           description: >
-            Requests served in the last 24 hours across every app.
+            Requests served in the last 24 hours across the apps in the environment, including apps deleted
+            within that window.
             Omitted when metrics cannot be read.
-            Zero when the organization had no traffic.
+            Zero when the environment had no traffic.
         errorRate24h:
           type: number
           format: double
@@ -4960,7 +5062,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
-            Provisional pay-as-you-go accrual over the last 24 hours, across every app.
+            Provisional pay-as-you-go accrual over the last 24 hours, across every app in the environment.
             Excludes finalization rounding and ledger adjustments.
             A rolling window rather than a calendar day, so the figure does not reset at a boundary the
             customer did not choose.
@@ -5076,12 +5178,12 @@ components:
           type: integer
           format: int32
           nullable: true
-          description: Ceiling on the environment's live workers. Empty means no cap.
+          description: Cap on the workers the environment holds, checked when a request adds capacity. Empty means no cap.
         maxConcurrentGpus:
           type: integer
           format: int32
           nullable: true
-          description: Ceiling on the GPUs the environment's live workers hold. Empty means no cap.
+          description: Cap on the GPUs the environment holds, checked when a request adds capacity. Empty means no cap.
         unauthenticatedAccess:
           $ref: '#/components/schemas/UnauthenticatedAccess'
     Environment:
@@ -5107,15 +5209,15 @@ components:
           format: int32
           nullable: true
           description: >
-            Ceiling on the environment's live workers, as set on the environment.
-            Empty inherits the organization default; `resolved` carries the ceiling in force.
+            Cap on the workers the environment holds, checked when a request adds capacity, as set on the environment.
+            Empty inherits the organization default; `resolved` carries the cap in force.
         maxConcurrentGpus:
           type: integer
           format: int32
           nullable: true
           description: >
-            Ceiling on the GPUs the environment's live workers hold, as set on the environment.
-            Empty inherits the organization default; `resolved` carries the ceiling in force.
+            Cap on the GPUs the environment holds, checked when a request adds capacity, as set on the environment.
+            Empty inherits the organization default; `resolved` carries the cap in force.
         monthlyBudget:
           type: object
           allOf:
@@ -5123,14 +5225,18 @@ components:
           nullable: true
           description: >
             Pay-as-you-go spend cap for the calendar month, which resets on the 1st at 00:00 UTC.
-            Empty means no cap.
+            Spend is read from settlement, which trails usage by a few minutes and a worker's
+            end-of-life adjustment by up to about twenty, and leaves out usage a capacity
+            commitment covers. Empty means no cap.
         budgetAlertPercents:
           type: array
           items:
             type: integer
           description: >
-            Percentages of the budget at which the organization's admins are emailed, ascending.
-            Empty sends no alert.
+            Percentages of the budget at which the organization's users are emailed, ascending.
+            Each is sent at most once per UTC month, even when the budget changes later in the month;
+            percents reached together send one alert, for the highest. A `"0.00"` budget alerts on
+            the first spend above zero. Empty sends no alert.
         pauseAtBudget:
           type: boolean
           description: Whether the environment's workers are scaled to zero once the budget is reached.
@@ -5173,7 +5279,7 @@ components:
           minimum: 0
           nullable: true
           description: >
-            Ceiling on the environment's live workers.
+            Cap on the workers the environment holds, checked when a request adds capacity.
             Omit, or send `null`, to inherit the organization default.
         maxConcurrentGpus:
           type: integer
@@ -5181,7 +5287,7 @@ components:
           minimum: 0
           nullable: true
           description: >
-            Ceiling on the GPUs the environment's live workers hold.
+            Cap on the GPUs the environment holds, checked when a request adds capacity.
             Omit, or send `null`, to inherit the organization default.
         monthlyBudget:
           type: object
@@ -5200,7 +5306,7 @@ components:
             minimum: 1
             maximum: 100
           description: >
-            Percentages of the budget at which the organization's admins are emailed, each once per month.
+            Percentages of the budget at which the organization's users are emailed, each once per month.
             Stored ascending with duplicates removed; an empty array sends no alert.
             Omit for 50, 80 and 100.
         pauseAtBudget:
@@ -5232,7 +5338,7 @@ components:
             path: github.com/oapi-codegen/nullable
           x-go-type-skip-optional-pointer: true
           description: >
-            Ceiling on the environment's live workers.
+            Cap on the workers the environment holds, checked when a request adds capacity.
             `null` inherits the organization default again.
         maxConcurrentGpus:
           type: integer
@@ -5244,7 +5350,7 @@ components:
             path: github.com/oapi-codegen/nullable
           x-go-type-skip-optional-pointer: true
           description: >
-            Ceiling on the GPUs the environment's live workers hold.
+            Cap on the GPUs the environment holds, checked when a request adds capacity.
             `null` inherits the organization default again.
         monthlyBudget:
           type: object
@@ -5267,7 +5373,7 @@ components:
             minimum: 1
             maximum: 100
           description: >
-            Percentages of the budget at which the organization's admins are emailed, each once per month.
+            Percentages of the budget at which the organization's users are emailed, each once per month.
             Stored ascending with duplicates removed; an empty array sends no alert.
         pauseAtBudget:
           type: boolean
@@ -5296,7 +5402,7 @@ components:
           minimum: 0
           nullable: true
           description: >
-            Ceiling on the live workers of an environment that sets none of its own.
+            Worker cap of an environment that sets none of its own, checked when a request adds capacity.
             Empty means no cap.
         maxConcurrentGpus:
           type: integer
@@ -5304,7 +5410,7 @@ components:
           minimum: 0
           nullable: true
           description: >
-            Ceiling on the GPUs held by the live workers of an environment that sets none of its own.
+            GPU cap of an environment that sets none of its own, checked when a request adds capacity.
             Empty means no cap.
         unauthenticatedAccess:
           allOf:
@@ -5493,8 +5599,8 @@ components:
         secrets:
           type: array
           description: >
-            Existing organization secrets to attach to this app, with an optional env-var name override per
-            entry.
+            Existing secrets of this app's environment to attach to it, with an optional env-var name override
+            per entry.
             This is the app's initial attachment set, so the first rollout carries the values into the worker.
             The secret must already exist and be `active`.
             This route does not create one, and an unknown or inactive name returns `404`.
@@ -5511,6 +5617,8 @@ components:
           description: >
             Map with environment variables.
             Keys are the environment variable names, values are the environment variable values.
+            Write values literally: do not use `$(NAME)` or `$$` in a value, as the platform does not guarantee
+            how it treats either sequence.
             Use the dedicated `/environment-variables` endpoints to change them after the app exists.
             A code source's build imports the model file with these set, so a variable read at import is there
             at build time as well as at serve time.
@@ -5557,6 +5665,11 @@ components:
         configuration.
 
         `appSource` starts a build and records version N+1 with a new image.
+        A `code` source whose build inputs equal those of the app's newest build — the same archive
+        bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and
+        platform build — records version N+1 on that build's image instead, with its `buildId`, and
+        starts no build. Unpinned requirements are therefore not re-resolved by such an update; change
+        any input to build again.
         The deploy queue rolls that version once the build is ready.
         `activeVersionId` moves only then.
         A builder rejection leaves the app on its current version.
@@ -5594,6 +5707,8 @@ components:
             sources).
             On accept the resulting version is recorded with a new image tag and rolled through the deploy
             queue.
+            A `code` source whose build inputs equal those of the app's newest build records the version on
+            that build's image and starts no build.
             A builder rejection leaves the app on the previous version and writes no version or build row.
             After accept, a concurrent secret deactivation or env/secret collision leaves version N+1 recorded
             and the previous attachment set in place.
@@ -5629,6 +5744,8 @@ components:
             Keys are the variable names, values are the values.
             A key absent from the map is deleted.
             A null value omits that key from the new set.
+            Write values literally: do not use `$(NAME)` or `$$` in a value, as the platform does not guarantee
+            how it treats either sequence.
             The resolved map is snapshotted onto the version this update records, so a deploy applies it.
             When the copied image is deployable the update pins and rolls, the same as a configuration change.
           additionalProperties:
@@ -6688,12 +6805,17 @@ components:
       description: Secret metadata. The encrypted value is never returned.
       required:
         - id
+        - environment
         - name
         - type
       properties:
         id:
           type: string
           format: uuid
+        environment:
+          allOf:
+            - $ref: '#/components/schemas/EnvironmentName'
+          description: The environment the secret belongs to; set at creation and never changed.
         name:
           $ref: '#/components/schemas/SecretName'
         type:
@@ -6733,12 +6855,13 @@ components:
     SecretAttach:
       type: object
       description: >
-        Attach an organization secret to an app.
+        Attach a secret of the app's environment to the app.
         The resolved name (`envVarName`, or `secretName` when omitted) is the environment variable the secret
         is injected as, and the next rollout carries the value into the worker.
         It must be unique among this app's secret attaches and must not collide with a plain environment
         variable key on the same app.
-        Both names land in the same pod env namespace.
+        Both reach the app as environment variables.
+        Only one value can reach the app under a name.
         Reserved platform names are rejected as on `SecretName`.
       required:
         - secretName
@@ -6809,7 +6932,7 @@ components:
       type: object
       additionalProperties: false
       description: >
-        One request that creates many organization secrets.
+        One request that creates many secrets in one environment.
         The batch is atomic.
       required:
         - secrets
@@ -6873,8 +6996,10 @@ components:
           maxLength: 4096
           description: >
             Value delivered to the workload as this variable's value.
-            Bounded because every variable ends up in the pod template, which as a whole has to fit what the
-            Kubernetes API server accepts.
+            Write it literally: do not use `$(NAME)` or `$$` in it, as the platform does not guarantee how it
+            treats either sequence.
+            Bounded because all of an app's variables are stored together in one Kubernetes object, which as a
+            whole has to fit what the Kubernetes API server accepts.
             The same `maxLength` create applies, so one path cannot be used to exceed the other.
 
     TaskInvocation:

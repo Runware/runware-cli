@@ -3,11 +3,13 @@ package serverless
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -97,6 +100,21 @@ type serverlessRun struct {
 // answers with handler, or with 404 when handler is nil.
 func runServerlessAgainst(t *testing.T, handler http.HandlerFunc, args ...string) serverlessRun {
 	t.Helper()
+	return runServerlessWith(t, handler, "", args...)
+}
+
+// runServerlessAnswering runs `serverless <args>` against a 404 stub API with
+// stdin answering every prompt as a terminal would.
+func runServerlessAnswering(t *testing.T, stdin string, args ...string) serverlessRun {
+	t.Helper()
+	old := stdinIsTerminal
+	stdinIsTerminal = func(io.Reader) bool { return true }
+	t.Cleanup(func() { stdinIsTerminal = old })
+	return runServerlessWith(t, nil, stdin, args...)
+}
+
+func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin string, args ...string) serverlessRun {
+	t.Helper()
 	rec := &requestRecorder{
 		handler: handler,
 	}
@@ -109,7 +127,7 @@ func runServerlessAgainst(t *testing.T, handler http.HandlerFunc, args ...string
 	var cobraOutput bytes.Buffer
 	cmd.SetOut(&cobraOutput)
 	cmd.SetErr(&cobraOutput)
-	cmd.SetIn(strings.NewReader(""))
+	cmd.SetIn(strings.NewReader(stdin))
 	cmd.SetArgs(args)
 
 	stdout, err := os.CreateTemp(t.TempDir(), "stdout")
@@ -299,6 +317,22 @@ func appCommandCases() []appCommandCase {
 			args: []string{testUsageCommand, testEventsCommand, "--app", testAppID},
 		},
 		{
+			name: "usage",
+			args: []string{testUsageCommand},
+		},
+		{
+			name: "secrets list",
+			args: []string{testSecretsGroup, appHealthListCommand},
+		},
+		{
+			name: "secrets set",
+			args: []string{testSecretsGroup, testSetCommand, testAttachedSecret, testValueFlag, "v"},
+		},
+		{
+			name: "secrets remove",
+			args: []string{testSecretsGroup, "remove", testAttachedSecret},
+		},
+		{
 			name: "secrets attachments",
 			args: []string{testSecretsGroup, "attachments", testAppID},
 		},
@@ -358,28 +392,12 @@ func TestEnvironmentFlagOnTheAppsGroupReachesTheSubcommand(t *testing.T) {
 func TestCommandsWithoutAnEnvironmentRejectTheFlag(t *testing.T) {
 	cases := []appCommandCase{
 		{
-			name: "usage",
-			args: []string{testUsageCommand},
-		},
-		{
 			name: "gpus",
 			args: []string{"gpus"},
 		},
 		{
 			name: "init",
 			args: []string{testInitCommand, t.TempDir()},
-		},
-		{
-			name: "secrets list",
-			args: []string{testSecretsGroup, appHealthListCommand},
-		},
-		{
-			name: "secrets set",
-			args: []string{testSecretsGroup, testSetCommand, testAttachedSecret, testValueFlag, "v"},
-		},
-		{
-			name: "secrets remove",
-			args: []string{testSecretsGroup, "remove", testAttachedSecret},
 		},
 	}
 	for _, tc := range cases {
@@ -501,6 +519,20 @@ func TestUsageEventsEnvironmentNeedsAnApp(t *testing.T) {
 	}
 	if len(run.requests) != 0 {
 		t.Fatalf("sent %d requests", len(run.requests))
+	}
+}
+
+func TestUsageEventsWithoutFlagsListsTheWholeOrganization(t *testing.T) {
+	run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	}, testUsageCommand, testEventsCommand)
+
+	if run.err != nil {
+		t.Fatalf("usage events: %v", run.err)
+	}
+	if len(run.requests) != 1 || run.requests[0].query.Has("environment") || run.requests[0].query.Has("appId") {
+		t.Fatalf("requests = %+v, want one request for the whole organization", run.requests)
 	}
 }
 
@@ -851,12 +883,13 @@ func TestDeployUnderAnEnvironmentAddressesThatCopy(t *testing.T) {
 			wantRequests: []string{"GET " + appPath},
 		},
 		{
-			name:              "create conflict falls back to update",
+			name:              "create conflict is reported as the server states it",
 			appStatus:         http.StatusNotFound,
 			environmentStatus: http.StatusOK,
 			createStatus:      http.StatusConflict,
 			createFlags:       create,
-			wantRequests:      append([]string{"GET " + appPath, "GET " + environmentPath}, append(upload, "POST "+testAppsPath, "PATCH "+appPath)...),
+			wantErr:           "environment cap reached",
+			wantRequests:      append([]string{"GET " + appPath, "GET " + environmentPath}, append(upload, "POST "+testAppsPath)...),
 		},
 		{
 			name:              "unknown environment fails before the upload",
@@ -901,7 +934,7 @@ func TestDeployUnderAnEnvironmentAddressesThatCopy(t *testing.T) {
 				case r.Method == http.MethodPost && r.URL.Path == testAppsPath && tc.createStatus == http.StatusConflict:
 					w.Header().Set("Content-Type", "application/problem+json")
 					w.WriteHeader(http.StatusConflict)
-					_, _ = io.WriteString(w, `{"title":"Conflict","status":409}`)
+					_, _ = io.WriteString(w, `{"title":"Conflict","status":409,"detail":"environment cap reached"}`)
 				case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusCreated)
@@ -991,7 +1024,7 @@ func TestDeletePromptNamesTheEnvironmentTheCommandAddresses(t *testing.T) {
 			name:    "apps delete in production",
 			args:    []string{testDeleteCommand},
 			subject: "application " + testAppID,
-			want:    "application " + testAppID,
+			want:    "application " + testAppID + " in " + testProductionEnvironment,
 		},
 		{
 			name:    "apps builds delete in staging",
@@ -1020,5 +1053,83 @@ func TestDeletePromptNamesTheEnvironmentTheCommandAddresses(t *testing.T) {
 				t.Fatalf("subject = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+type deletePromptCase struct {
+	name string
+	args []string
+	want string
+}
+
+func TestDeletePromptAsksAboutTheCopyTheCommandAddresses(t *testing.T) {
+	cases := []deletePromptCase{
+		{
+			name: "apps delete in staging",
+			args: []string{testAppsGroup, testDeleteCommand, testAppID, testEnvFlag, testEnvironment},
+			want: "Delete application " + testAppID + " in " + testEnvironment + "? [y/N]",
+		},
+		{
+			name: "apps delete in production",
+			args: []string{testAppsGroup, testDeleteCommand, testAppID},
+			want: "Delete application " + testAppID + " in " + testProductionEnvironment + "? [y/N]",
+		},
+		{
+			name: "apps builds delete in staging",
+			args: []string{testAppsGroup, testBuildsGroup, testDeleteCommand, testAppID, testUUID, testEnvFlag, testEnvironment},
+			want: "Delete build " + testUUID + " of application " + testAppID + " in " + testEnvironment + "? [y/N]",
+		},
+		{
+			name: "apps versions delete in staging",
+			args: []string{testAppsGroup, testVersionsGroup, testDeleteCommand, testAppID, "1", testEnvFlag, testEnvironment},
+			want: "Delete version 1 of application " + testAppID + " in " + testEnvironment + "? [y/N]",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			run := runServerlessAnswering(t, "n\n", tc.args...)
+
+			if !errors.Is(run.err, errDeleteCancelled) {
+				t.Fatalf("err = %v, want the delete cancelled", run.err)
+			}
+			if !strings.Contains(run.cobraOutput, tc.want) {
+				t.Fatalf("prompt = %q, want %q", run.cobraOutput, tc.want)
+			}
+			if len(run.requests) != 0 {
+				t.Fatalf("sent %d requests after a refused prompt", len(run.requests))
+			}
+		})
+	}
+}
+
+// specEnvironmentNamePattern is the EnvironmentName rule the vendored API
+// spec states.
+func specEnvironmentNamePattern(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "serverless", "openapi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Components struct {
+			Schemas map[string]struct {
+				Pattern string `yaml:"pattern"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	if err := yaml.Unmarshal(raw, &spec); err != nil {
+		t.Fatal(err)
+	}
+	return spec.Components.Schemas["EnvironmentName"].Pattern
+}
+
+func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
+	want := specEnvironmentNamePattern(t)
+
+	if want == "" {
+		t.Fatal("the spec has no EnvironmentName pattern")
+	}
+	if got := environmentNamePattern.String(); got != want {
+		t.Fatalf("environmentNamePattern = %q, spec says %q", got, want)
 	}
 }

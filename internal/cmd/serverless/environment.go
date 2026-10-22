@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -97,10 +98,10 @@ func newServerlessClient(cmd *cobra.Command, logger *log.Logger) *serverlessapi.
 	return client.WithEnvironment(commandEnvironment(cmd))
 }
 
-// deleteSubject is what a delete prompt names: the subject, and the
-// environment when --env is set.
+// deleteSubject is what a delete prompt names: the subject and the environment
+// the command addresses, production when --env is not set.
 func deleteSubject(cmd *cobra.Command, subject string) string {
-	return environmentSubject(subject, commandEnvironment(cmd))
+	return environmentSubject(subject, cmp.Or(commandEnvironment(cmd), defaultEnvironment))
 }
 
 // environmentSubject appends " in <environment>" to a confirmation prompt's

@@ -51,11 +51,19 @@ func newUsageCmd(logger *log.Logger) *cobra.Command {
 		Short: "Show account-wide usage and cost",
 		Long: `Show GPU time and spend for the authenticated organization over a time window.
 
+--env narrows the report to one environment; without it the report covers
+every environment. The filter narrows what is reported, not what is measured:
+commitment coverage depends on every app's concurrent GPUs across the
+organization.
+
 Worker transitions behind these figures are listed by 'usage events'.
 
 ` + usageRulesLong,
 		Example: `  # last 24 hours, account-wide
   runware serverless usage
+
+  # one environment
+  runware serverless usage --env staging
 
   # a UTC calendar range
   runware serverless usage --for this-month
@@ -81,6 +89,8 @@ Worker transitions behind these figures are listed by 'usage events'.
 	}
 
 	addUsageFlags(cmd, &flags)
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
+	cmd.Flags().Lookup(environmentFlag).Usage = "Report only this environment (default every environment)"
 	cmd.AddCommand(newUsageEventsCmd(logger))
 	return cmd
 }

@@ -1,12 +1,12 @@
 ## runware serverless secrets remove
 
-Remove an organization secret
+Remove a secret
 
 ### Synopsis
 
-Remove an organization secret. Returns a conflict if any application still
-has it attached — detach each holder first with
-'secrets detach <appId> <name> [--env <name>]'.
+Remove a secret from one environment. Returns a conflict if any application in
+that environment still has it attached — detach each holder first with
+'secrets detach <appId> <name>' under the same --env.
 
 ```
 runware serverless secrets remove <name> [flags]
@@ -15,14 +15,18 @@ runware serverless secrets remove <name> [flags]
 ### Examples
 
 ```
-  # remove an organization secret
+  # remove a production secret
   runware serverless secrets remove FOO
+
+  # remove the staging copy
+  runware serverless secrets remove FOO --env staging
 ```
 
 ### Options
 
 ```
-  -h, --help   help for remove
+  -e, --env name   Environment the app runs in (default production)
+  -h, --help       help for remove
 ```
 
 ### Options inherited from parent commands
@@ -36,5 +40,5 @@ runware serverless secrets remove <name> [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage secrets for serverless applications
 

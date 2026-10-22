@@ -4,8 +4,7 @@ Detach a secret from an application
 
 ### Synopsis
 
-Remove an organization secret's attachment from an application. The organization
-secret itself remains.
+Remove a secret's attachment from an application. The secret itself remains.
 
 Detaching rolls the live deployment so a running worker stops receiving the
 value. If a rollout is already in progress, the worker stops receiving it on
@@ -40,5 +39,5 @@ runware serverless secrets detach <appId> <name> [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage secrets for serverless applications
 

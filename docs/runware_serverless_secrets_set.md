@@ -1,10 +1,11 @@
 ## runware serverless secrets set
 
-Create or update an organization secret
+Create or update a secret
 
 ### Synopsis
 
-Create an organization-scoped secret, or update its value if the name already exists.
+Create a secret in one environment, or update its value if the name already
+exists there. The same name in another environment is a different secret.
 
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
@@ -28,6 +29,9 @@ runware serverless secrets set <name> [flags]
   # read the value from stdin
   printf '%s' "$FOO" | runware serverless secrets set FOO --value-file -
 
+  # the staging copy of the secret
+  runware serverless secrets set FOO --value-file ./foo.txt --env staging
+
   # then attach it to an application
   runware serverless secrets attach my-app FOO
 ```
@@ -35,6 +39,7 @@ runware serverless secrets set <name> [flags]
 ### Options
 
 ```
+  -e, --env name            Environment the app runs in (default production)
   -h, --help                help for set
       --value string        Secret value (visible in process lists; prefer --value-file)
       --value-file string   Read secret value from a file, or - for stdin
@@ -51,5 +56,5 @@ runware serverless secrets set <name> [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage secrets for serverless applications
 

@@ -25,7 +25,7 @@ type environmentCall struct {
 	call      func(context.Context, *Client) error
 }
 
-func appScopedCalls() []environmentCall {
+func environmentScopedCalls() []environmentCall {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	return []environmentCall{
 		{
@@ -191,6 +191,39 @@ func appScopedCalls() []environmentCall {
 			},
 		},
 		{
+			operation: "ListSecrets",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.ListSecrets(ctx, ListSecretsParams{})
+				return err
+			},
+		},
+		{
+			operation: "CreateSecret",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.CreateSecret(ctx, SecretCreate{
+					Name:  "TOKEN",
+					Type:  SecretTypeGeneric,
+					Value: "v",
+				})
+				return err
+			},
+		},
+		{
+			operation: "UpdateSecret",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.UpdateSecret(ctx, "TOKEN", SecretUpdate{
+					Value: "v",
+				})
+				return err
+			},
+		},
+		{
+			operation: "DeleteSecret",
+			call: func(ctx context.Context, c *Client) error {
+				return c.DeleteSecret(ctx, "TOKEN")
+			},
+		},
+		{
 			operation: "ListAppSecrets",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListAppSecrets(ctx, testAppID, ListAppSecretsParams{})
@@ -303,19 +336,6 @@ func orgScopedCalls() []environmentCall {
 			},
 		},
 		{
-			operation: "ListSecrets",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.ListSecrets(ctx, ListSecretsParams{})
-				return err
-			},
-		},
-		{
-			operation: "DeleteSecret",
-			call: func(ctx context.Context, c *Client) error {
-				return c.DeleteSecret(ctx, "TOKEN")
-			},
-		},
-		{
 			operation: "CreateSourceUpload",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.CreateSourceUpload(ctx, SourceUploadCreate{})
@@ -353,8 +373,8 @@ func recordQueries(t *testing.T, environment EnvironmentName, call func(context.
 	return rec.queries
 }
 
-func TestAppScopedRequestsCarryTheClientEnvironment(t *testing.T) {
-	for _, tc := range appScopedCalls() {
+func TestEnvironmentScopedRequestsCarryTheClientEnvironment(t *testing.T) {
+	for _, tc := range environmentScopedCalls() {
 		t.Run(tc.operation, func(t *testing.T) {
 			for _, q := range recordQueries(t, testEnvironment, tc.call) {
 				if got := q.Get("environment"); got != testEnvironment {
@@ -365,8 +385,8 @@ func TestAppScopedRequestsCarryTheClientEnvironment(t *testing.T) {
 	}
 }
 
-func TestAppScopedRequestsOmitTheEnvironmentWhenUnset(t *testing.T) {
-	for _, tc := range appScopedCalls() {
+func TestEnvironmentScopedRequestsOmitTheEnvironmentWhenUnset(t *testing.T) {
+	for _, tc := range environmentScopedCalls() {
 		t.Run(tc.operation, func(t *testing.T) {
 			for _, q := range recordQueries(t, "", tc.call) {
 				if q.Has("environment") {
@@ -409,7 +429,9 @@ func TestWithEnvironmentLeavesTheOriginalClientUnscoped(t *testing.T) {
 // unwrappedOperations take an environment in the spec but have no client
 // wrapper, so no command can send them.
 var unwrappedOperations = []string{
+	"CreateSecretBatch",
 	"FavoriteApp",
+	"GetAppSummary",
 	"GetMetricSeries",
 	"StartDefaultAsyncTask",
 	"StartDefaultSyncTask",
@@ -449,13 +471,19 @@ func environmentOperations(t *testing.T) []string {
 
 func TestEveryOperationWithAnEnvironmentIsCovered(t *testing.T) {
 	var covered []string
-	for _, c := range appScopedCalls() {
+	for _, c := range environmentScopedCalls() {
 		covered = append(covered, c.operation)
 	}
 	covered = append(covered, unwrappedOperations...)
 	slices.Sort(covered)
 
-	if want := environmentOperations(t); !slices.Equal(covered, want) {
-		t.Fatalf("operations with an environment = %v\ncovered by appScopedCalls or unwrappedOperations = %v", want, covered)
+	want := environmentOperations(t)
+	if !slices.Equal(covered, want) {
+		t.Fatalf("operations with an environment = %v\ncovered by environmentScopedCalls or unwrappedOperations = %v", want, covered)
+	}
+	for _, c := range orgScopedCalls() {
+		if slices.Contains(want, c.operation) {
+			t.Errorf("%s takes an environment in the spec but is tested as an organization call", c.operation)
+		}
 	}
 }

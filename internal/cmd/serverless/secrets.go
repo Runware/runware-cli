@@ -14,11 +14,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newSecretsCmd returns the "serverless secrets" command group for organization
-// secrets and their attachment to applications.
+// newSecretsCmd returns the "serverless secrets" command group for secrets and
+// their attachment to applications.
 func newSecretsCmd(logger *log.Logger) *cobra.Command {
-	cmd := stubGroup("secrets", "Manage organization secrets for serverless applications")
-	cmd.Long = "Manage organization-scoped encrypted secrets, and attach them to serverless applications."
+	cmd := stubGroup("secrets", "Manage secrets for serverless applications")
+	cmd.Long = `Manage encrypted secrets and attach them to serverless applications.
+
+A secret belongs to one environment, and an application attaches only secrets
+of its own environment. Every command here takes --env to select that
+environment, production unless --env names another.`
 	cmd.AddCommand(
 		newSecretsListCmd(logger),
 		newSecretsSetCmd(logger),
@@ -38,12 +42,16 @@ func newSecretsListCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List organization secrets",
-		Long: `List organization secret metadata. Encrypted values are never returned.
+		Short: "List secrets",
+		Long: `List the metadata of the secrets in one environment. Encrypted values are
+never returned.
 
 To list secrets attached to an application, use 'secrets attachments'.`,
-		Example: `  # list organization secrets
+		Example: `  # list the production secrets
   runware serverless secrets list
+
+  # list the staging secrets
+  runware serverless secrets list --env staging
 
   # page through results
   runware serverless secrets list --limit 20 --cursor <nextCursor>`,
@@ -54,16 +62,17 @@ To list secrets attached to an application, use 'secrets attachments'.`,
 			}
 
 			client := newServerlessClient(cmd, logger)
-			return listOrgSecrets(cmd, client, limit, cursor)
+			return listSecrets(cmd, client, limit, cursor)
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of secrets to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
-func listOrgSecrets(cmd *cobra.Command, client *serverlessapi.Client, limit int, cursor string) error {
+func listSecrets(cmd *cobra.Command, client *serverlessapi.Client, limit int, cursor string) error {
 	var params serverlessapi.ListSecretsParams
 	params.Limit, params.Cursor = listPageParams(limit, cursor)
 
@@ -77,7 +86,7 @@ func listOrgSecrets(cmd *cobra.Command, client *serverlessapi.Client, limit int,
 	}
 	spin.Stop()
 
-	return printPage(cmdutil.FormatFor(cmd), page, secretsResult(page.Data), cmd.ErrOrStderr(), "")
+	return printPage(cmdutil.FormatFor(cmd), page, secretsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, ""))
 }
 
 func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
@@ -88,8 +97,9 @@ func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "set <name>",
-		Short: "Create or update an organization secret",
-		Long: `Create an organization-scoped secret, or update its value if the name already exists.
+		Short: "Create or update a secret",
+		Long: `Create a secret in one environment, or update its value if the name already
+exists there. The same name in another environment is a different secret.
 
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
@@ -104,6 +114,9 @@ in process lists; use --value-file - to read from stdin.`,
 
   # read the value from stdin
   printf '%s' "$FOO" | runware serverless secrets set FOO --value-file -
+
+  # the staging copy of the secret
+  runware serverless secrets set FOO --value-file ./foo.txt --env staging
 
   # then attach it to an application
   runware serverless secrets attach my-app FOO`,
@@ -134,18 +147,22 @@ in process lists; use --value-file - to read from stdin.`,
 	cmd.Flags().StringVar(&valueFile, "value-file", "", "Read secret value from a file, or - for stdin")
 	cmd.MarkFlagsMutuallyExclusive("value", "value-file")
 	cmd.MarkFlagsOneRequired("value", "value-file")
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
 func newSecretsRemoveCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
-		Short: "Remove an organization secret",
-		Long: `Remove an organization secret. Returns a conflict if any application still
-has it attached — detach each holder first with
-'secrets detach <appId> <name> [--env <name>]'.`,
-		Example: `  # remove an organization secret
-  runware serverless secrets remove FOO`,
+		Short: "Remove a secret",
+		Long: `Remove a secret from one environment. Returns a conflict if any application in
+that environment still has it attached — detach each holder first with
+'secrets detach <appId> <name>' under the same --env.`,
+		Example: `  # remove a production secret
+  runware serverless secrets remove FOO
+
+  # remove the staging copy
+  runware serverless secrets remove FOO --env staging`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -163,6 +180,7 @@ has it attached — detach each holder first with
 			return output.Print(cmdutil.FormatFor(cmd), secretRemovedResult{Name: name})
 		},
 	}
+	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -218,11 +236,12 @@ func newSecretsAttachCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "attach <appId> <name>",
-		Short: "Attach an organization secret to an application",
-		Long: `Record that an organization secret is attached to an application, optionally
-under a different environment variable name.
+		Short: "Attach a secret to an application",
+		Long: `Record that a secret is attached to an application, optionally under a
+different environment variable name.
 
-The organization secret must already exist (see 'secrets set'). Attaching rolls
+The secret must already exist in the application's environment (see
+'secrets set'). Attaching rolls
 the live deployment so a running worker picks up the value. If a rollout is
 already in progress, this attach reaches the worker on the next deploy. An
 application that is not live records the attachment only; the next deploy or
@@ -268,8 +287,7 @@ func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "detach <appId> <name>",
 		Short: "Detach a secret from an application",
-		Long: `Remove an organization secret's attachment from an application. The organization
-secret itself remains.
+		Long: `Remove a secret's attachment from an application. The secret itself remains.
 
 Detaching rolls the live deployment so a running worker stops receiving the
 value. If a rollout is already in progress, the worker stops receiving it on

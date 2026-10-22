@@ -203,9 +203,10 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
---secret NAME, or NAME=ENV_VAR, attaches an existing organization secret at
-create so the first rollout carries it. Repeat the flag for more than one.
-Attach or detach later with 'secrets attach' and 'secrets detach'.
+--secret NAME, or NAME=ENV_VAR, attaches an existing secret of the same
+environment at create so the first rollout carries it. Repeat the flag for
+more than one. Attach or detach later with 'secrets attach' and
+'secrets detach'.
 
 Worker settings are supplied via flags on create, including a fallback GPU
 type and the idle-worker buffer. Endpoints are derived server-side from the
@@ -366,12 +367,6 @@ paths and an invoke example once the application is active.`,
 						AvailableWorkersPct: optionalInt32Ptr(cmd, "available-workers-pct", availableWorkersPct),
 					},
 				})
-				if isHTTPConflict(err) {
-					update = true
-					app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
-						AppSource: &appSource,
-					})
-				}
 			}
 			if err != nil {
 				spin.Stop()
@@ -432,7 +427,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
 	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
-	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Organization secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
+	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")

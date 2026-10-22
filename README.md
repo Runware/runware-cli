@@ -229,7 +229,7 @@ runware serverless open my-app
 
 `--volume`, `--env-var`, `--env-file`, and `--name` apply on create only. Change `--gpu-type` and other worker settings with `apps scale`, environment variables with `apps env-vars`, and the display name with `apps rename`. An environment variable change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
 
-Every app command takes `--env <name>` (`-e`) to address the copy in that environment. Without it, commands address `production`. Org-wide `usage`, `gpus`, and organization `secrets` commands take no environment. `usage events` takes `--env` only together with `--app`.
+Every app command and every `secrets` command takes `--env <name>` (`-e`) to address the copy in that environment. Without it, commands address `production`. A secret belongs to one environment, and an app attaches only secrets of its own. `usage` takes `--env` to report one environment instead of the whole organization. `usage events` takes `--env` only together with `--app`. `gpus` takes no environment.
 
 `.env` files are never packed into the source archive. Prefer `--env-file` and `secrets set --value-file` so values stay out of the process list.
 
