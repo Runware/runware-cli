@@ -154,7 +154,7 @@ A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,
 and rolls it when the build is ready. Create-only flags (--gpu-type, worker
 settings, --volume, --secret, --env-var, --env-file, --name) apply only to
-create; passing them when the application already exists is an error. Change
+create; passing them when that copy already exists is an error. Change
 workers with 'apps scale', attach a secret later with 'secrets attach', change
 environment variables with 'apps env-vars', and the display name with
 'apps rename'. A source update on a stopped application is 409.
@@ -446,7 +446,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the application is active or failed")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait (0 = no limit)")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
+	addEnvironmentFlag(cmd, cmd.Flags(), logger, environmentFlagHelp)
 
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		panic(err)
@@ -484,9 +484,7 @@ func existingApp(ctx context.Context, client *serverlessapi.Client, id string) (
 	return false, err
 }
 
-// requireEnvironment fails when the named environment does not exist. The app
-// lookup answers 404 for an unknown environment as it does for a new app, so
-// a create checks the environment before it uploads the archive.
+// requireEnvironment fails when the named environment does not exist.
 func requireEnvironment(ctx context.Context, client *serverlessapi.Client, environment string) error {
 	if environment == "" {
 		return nil

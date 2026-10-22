@@ -14,7 +14,7 @@ A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,
 and rolls it when the build is ready. Create-only flags (--gpu-type, worker
 settings, --volume, --secret, --env-var, --env-file, --name) apply only to
-create; passing them when the application already exists is an error. Change
+create; passing them when that copy already exists is an error. Change
 workers with 'apps scale', attach a secret later with 'secrets attach', change
 environment variables with 'apps env-vars', and the display name with
 'apps rename'. A source update on a stopped application is 409.

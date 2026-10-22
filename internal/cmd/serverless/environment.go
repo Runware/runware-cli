@@ -57,10 +57,13 @@ func (v *environmentValue) Type() string {
 	return "name"
 }
 
-// addEnvironmentFlag registers --env on one of cmd's flag sets.
-func addEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Logger) {
-	flags.VarP(new(environmentValue), environmentFlag, environmentShorthand, environmentFlagHelp)
-	_ = cmd.RegisterFlagCompletionFunc(environmentFlag, environmentCompletion(logger, completionTimeout))
+// addEnvironmentFlag registers --env on one of cmd's flag sets with the given
+// help.
+func addEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Logger, help string) {
+	flags.VarP(new(environmentValue), environmentFlag, environmentShorthand, help)
+	if err := cmd.RegisterFlagCompletionFunc(environmentFlag, environmentCompletion(logger, completionTimeout)); err != nil {
+		panic(err)
+	}
 }
 
 // environmentCompletion completes --env from the organization's environments,
@@ -101,16 +104,7 @@ func newServerlessClient(cmd *cobra.Command, logger *log.Logger) *serverlessapi.
 // deleteSubject is what a delete prompt names: the subject and the environment
 // the command addresses, production when --env is not set.
 func deleteSubject(cmd *cobra.Command, subject string) string {
-	return environmentSubject(subject, cmp.Or(commandEnvironment(cmd), defaultEnvironment))
-}
-
-// environmentSubject appends " in <environment>" to a confirmation prompt's
-// subject; an empty environment adds nothing.
-func environmentSubject(subject, environment string) string {
-	if environment == "" {
-		return subject
-	}
-	return subject + " in " + environment
+	return subject + " in " + cmp.Or(commandEnvironment(cmd), defaultEnvironment)
 }
 
 // environmentArgs is the --env part of a printed command: nothing for the

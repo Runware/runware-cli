@@ -31,6 +31,7 @@ environment, production unless --env names another.`
 		newSecretsAttachCmd(logger),
 		newSecretsDetachCmd(logger),
 	)
+	addEnvironmentFlag(cmd, cmd.PersistentFlags(), logger, "Environment the secret belongs to (default production)")
 	return cmd
 }
 
@@ -68,7 +69,6 @@ To list secrets attached to an application, use 'secrets attachments'.`,
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of secrets to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -147,7 +147,6 @@ in process lists; use --value-file - to read from stdin.`,
 	cmd.Flags().StringVar(&valueFile, "value-file", "", "Read secret value from a file, or - for stdin")
 	cmd.MarkFlagsMutuallyExclusive("value", "value-file")
 	cmd.MarkFlagsOneRequired("value", "value-file")
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -180,7 +179,6 @@ that environment still has it attached — detach each holder first with
 			return output.Print(cmdutil.FormatFor(cmd), secretRemovedResult{Name: name})
 		},
 	}
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -227,7 +225,6 @@ Encrypted values are never returned.`,
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of secrets to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -241,11 +238,10 @@ func newSecretsAttachCmd(logger *log.Logger) *cobra.Command {
 different environment variable name.
 
 The secret must already exist in the application's environment (see
-'secrets set'). Attaching rolls
-the live deployment so a running worker picks up the value. If a rollout is
-already in progress, this attach reaches the worker on the next deploy. An
-application that is not live records the attachment only; the next deploy or
-resume reads it.`,
+'secrets set'). Attaching rolls the live deployment so a running worker picks
+up the value. If a rollout is already in progress, this attach reaches the
+worker on the next deploy. An application that is not live records the
+attachment only; the next deploy or resume reads it.`,
 		Example: `  # attach a secret using its name as the env var
   runware serverless secrets attach my-app FOO
 
@@ -279,7 +275,6 @@ resume reads it.`,
 	}
 
 	cmd.Flags().StringVar(&envVarName, "env-var-name", "", "Environment variable name (omit to use the secret name)")
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 
@@ -315,7 +310,6 @@ the next deploy. An application that is not live records the removal only.`,
 			})
 		},
 	}
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
 	return cmd
 }
 

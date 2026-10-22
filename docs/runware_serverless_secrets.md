@@ -17,7 +17,8 @@ runware serverless secrets [flags]
 ### Options
 
 ```
-  -h, --help   help for secrets
+  -e, --env name   Environment the secret belongs to (default production)
+  -h, --help       help for secrets
 ```
 
 ### Options inherited from parent commands

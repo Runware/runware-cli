@@ -191,9 +191,18 @@ func confirmDelete(subject string, skip bool, in io.Reader, out io.Writer, isTTY
 	}
 }
 
-// stdinIsTerminal reports whether a delete prompt can be answered. Tests
-// replace it to reach the prompt without a terminal.
-var stdinIsTerminal = func(in io.Reader) bool {
+// terminalReader is an input that says itself whether a prompt on it can be
+// answered.
+type terminalReader interface {
+	io.Reader
+	IsTerminal() bool
+}
+
+// stdinIsTerminal reports whether a delete prompt on in can be answered.
+func stdinIsTerminal(in io.Reader) bool {
+	if tr, ok := in.(terminalReader); ok {
+		return tr.IsTerminal()
+	}
 	f, ok := in.(*os.File)
 	if !ok {
 		return false

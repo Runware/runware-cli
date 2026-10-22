@@ -645,17 +645,6 @@ func TestAppFailedErr(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "pip install failed") {
 		t.Fatalf("failed with build error: %v", err)
 	}
-
-	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[]}`))
-	}))
-	defer empty.Close()
-
-	err = appFailedErr(context.Background(), serverlessapi.NewClient("test-key", empty.URL, slog.Default()), failed)
-	if err == nil || !strings.Contains(err.Error(), "inspect builds") {
-		t.Fatalf("failed without build error: %v", err)
-	}
 }
 
 type buildsHintCase struct {

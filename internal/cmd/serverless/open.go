@@ -55,14 +55,15 @@ func newOpenCmd(logger *log.Logger) *cobra.Command {
 			})
 		},
 	}
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
+	addEnvironmentFlag(cmd, cmd.Flags(), logger, environmentFlagHelp)
 	return cmd
 }
 
-// appDashboardURL is the console page for the app's copy in environment.
+// appDashboardURL is the console page for the app's copy in environment. The
+// default environment adds no query, as a command without --env does not.
 func appDashboardURL(base, appID, environment string) string {
 	link := strings.TrimSuffix(base, "/") + "/serverless/apps/" + url.PathEscape(appID)
-	if environment == "" {
+	if environment == "" || environment == defaultEnvironment {
 		return link
 	}
 	return link + "?" + url.Values{

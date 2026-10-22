@@ -89,8 +89,7 @@ Worker transitions behind these figures are listed by 'usage events'.
 	}
 
 	addUsageFlags(cmd, &flags)
-	addEnvironmentFlag(cmd, cmd.Flags(), logger)
-	cmd.Flags().Lookup(environmentFlag).Usage = "Report only this environment (default every environment)"
+	addEnvironmentFlag(cmd, cmd.Flags(), logger, "Report only this environment (default every environment)")
 	cmd.AddCommand(newUsageEventsCmd(logger))
 	return cmd
 }

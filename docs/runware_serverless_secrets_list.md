@@ -30,7 +30,6 @@ runware serverless secrets list [flags]
 
 ```
       --cursor string   Pagination cursor from a previous nextCursor
-  -e, --env name        Environment the app runs in (default production)
   -h, --help            help for list
       --limit int       Maximum number of secrets to return (1-100)
 ```
@@ -39,6 +38,7 @@ runware serverless secrets list [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the secret belongs to (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

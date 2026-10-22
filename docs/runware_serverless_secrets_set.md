@@ -39,7 +39,6 @@ runware serverless secrets set <name> [flags]
 ### Options
 
 ```
-  -e, --env name            Environment the app runs in (default production)
   -h, --help                help for set
       --value string        Secret value (visible in process lists; prefer --value-file)
       --value-file string   Read secret value from a file, or - for stdin
@@ -49,6 +48,7 @@ runware serverless secrets set <name> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the secret belongs to (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

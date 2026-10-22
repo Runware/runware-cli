@@ -8,11 +8,10 @@ Record that a secret is attached to an application, optionally under a
 different environment variable name.
 
 The secret must already exist in the application's environment (see
-'secrets set'). Attaching rolls
-the live deployment so a running worker picks up the value. If a rollout is
-already in progress, this attach reaches the worker on the next deploy. An
-application that is not live records the attachment only; the next deploy or
-resume reads it.
+'secrets set'). Attaching rolls the live deployment so a running worker picks
+up the value. If a rollout is already in progress, this attach reaches the
+worker on the next deploy. An application that is not live records the
+attachment only; the next deploy or resume reads it.
 
 ```
 runware serverless secrets attach <appId> <name> [flags]
@@ -31,7 +30,6 @@ runware serverless secrets attach <appId> <name> [flags]
 ### Options
 
 ```
-  -e, --env name              Environment the app runs in (default production)
       --env-var-name string   Environment variable name (omit to use the secret name)
   -h, --help                  help for attach
 ```
@@ -40,6 +38,7 @@ runware serverless secrets attach <appId> <name> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the secret belongs to (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

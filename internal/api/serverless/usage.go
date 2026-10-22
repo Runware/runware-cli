@@ -41,8 +41,9 @@ const (
 	UsageDimensionCoverage = gen.UsageDimensionCoverage
 )
 
-// GetUsageSummary returns GPU time and spend for the authenticated organization
-// over a half-open window, grouped by the requested dimensions. The API derives
+// GetUsageSummary returns GPU time and spend for the client's environment, or
+// for the whole organization when the client has none, over a half-open
+// window, grouped by the requested dimensions. The API derives
 // every figure on read; usage it cannot price fails the whole request rather
 // than being left out of the totals.
 func (c *Client) GetUsageSummary(ctx context.Context, params GetUsageSummaryParams) (*UsageSummary, error) {
@@ -80,7 +81,9 @@ func (c *Client) GetUsageSummary(ctx context.Context, params GetUsageSummaryPara
 }
 
 // ListUsageEvents returns one newest-first page of worker state transitions.
-// from and to bound occurredAt. An unknown appId selects an empty page.
+// from and to bound occurredAt. The client's environment applies only with an
+// appId; without one the page covers every environment. An unknown appId
+// selects an empty page.
 func (c *Client) ListUsageEvents(ctx context.Context, params ListUsageEventsParams) (Page[UsageEvent], error) {
 	if c.apiKey == "" {
 		return Page[UsageEvent]{}, transport.ErrNoAPIKey

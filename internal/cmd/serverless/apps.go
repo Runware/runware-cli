@@ -39,7 +39,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsResumeCmd(logger),
 		newAppsDeleteCmd(logger),
 	)
-	addEnvironmentFlag(cmd, cmd.PersistentFlags(), logger)
+	addEnvironmentFlag(cmd, cmd.PersistentFlags(), logger, environmentFlagHelp)
 	return cmd
 }
 

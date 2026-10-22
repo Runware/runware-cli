@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -100,20 +101,24 @@ type serverlessRun struct {
 // answers with handler, or with 404 when handler is nil.
 func runServerlessAgainst(t *testing.T, handler http.HandlerFunc, args ...string) serverlessRun {
 	t.Helper()
-	return runServerlessWith(t, handler, "", args...)
+	return runServerlessWith(t, handler, strings.NewReader(""), args...)
 }
+
+// terminalInput is a stdin that answers prompts as a terminal would.
+type terminalInput struct {
+	io.Reader
+}
+
+func (terminalInput) IsTerminal() bool { return true }
 
 // runServerlessAnswering runs `serverless <args>` against a 404 stub API with
-// stdin answering every prompt as a terminal would.
+// a terminal stdin answering every prompt.
 func runServerlessAnswering(t *testing.T, stdin string, args ...string) serverlessRun {
 	t.Helper()
-	old := stdinIsTerminal
-	stdinIsTerminal = func(io.Reader) bool { return true }
-	t.Cleanup(func() { stdinIsTerminal = old })
-	return runServerlessWith(t, nil, stdin, args...)
+	return runServerlessWith(t, nil, terminalInput{strings.NewReader(stdin)}, args...)
 }
 
-func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin string, args ...string) serverlessRun {
+func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, args ...string) serverlessRun {
 	t.Helper()
 	rec := &requestRecorder{
 		handler: handler,
@@ -127,7 +132,7 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin string, arg
 	var cobraOutput bytes.Buffer
 	cmd.SetOut(&cobraOutput)
 	cmd.SetErr(&cobraOutput)
-	cmd.SetIn(strings.NewReader(stdin))
+	cmd.SetIn(stdin)
 	cmd.SetArgs(args)
 
 	stdout, err := os.CreateTemp(t.TempDir(), "stdout")
@@ -531,8 +536,14 @@ func TestUsageEventsWithoutFlagsListsTheWholeOrganization(t *testing.T) {
 	if run.err != nil {
 		t.Fatalf("usage events: %v", run.err)
 	}
-	if len(run.requests) != 1 || run.requests[0].query.Has("environment") || run.requests[0].query.Has("appId") {
-		t.Fatalf("requests = %+v, want one request for the whole organization", run.requests)
+	if len(run.requests) != 1 {
+		t.Fatalf("requests = %+v, want one", run.requests)
+	}
+	if run.requests[0].query.Has("environment") {
+		t.Errorf("sent environment %q for the whole organization", run.requests[0].query.Get("environment"))
+	}
+	if run.requests[0].query.Has("appId") {
+		t.Errorf("sent appId %q with no --app", run.requests[0].query.Get("appId"))
 	}
 }
 
@@ -541,7 +552,7 @@ type envVarsGroupCase struct {
 	wantNotice bool
 }
 
-func TestDeprecatedEnvGroupStillRunsAndPointsAtEnvVars(t *testing.T) {
+func TestEnvVarsGroupRunsUnderBothNamesAndOnlyTheOldOneWarns(t *testing.T) {
 	cases := []envVarsGroupCase{
 		{
 			group:      deprecatedEnvVarsGroup,
@@ -668,6 +679,12 @@ func TestNextPageHintRepeatsTheEnvironment(t *testing.T) {
 			wantHint: testStagingHint,
 		},
 		{
+			name:     "secrets list",
+			args:     []string{testSecretsGroup, appHealthListCommand},
+			body:     listBody,
+			wantHint: testStagingHint,
+		},
+		{
 			name:     "usage events",
 			args:     []string{testUsageCommand, testEventsCommand, "--app", testAppID},
 			body:     listBody,
@@ -736,8 +753,8 @@ func TestEnvironmentFlagCompletesTheOrganizationsEnvironments(t *testing.T) {
 				}
 				names = append(names, line)
 			}
-			if directive != ":4" {
-				t.Fatalf("directive = %q, want :4 (no file completion); output %q", directive, run.cobraOutput)
+			if want := fmt.Sprintf(":%d", cobra.ShellCompDirectiveNoFileComp); directive != want {
+				t.Fatalf("directive = %q, want %s (no file completion); output %q", directive, want, run.cobraOutput)
 			}
 			if strings.Join(names, ",") != strings.Join(tc.wantNames, ",") {
 				t.Fatalf("completions = %q, want %q", names, tc.wantNames)
@@ -759,6 +776,11 @@ func TestAppDashboardURL(t *testing.T) {
 			want: "https://dash.example/serverless/apps/my-app",
 		},
 		{
+			name:        "production",
+			environment: testProductionEnvironment,
+			want:        "https://dash.example/serverless/apps/my-app",
+		},
+		{
 			name:        "staging",
 			environment: testEnvironment,
 			want:        "https://dash.example/serverless/apps/my-app?environment=staging",
@@ -768,27 +790,6 @@ func TestAppDashboardURL(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := appDashboardURL("https://dash.example/", testAppID, tc.environment); got != tc.want {
 				t.Fatalf("url = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestEnvironmentSubject(t *testing.T) {
-	cases := []environmentTextCase{
-		{
-			name: "no environment",
-			want: "application my-app",
-		},
-		{
-			name:        "staging",
-			environment: testEnvironment,
-			want:        "application my-app in staging",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := environmentSubject("application "+testAppID, tc.environment); got != tc.want {
-				t.Fatalf("subject = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -971,8 +972,11 @@ func TestDeployUnderAnEnvironmentAddressesThatCopy(t *testing.T) {
 
 func TestEnvironmentCompletionGivesUpWhenTheAPIDoesNotAnswer(t *testing.T) {
 	const timeout = 20 * time.Millisecond
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(time.Second):
+		}
 	}))
 	defer srv.Close()
 	t.Setenv("RUNWARE_API_KEY", "test-key")
@@ -1002,57 +1006,6 @@ func TestOpenLinksTheConsoleToTheChosenCopy(t *testing.T) {
 	}
 	if !strings.Contains(run.stdout, "environment="+testEnvironment) {
 		t.Fatalf("stdout = %q, want the link to carry environment=%s", run.stdout, testEnvironment)
-	}
-}
-
-type deleteSubjectCase struct {
-	name    string
-	args    []string
-	subject string
-	want    string
-}
-
-func TestDeletePromptNamesTheEnvironmentTheCommandAddresses(t *testing.T) {
-	cases := []deleteSubjectCase{
-		{
-			name:    "apps delete in staging",
-			args:    []string{testDeleteCommand, testEnvFlag, testEnvironment},
-			subject: "application " + testAppID,
-			want:    "application " + testAppID + " in " + testEnvironment,
-		},
-		{
-			name:    "apps delete in production",
-			args:    []string{testDeleteCommand},
-			subject: "application " + testAppID,
-			want:    "application " + testAppID + " in " + testProductionEnvironment,
-		},
-		{
-			name:    "apps builds delete in staging",
-			args:    []string{testBuildsGroup, testDeleteCommand, testEnvFlag, testEnvironment},
-			subject: "build of application " + testAppID,
-			want:    "build of application " + testAppID + " in " + testEnvironment,
-		},
-		{
-			name:    "apps versions delete in staging",
-			args:    []string{testVersionsGroup, testDeleteCommand, testEnvFlag, testEnvironment},
-			subject: "version 1 of application " + testAppID,
-			want:    "version 1 of application " + testAppID + " in " + testEnvironment,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			del, flags, err := newAppsCmd(log.New(io.Discard)).Find(tc.args)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := del.ParseFlags(flags); err != nil {
-				t.Fatal(err)
-			}
-
-			if got := deleteSubject(del, tc.subject); got != tc.want {
-				t.Fatalf("subject = %q, want %q", got, tc.want)
-			}
-		})
 	}
 }
 

@@ -25,14 +25,14 @@ runware serverless secrets remove <name> [flags]
 ### Options
 
 ```
-  -e, --env name   Environment the app runs in (default production)
-  -h, --help       help for remove
+  -h, --help   help for remove
 ```
 
 ### Options inherited from parent commands
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the secret belongs to (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
