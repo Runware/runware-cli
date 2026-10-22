@@ -447,7 +447,7 @@ func TestPackDirectory_SameTreeOnAnotherMachine(t *testing.T) {
 
 	// Windows reports no executable bit, so every entry packs as 0644 there.
 	wantExec := os.FileMode(0o755)
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		wantExec = 0o644
 	}
 	zr, err := zip.NewReader(bytes.NewReader(first), int64(len(first)))
