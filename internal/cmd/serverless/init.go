@@ -62,6 +62,9 @@ class App:
 
     @endpoint
     def hello(self, name: str = "world") -> dict:
+        # The producer encodes an omitted optional field as an explicit null,
+        # so the default has to be applied here as well as in the signature.
+        name = "world" if name is None else name
         return {"message": f"Hello, {name}!"}
 `
 
