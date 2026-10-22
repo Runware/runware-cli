@@ -487,7 +487,10 @@ func TestPackDirectory_ArchiveBytesAreStable(t *testing.T) {
 	}
 	sum := sha256.Sum256(raw)
 	if got := hex.EncodeToString(sum[:]); got != want {
-		t.Errorf("archive sha256 = %s, want %s", got, want)
+		t.Errorf("archive sha256 = %s under %s, want %s (the Go version go.mod names). "+
+			"A different Go's deflate output differs: run under the go.mod version, or, if the change "+
+			"is intended, update want and expect every app's next deploy to build once",
+			got, runtime.Version(), want)
 	}
 }
 
