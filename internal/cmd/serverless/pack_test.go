@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -406,15 +408,21 @@ func TestPackDirectory_Deterministic(t *testing.T) {
 // non-executable permission bits — and expects identical archives: the
 // archive's digest is what lets an unchanged redeploy reuse its build.
 func TestPackDirectory_SameTreeOnAnotherMachine(t *testing.T) {
+	const script = "entrypoint.sh"
 	tree := map[string]string{
 		testModelFile: testPySource,
 		"a/one.py":    "x = 1\n",
+		script:        "#!/bin/sh\n",
 	}
-	pack := func(mtime time.Time, mode os.FileMode) []byte {
+	pack := func(mtime time.Time, plain, exec os.FileMode) []byte {
 		t.Helper()
 		dir := t.TempDir()
 		writeTree(t, dir, tree)
 		for rel := range tree {
+			mode := plain
+			if rel == script {
+				mode = exec
+			}
 			path := filepath.Join(dir, filepath.FromSlash(rel))
 			if err := os.Chmod(path, mode); err != nil {
 				t.Fatal(err)
@@ -430,10 +438,56 @@ func TestPackDirectory_SameTreeOnAnotherMachine(t *testing.T) {
 		return raw
 	}
 
-	first := pack(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 0o600)
-	second := pack(time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC), 0o664)
+	// Each copy differs in every mode bit but the one that marks an executable.
+	first := pack(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), 0o600, 0o610)
+	second := pack(time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC), 0o664, 0o775)
 	if !bytes.Equal(first, second) {
 		t.Error("the same tree checked out twice packed to different archives")
+	}
+
+	// Windows reports no executable bit, so every entry packs as 0644 there.
+	wantExec := os.FileMode(0o755)
+	if runtime.GOOS == "windows" {
+		wantExec = 0o644
+	}
+	zr, err := zip.NewReader(bytes.NewReader(first), int64(len(first)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch := time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
+	for _, f := range zr.File {
+		if !f.Modified.Equal(epoch) {
+			t.Errorf("%s modified = %v, want %v", f.Name, f.Modified, epoch)
+		}
+		want := os.FileMode(0o644)
+		if f.Name == script {
+			want = wantExec
+		}
+		if got := f.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %v, want %v", f.Name, got, want)
+		}
+	}
+}
+
+// TestPackDirectory_ArchiveBytesAreStable pins the archive of one fixed tree to
+// its exact digest. The API reuses a build for an unchanged redeploy by this
+// digest, so a change to the bytes — a Go toolchain whose deflate output moved,
+// say — makes every app rebuild once. This fails first, so the change is a
+// decision rather than a surprise; update the digest when it is one.
+func TestPackDirectory_ArchiveBytesAreStable(t *testing.T) {
+	const want = "51d622ce22623b6bfd24a44b45532d14497676cd4499c3368527b48cbe011f7d"
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		testModelFile: testPySource,
+		"a/one.py":    "x = 1\n",
+	})
+	raw, _, err := packDirectory(dir, filepath.Join(dir, testModelFile))
+	if err != nil {
+		t.Fatalf("packDirectory: %v", err)
+	}
+	sum := sha256.Sum256(raw)
+	if got := hex.EncodeToString(sum[:]); got != want {
+		t.Errorf("archive sha256 = %s, want %s", got, want)
 	}
 }
 
