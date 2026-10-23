@@ -18,6 +18,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 )
 
@@ -1055,6 +1056,21 @@ func TestDeletePromptAsksAboutTheCopyTheCommandAddresses(t *testing.T) {
 	}
 }
 
+// openAPISpec is the part of the vendored API spec a test reads.
+type openAPISpec struct {
+	Components openAPIComponents `yaml:"components"`
+}
+
+// openAPIComponents holds the spec's named schemas.
+type openAPIComponents struct {
+	Schemas map[string]openAPISchema `yaml:"schemas"`
+}
+
+// openAPISchema is one named schema's validation rule.
+type openAPISchema struct {
+	Pattern string `yaml:"pattern"`
+}
+
 // specEnvironmentNamePattern is the EnvironmentName rule the vendored API
 // spec states.
 func specEnvironmentNamePattern(t *testing.T) string {
@@ -1063,13 +1079,7 @@ func specEnvironmentNamePattern(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var spec struct {
-		Components struct {
-			Schemas map[string]struct {
-				Pattern string `yaml:"pattern"`
-			} `yaml:"schemas"`
-		} `yaml:"components"`
-	}
+	var spec openAPISpec
 	if err := yaml.Unmarshal(raw, &spec); err != nil {
 		t.Fatal(err)
 	}
@@ -1085,4 +1095,16 @@ func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
 	if got := environmentNamePattern.String(); got != want {
 		t.Fatalf("environmentNamePattern = %q, spec says %q", got, want)
 	}
+}
+
+func TestEnvironmentFlagOnAFlagSetTheCommandDoesNotOwnPanics(t *testing.T) {
+	cmd := &cobra.Command{Use: "orphan"}
+	foreign := pflag.NewFlagSet("foreign", pflag.ContinueOnError)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("addEnvironmentFlag did not panic when the completion could not be registered")
+		}
+	}()
+
+	addEnvironmentFlag(cmd, foreign, log.New(io.Discard), environmentFlagHelp)
 }

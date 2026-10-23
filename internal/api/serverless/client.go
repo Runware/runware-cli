@@ -224,9 +224,9 @@ type Client struct {
 	doer    gen.HttpRequestDoer
 	inner   *gen.ClientWithResponses
 	logger  *slog.Logger
-	// environment selects the app copy of every app-scoped request, and every
-	// wrapper overwrites params.Environment with it. Empty sends no parameter,
-	// which the API reads as production.
+	// environment selects the copy every app, secret and usage wrapper
+	// addresses, and those wrappers overwrite params.Environment with it. Empty
+	// sends no parameter, which the API reads as production.
 	environment EnvironmentName
 }
 

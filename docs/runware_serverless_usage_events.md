@@ -57,5 +57,5 @@ runware serverless usage events [flags]
 
 ### SEE ALSO
 
-* [runware serverless usage](runware_serverless_usage.md)	 - Show account-wide usage and cost
+* [runware serverless usage](runware_serverless_usage.md)	 - Show usage and cost for the organization or one environment
 

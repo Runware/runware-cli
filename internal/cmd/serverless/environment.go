@@ -110,10 +110,16 @@ func deleteSubject(cmd *cobra.Command, subject string) string {
 // environmentArgs is the --env part of a printed command: nothing for the
 // default environment, which a command without the flag already addresses.
 func environmentArgs(environment string) []string {
-	if environment == "" || environment == defaultEnvironment {
+	if isDefaultEnvironment(environment) {
 		return nil
 	}
 	return appendFlag(nil, "--"+environmentFlag, environment)
+}
+
+// isDefaultEnvironment reports whether environment is the one a command
+// without --env addresses.
+func isDefaultEnvironment(environment string) bool {
+	return environment == "" || environment == defaultEnvironment
 }
 
 // serverlessCommand is the runware serverless command line that addresses

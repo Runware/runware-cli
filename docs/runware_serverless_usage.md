@@ -1,6 +1,6 @@
 ## runware serverless usage
 
-Show account-wide usage and cost
+Show usage and cost for the organization or one environment
 
 ### Synopsis
 

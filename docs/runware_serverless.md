@@ -30,5 +30,5 @@ Deploy, monitor, and manage Runware serverless applications on the platform
 * [runware serverless init](runware_serverless_init.md)	 - Create an App directory with the Serverless library installed
 * [runware serverless open](runware_serverless_open.md)	 - Open an application in the Runware dashboard
 * [runware serverless secrets](runware_serverless_secrets.md)	 - Manage secrets for serverless applications
-* [runware serverless usage](runware_serverless_usage.md)	 - Show account-wide usage and cost
+* [runware serverless usage](runware_serverless_usage.md)	 - Show usage and cost for the organization or one environment
 

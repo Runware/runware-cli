@@ -63,7 +63,7 @@ func newOpenCmd(logger *log.Logger) *cobra.Command {
 // default environment adds no query, as a command without --env does not.
 func appDashboardURL(base, appID, environment string) string {
 	link := strings.TrimSuffix(base, "/") + "/serverless/apps/" + url.PathEscape(appID)
-	if environment == "" || environment == defaultEnvironment {
+	if isDefaultEnvironment(environment) {
 		return link
 	}
 	return link + "?" + url.Values{

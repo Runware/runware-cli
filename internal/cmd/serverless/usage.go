@@ -48,7 +48,7 @@ func newUsageCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "usage",
-		Short: "Show account-wide usage and cost",
+		Short: "Show usage and cost for the organization or one environment",
 		Long: `Show GPU time and spend for the authenticated organization over a time window.
 
 --env narrows the report to one environment; without it the report covers
