@@ -12,7 +12,7 @@ prints it oldest first, so a plain apps logs shows the latest entries as a
 readable timeline. --sort newest lists newest first, so nextCursor walks
 older. --sort oldest lists the oldest page of the window first, so nextCursor
 walks newer. prevCursor walks the other way. Replay either cursor with the
-same --sort, --window, and --limit.
+same --env, --sort, --window, and --limit.
 
 With --follow the command prints the recent page, then streams new entries
 until interrupted; the stream reconnects when the server ends it, and waits
@@ -68,6 +68,7 @@ runware serverless apps logs <appId> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the app runs in (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

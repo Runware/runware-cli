@@ -101,7 +101,7 @@ func activationMoved(previous, current *uuid.UUID) bool {
 // coming. Newest first, as listBuilds returns them; an unreadable list is not a
 // failure, and the poll simply continues.
 func buildFailed(ctx context.Context, client *serverlessapi.Client, appID string) bool {
-	page, err := client.ListBuilds(ctx, appID, nil)
+	page, err := client.ListBuilds(ctx, appID, serverlessapi.ListBuildsParams{})
 	if err != nil || len(page.Data) == 0 {
 		return false
 	}
@@ -132,7 +132,7 @@ func deployEndpointPaths(ctx context.Context, client *serverlessapi.Client, appI
 		cursor string
 	)
 	for {
-		params := &serverlessapi.ListEndpointsParams{}
+		params := serverlessapi.ListEndpointsParams{}
 		params.Limit, params.Cursor = listPageParams(endpointPageLimit, cursor)
 		page, err := client.ListEndpoints(ctx, appID, params)
 		if err != nil {
@@ -208,12 +208,12 @@ func reportEndpointSetChange(w io.Writer, change endpointSetChange) {
 
 // reportDeployEndpoints tells the customer how to call a first deploy. w must
 // be stderr: stdout carries the app record --format json promises.
-func reportDeployEndpoints(w io.Writer, appID string, paths []string) {
+func reportDeployEndpoints(w io.Writer, app *serverlessapi.App, paths []string) {
 	if len(paths) == 0 {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "Endpoints: %s\n", quotedPaths(paths))
-	_, _ = fmt.Fprintf(w, "Invoke: runware serverless apps invoke %s %s -f payload.json\n", appID, paths[0])
+	_, _ = fmt.Fprintf(w, "Invoke: %s\n", appCommand(app, "apps", "invoke", app.AppId, paths[0], "-f", "payload.json"))
 }
 
 func quotedPaths(paths []string) string {

@@ -211,6 +211,12 @@ func pageOf[T any](data *[]T, nextCursor *string) Page[T] {
 	}
 }
 
+// EnvironmentName names one of the organization's environments.
+type EnvironmentName = gen.EnvironmentName
+
+// Environment is a deployment context that holds one copy of each app deployed to it.
+type Environment = gen.Environment
+
 // Client talks to the Serverless control-plane REST API.
 type Client struct {
 	apiKey  string
@@ -218,6 +224,26 @@ type Client struct {
 	doer    gen.HttpRequestDoer
 	inner   *gen.ClientWithResponses
 	logger  *slog.Logger
+	// environment selects the copy every app, secret and usage wrapper
+	// addresses, and those wrappers overwrite params.Environment with it. Empty
+	// sends no parameter, which the API reads as production.
+	environment EnvironmentName
+}
+
+// WithEnvironment returns a client whose app-scoped requests address the
+// app's copy in the named environment.
+func (c *Client) WithEnvironment(name EnvironmentName) *Client {
+	scoped := *c
+	scoped.environment = name
+	return &scoped
+}
+
+func (c *Client) environmentParam() *gen.AppEnvironment {
+	if c.environment == "" {
+		return nil
+	}
+	name := c.environment
+	return &name
 }
 
 // NewClient creates a Serverless API client for the given API key and base URL.
@@ -309,11 +335,53 @@ func (c *Client) ListGpuTypes(ctx context.Context) ([]GpuType, error) {
 		return resp.JSON200.Data, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	default:
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
+}
+
+// ListEnvironments returns the organization's environments.
+func (c *Client) ListEnvironments(ctx context.Context) ([]Environment, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.ListEnvironmentsWithResponse(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("list environments: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	if resp.StatusCode() != http.StatusOK {
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("list environments: empty 200 response")
+	}
+	return resp.JSON200.Data, nil
+}
+
+// GetEnvironment returns one of the organization's environments by name.
+func (c *Client) GetEnvironment(ctx context.Context, name EnvironmentName) (*Environment, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.GetEnvironmentWithResponse(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("get environment: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	if resp.StatusCode() != http.StatusOK {
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("get environment: empty 200 response")
+	}
+	return resp.JSON200, nil
 }
 
 // CreateApp creates a new app and starts its initial rollout.
@@ -322,7 +390,9 @@ func (c *Client) CreateApp(ctx context.Context, body AppCreate) (*App, error) {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.createInner().CreateAppWithResponse(ctx, body)
+	resp, err := c.createInner().CreateAppWithResponse(ctx, &gen.CreateAppParams{
+		Environment: c.environmentParam(),
+	}, body)
 	if err != nil {
 		return nil, fmt.Errorf("create app: %w", err)
 	}
@@ -352,13 +422,14 @@ func (c *Client) CreateApp(ctx context.Context, body AppCreate) (*App, error) {
 	}
 }
 
-// ListApps returns a page of apps for the authenticated organization.
-func (c *Client) ListApps(ctx context.Context, params *ListAppsParams) (Page[App], error) {
+// ListApps returns a page of the organization's apps in the client's environment.
+func (c *Client) ListApps(ctx context.Context, params ListAppsParams) (Page[App], error) {
 	if c.apiKey == "" {
 		return Page[App]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListAppsWithResponse(ctx, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListAppsWithResponse(ctx, &params)
 	if err != nil {
 		return Page[App]{}, fmt.Errorf("list apps: %w", err)
 	}
@@ -375,8 +446,6 @@ func (c *Client) ListApps(ctx context.Context, params *ListAppsParams) (Page[App
 		return Page[App]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[App]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[App]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusUnprocessableEntity:
 		return Page[App]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
@@ -390,7 +459,9 @@ func (c *Client) GetApp(ctx context.Context, appID string) (*App, error) {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetAppWithResponse(ctx, appID)
+	resp, err := c.inner.GetAppWithResponse(ctx, appID, &gen.GetAppParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get app: %w", err)
 	}
@@ -405,8 +476,6 @@ func (c *Client) GetApp(ctx context.Context, appID string) (*App, error) {
 		return resp.JSON200, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -462,7 +531,9 @@ func (c *Client) UpdateApp(ctx context.Context, appID string, body AppUpdate) (*
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.UpdateAppWithResponse(ctx, appID, body)
+	resp, err := c.inner.UpdateAppWithResponse(ctx, appID, &gen.UpdateAppParams{
+		Environment: c.environmentParam(),
+	}, body)
 	if err != nil {
 		return nil, fmt.Errorf("update app: %w", err)
 	}
@@ -501,19 +572,16 @@ func (c *Client) StopApp(ctx context.Context, appID string) (*App, error) {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.StopAppWithResponse(ctx, appID)
+	resp, err := c.inner.StopAppWithResponse(ctx, appID, &gen.StopAppParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("stop app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	return acceptedApp("stop app", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
-		Unauthorized: resp.ApplicationproblemJSON401,
-		Forbidden:    resp.ApplicationproblemJSON403,
-		NotFound:     resp.ApplicationproblemJSON404,
-		Conflict:     resp.ApplicationproblemJSON409,
-	})
+	return acceptedApp("stop app", resp.StatusCode(), resp.JSON202, resp.Body)
 }
 
 // ResumeApp accepts a resume and returns the app with status initializing.
@@ -523,21 +591,16 @@ func (c *Client) ResumeApp(ctx context.Context, appID string) (*App, error) {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ResumeAppWithResponse(ctx, appID)
+	resp, err := c.inner.ResumeAppWithResponse(ctx, appID, &gen.ResumeAppParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("resume app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	return acceptedApp("resume app", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
-		Unauthorized:    resp.ApplicationproblemJSON401,
-		PaymentRequired: resp.ApplicationproblemJSON402,
-		Forbidden:       resp.ApplicationproblemJSON403,
-		NotFound:        resp.ApplicationproblemJSON404,
-		Conflict:        resp.ApplicationproblemJSON409,
-		Unprocessable:   resp.ApplicationproblemJSON422,
-	})
+	return acceptedApp("resume app", resp.StatusCode(), resp.JSON202, resp.Body)
 }
 
 // DeleteApp accepts a soft delete and returns the app with status deleting.
@@ -547,18 +610,16 @@ func (c *Client) DeleteApp(ctx context.Context, appID string) (*App, error) {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteAppWithResponse(ctx, appID)
+	resp, err := c.inner.DeleteAppWithResponse(ctx, appID, &gen.DeleteAppParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("delete app: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	return acceptedApp("delete app", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
-		Unauthorized: resp.ApplicationproblemJSON401,
-		Forbidden:    resp.ApplicationproblemJSON403,
-		NotFound:     resp.ApplicationproblemJSON404,
-	})
+	return acceptedApp("delete app", resp.StatusCode(), resp.JSON202, resp.Body)
 }
 
 // DeployVersion activates a ready version by number. Worker rollout is
@@ -569,7 +630,9 @@ func (c *Client) DeployVersion(ctx context.Context, appID string, versionNumber 
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeployVersionWithResponse(ctx, appID, DeployRequest{
+	resp, err := c.inner.DeployVersionWithResponse(ctx, appID, &gen.DeployVersionParams{
+		Environment: c.environmentParam(),
+	}, DeployRequest{
 		VersionNumber: versionNumber,
 	})
 	if err != nil {
@@ -578,63 +641,28 @@ func (c *Client) DeployVersion(ctx context.Context, appID string, versionNumber 
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	return acceptedApp("deploy version", resp.StatusCode(), resp.JSON202, resp.Body, lifecycleProblems{
-		Unauthorized:    resp.ApplicationproblemJSON401,
-		PaymentRequired: resp.ApplicationproblemJSON402,
-		Forbidden:       resp.ApplicationproblemJSON403,
-		NotFound:        resp.ApplicationproblemJSON404,
-		Conflict:        resp.ApplicationproblemJSON409,
-		Unprocessable:   resp.ApplicationproblemJSON422,
-	})
+	return acceptedApp("deploy version", resp.StatusCode(), resp.JSON202, resp.Body)
 }
 
-// lifecycleProblems are typed RFC 9457 bodies bound by the generated client.
-type lifecycleProblems struct {
-	Unauthorized    *gen.ProblemDetails
-	PaymentRequired *gen.ProblemDetails
-	Forbidden       *gen.ProblemDetails
-	NotFound        *gen.ProblemDetails
-	Conflict        *gen.ProblemDetails
-	Unprocessable   *gen.ProblemDetails
-}
-
-func acceptedApp(op string, status int, app *App, body []byte, problems lifecycleProblems) (*App, error) {
-	switch status {
-	case http.StatusAccepted:
-		if app == nil {
-			return nil, fmt.Errorf("%s: empty 202 response", op)
-		}
-		return app, nil
-	case http.StatusUnauthorized:
-		return nil, problemToError(problems.Unauthorized, http.StatusUnauthorized)
-	case http.StatusPaymentRequired:
-		return nil, problemToError(problems.PaymentRequired, http.StatusPaymentRequired)
-	case http.StatusForbidden:
-		return nil, problemToError(problems.Forbidden, http.StatusForbidden)
-	case http.StatusNotFound:
-		return nil, problemToError(problems.NotFound, http.StatusNotFound)
-	case http.StatusConflict:
-		if problems.Conflict != nil {
-			return nil, problemToError(problems.Conflict, http.StatusConflict)
-		}
-		return nil, problemFromBody(body, status)
-	case http.StatusUnprocessableEntity:
-		if problems.Unprocessable != nil {
-			return nil, problemToError(problems.Unprocessable, http.StatusUnprocessableEntity)
-		}
-		return nil, problemFromBody(body, status)
-	default:
+// acceptedApp returns the 202 app, or the problem the body describes for any other status.
+func acceptedApp(op string, status int, app *App, body []byte) (*App, error) {
+	if status != http.StatusAccepted {
 		return nil, problemFromBody(body, status)
 	}
+	if app == nil {
+		return nil, fmt.Errorf("%s: empty 202 response", op)
+	}
+	return app, nil
 }
 
 // ListEndpoints returns a page of endpoints for an app.
-func (c *Client) ListEndpoints(ctx context.Context, appID string, params *ListEndpointsParams) (Page[Endpoint], error) {
+func (c *Client) ListEndpoints(ctx context.Context, appID string, params ListEndpointsParams) (Page[Endpoint], error) {
 	if c.apiKey == "" {
 		return Page[Endpoint]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListEndpointsWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListEndpointsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Endpoint]{}, fmt.Errorf("list endpoints: %w", err)
 	}
@@ -649,8 +677,6 @@ func (c *Client) ListEndpoints(ctx context.Context, appID string, params *ListEn
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[Endpoint]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[Endpoint]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[Endpoint]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -664,7 +690,9 @@ func (c *Client) GetEndpoint(ctx context.Context, appID string, endpointID uuid.
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetEndpointWithResponse(ctx, appID, endpointID)
+	resp, err := c.inner.GetEndpointWithResponse(ctx, appID, endpointID, &gen.GetEndpointParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get endpoint: %w", err)
 	}
@@ -679,8 +707,6 @@ func (c *Client) GetEndpoint(ctx context.Context, appID string, endpointID uuid.
 		return resp.JSON200, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:
@@ -691,12 +717,13 @@ func (c *Client) GetEndpoint(ctx context.Context, appID string, endpointID uuid.
 }
 
 // ListVersions returns a page of versions for an app.
-func (c *Client) ListVersions(ctx context.Context, appID string, params *ListVersionsParams) (Page[Version], error) {
+func (c *Client) ListVersions(ctx context.Context, appID string, params ListVersionsParams) (Page[Version], error) {
 	if c.apiKey == "" {
 		return Page[Version]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListVersionsWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListVersionsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Version]{}, fmt.Errorf("list versions: %w", err)
 	}
@@ -711,8 +738,6 @@ func (c *Client) ListVersions(ctx context.Context, appID string, params *ListVer
 		return pageOf(&resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[Version]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -726,7 +751,9 @@ func (c *Client) GetVersion(ctx context.Context, appID string, versionNumber int
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetVersionWithResponse(ctx, appID, versionNumber)
+	resp, err := c.inner.GetVersionWithResponse(ctx, appID, versionNumber, &gen.GetVersionParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get version: %w", err)
 	}
@@ -741,8 +768,6 @@ func (c *Client) GetVersion(ctx context.Context, appID string, versionNumber int
 		return resp.JSON200, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -758,7 +783,9 @@ func (c *Client) DeleteVersion(ctx context.Context, appID string, versionNumber 
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteVersionWithResponse(ctx, appID, versionNumber)
+	resp, err := c.inner.DeleteVersionWithResponse(ctx, appID, versionNumber, &gen.DeleteVersionParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return fmt.Errorf("delete version: %w", err)
 	}
@@ -782,12 +809,13 @@ func (c *Client) DeleteVersion(ctx context.Context, appID string, versionNumber 
 }
 
 // ListBuilds returns a page of builds for an app.
-func (c *Client) ListBuilds(ctx context.Context, appID string, params *ListBuildsParams) (Page[Build], error) {
+func (c *Client) ListBuilds(ctx context.Context, appID string, params ListBuildsParams) (Page[Build], error) {
 	if c.apiKey == "" {
 		return Page[Build]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListBuildsWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListBuildsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Build]{}, fmt.Errorf("list builds: %w", err)
 	}
@@ -802,8 +830,6 @@ func (c *Client) ListBuilds(ctx context.Context, appID string, params *ListBuild
 		return pageOf(&resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[Build]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[Build]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[Build]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -817,7 +843,9 @@ func (c *Client) GetBuild(ctx context.Context, appID string, buildID uuid.UUID) 
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetBuildWithResponse(ctx, appID, buildID)
+	resp, err := c.inner.GetBuildWithResponse(ctx, appID, buildID, &gen.GetBuildParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get build: %w", err)
 	}
@@ -832,8 +860,6 @@ func (c *Client) GetBuild(ctx context.Context, appID string, buildID uuid.UUID) 
 		return resp.JSON200, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -849,7 +875,9 @@ func (c *Client) DeleteBuild(ctx context.Context, appID string, buildID uuid.UUI
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteBuildWithResponse(ctx, appID, buildID)
+	resp, err := c.inner.DeleteBuildWithResponse(ctx, appID, buildID, &gen.DeleteBuildParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return fmt.Errorf("delete build: %w", err)
 	}
@@ -861,8 +889,6 @@ func (c *Client) DeleteBuild(ctx context.Context, appID string, buildID uuid.UUI
 		return nil
 	case http.StatusUnauthorized:
 		return problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusConflict:
@@ -875,12 +901,13 @@ func (c *Client) DeleteBuild(ctx context.Context, appID string, buildID uuid.UUI
 }
 
 // ListWorkers returns a page of workers for an app.
-func (c *Client) ListWorkers(ctx context.Context, appID string, params *ListWorkersParams) (Page[Worker], error) {
+func (c *Client) ListWorkers(ctx context.Context, appID string, params ListWorkersParams) (Page[Worker], error) {
 	if c.apiKey == "" {
 		return Page[Worker]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListWorkersWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListWorkersWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[Worker]{}, fmt.Errorf("list workers: %w", err)
 	}
@@ -895,8 +922,6 @@ func (c *Client) ListWorkers(ctx context.Context, appID string, params *ListWork
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[Worker]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -910,7 +935,9 @@ func (c *Client) GetWorker(ctx context.Context, appID string, workerID uuid.UUID
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetWorkerWithResponse(ctx, appID, workerID)
+	resp, err := c.inner.GetWorkerWithResponse(ctx, appID, workerID, &gen.GetWorkerParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get worker: %w", err)
 	}
@@ -925,8 +952,6 @@ func (c *Client) GetWorker(ctx context.Context, appID string, workerID uuid.UUID
 		return resp.JSON200, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:
@@ -937,12 +962,13 @@ func (c *Client) GetWorker(ctx context.Context, appID string, workerID uuid.UUID
 }
 
 // ListAppEvents returns a page of deploy, scaling, audit, and error events for an app.
-func (c *Client) ListAppEvents(ctx context.Context, appID string, params *ListAppEventsParams) (Page[AppEvent], error) {
+func (c *Client) ListAppEvents(ctx context.Context, appID string, params ListAppEventsParams) (Page[AppEvent], error) {
 	if c.apiKey == "" {
 		return Page[AppEvent]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListAppEventsWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListAppEventsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[AppEvent]{}, fmt.Errorf("list app events: %w", err)
 	}
@@ -957,8 +983,6 @@ func (c *Client) ListAppEvents(ctx context.Context, appID string, params *ListAp
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[AppEvent]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[AppEvent]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[AppEvent]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -976,12 +1000,13 @@ type ListAppErrorsParamsWindow = gen.ListAppErrorsParamsWindow
 type ListAppErrorsParamsStatusClass = gen.ListAppErrorsParamsStatusClass
 
 // ListAppErrors returns one page of failed inference requests for an app.
-func (c *Client) ListAppErrors(ctx context.Context, appID string, params *ListAppErrorsParams) (Page[LogEntry], error) {
+func (c *Client) ListAppErrors(ctx context.Context, appID string, params ListAppErrorsParams) (Page[LogEntry], error) {
 	if c.apiKey == "" {
 		return Page[LogEntry]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListAppErrorsWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListAppErrorsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[LogEntry]{}, fmt.Errorf("list app errors: %w", err)
 	}
@@ -998,8 +1023,6 @@ func (c *Client) ListAppErrors(ctx context.Context, appID string, params *ListAp
 		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[LogEntry]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:

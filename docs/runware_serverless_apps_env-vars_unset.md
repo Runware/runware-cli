@@ -1,4 +1,4 @@
-## runware serverless apps env unset
+## runware serverless apps env-vars unset
 
 Remove an environment variable
 
@@ -12,14 +12,14 @@ stopped or stopping app applies it on resume. A delete during an in-flight
 rollout returns 409 and does not remove the value.
 
 ```
-runware serverless apps env unset <appId> <key> [flags]
+runware serverless apps env-vars unset <appId> <key> [flags]
 ```
 
 ### Examples
 
 ```
   # remove an environment variable
-  runware serverless apps env unset my-app MY_KEY
+  runware serverless apps env-vars unset my-app MY_KEY
 ```
 
 ### Options
@@ -32,6 +32,7 @@ runware serverless apps env unset <appId> <key> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the app runs in (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
@@ -39,5 +40,5 @@ runware serverless apps env unset <appId> <key> [flags]
 
 ### SEE ALSO
 
-* [runware serverless apps env](runware_serverless_apps_env.md)	 - Manage plain-text environment variables for an application
+* [runware serverless apps env-vars](runware_serverless_apps_env-vars.md)	 - Manage plain-text environment variables for an application
 

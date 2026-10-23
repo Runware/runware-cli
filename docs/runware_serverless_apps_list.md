@@ -2,6 +2,12 @@
 
 List serverless applications
 
+### Synopsis
+
+List the serverless applications in one environment, production unless
+--env names another. A next-page cursor is valid only in the environment it
+came from.
+
 ```
 runware serverless apps list [flags]
 ```
@@ -11,6 +17,9 @@ runware serverless apps list [flags]
 ```
   # list all serverless applications
   runware serverless apps list
+
+  # list the applications in staging
+  runware serverless apps list --env staging
 
   # filter by status
   runware serverless apps list --status active
@@ -28,7 +37,7 @@ runware serverless apps list [flags]
 ### Options
 
 ```
-      --cursor string     Pagination cursor from a previous nextCursor (reuse the same --query/--gpu-type/--sort/--status)
+      --cursor string     Pagination cursor from a previous nextCursor (reuse the same --env/--query/--gpu-type/--sort/--status)
       --gpu-type string   Filter by GPU type (see 'serverless gpus')
   -h, --help              help for list
       --limit int         Maximum number of applications to return (1-100)
@@ -41,6 +50,7 @@ runware serverless apps list [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the app runs in (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

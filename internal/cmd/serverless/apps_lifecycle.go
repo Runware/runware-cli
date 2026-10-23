@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -92,6 +91,10 @@ func newAppsDeleteCmd(logger *log.Logger) *cobra.Command {
 		Short: "Delete a serverless application",
 		Long: `Soft-delete a serverless application.
 
+Only the copy in the environment --env selects is deleted, production unless
+--env names another. Copies of the same app id in other environments keep
+running.
+
 The server accepts the delete and returns immediately with status deleting.
 Router removal and worker drain are asynchronous; this command does not wait
 until the application is deleted.
@@ -105,7 +108,7 @@ Confirmation is required unless --yes or --force is passed.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
-			if err := confirmDelete("application "+id, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
+			if err := confirmDelete(deleteSubject(cmd, "application "+id), yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
 				return err
 			}
 			return runLifecycle(cmd, logger, id, "Deleting", (*serverlessapi.Client).DeleteApp, waitOptions{})
@@ -128,7 +131,7 @@ func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, actio
 	spin := cmdutil.NewSpinner(fmt.Sprintf("%s application %s...", verb, id))
 	spin.Start()
 
-	client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+	client := newServerlessClient(cmd, logger)
 	app, err := action(client, cmd.Context(), id)
 	if err != nil {
 		spin.Stop()
@@ -188,7 +191,18 @@ func confirmDelete(subject string, skip bool, in io.Reader, out io.Writer, isTTY
 	}
 }
 
+// terminalReader is an input that says itself whether a prompt on it can be
+// answered.
+type terminalReader interface {
+	io.Reader
+	IsTerminal() bool
+}
+
+// stdinIsTerminal reports whether a delete prompt on in can be answered.
 func stdinIsTerminal(in io.Reader) bool {
+	if tr, ok := in.(terminalReader); ok {
+		return tr.IsTerminal()
+	}
 	f, ok := in.(*os.File)
 	if !ok {
 		return false

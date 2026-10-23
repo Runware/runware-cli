@@ -2,12 +2,10 @@ package serverless
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -47,17 +45,14 @@ running, and retrying work. A page can be empty and still have nextCursor.`,
 			if err != nil {
 				return err
 			}
-			var params *serverlessapi.ListTasksParams
-			if limit > 0 || cursor != "" || status != "" {
-				params = &serverlessapi.ListTasksParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-				params.Status = statusVal
-			}
+			var params serverlessapi.ListTasksParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
+			params.Status = statusVal
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching tasks for %s...", id))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListTasks(cmd.Context(), id, params)
 			if err != nil {
 				spin.Stop()
@@ -65,7 +60,7 @@ running, and retrying work. A page can be empty and still have nextCursor.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, tasksResult(page.Data), cmd.ErrOrStderr(), extraStatusCursorFlag(status))
+			return printPage(cmdutil.FormatFor(cmd), page, tasksResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, extraStatusCursorFlag(status)))
 		},
 	}
 
@@ -90,7 +85,7 @@ func newAppsTasksShowCmd(logger *log.Logger) *cobra.Command {
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching task %s...", taskID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			task, err := client.GetTask(cmd.Context(), appID, taskID)
 			if err != nil {
 				spin.Stop()

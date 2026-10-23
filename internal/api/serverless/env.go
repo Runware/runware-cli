@@ -21,12 +21,13 @@ type ListAppEnvironmentVariablesParams = gen.ListAppEnvironmentVariablesParams
 
 // ListAppEnvironmentVariables returns a page of plain-text environment
 // variables for an app. Values are included in the response.
-func (c *Client) ListAppEnvironmentVariables(ctx context.Context, appID string, params *ListAppEnvironmentVariablesParams) (Page[EnvironmentVariable], error) {
+func (c *Client) ListAppEnvironmentVariables(ctx context.Context, appID string, params ListAppEnvironmentVariablesParams) (Page[EnvironmentVariable], error) {
 	if c.apiKey == "" {
 		return Page[EnvironmentVariable]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListAppEnvironmentVariablesWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListAppEnvironmentVariablesWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[EnvironmentVariable]{}, fmt.Errorf("list environment variables: %w", err)
 	}
@@ -41,8 +42,6 @@ func (c *Client) ListAppEnvironmentVariables(ctx context.Context, appID string, 
 		return pageOf(resp.JSON200.Data, resp.JSON200.NextCursor), nil
 	case http.StatusUnauthorized:
 		return Page[EnvironmentVariable]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[EnvironmentVariable]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[EnvironmentVariable]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	default:
@@ -57,7 +56,9 @@ func (c *Client) UpdateAppEnvironmentVariable(ctx context.Context, appID, key st
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.UpdateAppEnvironmentVariableWithResponse(ctx, appID, key, body)
+	resp, err := c.inner.UpdateAppEnvironmentVariableWithResponse(ctx, appID, key, &gen.UpdateAppEnvironmentVariableParams{
+		Environment: c.environmentParam(),
+	}, body)
 	if err != nil {
 		return nil, fmt.Errorf("update environment variable: %w", err)
 	}
@@ -92,7 +93,9 @@ func (c *Client) DeleteAppEnvironmentVariable(ctx context.Context, appID, key st
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteAppEnvironmentVariableWithResponse(ctx, appID, key)
+	resp, err := c.inner.DeleteAppEnvironmentVariableWithResponse(ctx, appID, key, &gen.DeleteAppEnvironmentVariableParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return fmt.Errorf("delete environment variable: %w", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -386,7 +387,7 @@ func TestListApps_EmptyDataKeepsNextCursor(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListApps(context.Background(), nil)
+	page, err := c.ListApps(context.Background(), ListAppsParams{})
 	if err != nil {
 		t.Fatalf("ListApps: %v", err)
 	}
@@ -442,7 +443,7 @@ func TestListApps(t *testing.T) {
 	gpuType := testGPUType
 	sort := AppSort("name")
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListApps(context.Background(), &ListAppsParams{
+	page, err := c.ListApps(context.Background(), ListAppsParams{
 		Limit:   &limit,
 		Cursor:  &cursor,
 		Status:  &status,
@@ -470,7 +471,7 @@ func TestListApps_BadCursor(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.ListApps(context.Background(), nil)
+	_, err := c.ListApps(context.Background(), ListAppsParams{})
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -498,7 +499,7 @@ func TestListApps_UnimplementedSort(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.ListApps(context.Background(), nil)
+	_, err := c.ListApps(context.Background(), ListAppsParams{})
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -989,7 +990,7 @@ func TestListEndpoints(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListEndpoints(context.Background(), testAppID, nil)
+	page, err := c.ListEndpoints(context.Background(), testAppID, ListEndpointsParams{})
 	if err != nil {
 		t.Fatalf("ListEndpoints: %v", err)
 	}
@@ -1081,7 +1082,7 @@ func TestListBuilds(t *testing.T) {
 	limit := Limit(10)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListBuilds(context.Background(), testAppID, &ListBuildsParams{
+	page, err := c.ListBuilds(context.Background(), testAppID, ListBuildsParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 	})
@@ -1104,7 +1105,7 @@ func TestListBuilds(t *testing.T) {
 
 func TestListBuilds_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListBuilds(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListBuilds(context.Background(), testAppID, ListBuildsParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
@@ -1245,7 +1246,7 @@ func TestListVersions(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListVersions(context.Background(), testAppID, nil)
+	page, err := c.ListVersions(context.Background(), testAppID, ListVersionsParams{})
 	if err != nil {
 		t.Fatalf("ListVersions: %v", err)
 	}
@@ -1508,7 +1509,7 @@ func TestListWorkers(t *testing.T) {
 	status := WorkerStatus(testStatusReady)
 	state := WorkerStateFilterLive
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListWorkers(context.Background(), testAppID, &ListWorkersParams{
+	page, err := c.ListWorkers(context.Background(), testAppID, ListWorkersParams{
 		Status: &status,
 		State:  &state,
 	})
@@ -1617,7 +1618,7 @@ func TestListAppEvents(t *testing.T) {
 	limit := Limit(20)
 	cursor := Cursor(testCursorPage2)
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListAppEvents(context.Background(), testAppID, &ListAppEventsParams{
+	page, err := c.ListAppEvents(context.Background(), testAppID, ListAppEventsParams{
 		Type:   &eventType,
 		Limit:  &limit,
 		Cursor: &cursor,
@@ -1652,7 +1653,7 @@ func TestListAppEvents_NotFound(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := c.ListAppEvents(context.Background(), testAppID, nil)
+	_, err := c.ListAppEvents(context.Background(), testAppID, ListAppEventsParams{})
 	var re *transport.RunwareError
 	if !errors.As(err, &re) {
 		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
@@ -1664,7 +1665,7 @@ func TestListAppEvents_NotFound(t *testing.T) {
 
 func TestListAppEvents_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListAppEvents(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListAppEvents(context.Background(), testAppID, ListAppEventsParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }
@@ -1680,4 +1681,24 @@ func testAppJSON(status AppStatus) string {
 			"createdAt":"2026-07-30T12:00:00Z",
 			"updatedAt":"2026-07-30T12:00:00Z"
 		}`
+}
+
+func TestLifecycleErrorKeepsTheServerDetailForAnyStatus(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusPaymentRequired, http.StatusConflict} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(`{"title":"Refused","status":` + strconv.Itoa(status) + `,"detail":"organization is closed"}`))
+			}))
+			defer srv.Close()
+			c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+
+			_, err := c.StopApp(context.Background(), "my-app")
+
+			if err == nil || !strings.Contains(err.Error(), "organization is closed") {
+				t.Fatalf("err = %v, want the server detail", err)
+			}
+		})
+	}
 }

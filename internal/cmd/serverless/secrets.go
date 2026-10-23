@@ -4,23 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-// newSecretsCmd returns the "serverless secrets" command group for organization
-// secrets and their attachment to applications.
+// newSecretsCmd returns the "serverless secrets" command group for secrets and
+// their attachment to applications.
 func newSecretsCmd(logger *log.Logger) *cobra.Command {
-	cmd := stubGroup("secrets", "Manage organization secrets for serverless applications")
-	cmd.Long = "Manage organization-scoped encrypted secrets, and attach them to serverless applications."
+	cmd := stubGroup("secrets", "Manage secrets for serverless applications")
+	cmd.Long = `Manage encrypted secrets and attach them to serverless applications.
+
+A secret belongs to one environment, and an application attaches only secrets
+of its own environment. Every command here takes --env to select that
+environment, production unless --env names another.`
 	cmd.AddCommand(
 		newSecretsListCmd(logger),
 		newSecretsSetCmd(logger),
@@ -29,6 +31,7 @@ func newSecretsCmd(logger *log.Logger) *cobra.Command {
 		newSecretsAttachCmd(logger),
 		newSecretsDetachCmd(logger),
 	)
+	addEnvironmentFlag(cmd, cmd.PersistentFlags(), logger, "Environment the secret belongs to (default production)")
 	return cmd
 }
 
@@ -40,12 +43,16 @@ func newSecretsListCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List organization secrets",
-		Long: `List organization secret metadata. Encrypted values are never returned.
+		Short: "List secrets",
+		Long: `List the metadata of the secrets in one environment. Encrypted values are
+never returned.
 
 To list secrets attached to an application, use 'secrets attachments'.`,
-		Example: `  # list organization secrets
+		Example: `  # list the production secrets
   runware serverless secrets list
+
+  # list the staging secrets
+  runware serverless secrets list --env staging
 
   # page through results
   runware serverless secrets list --limit 20 --cursor <nextCursor>`,
@@ -55,8 +62,8 @@ To list secrets attached to an application, use 'secrets attachments'.`,
 				return err
 			}
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-			return listOrgSecrets(cmd, client, limit, cursor)
+			client := newServerlessClient(cmd, logger)
+			return listSecrets(cmd, client, limit, cursor)
 		},
 	}
 
@@ -65,12 +72,9 @@ To list secrets attached to an application, use 'secrets attachments'.`,
 	return cmd
 }
 
-func listOrgSecrets(cmd *cobra.Command, client *serverlessapi.Client, limit int, cursor string) error {
-	var params *serverlessapi.ListSecretsParams
-	if limit > 0 || cursor != "" {
-		params = &serverlessapi.ListSecretsParams{}
-		params.Limit, params.Cursor = listPageParams(limit, cursor)
-	}
+func listSecrets(cmd *cobra.Command, client *serverlessapi.Client, limit int, cursor string) error {
+	var params serverlessapi.ListSecretsParams
+	params.Limit, params.Cursor = listPageParams(limit, cursor)
 
 	spin := cmdutil.NewSpinner("Fetching secrets...")
 	spin.Start()
@@ -82,7 +86,7 @@ func listOrgSecrets(cmd *cobra.Command, client *serverlessapi.Client, limit int,
 	}
 	spin.Stop()
 
-	return printPage(cmdutil.FormatFor(cmd), page, secretsResult(page.Data), cmd.ErrOrStderr(), "")
+	return printPage(cmdutil.FormatFor(cmd), page, secretsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, ""))
 }
 
 func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
@@ -93,8 +97,9 @@ func newSecretsSetCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "set <name>",
-		Short: "Create or update an organization secret",
-		Long: `Create an organization-scoped secret, or update its value if the name already exists.
+		Short: "Create or update a secret",
+		Long: `Create a secret in one environment, or update its value if the name already
+exists there. The same name in another environment is a different secret.
 
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
@@ -110,6 +115,9 @@ in process lists; use --value-file - to read from stdin.`,
   # read the value from stdin
   printf '%s' "$FOO" | runware serverless secrets set FOO --value-file -
 
+  # the staging copy of the secret
+  runware serverless secrets set FOO --value-file ./foo.txt --env staging
+
   # then attach it to an application
   runware serverless secrets attach my-app FOO`,
 		Args: cobra.ExactArgs(1),
@@ -123,7 +131,7 @@ in process lists; use --value-file - to read from stdin.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Saving secret %s...", name))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			sec, err := createOrUpdateSecret(cmd.Context(), client, name, secretValue)
 			if err != nil {
 				spin.Stop()
@@ -145,11 +153,15 @@ in process lists; use --value-file - to read from stdin.`,
 func newSecretsRemoveCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <name>",
-		Short: "Remove an organization secret",
-		Long: `Remove an organization secret. Returns a conflict if any application still
-has it attached — detach each holder with 'secrets detach' first.`,
-		Example: `  # remove an organization secret
-  runware serverless secrets remove FOO`,
+		Short: "Remove a secret",
+		Long: `Remove a secret from one environment. Returns a conflict if any application in
+that environment still has it attached — detach each holder first with
+'secrets detach <appId> <name>' under the same --env.`,
+		Example: `  # remove a production secret
+  runware serverless secrets remove FOO
+
+  # remove the staging copy
+  runware serverless secrets remove FOO --env staging`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -157,7 +169,7 @@ has it attached — detach each holder with 'secrets detach' first.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Removing secret %s...", name))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.DeleteSecret(cmd.Context(), name); err != nil {
 				spin.Stop()
 				return err
@@ -193,16 +205,13 @@ Encrypted values are never returned.`,
 			}
 			app := args[0]
 
-			var params *serverlessapi.ListAppSecretsParams
-			if limit > 0 || cursor != "" {
-				params = &serverlessapi.ListAppSecretsParams{}
-				params.Limit, params.Cursor = listPageParams(limit, cursor)
-			}
+			var params serverlessapi.ListAppSecretsParams
+			params.Limit, params.Cursor = listPageParams(limit, cursor)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching secrets attached to %s...", app))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.ListAppSecrets(cmd.Context(), app, params)
 			if err != nil {
 				spin.Stop()
@@ -210,7 +219,7 @@ Encrypted values are never returned.`,
 			}
 			spin.Stop()
 
-			return printPage(cmdutil.FormatFor(cmd), page, secretAttachmentsResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, secretAttachmentsResult(page.Data), cmd.ErrOrStderr(), cursorFlags(cmd, ""))
 		},
 	}
 
@@ -224,15 +233,15 @@ func newSecretsAttachCmd(logger *log.Logger) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "attach <appId> <name>",
-		Short: "Attach an organization secret to an application",
-		Long: `Record that an organization secret is attached to an application, optionally
-under a different environment variable name.
+		Short: "Attach a secret to an application",
+		Long: `Record that a secret is attached to an application, optionally under a
+different environment variable name.
 
-The organization secret must already exist (see 'secrets set'). Attaching rolls
-the live deployment so a running worker picks up the value. If a rollout is
-already in progress, this attach reaches the worker on the next deploy. An
-application that is not live records the attachment only; the next deploy or
-resume reads it.`,
+The secret must already exist in the application's environment (see
+'secrets set'). Attaching rolls the live deployment so a running worker picks
+up the value. If a rollout is already in progress, this attach reaches the
+worker on the next deploy. An application that is not live records the
+attachment only; the next deploy or resume reads it.`,
 		Example: `  # attach a secret using its name as the env var
   runware serverless secrets attach my-app FOO
 
@@ -250,7 +259,7 @@ resume reads it.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Attaching secret %s to %s...", name, app))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.AttachAppSecret(cmd.Context(), app, body); err != nil {
 				spin.Stop()
 				return err
@@ -273,8 +282,7 @@ func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "detach <appId> <name>",
 		Short: "Detach a secret from an application",
-		Long: `Remove an organization secret's attachment from an application. The organization
-secret itself remains.
+		Long: `Remove a secret's attachment from an application. The secret itself remains.
 
 Detaching rolls the live deployment so a running worker stops receiving the
 value. If a rollout is already in progress, the worker stops receiving it on
@@ -289,7 +297,7 @@ the next deploy. An application that is not live records the removal only.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Detaching secret %s from %s...", name, app))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			if err := client.DetachAppSecret(cmd.Context(), app, name); err != nil {
 				spin.Stop()
 				return err

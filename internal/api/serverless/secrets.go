@@ -9,7 +9,8 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-// Secret is organization-scoped secret metadata. The encrypted value is never returned.
+// Secret is the metadata of a secret in one environment. The encrypted value
+// is never returned.
 type Secret = gen.Secret
 
 // SecretAttachment is a secret attached to an app. The encrypted value is never returned.
@@ -24,7 +25,7 @@ type SecretCreate = gen.SecretCreate
 // SecretUpdate is the request body for updateSecret.
 type SecretUpdate = gen.SecretUpdate
 
-// SecretType is the kind of organization secret.
+// SecretType is the kind of secret.
 type SecretType = gen.SecretType
 
 // SecretTypeGeneric is the only supported secret type (environment-variable secrets).
@@ -36,13 +37,14 @@ type ListSecretsParams = gen.ListSecretsParams
 // ListAppSecretsParams are optional filters for ListAppSecrets.
 type ListAppSecretsParams = gen.ListAppSecretsParams
 
-// ListSecrets returns a page of organization secret metadata.
-func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Page[Secret], error) {
+// ListSecrets returns a page of the client's environment's secret metadata.
+func (c *Client) ListSecrets(ctx context.Context, params ListSecretsParams) (Page[Secret], error) {
 	if c.apiKey == "" {
 		return Page[Secret]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListSecretsWithResponse(ctx, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListSecretsWithResponse(ctx, &params)
 	if err != nil {
 		return Page[Secret]{}, fmt.Errorf("list secrets: %w", err)
 	}
@@ -59,8 +61,8 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Pa
 		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:
 		return Page[Secret]{}, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	default:
@@ -68,14 +70,16 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams) (Pa
 	}
 }
 
-// CreateSecret creates an organization-scoped secret. The value is encrypted at
-// rest; the response is metadata only.
+// CreateSecret creates a secret in the client's environment. The value is
+// encrypted at rest; the response is metadata only.
 func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.CreateSecretWithResponse(ctx, body)
+	resp, err := c.inner.CreateSecretWithResponse(ctx, &gen.CreateSecretParams{
+		Environment: c.environmentParam(),
+	}, body)
 	if err != nil {
 		return nil, fmt.Errorf("create secret: %w", err)
 	}
@@ -94,6 +98,8 @@ func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, 
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	case http.StatusForbidden:
 		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
+	case http.StatusNotFound:
+		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusConflict:
 		return nil, problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
 	case http.StatusUnprocessableEntity:
@@ -103,14 +109,16 @@ func (c *Client) CreateSecret(ctx context.Context, body SecretCreate) (*Secret, 
 	}
 }
 
-// UpdateSecret replaces the value of an existing organization secret and rolls
-// every live deployment that attaches it.
+// UpdateSecret replaces the value of a secret in the client's environment and
+// rolls every live deployment that attaches it.
 func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdate) (*Secret, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.UpdateSecretWithResponse(ctx, name, body)
+	resp, err := c.inner.UpdateSecretWithResponse(ctx, name, &gen.UpdateSecretParams{
+		Environment: c.environmentParam(),
+	}, body)
 	if err != nil {
 		return nil, fmt.Errorf("update secret: %w", err)
 	}
@@ -138,14 +146,16 @@ func (c *Client) UpdateSecret(ctx context.Context, name string, body SecretUpdat
 	}
 }
 
-// DeleteSecret soft-deletes an organization secret. Returns 409 while any
-// app still attaches it.
+// DeleteSecret soft-deletes a secret in the client's environment. Returns 409
+// while any app still attaches it.
 func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DeleteSecretWithResponse(ctx, name)
+	resp, err := c.inner.DeleteSecretWithResponse(ctx, name, &gen.DeleteSecretParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return fmt.Errorf("delete secret: %w", err)
 	}
@@ -171,12 +181,13 @@ func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 }
 
 // ListAppSecrets returns a page of secrets attached to an app.
-func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListAppSecretsParams) (Page[SecretAttachment], error) {
+func (c *Client) ListAppSecrets(ctx context.Context, appID string, params ListAppSecretsParams) (Page[SecretAttachment], error) {
 	if c.apiKey == "" {
 		return Page[SecretAttachment]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListAppSecretsWithResponse(ctx, appID, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListAppSecretsWithResponse(ctx, appID, &params)
 	if err != nil {
 		return Page[SecretAttachment]{}, fmt.Errorf("list app secrets: %w", err)
 	}
@@ -193,8 +204,6 @@ func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListA
 		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusNotFound:
 		return Page[SecretAttachment]{}, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
 	case http.StatusUnprocessableEntity:
@@ -204,14 +213,16 @@ func (c *Client) ListAppSecrets(ctx context.Context, appID string, params *ListA
 	}
 }
 
-// AttachAppSecret records that an organization secret is attached to an app
-// and rolls the live deployment so a running worker picks up the value.
+// AttachAppSecret records that a secret of the app's environment is attached
+// to it and rolls the live deployment so a running worker picks up the value.
 func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretAttach) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.AttachAppSecretWithResponse(ctx, appID, body)
+	resp, err := c.inner.AttachAppSecretWithResponse(ctx, appID, &gen.AttachAppSecretParams{
+		Environment: c.environmentParam(),
+	}, body)
 	if err != nil {
 		return fmt.Errorf("attach secret: %w", err)
 	}
@@ -240,13 +251,15 @@ func (c *Client) AttachAppSecret(ctx context.Context, appID string, body SecretA
 
 // DetachAppSecret removes a secret attachment from an app and rolls the live
 // deployment so a running worker stops receiving the value. It does not delete
-// the organization secret.
+// the secret.
 func (c *Client) DetachAppSecret(ctx context.Context, appID, secretName string) error {
 	if c.apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.DetachAppSecretWithResponse(ctx, appID, secretName)
+	resp, err := c.inner.DetachAppSecretWithResponse(ctx, appID, secretName, &gen.DetachAppSecretParams{
+		Environment: c.environmentParam(),
+	})
 	if err != nil {
 		return fmt.Errorf("detach secret: %w", err)
 	}

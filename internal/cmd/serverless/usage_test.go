@@ -169,10 +169,13 @@ func TestUsageResult_Grouped(t *testing.T) {
 	commitment := serverlessapi.UsageCoverage("commitment")
 	payg := serverlessapi.UsageCoverage("payg")
 	appID := testAppID
+	production := testProductionEnvironment
+	staging := testEnvironment
 	summary := &serverlessapi.UsageSummary{
 		Buckets: []serverlessapi.UsageBucket{
 			{
 				AppId:               &appID,
+				Environment:         &production,
 				Day:                 &openapi_types.Date{Time: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)},
 				Coverage:            &commitment,
 				GpuMilliseconds:     421000,
@@ -181,6 +184,7 @@ func TestUsageResult_Grouped(t *testing.T) {
 			},
 			{
 				AppId:               &appID,
+				Environment:         &staging,
 				Day:                 &openapi_types.Date{Time: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)},
 				Coverage:            &payg,
 				GpuMilliseconds:     419000,
@@ -196,7 +200,7 @@ func TestUsageResult_Grouped(t *testing.T) {
 	}
 
 	// Dimensions are named out of display order; columns must still come out
-	// app, day, coverage.
+	// app, environment, day, coverage.
 	r := usageResult{
 		summary: summary,
 		dims: []serverlessapi.UsageDimension{
@@ -206,7 +210,7 @@ func TestUsageResult_Grouped(t *testing.T) {
 		},
 	}
 
-	wantHeaders := []string{colApp, colDay, colCoverage, colGPUTime, colPAYGSpend, colPAYGValue}
+	wantHeaders := []string{colApp, colEnvironment, colDay, colCoverage, colGPUTime, colPAYGSpend, colPAYGValue}
 	if strings.Join(r.Headers(), ",") != strings.Join(wantHeaders, ",") {
 		t.Fatalf("headers = %v, want %v", r.Headers(), wantHeaders)
 	}
@@ -215,19 +219,19 @@ func TestUsageResult_Grouped(t *testing.T) {
 	if len(rows) != 3 {
 		t.Fatalf("row count %d, want 2 buckets + total", len(rows))
 	}
-	if rows[0][0] != testAppID || rows[0][1] != testUsageDate || rows[0][2] != "commitment" {
+	if rows[0][0] != testAppID || rows[0][1] != testProductionEnvironment || rows[0][2] != testUsageDate || rows[0][3] != "commitment" {
 		t.Errorf("first row key = %v", rows[0])
 	}
-	if rows[0][3] != "7m1s" || rows[0][4] != "0.000000 USD" || rows[0][5] != "0.232813 USD" {
+	if rows[0][4] != "7m1s" || rows[0][5] != "0.000000 USD" || rows[0][6] != "0.232813 USD" {
 		t.Errorf("first row amounts = %v", rows[0])
 	}
-	if rows[1][2] != "payg" || rows[1][3] != "6m59s" || rows[1][4] != testPAYGAmount {
+	if rows[1][0] != testAppID || rows[1][1] != testEnvironment || rows[1][3] != "payg" || rows[1][4] != "6m59s" || rows[1][5] != testPAYGAmount {
 		t.Errorf("second row = %v", rows[1])
 	}
-	if rows[2][0] != "Total" || rows[2][1] != "" || rows[2][2] != "" {
+	if rows[2][0] != "Total" || rows[2][1] != "" || rows[2][2] != "" || rows[2][3] != "" {
 		t.Errorf("total row key = %v", rows[2])
 	}
-	if rows[2][3] != "14m0s" || rows[2][4] != testPAYGAmount || rows[2][5] != "0.464520 USD" {
+	if rows[2][4] != "14m0s" || rows[2][5] != testPAYGAmount || rows[2][6] != "0.464520 USD" {
 		t.Errorf("total row amounts = %v", rows[2])
 	}
 }
@@ -309,4 +313,36 @@ func dimsToStrings(dims []serverlessapi.UsageDimension) []string {
 		out[i] = string(d)
 	}
 	return out
+}
+
+func TestUsageResult_GroupedByGPUType(t *testing.T) {
+	gpuType := testGPUType
+	summary := &serverlessapi.UsageSummary{
+		Buckets: []serverlessapi.UsageBucket{
+			{
+				GpuType:             &gpuType,
+				GpuMilliseconds:     421000,
+				PaygSpend:           serverlessapi.MoneyAmount{Amount: testPAYGSpend, Currency: testCurrency},
+				PaygEquivalentValue: serverlessapi.MoneyAmount{Amount: testPAYGSpend, Currency: testCurrency},
+			},
+		},
+		Total: serverlessapi.UsageBucket{
+			GpuMilliseconds:     421000,
+			PaygSpend:           serverlessapi.MoneyAmount{Amount: testPAYGSpend, Currency: testCurrency},
+			PaygEquivalentValue: serverlessapi.MoneyAmount{Amount: testPAYGSpend, Currency: testCurrency},
+		},
+	}
+	r := usageResult{
+		summary: summary,
+		dims:    []serverlessapi.UsageDimension{serverlessapi.UsageDimensionGpuType},
+	}
+
+	headers, rows := r.Headers(), r.Rows()
+
+	if want := []string{colGPUType, colGPUTime, colPAYGSpend, colPAYGValue}; strings.Join(headers, ",") != strings.Join(want, ",") {
+		t.Fatalf("headers = %v, want %v", headers, want)
+	}
+	if len(rows) != 2 || rows[0][0] != testGPUType || rows[0][1] != "7m1s" || rows[1][0] != "Total" {
+		t.Fatalf("rows = %v", rows)
+	}
 }

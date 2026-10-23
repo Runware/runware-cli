@@ -3,7 +3,6 @@ package serverless
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -26,7 +24,8 @@ var codeOnlyDeployFlags = []string{
 }
 
 // createOnlyDeployFlags apply to CreateApp only. On an existing app they are
-// rejected so a leftover create invocation cannot wipe env or silently no-op.
+// rejected so a leftover create invocation cannot wipe environment variables
+// or silently no-op.
 var createOnlyDeployFlags = []string{
 	"gpu-type",
 	"name",
@@ -40,7 +39,7 @@ var createOnlyDeployFlags = []string{
 	"available-workers-pct",
 	"volume",
 	"secret",
-	"env",
+	envVarFlag,
 	"env-file",
 }
 
@@ -147,14 +146,18 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		Short: "Create or update a serverless application",
 		Long: `Create or update a serverless application from Python code or a container source.
 
-A first deploy with a new --id creates the application. A later deploy with the
-same --id uploads a new source, records version N+1, and rolls it when the
-build is ready. Create-only flags (--gpu-type, worker settings, --volume,
---secret, --env, --env-file, --name) apply only to create; passing them when
-the application already exists is an error. Change workers with 'apps scale',
-attach a secret later with 'secrets attach', change environment with
-'apps env', and the display name with 'apps rename'. A source update on a
-stopped application is 409.
+The same --id can run once in each environment as a separate copy, with its
+own versions, workers, variables and secrets. --env selects the copy this
+deploy creates or updates, production unless --env names another.
+
+A first deploy of an --id in an environment creates that copy. A later deploy
+with the same --id and environment uploads a new source, records version N+1,
+and rolls it when the build is ready. Create-only flags (--gpu-type, worker
+settings, --volume, --secret, --env-var, --env-file, --name) apply only to
+create; passing them when that copy already exists is an error. Change
+workers with 'apps scale', attach a secret later with 'secrets attach', change
+environment variables with 'apps env-vars', and the display name with
+'apps rename'. A source update on a stopped application is 409.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -184,14 +187,14 @@ what a project keeps out of version control is a different question from what it
 ships. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv, node_modules or the usual build and tool caches.
 
-Pass --env or --env-file on create to set the application's initial environment.
-Change a variable afterwards with 'apps env set' or 'apps env unset': a change
-records a new version with the same image and rolls the workload when the app
-is active, initializing, or failed and its image is deployable. A stopped or
-stopping app applies it on resume. A write during an in-flight rollout
-returns 409 and does not store the value. Prefer --env-file for anything
-secret: a value passed as --env is visible in the process list and recorded
-in shell history.
+Pass --env-var or --env-file on create to set the application's initial
+environment variables. Change a variable afterwards with 'apps env-vars set'
+or 'apps env-vars unset': a change records a new version with the same image
+and rolls the workload when the app is active, initializing, or failed and its
+image is deployable. A stopped or stopping app applies it on resume. A write
+during an in-flight rollout returns 409 and does not store the value. Prefer
+--env-file for anything secret: a value passed as --env-var is visible in the
+process list and recorded in shell history.
 
 Anything the app downloads at runtime belongs on a --volume. Volumes are set
 at create and cannot be changed afterwards: a later deploy that passes
@@ -200,9 +203,10 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
---secret NAME, or NAME=ENV_VAR, attaches an existing organization secret at
-create so the first rollout carries it. Repeat the flag for more than one.
-Attach or detach later with 'secrets attach' and 'secrets detach'.
+--secret NAME, or NAME=ENV_VAR, attaches an existing secret of the same
+environment at create so the first rollout carries it. Repeat the flag for
+more than one. Attach or detach later with 'secrets attach' and
+'secrets detach'.
 
 Worker settings are supplied via flags on create, including a fallback GPU
 type and the idle-worker buffer. Endpoints are derived server-side from the
@@ -219,6 +223,9 @@ paths and an invoke example once the application is active.`,
 
   # update source on an existing application
   runware serverless deploy ./app.py --id my-app --wait
+
+  # create or update the staging copy of the application
+  runware serverless deploy ./app.py --id my-app --gpu-type h100 --env staging
 
   # deploy a project that lives elsewhere; app.py is resolved inside --src-dir
   runware serverless deploy app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
@@ -278,17 +285,10 @@ paths and an invoke example once the application is active.`,
 				return err
 			}
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 
-			update, err := existingApp(cmd.Context(), client, id)
+			update, err := resolveDeployTarget(cmd, client, id, gpuType)
 			if err != nil {
-				return err
-			}
-			if update {
-				if err := validateUpdateDeployFlags(cmd); err != nil {
-					return err
-				}
-			} else if err := validateCreateDeployGPU(gpuType); err != nil {
 				return err
 			}
 
@@ -367,12 +367,6 @@ paths and an invoke example once the application is active.`,
 						AvailableWorkersPct: optionalInt32Ptr(cmd, "available-workers-pct", availableWorkersPct),
 					},
 				})
-				if isHTTPConflict(err) {
-					update = true
-					app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
-						AppSource: &appSource,
-					})
-				}
 			}
 			if err != nil {
 				spin.Stop()
@@ -416,7 +410,7 @@ paths and an invoke example once the application is active.`,
 				}
 			} else if wait && !update && app.Status == serverlessapi.AppStatusActive {
 				if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
-					reportDeployEndpoints(cmd.ErrOrStderr(), app.AppId, paths)
+					reportDeployEndpoints(cmd.ErrOrStderr(), app, paths)
 				}
 			}
 
@@ -433,8 +427,8 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
 	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
-	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Organization secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
-	cmd.Flags().StringArrayVar(&envVars, "env", nil, "Environment variable as KEY=VALUE (repeatable)")
+	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
+	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
@@ -452,6 +446,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll until the application is active or failed")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait (0 = no limit)")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
+	addEnvironmentFlag(cmd, cmd.Flags(), logger, environmentFlagHelp)
 
 	if err := cmd.MarkFlagRequired("id"); err != nil {
 		panic(err)
@@ -460,6 +455,24 @@ paths and an invoke example once the application is active.`,
 	return cmd
 }
 
+// resolveDeployTarget reports whether the deploy updates an existing copy or
+// creates one. Before the archive is uploaded it refuses create-only flags on
+// an update, and an unknown --env or a missing --gpu-type on a create.
+func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, gpuType string) (update bool, err error) {
+	update, err = existingApp(cmd.Context(), client, id)
+	if err != nil {
+		return false, err
+	}
+	if update {
+		return true, validateUpdateDeployFlags(cmd)
+	}
+	if err := requireEnvironment(cmd.Context(), client, commandEnvironment(cmd)); err != nil {
+		return false, err
+	}
+	return false, validateCreateDeployGPU(gpuType)
+}
+
+// existingApp reports whether the app has a copy in the client's environment.
 func existingApp(ctx context.Context, client *serverlessapi.Client, id string) (bool, error) {
 	_, err := client.GetApp(ctx, id)
 	if err == nil {
@@ -469,6 +482,18 @@ func existingApp(ctx context.Context, client *serverlessapi.Client, id string) (
 		return false, nil
 	}
 	return false, err
+}
+
+// requireEnvironment fails when the named environment does not exist.
+func requireEnvironment(ctx context.Context, client *serverlessapi.Client, environment string) error {
+	if environment == "" {
+		return nil
+	}
+	_, err := client.GetEnvironment(ctx, environment)
+	if isHTTPNotFound(err) {
+		return fmt.Errorf("environment %q not found", environment)
+	}
+	return err
 }
 
 func validateCreateDeployGPU(gpuType string) error {
@@ -523,24 +548,26 @@ func validateAvailableWorkersPct(n int32) error {
 func validateUpdateDeployFlags(cmd *cobra.Command) error {
 	for _, name := range createOnlyDeployFlags {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name))
+			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name, commandEnvironment(cmd)))
 		}
 	}
 	return nil
 }
 
-func createOnlyDeployHint(name string) string {
+// createOnlyDeployHint says how to change a create-only setting on the copy
+// in environment.
+func createOnlyDeployHint(name, environment string) string {
 	switch name {
 	case "gpu-type", "max-workers", "idle-ttl", "scaling-delay", "min-workers", "gpus-per-worker", "fallback-gpu-type", "min-available-workers", "available-workers-pct":
-		return "use 'runware serverless apps scale' to change worker configuration"
-	case "env", "env-file":
-		return "use 'runware serverless apps env' to change environment variables"
+		return "use '" + serverlessCommand(environment, "apps", "scale") + "' to change worker configuration"
+	case envVarFlag, "env-file":
+		return "use '" + serverlessCommand(environment, "apps", envVarsGroup) + "' to change environment variables"
 	case "secret":
-		return "use 'runware serverless secrets attach' to attach a secret"
+		return "use '" + serverlessCommand(environment, "secrets", "attach") + "' to attach a secret"
 	case "volume":
 		return "volumes are immutable after create"
 	case "name":
-		return "use 'runware serverless apps rename' to change the display name"
+		return "use '" + serverlessCommand(environment, "apps", "rename") + "' to change the display name"
 	default:
 		return "omit it when updating an existing application"
 	}
@@ -657,7 +684,7 @@ func waitForAppDeploy(
 // latestBuildStatus is the newest build's status. Newest first, as listBuilds
 // returns them. An unreadable list is not a failure of the wait.
 func latestBuildStatus(ctx context.Context, client *serverlessapi.Client, appID string) string {
-	page, err := client.ListBuilds(ctx, appID, nil)
+	page, err := client.ListBuilds(ctx, appID, serverlessapi.ListBuildsParams{})
 	if err != nil || len(page.Data) == 0 {
 		return ""
 	}
@@ -675,14 +702,14 @@ func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *server
 		if msg := latestBuildError(ctx, client, app.AppId); msg != "" {
 			return fmt.Errorf("application %s failed: %s", app.AppId, msg)
 		}
-		return fmt.Errorf("application %s failed; inspect builds with 'runware serverless apps builds list %s'", app.AppId, app.AppId)
+		return fmt.Errorf("application %s failed; inspect builds with '%s'", app.AppId, appCommand(app, "apps", "builds", "list", app.AppId))
 	default:
 		return fmt.Errorf("application %s ended in status %s", app.AppId, app.Status)
 	}
 }
 
 func latestBuildError(ctx context.Context, client *serverlessapi.Client, appID string) string {
-	page, err := client.ListBuilds(ctx, appID, nil)
+	page, err := client.ListBuilds(ctx, appID, serverlessapi.ListBuildsParams{})
 	if err != nil {
 		return ""
 	}

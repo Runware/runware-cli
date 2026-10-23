@@ -1,4 +1,4 @@
-## runware serverless apps env list
+## runware serverless apps env-vars list
 
 List environment variables for a serverless application
 
@@ -9,17 +9,17 @@ List plain-text environment variables for an application, including values.
 To list encrypted secrets attached to an application, use 'serverless secrets attachments'.
 
 ```
-runware serverless apps env list <appId> [flags]
+runware serverless apps env-vars list <appId> [flags]
 ```
 
 ### Examples
 
 ```
   # list environment variables
-  runware serverless apps env list my-app
+  runware serverless apps env-vars list my-app
 
   # page through results
-  runware serverless apps env list my-app --limit 20 --cursor <nextCursor>
+  runware serverless apps env-vars list my-app --limit 20 --cursor <nextCursor>
 ```
 
 ### Options
@@ -34,6 +34,7 @@ runware serverless apps env list <appId> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the app runs in (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
@@ -41,5 +42,5 @@ runware serverless apps env list <appId> [flags]
 
 ### SEE ALSO
 
-* [runware serverless apps env](runware_serverless_apps_env.md)	 - Manage plain-text environment variables for an application
+* [runware serverless apps env-vars](runware_serverless_apps_env-vars.md)	 - Manage plain-text environment variables for an application
 

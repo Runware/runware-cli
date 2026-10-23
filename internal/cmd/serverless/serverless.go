@@ -19,7 +19,7 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		newDeployCmd(logger),
 		newUsageCmd(logger),
 		newGPUsCmd(logger),
-		newOpenCmd(),
+		newOpenCmd(logger),
 		newSecretsCmd(logger),
 		newAppsCmd(logger),
 	)

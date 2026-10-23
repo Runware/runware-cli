@@ -13,8 +13,9 @@ the latest page of the ledger. Spend over a window is 'serverless usage'.
 Price/s is the catalog rate per GPU-second at that moment, including time a
 reservation covered. Coverage itself is on the usage summary.
 
-An unknown --app is an empty page, not a missing app. Replay a cursor with
-the same --app, --from, --to, and --limit.
+An unknown --app is an empty page, not a missing app. --app reports the
+production copy unless --env names another environment; --env needs --app.
+Replay a cursor with the same --env, --app, --from, --to, and --limit.
 
 ```
 runware serverless usage events [flags]
@@ -37,7 +38,8 @@ runware serverless usage events [flags]
 
 ```
       --app string      Report only this app's transitions
-      --cursor string   Pagination cursor from a previous nextCursor (reuse the same --app/--from/--to/--limit)
+      --cursor string   Pagination cursor from a previous nextCursor (reuse the same --env/--app/--from/--to/--limit)
+  -e, --env name        Environment the app runs in (default production)
       --from string     Inclusive start on event time (RFC 3339 or YYYY-MM-DD UTC)
   -h, --help            help for events
       --limit int       Maximum number of events to return (1-100)
@@ -55,5 +57,5 @@ runware serverless usage events [flags]
 
 ### SEE ALSO
 
-* [runware serverless usage](runware_serverless_usage.md)	 - Show account-wide usage and cost
+* [runware serverless usage](runware_serverless_usage.md)	 - Show usage and cost for the organization or one environment
 

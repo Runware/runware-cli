@@ -220,46 +220,51 @@ func TestNewDeployCmd_RegistersContainerFlag(t *testing.T) {
 	}
 }
 
+type existingAppCase struct {
+	name       string
+	status     int
+	body       string
+	wantExists bool
+	wantErr    bool
+}
+
 func TestExistingApp(t *testing.T) {
-	missing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/problem+json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404,"detail":"No app 'my-app' exists"}`))
-	}))
-	defer missing.Close()
-
-	ok, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", missing.URL, slog.Default()), testAppID)
-	if err != nil || ok {
-		t.Fatalf("404: ok=%v err=%v", ok, err)
+	cases := []existingAppCase{
+		{
+			name:   "no copy",
+			status: http.StatusNotFound,
+			body:   `{"type":"about:blank","title":"Not Found","status":404,"detail":"No app 'my-app' exists"}`,
+		},
+		{
+			name:       "copy exists",
+			status:     http.StatusOK,
+			body:       activeAppBody(""),
+			wantExists: true,
+		},
+		{
+			name:    "lookup fails",
+			status:  http.StatusInternalServerError,
+			wantErr: true,
+		},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
 
-	found := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"appId":"my-app",
-			"appName":"My App",
-			"status":"active",
-			"configuration":{"maxWorkers":1,"idleTtlSecs":60,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"gracefulStopTtlSecs":120,"computeType":"gpu"},
-			"environmentVariables":[],
-			"secrets":[],
-			"createdAt":"2026-07-30T12:00:00Z",
-			"updatedAt":"2026-07-30T12:00:00Z"
-		}`))
-	}))
-	defer found.Close()
+			exists, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", srv.URL, slog.Default()), testAppID)
 
-	ok, err = existingApp(context.Background(), serverlessapi.NewClient("test-key", found.URL, slog.Default()), testAppID)
-	if err != nil || !ok {
-		t.Fatalf("200: ok=%v err=%v", ok, err)
-	}
-
-	fail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer fail.Close()
-
-	if _, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", fail.URL, slog.Default()), testAppID); err == nil {
-		t.Fatal("expected an error for 500")
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want error %v", err, tc.wantErr)
+			}
+			if exists != tc.wantExists {
+				t.Fatalf("exists = %v, want %v", exists, tc.wantExists)
+			}
+		})
 	}
 }
 
@@ -330,27 +335,17 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 
 	var created serverlessapi.AppCreate
 	var creates int
-	stage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer stage.Close()
+	serveSourceUpload := newSourceUploadStub(t)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/source-uploads":
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{
-				"upload": {"id":"` + testSourceID + `","declaredByteLength":1,"sha256":"00","sourceType":"code","state":"pending","expiresAt":"2026-09-02T12:00:00Z","createdAt":"2026-09-02T11:00:00Z","updatedAt":"2026-09-02T11:00:00Z"},
-				"transfer": {"mode":"singlePut","method":"PUT","url":"` + stage.URL + `/obj","headers":{"Content-Type":"application/zip"},"expiresAt":"2026-09-02T12:00:00Z"}
-			}`))
-		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/complete"):
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"id":"` + testSourceID + `","declaredByteLength":1,"sha256":"00","sourceType":"code","sourceId":"` + testSourceID + `","state":"ready","expiresAt":"2026-09-02T12:00:00Z","createdAt":"2026-09-02T11:00:00Z","updatedAt":"2026-09-02T11:00:00Z"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps":
 			creates++
 			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
@@ -448,8 +443,8 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 	}{
 		{flags: []string{testGPUTypeFlag, "h100"}, wantErr: scaleHint},
 		{flags: []string{"--max-workers", "2"}, wantErr: scaleHint},
-		{flags: []string{"--env", "FOO=bar"}, wantErr: "apps env"},
-		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env"},
+		{flags: []string{"--env-var", "FOO=bar"}, wantErr: "apps env-vars"},
+		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env-vars"},
 		{flags: []string{"--volume", "/data"}, wantErr: "immutable"},
 		{flags: []string{"--secret", "ORG_TOKEN"}, wantErr: "secrets attach"},
 		{flags: []string{"--fallback-gpu-type", "l40s"}, wantErr: scaleHint},
@@ -485,13 +480,13 @@ func TestDeployWait_TimeoutDoesNotPanic(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{testModelFile: testPySource})
 
-	stage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer stage.Close()
+	serveSourceUpload := newSourceUploadStub(t)
 
 	var gets int
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
 			gets++
@@ -503,16 +498,6 @@ func TestDeployWait_TimeoutDoesNotPanic(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(strings.Replace(activeAppBody(""), `"status":"active"`, `"status":"initializing"`, 1)))
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/source-uploads":
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{
-				"upload": {"id":"` + testSourceID + `","declaredByteLength":1,"sha256":"00","sourceType":"code","state":"pending","expiresAt":"2026-09-02T12:00:00Z","createdAt":"2026-09-02T11:00:00Z","updatedAt":"2026-09-02T11:00:00Z"},
-				"transfer": {"mode":"singlePut","method":"PUT","url":"` + stage.URL + `/obj","headers":{"Content-Type":"application/zip"},"expiresAt":"2026-09-02T12:00:00Z"}
-			}`))
-		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/complete"):
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"id":"` + testSourceID + `","declaredByteLength":1,"sha256":"00","sourceType":"code","sourceId":"` + testSourceID + `","state":"ready","expiresAt":"2026-09-02T12:00:00Z","createdAt":"2026-09-02T11:00:00Z","updatedAt":"2026-09-02T11:00:00Z"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -660,15 +645,45 @@ func TestAppFailedErr(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "pip install failed") {
 		t.Fatalf("failed with build error: %v", err)
 	}
+}
 
-	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[]}`))
-	}))
-	defer empty.Close()
+type buildsHintCase struct {
+	name        string
+	environment string
+	wantHint    string
+}
 
-	err = appFailedErr(context.Background(), serverlessapi.NewClient("test-key", empty.URL, slog.Default()), failed)
-	if err == nil || !strings.Contains(err.Error(), "inspect builds") {
-		t.Fatalf("failed without build error: %v", err)
+func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
+	cases := []buildsHintCase{
+		{
+			name:        "production copy",
+			environment: testProductionEnvironment,
+			wantHint:    "'runware serverless apps builds list " + testAppID + "'",
+		},
+		{
+			name:        "staging copy",
+			environment: testEnvironment,
+			wantHint:    "'runware serverless apps builds list " + testAppID + " --env " + testEnvironment + "'",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":[]}`))
+			}))
+			defer empty.Close()
+			failed := &serverlessapi.App{
+				AppId:       testAppID,
+				Environment: tc.environment,
+				Status:      serverlessapi.AppStatusFailed,
+			}
+
+			err := appFailedErr(context.Background(), serverlessapi.NewClient("test-key", empty.URL, slog.Default()), failed)
+
+			if err == nil || !strings.Contains(err.Error(), tc.wantHint) {
+				t.Fatalf("err = %v, want it to contain %q", err, tc.wantHint)
+			}
+		})
 	}
 }

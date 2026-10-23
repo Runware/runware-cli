@@ -290,7 +290,7 @@ func TestListTasks_CursorAndStatus(t *testing.T) {
 	cursor := Cursor(testCursorPage2)
 	status := TaskStatusPending
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListTasks(context.Background(), testAppID, &ListTasksParams{
+	page, err := c.ListTasks(context.Background(), testAppID, ListTasksParams{
 		Limit:  &limit,
 		Cursor: &cursor,
 		Status: &status,
@@ -314,7 +314,7 @@ func TestListTasks_AcceptsScalarOutput(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListTasks(context.Background(), testAppID, nil)
+	page, err := c.ListTasks(context.Background(), testAppID, ListTasksParams{})
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestListTasks_EmptyPageKeepsCursor(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	page, err := c.ListTasks(context.Background(), testAppID, nil)
+	page, err := c.ListTasks(context.Background(), testAppID, ListTasksParams{})
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -345,7 +345,7 @@ func TestListTasks_EmptyPageKeepsCursor(t *testing.T) {
 
 func TestListTasks_NoAPIKey(t *testing.T) {
 	c := NewClient("", "https://example.invalid", slog.Default())
-	if _, err := c.ListTasks(context.Background(), testAppID, nil); !errors.Is(err, transport.ErrNoAPIKey) {
+	if _, err := c.ListTasks(context.Background(), testAppID, ListTasksParams{}); !errors.Is(err, transport.ErrNoAPIKey) {
 		t.Fatalf("expected ErrNoAPIKey, got %v", err)
 	}
 }

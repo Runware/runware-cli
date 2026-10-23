@@ -122,8 +122,6 @@ func TestBuildEnvironmentVariables_FromFile(t *testing.T) {
 	}
 }
 
-// An explicit --env is the more specific statement, so it wins over a file entry
-// with the same name.
 func TestBuildEnvironmentVariables_InlineOverridesFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env.deploy")
@@ -310,7 +308,7 @@ func TestEnvSet_RejectsMixedForms(t *testing.T) {
 	cmd := newAppsEnvSetCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testAppID, testEnvKey, "--value", testEnvValue, "--env", "NEW_KEY=n"})
+	cmd.SetArgs([]string{testAppID, testEnvKey, "--value", testEnvValue, "--env-var", "NEW_KEY=n"})
 	err := cmd.Execute()
 	if err == nil || err.Error() != envSetUsage {
 		t.Fatalf("err = %v", err)

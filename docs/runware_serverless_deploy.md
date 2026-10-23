@@ -6,14 +6,18 @@ Create or update a serverless application
 
 Create or update a serverless application from Python code or a container source.
 
-A first deploy with a new --id creates the application. A later deploy with the
-same --id uploads a new source, records version N+1, and rolls it when the
-build is ready. Create-only flags (--gpu-type, worker settings, --volume,
---secret, --env, --env-file, --name) apply only to create; passing them when
-the application already exists is an error. Change workers with 'apps scale',
-attach a secret later with 'secrets attach', change environment with
-'apps env', and the display name with 'apps rename'. A source update on a
-stopped application is 409.
+The same --id can run once in each environment as a separate copy, with its
+own versions, workers, variables and secrets. --env selects the copy this
+deploy creates or updates, production unless --env names another.
+
+A first deploy of an --id in an environment creates that copy. A later deploy
+with the same --id and environment uploads a new source, records version N+1,
+and rolls it when the build is ready. Create-only flags (--gpu-type, worker
+settings, --volume, --secret, --env-var, --env-file, --name) apply only to
+create; passing them when that copy already exists is an error. Change
+workers with 'apps scale', attach a secret later with 'secrets attach', change
+environment variables with 'apps env-vars', and the display name with
+'apps rename'. A source update on a stopped application is 409.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -43,14 +47,14 @@ what a project keeps out of version control is a different question from what it
 ships. Either way .env files are never uploaded, and neither are .git,
 __pycache__, .venv, node_modules or the usual build and tool caches.
 
-Pass --env or --env-file on create to set the application's initial environment.
-Change a variable afterwards with 'apps env set' or 'apps env unset': a change
-records a new version with the same image and rolls the workload when the app
-is active, initializing, or failed and its image is deployable. A stopped or
-stopping app applies it on resume. A write during an in-flight rollout
-returns 409 and does not store the value. Prefer --env-file for anything
-secret: a value passed as --env is visible in the process list and recorded
-in shell history.
+Pass --env-var or --env-file on create to set the application's initial
+environment variables. Change a variable afterwards with 'apps env-vars set'
+or 'apps env-vars unset': a change records a new version with the same image
+and rolls the workload when the app is active, initializing, or failed and its
+image is deployable. A stopped or stopping app applies it on resume. A write
+during an in-flight rollout returns 409 and does not store the value. Prefer
+--env-file for anything secret: a value passed as --env-var is visible in the
+process list and recorded in shell history.
 
 Anything the app downloads at runtime belongs on a --volume. Volumes are set
 at create and cannot be changed afterwards: a later deploy that passes
@@ -59,9 +63,10 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
---secret NAME, or NAME=ENV_VAR, attaches an existing organization secret at
-create so the first rollout carries it. Repeat the flag for more than one.
-Attach or detach later with 'secrets attach' and 'secrets detach'.
+--secret NAME, or NAME=ENV_VAR, attaches an existing secret of the same
+environment at create so the first rollout carries it. Repeat the flag for
+more than one. Attach or detach later with 'secrets attach' and
+'secrets detach'.
 
 Worker settings are supplied via flags on create, including a fallback GPU
 type and the idle-worker buffer. Endpoints are derived server-side from the
@@ -86,6 +91,9 @@ runware serverless deploy [file] [flags]
 
   # update source on an existing application
   runware serverless deploy ./app.py --id my-app --wait
+
+  # create or update the staging copy of the application
+  runware serverless deploy ./app.py --id my-app --gpu-type h100 --env staging
 
   # deploy a project that lives elsewhere; app.py is resolved inside --src-dir
   runware serverless deploy app.py --src-dir ~/projects/my-app --id my-app --gpu-type h100
@@ -123,8 +131,9 @@ runware serverless deploy [file] [flags]
       --available-workers-pct int32   Idle-worker buffer as a percentage of load (0-100)
       --base-image string             Builder base image (code deploys only; needs Python 3.12 or newer) (default "python:3.12-slim")
       --container string              Directory whose root contains Dockerfile and container.yaml
-      --env stringArray               Environment variable as KEY=VALUE (repeatable)
+  -e, --env name                      Environment the app runs in (default production)
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
+      --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
       --gpu-type string               GPU type ID (see 'serverless gpus'; required when creating)
       --gpus-per-worker int32         GPUs allocated per worker (1, 2, 4, or 8) (default 1)
@@ -138,7 +147,7 @@ runware serverless deploy [file] [flags]
       --poll-interval duration        Polling interval when waiting for the application (default 2s)
       --requirement stringArray       Additional pip package to install (repeatable; code deploys only)
       --scaling-delay int32           Scaling delay in seconds (default 10)
-      --secret stringArray            Organization secret to attach at create, as NAME or NAME=ENV_VAR (repeatable)
+      --secret stringArray            Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)
       --src-dir string                Directory to package as the application source (default: the working directory; code deploys only)
       --timeout duration              Maximum time to wait (0 = no limit)
       --volume stringArray            Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)

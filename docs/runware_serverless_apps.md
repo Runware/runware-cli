@@ -13,7 +13,8 @@ runware serverless apps [flags]
 ### Options
 
 ```
-  -h, --help   help for apps
+  -e, --env name   Environment the app runs in (default production)
+  -h, --help       help for apps
 ```
 
 ### Options inherited from parent commands
@@ -31,7 +32,7 @@ runware serverless apps [flags]
 * [runware serverless apps builds](runware_serverless_apps_builds.md)	 - Inspect application builds
 * [runware serverless apps delete](runware_serverless_apps_delete.md)	 - Delete a serverless application
 * [runware serverless apps endpoints](runware_serverless_apps_endpoints.md)	 - List and inspect endpoints for a serverless application
-* [runware serverless apps env](runware_serverless_apps_env.md)	 - Manage plain-text environment variables for an application
+* [runware serverless apps env-vars](runware_serverless_apps_env-vars.md)	 - Manage plain-text environment variables for an application
 * [runware serverless apps errors](runware_serverless_apps_errors.md)	 - List failed requests for a serverless application
 * [runware serverless apps events](runware_serverless_apps_events.md)	 - List events for a serverless application
 * [runware serverless apps invoke](runware_serverless_apps_invoke.md)	 - Invoke an application endpoint

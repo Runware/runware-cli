@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -58,7 +56,7 @@ prints it oldest first, so a plain apps logs shows the latest entries as a
 readable timeline. --sort newest lists newest first, so nextCursor walks
 older. --sort oldest lists the oldest page of the window first, so nextCursor
 walks newer. prevCursor walks the other way. Replay either cursor with the
-same --sort, --window, and --limit.
+same --env, --sort, --window, and --limit.
 
 With --follow the command prints the recent page, then streams new entries
 until interrupted; the stream reconnects when the server ends it, and waits
@@ -106,7 +104,7 @@ entry is printed as one JSON object per line.`,
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Fetching logs for %s...", appID))
 			spin.Start()
 
-			client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
+			client := newServerlessClient(cmd, logger)
 			page, err := client.GetLogEntries(cmd.Context(), serverlessapi.LogQueryRuntime, params)
 			spin.Stop()
 			if err != nil {
@@ -118,7 +116,7 @@ entry is printed as one JSON object per line.`,
 
 			page.Entries = chronologicalLogEntries(page.Entries, flags.sort)
 			if !flags.follow {
-				return printLogPage(format, page, out, errOut, extraLogsCursorFlags(flags))
+				return printLogPage(format, page, out, errOut, cursorFlags(cmd, extraLogsCursorFlags(flags)))
 			}
 
 			emit := logEmitter(format, out)

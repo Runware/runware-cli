@@ -10,7 +10,7 @@ These are 4xx and 5xx responses. The control-plane audit trail is apps events;
 worker stdout is apps logs. --window defaults to the last 24 hours. Omit
 --status-class to include both 4xx and 5xx.
 
-Replay a cursor with the same --window and --status-class.
+Replay a cursor with the same --env, --window and --status-class.
 
 ```
 runware serverless apps errors <appId> [flags]
@@ -32,7 +32,7 @@ runware serverless apps errors <appId> [flags]
 ### Options
 
 ```
-      --cursor string         Pagination cursor from a previous nextCursor (reuse the same --window/--status-class/--limit)
+      --cursor string         Pagination cursor from a previous nextCursor (reuse the same --env/--window/--status-class/--limit)
   -h, --help                  help for errors
       --limit int             Maximum number of errors to return (1-100)
       --status-class string   Error class to include (4xx or 5xx; default both)
@@ -43,6 +43,7 @@ runware serverless apps errors <appId> [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the app runs in (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

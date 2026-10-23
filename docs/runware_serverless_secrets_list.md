@@ -1,10 +1,11 @@
 ## runware serverless secrets list
 
-List organization secrets
+List secrets
 
 ### Synopsis
 
-List organization secret metadata. Encrypted values are never returned.
+List the metadata of the secrets in one environment. Encrypted values are
+never returned.
 
 To list secrets attached to an application, use 'secrets attachments'.
 
@@ -15,8 +16,11 @@ runware serverless secrets list [flags]
 ### Examples
 
 ```
-  # list organization secrets
+  # list the production secrets
   runware serverless secrets list
+
+  # list the staging secrets
+  runware serverless secrets list --env staging
 
   # page through results
   runware serverless secrets list --limit 20 --cursor <nextCursor>
@@ -34,6 +38,7 @@ runware serverless secrets list [flags]
 
 ```
       --debug              Show full debug output
+  -e, --env name           Environment the secret belongs to (default production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
@@ -41,5 +46,5 @@ runware serverless secrets list [flags]
 
 ### SEE ALSO
 
-* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage organization secrets for serverless applications
+* [runware serverless secrets](runware_serverless_secrets.md)	 - Manage secrets for serverless applications
 

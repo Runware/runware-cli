@@ -41,16 +41,18 @@ const (
 	UsageDimensionCoverage = gen.UsageDimensionCoverage
 )
 
-// GetUsageSummary returns GPU time and spend for the authenticated organization
-// over a half-open window, grouped by the requested dimensions. The API derives
+// GetUsageSummary returns GPU time and spend for the client's environment, or
+// for the whole organization when the client has none, over a half-open
+// window, grouped by the requested dimensions. The API derives
 // every figure on read; usage it cannot price fails the whole request rather
 // than being left out of the totals.
-func (c *Client) GetUsageSummary(ctx context.Context, params *GetUsageSummaryParams) (*UsageSummary, error) {
+func (c *Client) GetUsageSummary(ctx context.Context, params GetUsageSummaryParams) (*UsageSummary, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.GetUsageSummaryWithResponse(ctx, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.GetUsageSummaryWithResponse(ctx, &params)
 	if err != nil {
 		return nil, fmt.Errorf("get usage summary: %w", err)
 	}
@@ -67,8 +69,6 @@ func (c *Client) GetUsageSummary(ctx context.Context, params *GetUsageSummaryPar
 		return nil, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return nil, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusUnprocessableEntity:
 		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	case http.StatusInternalServerError:
@@ -81,13 +81,16 @@ func (c *Client) GetUsageSummary(ctx context.Context, params *GetUsageSummaryPar
 }
 
 // ListUsageEvents returns one newest-first page of worker state transitions.
-// from and to bound occurredAt. An unknown appId selects an empty page.
-func (c *Client) ListUsageEvents(ctx context.Context, params *ListUsageEventsParams) (Page[UsageEvent], error) {
+// from and to bound occurredAt. The client's environment applies only with an
+// appId; without one the page covers every environment. An unknown appId
+// selects an empty page.
+func (c *Client) ListUsageEvents(ctx context.Context, params ListUsageEventsParams) (Page[UsageEvent], error) {
 	if c.apiKey == "" {
 		return Page[UsageEvent]{}, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.ListUsageEventsWithResponse(ctx, params)
+	params.Environment = c.environmentParam()
+	resp, err := c.inner.ListUsageEventsWithResponse(ctx, &params)
 	if err != nil {
 		return Page[UsageEvent]{}, fmt.Errorf("list usage events: %w", err)
 	}
@@ -104,8 +107,6 @@ func (c *Client) ListUsageEvents(ctx context.Context, params *ListUsageEventsPar
 		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON400, http.StatusBadRequest)
 	case http.StatusUnauthorized:
 		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
-	case http.StatusForbidden:
-		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON403, http.StatusForbidden)
 	case http.StatusServiceUnavailable:
 		return Page[UsageEvent]{}, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
 	default:
