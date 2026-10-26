@@ -17,7 +17,7 @@ type EnvironmentCreate = gen.EnvironmentCreate
 type EnvironmentUpdate = gen.EnvironmentUpdate
 
 // EnvironmentDefaults are the organization defaults an environment inherits
-// for every field it leaves empty.
+// for each cap and the access setting it leaves empty.
 type EnvironmentDefaults = gen.EnvironmentDefaults
 
 // CurrencyUSD is the only currency the platform bills in.

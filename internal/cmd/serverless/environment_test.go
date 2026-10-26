@@ -1066,14 +1066,15 @@ type openAPIComponents struct {
 	Schemas map[string]openAPISchema `yaml:"schemas"`
 }
 
-// openAPISchema is one named schema's validation rule.
+// openAPISchema is one schema's validation rule and the schemas of its
+// properties.
 type openAPISchema struct {
-	Pattern string `yaml:"pattern"`
+	Pattern    string                   `yaml:"pattern"`
+	Properties map[string]openAPISchema `yaml:"properties"`
 }
 
-// specEnvironmentNamePattern is the EnvironmentName rule the vendored API
-// spec states.
-func specEnvironmentNamePattern(t *testing.T) string {
+// loadOpenAPISpec reads the vendored API spec.
+func loadOpenAPISpec(t *testing.T) openAPISpec {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "serverless", "openapi.yaml"))
 	if err != nil {
@@ -1083,7 +1084,14 @@ func specEnvironmentNamePattern(t *testing.T) string {
 	if err := yaml.Unmarshal(raw, &spec); err != nil {
 		t.Fatal(err)
 	}
-	return spec.Components.Schemas["EnvironmentName"].Pattern
+	return spec
+}
+
+// specEnvironmentNamePattern is the EnvironmentName rule the vendored API
+// spec states.
+func specEnvironmentNamePattern(t *testing.T) string {
+	t.Helper()
+	return loadOpenAPISpec(t).Components.Schemas["EnvironmentName"].Pattern
 }
 
 func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {

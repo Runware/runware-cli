@@ -51,10 +51,20 @@ var updateClearFields = []string{
 	alertPercentsField,
 }
 
-// defaultsClearFields are the fields environments defaults set clears.
-var defaultsClearFields = []string{
+// defaultsFields are the fields environments defaults set changes or clears.
+var defaultsFields = []string{
 	maxWorkersField,
 	maxGPUsField,
+}
+
+// environmentSettingFlags are the setting flags of environments create and
+// update.
+var environmentSettingFlags = []string{
+	maxWorkersField,
+	maxGPUsField,
+	budgetField,
+	alertPercentsField,
+	pauseAtBudgetFlag,
 }
 
 // environmentSettings are the setting flags of environments create and update.
@@ -64,6 +74,12 @@ type environmentSettings struct {
 	budget        string
 	alertPercents []int
 	pauseAtBudget bool
+}
+
+// defaultsSettings are the setting flags of environments defaults set.
+type defaultsSettings struct {
+	maxWorkers int32
+	maxGPUs    int32
 }
 
 // newEnvironmentsCmd returns the "serverless environments" command group for
@@ -166,7 +182,7 @@ Deploy to the new environment with --env <name> on deploy and app commands.`,
   runware serverless environments create staging --budget 100.00 --alert-percents 25,75`,
 		Args: environmentNameArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body, err := environmentCreateBody(args[0], cmd.Flags(), settings)
+			body, err := settings.createBody(args[0], cmd.Flags())
 			if err != nil {
 				return err
 			}
@@ -215,7 +231,7 @@ and cleared alert percents send no budget alert.`,
 		ValidArgsFunction: environmentArgCompletion(logger),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			body, err := environmentUpdateBody(cmd.Flags(), settings, clears)
+			body, err := settings.updateBody(cmd.Flags(), clears)
 			if err != nil {
 				return err
 			}
@@ -322,9 +338,8 @@ its own; - means no cap.`,
 
 func newEnvironmentsDefaultsSetCmd(logger *log.Logger) *cobra.Command {
 	var (
-		maxWorkers int32
-		maxGPUs    int32
-		clears     []string
+		settings defaultsSettings
+		clears   []string
 	)
 
 	cmd := &cobra.Command{
@@ -334,7 +349,11 @@ func newEnvironmentsDefaultsSetCmd(logger *log.Logger) *cobra.Command {
 
 --clear <field> removes a default cap, and takes max-workers or max-gpus;
 repeat it or separate fields with commas. The change reaches every environment
-that inherits the cap at once; it does not restart running apps.`,
+that inherits the cap at once; it does not restart running apps.
+
+The API replaces the defaults as a whole, so this reads them and writes them
+back with the change. Do not run it while anyone else changes the defaults, in
+the CLI or the console: a change made between the read and the write is lost.`,
 		Example: `  # cap every environment that sets no cap of its own at 10 workers
   runware serverless environments defaults set --max-workers 10
 
@@ -342,11 +361,11 @@ that inherits the cap at once; it does not restart running apps.`,
   runware serverless environments defaults set --clear max-gpus`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cleared, err := clearedFields(cmd.Flags(), clears, defaultsClearFields)
+			cleared, err := clearedFields(cmd.Flags(), clears, defaultsFields)
 			if err != nil {
 				return err
 			}
-			if len(cleared) == 0 && !cmd.Flags().Changed(maxWorkersField) && !cmd.Flags().Changed(maxGPUsField) {
+			if len(cleared) == 0 && !slices.ContainsFunc(defaultsFields, cmd.Flags().Changed) {
 				return errNothingToSetOnDefaults
 			}
 
@@ -359,7 +378,7 @@ that inherits the cap at once; it does not restart running apps.`,
 				spin.Stop()
 				return err
 			}
-			body := changedDefaults(*current, cmd.Flags(), maxWorkers, maxGPUs, cleared)
+			body := settings.applyTo(*current, cmd.Flags(), cleared)
 			saved, err := client.PutEnvironmentDefaults(cmd.Context(), body)
 			spin.Stop()
 			if err != nil {
@@ -370,9 +389,9 @@ that inherits the cap at once; it does not restart running apps.`,
 		},
 	}
 
-	cmd.Flags().Int32Var(&maxWorkers, maxWorkersField, 0, "Worker cap of an environment that sets none of its own")
-	cmd.Flags().Int32Var(&maxGPUs, maxGPUsField, 0, "GPU cap of an environment that sets none of its own")
-	addClearFlag(cmd, &clears, defaultsClearFields)
+	cmd.Flags().Int32Var(&settings.maxWorkers, maxWorkersField, 0, "Worker cap of an environment that sets none of its own")
+	cmd.Flags().Int32Var(&settings.maxGPUs, maxGPUsField, 0, "GPU cap of an environment that sets none of its own")
+	addClearFlag(cmd, &clears, defaultsFields)
 	return cmd
 }
 
@@ -447,8 +466,8 @@ func budgetAmount(value string) (serverlessapi.MoneyAmount, error) {
 	}, nil
 }
 
-// environmentCreateBody is the create request for the flags set on the command.
-func environmentCreateBody(name string, flags *pflag.FlagSet, s environmentSettings) (serverlessapi.EnvironmentCreate, error) {
+// createBody is the create request for the flags set on the command.
+func (s environmentSettings) createBody(name string, flags *pflag.FlagSet) (serverlessapi.EnvironmentCreate, error) {
 	body := serverlessapi.EnvironmentCreate{
 		Name: name,
 	}
@@ -474,24 +493,24 @@ func environmentCreateBody(name string, flags *pflag.FlagSet, s environmentSetti
 	return body, nil
 }
 
-// environmentUpdateBody is the patch for the flags set on the command: a flag
-// not set leaves its field out, and a cleared field is sent as null, or as no
-// alert percents.
-func environmentUpdateBody(flags *pflag.FlagSet, s environmentSettings, clears []string) (serverlessapi.EnvironmentUpdate, error) {
+// updateBody is the patch for the flags set on the command: a flag not set
+// leaves its field out, and a cleared field is sent as null, or as no alert
+// percents.
+func (s environmentSettings) updateBody(flags *pflag.FlagSet, clears []string) (serverlessapi.EnvironmentUpdate, error) {
 	cleared, err := clearedFields(flags, clears, updateClearFields)
 	if err != nil {
 		return serverlessapi.EnvironmentUpdate{}, err
 	}
+	if len(cleared) == 0 && !slices.ContainsFunc(environmentSettingFlags, flags.Changed) {
+		return serverlessapi.EnvironmentUpdate{}, errNothingToUpdate
+	}
 
 	var body serverlessapi.EnvironmentUpdate
-	changed := len(cleared) > 0
 	if flags.Changed(maxWorkersField) {
 		body.MaxConcurrentWorkers = nullable.NewNullableWithValue(s.maxWorkers)
-		changed = true
 	}
 	if flags.Changed(maxGPUsField) {
 		body.MaxConcurrentGpus = nullable.NewNullableWithValue(s.maxGPUs)
-		changed = true
 	}
 	if flags.Changed(budgetField) {
 		budget, err := budgetAmount(s.budget)
@@ -499,18 +518,12 @@ func environmentUpdateBody(flags *pflag.FlagSet, s environmentSettings, clears [
 			return serverlessapi.EnvironmentUpdate{}, err
 		}
 		body.MonthlyBudget = nullable.NewNullableWithValue(budget)
-		changed = true
 	}
 	if flags.Changed(alertPercentsField) {
 		body.BudgetAlertPercents = &s.alertPercents
-		changed = true
 	}
 	if flags.Changed(pauseAtBudgetFlag) {
 		body.PauseAtBudget = &s.pauseAtBudget
-		changed = true
-	}
-	if !changed {
-		return serverlessapi.EnvironmentUpdate{}, errNothingToUpdate
 	}
 
 	if _, ok := cleared[maxWorkersField]; ok {
@@ -528,16 +541,16 @@ func environmentUpdateBody(flags *pflag.FlagSet, s environmentSettings, clears [
 	return body, nil
 }
 
-// changedDefaults is current with the caps the flags set or clear changed;
-// every other field, unauthenticatedAccess included, is sent back as it is
-// because the API replaces the defaults as a whole.
-func changedDefaults(current serverlessapi.EnvironmentDefaults, flags *pflag.FlagSet, maxWorkers, maxGPUs int32, cleared map[string]struct{}) serverlessapi.EnvironmentDefaults {
+// applyTo is current with the caps the flags set or clear changed; every
+// other field, unauthenticatedAccess included, is sent back as it is because
+// the API replaces the defaults as a whole.
+func (s defaultsSettings) applyTo(current serverlessapi.EnvironmentDefaults, flags *pflag.FlagSet, cleared map[string]struct{}) serverlessapi.EnvironmentDefaults {
 	body := current
 	if flags.Changed(maxWorkersField) {
-		body.MaxConcurrentWorkers = &maxWorkers
+		body.MaxConcurrentWorkers = &s.maxWorkers
 	}
 	if flags.Changed(maxGPUsField) {
-		body.MaxConcurrentGpus = &maxGPUs
+		body.MaxConcurrentGpus = &s.maxGPUs
 	}
 	if _, ok := cleared[maxWorkersField]; ok {
 		body.MaxConcurrentWorkers = nil

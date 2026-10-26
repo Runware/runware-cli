@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -16,7 +14,6 @@ import (
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -25,8 +22,10 @@ const (
 	testClearFlag         = "--clear"
 	testMaxWorkersFlag    = "--max-workers"
 	testMaxGPUsFlag       = "--max-gpus"
+	testBudgetFlag        = "--budget"
 	testInheritedGPUs     = "8 (org default)"
 	testUpdateCommand     = "update"
+	testShowCommand       = "show"
 	testDefaultsPath      = "/v1/environment-defaults"
 	testStagingPath       = testEnvironmentsPath + "/" + testEnvironment
 	testRefusedName       = "Staging"
@@ -56,8 +55,8 @@ const (
 	}`
 )
 
-// bodyRecorder answers each request with a fixed status and body and keeps
-// every request body it received, by method and path.
+// bodyRecorder keeps the last request body environmentAPI received for each
+// method and path.
 type bodyRecorder struct {
 	mu     sync.Mutex
 	bodies map[string]string
@@ -205,11 +204,11 @@ func TestEnvironmentsListAndShowRunAgainstTheAPI(t *testing.T) {
 					body:   `{"data":[` + testProductionEnvironmentBody + `,` + testStagingEnvironment + `]}`,
 				},
 			},
-			want: []string{testProductionEnvironment, "4 (org default)", "staging", testInheritedGPUs, "50.00 USD", "50, 80, 100%"},
+			want: []string{testProductionEnvironment, "4 (org default)", testEnvironment, testInheritedGPUs, "50.00 USD", "50, 80, 100%"},
 		},
 		{
 			name: "show",
-			args: []string{testEnvironmentsGroup, "show", testEnvironment},
+			args: []string{testEnvironmentsGroup, testShowCommand, testEnvironment},
 			response: map[string]stubResponse{
 				"GET " + testStagingPath: {
 					status: http.StatusOK,
@@ -265,7 +264,7 @@ func TestEnvironmentsCreateSendsOnlyTheFlagsSet(t *testing.T) {
 		},
 		{
 			name: "every flag",
-			args: []string{testMaxWorkersFlag, "4", testMaxGPUsFlag, "8", "--budget", "49.99", "--alert-percents", "25,75", "--pause-at-budget"},
+			args: []string{testMaxWorkersFlag, "4", testMaxGPUsFlag, "8", testBudgetFlag, "49.99", "--alert-percents", "25,75", "--pause-at-budget"},
 			want: `{"name":"staging","maxConcurrentWorkers":4,"maxConcurrentGpus":8,"monthlyBudget":{"amount":"49.99","currency":"USD"},"budgetAlertPercents":[25,75],"pauseAtBudget":true}`,
 		},
 		{
@@ -275,7 +274,12 @@ func TestEnvironmentsCreateSendsOnlyTheFlagsSet(t *testing.T) {
 		},
 		{
 			name: "whole dollar budget",
-			args: []string{"--budget", "50"},
+			args: []string{testBudgetFlag, "50"},
+			want: `{"name":"staging","monthlyBudget":{"amount":"50.00","currency":"USD"}}`,
+		},
+		{
+			name: "budget with surrounding spaces",
+			args: []string{testBudgetFlag, " 50 "},
 			want: `{"name":"staging","monthlyBudget":{"amount":"50.00","currency":"USD"}}`,
 		},
 	}
@@ -320,7 +324,7 @@ func TestEnvironmentsUpdateSendsAbsentNullOrValue(t *testing.T) {
 		},
 		{
 			name: "budget alone",
-			args: []string{"--budget", "10"},
+			args: []string{testBudgetFlag, "10"},
 			want: `{"monthlyBudget":{"amount":"10.00","currency":"USD"}}`,
 		},
 		{
@@ -389,12 +393,12 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "update sets and clears the same field",
-			args:    append(update, "--budget", "5", testClearFlag, budgetField),
+			args:    append(update, testBudgetFlag, "5", testClearFlag, budgetField),
 			wantErr: "--budget and --clear budget both change budget; pass one",
 		},
 		{
 			name:    "update budget not an amount",
-			args:    append(update, "--budget", "5 USD"),
+			args:    append(update, testBudgetFlag, "5 USD"),
 			wantErr: errBudgetAmount.Error(),
 		},
 		{
@@ -404,7 +408,7 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "show a name the API refuses",
-			args:    []string{testEnvironmentsGroup, appHealthShowCommand, testRefusedName},
+			args:    []string{testEnvironmentsGroup, testShowCommand, testRefusedName},
 			wantErr: errEnvironmentName.Error(),
 		},
 		{
@@ -414,12 +418,12 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "show with two names",
-			args:    []string{testEnvironmentsGroup, appHealthShowCommand, testEnvironment, testProductionEnvironment},
+			args:    []string{testEnvironmentsGroup, testShowCommand, testEnvironment, testProductionEnvironment},
 			wantErr: "accepts 1 arg(s), received 2",
 		},
 		{
 			name:    "show without a name",
-			args:    []string{testEnvironmentsGroup, appHealthShowCommand},
+			args:    []string{testEnvironmentsGroup, testShowCommand},
 			wantErr: "accepts 1 arg(s), received 0",
 		},
 		{
@@ -429,12 +433,12 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "create negative budget",
-			args:    append(create, "--budget", "-5"),
+			args:    append(create, testBudgetFlag, "-5"),
 			wantErr: errBudgetAmount.Error(),
 		},
 		{
 			name:    "create budget with a trailing point",
-			args:    append(create, "--budget", "50."),
+			args:    append(create, testBudgetFlag, "50."),
 			wantErr: errBudgetAmount.Error(),
 		},
 		{
@@ -477,31 +481,8 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 	}
 }
 
-// moneyAmountSchema is the part of the spec's MoneyAmount schema a test reads.
-type moneyAmountSchema struct {
-	Properties map[string]openAPISchema `yaml:"properties"`
-}
-
-// moneyAmountSpec is the part of the vendored API spec that holds MoneyAmount.
-type moneyAmountSpec struct {
-	Components moneyAmountComponents `yaml:"components"`
-}
-
-// moneyAmountComponents holds the spec's MoneyAmount schema.
-type moneyAmountComponents struct {
-	Schemas map[string]moneyAmountSchema `yaml:"schemas"`
-}
-
 func TestBudgetAppliesTheSpecsAmountRule(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "serverless", "openapi.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var spec moneyAmountSpec
-	if err := yaml.Unmarshal(raw, &spec); err != nil {
-		t.Fatal(err)
-	}
-	want := spec.Components.Schemas["MoneyAmount"].Properties["amount"].Pattern
+	want := loadOpenAPISpec(t).Components.Schemas["MoneyAmount"].Properties["amount"].Pattern
 
 	if want == "" {
 		t.Fatal("the spec has no MoneyAmount amount pattern")
@@ -604,8 +585,14 @@ func TestEnvironmentDefaultsGetReadsTheDefaults(t *testing.T) {
 	if run.err != nil {
 		t.Fatal(run.err)
 	}
-	if !strings.Contains(run.stdout, "7") {
-		t.Fatalf("output missing the worker cap:\n%s", run.stdout)
+	rows := map[string]string{}
+	for line := range strings.Lines(run.stdout) {
+		if cells := strings.Split(line, "│"); len(cells) == 4 {
+			rows[strings.TrimSpace(cells[1])] = strings.TrimSpace(cells[2])
+		}
+	}
+	if rows[colMaxWorkers] != "7" || rows[colMaxGPUs] != noValue {
+		t.Fatalf("%s = %q, %s = %q, want 7 and %s:\n%s", colMaxWorkers, rows[colMaxWorkers], colMaxGPUs, rows[colMaxGPUs], noValue, run.stdout)
 	}
 }
 
@@ -725,16 +712,24 @@ func TestEnvironmentNameArgumentCompletesFromTheList(t *testing.T) {
 		_, _ = io.WriteString(w, `{"data":[{"name":"production"},{"name":"staging"}]}`)
 	}
 	noFiles := fmt.Sprintf(":%d", cobra.ShellCompDirectiveNoFileComp)
-	for _, command := range []string{"show", testUpdateCommand, testDeleteCommand} {
-		t.Run(command, func(t *testing.T) {
-			names, directive := completions(t, list, testEnvironmentsGroup, command, "")
-			if directive != noFiles || strings.Join(names, ",") != "production,staging" {
-				t.Fatalf("completions = %q %s, want production,staging %s", names, directive, noFiles)
-			}
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "show completes the name", args: []string{testShowCommand, ""}, want: "production,staging"},
+		{name: "show offers nothing for a second name", args: []string{testShowCommand, testEnvironment, ""}},
+		{name: "update completes the name", args: []string{testUpdateCommand, ""}, want: "production,staging"},
+		{name: "update offers nothing for a second name", args: []string{testUpdateCommand, testEnvironment, ""}},
+		{name: "delete completes the name", args: []string{testDeleteCommand, ""}, want: "production,staging"},
+		{name: "delete offers nothing for a second name", args: []string{testDeleteCommand, testEnvironment, ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			names, directive := completions(t, list, append([]string{testEnvironmentsGroup}, tc.args...)...)
 
-			names, _ = completions(t, list, testEnvironmentsGroup, command, testEnvironment, "")
-			if len(names) != 0 {
-				t.Fatalf("second argument completed %q", names)
+			if got := strings.Join(names, ","); got != tc.want || directive != noFiles {
+				t.Fatalf("completions = %q %s, want %q %s", got, directive, tc.want, noFiles)
 			}
 		})
 	}
