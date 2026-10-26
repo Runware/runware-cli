@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +47,11 @@ const (
 	colEvent          = "Event"
 	colGPUs           = "GPUs"
 	colPricePerGPU    = "Price/s"
+	colDefault        = "Default"
+	colMaxGPUs        = "Max GPUs"
+	colMonthlyBudget  = "Monthly budget"
+	colBudgetAlerts   = "Budget alerts"
+	colPauseAtBudget  = "Pause at budget"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -704,12 +710,6 @@ func printNamedCursor(errOut io.Writer, label string, cursor *string, extraFlags
 }
 
 const (
-	colDefault       = "Default"
-	colMaxGPUs       = "Max GPUs"
-	colMonthlyBudget = "Monthly budget"
-	colBudgetAlerts  = "Budget alerts"
-	colPauseAtBudget = "Pause at budget"
-
 	// noValue stands for a setting that is not set: no cap, no budget, no alert.
 	noValue = "-"
 	// inheritedSuffix marks a value an environment inherits from the
@@ -803,17 +803,14 @@ func formatEnvironmentCap(own, resolved *int32) string {
 }
 
 func formatCap(v *int32) string {
-	if v == nil {
-		return noValue
-	}
-	return fmt.Sprintf("%d", *v)
+	return cmp.Or(formatOptionalInt32(v), noValue)
 }
 
 func formatBudget(amount *serverlessapi.MoneyAmount) string {
 	if amount == nil {
 		return noValue
 	}
-	return amount.Amount + " " + string(amount.Currency)
+	return formatMoney(*amount)
 }
 
 func formatAlertPercents(percents []int) string {

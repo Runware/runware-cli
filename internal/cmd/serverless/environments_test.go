@@ -184,13 +184,17 @@ func TestEnvironmentJSONIsTheAPIObject(t *testing.T) {
 	}
 }
 
+// environmentReadCase is a read command, what the stub API answers and what
+// the output must contain.
+type environmentReadCase struct {
+	name     string
+	args     []string
+	response map[string]stubResponse
+	want     []string
+}
+
 func TestEnvironmentsListAndShowRunAgainstTheAPI(t *testing.T) {
-	cases := []struct {
-		name     string
-		args     []string
-		response map[string]stubResponse
-		want     []string
-	}{
+	cases := []environmentReadCase{
 		{
 			name: "list",
 			args: []string{testEnvironmentsGroup, "list"},
@@ -314,9 +318,14 @@ func TestEnvironmentsUpdateSendsAbsentNullOrValue(t *testing.T) {
 			want: `{"pauseAtBudget":false}`,
 		},
 		{
-			name: "budget and alerts",
-			args: []string{"--budget", "10", "--alert-percents", "25,75"},
-			want: `{"monthlyBudget":{"amount":"10.00","currency":"USD"},"budgetAlertPercents":[25,75]}`,
+			name: "budget alone",
+			args: []string{"--budget", "10"},
+			want: `{"monthlyBudget":{"amount":"10.00","currency":"USD"}}`,
+		},
+		{
+			name: "alerts alone",
+			args: []string{"--alert-percents", "25,75"},
+			want: `{"budgetAlertPercents":[25,75]}`,
 		},
 		{
 			name: "clear a cap",
@@ -325,7 +334,7 @@ func TestEnvironmentsUpdateSendsAbsentNullOrValue(t *testing.T) {
 		},
 		{
 			name: "clear every field, comma separated and repeated",
-			args: []string{testClearFlag, "max-workers,max-gpus", testClearFlag, budgetField, testClearFlag, alertPercentsField},
+			args: []string{testClearFlag, "max-workers, max-gpus", testClearFlag, budgetField, testClearFlag, alertPercentsField},
 			want: `{"maxConcurrentWorkers":null,"maxConcurrentGpus":null,"monthlyBudget":null,"budgetAlertPercents":[]}`,
 		},
 		{
@@ -388,6 +397,16 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 			wantErr: errBudgetAmount.Error(),
 		},
 		{
+			name:    "create a name the API refuses",
+			args:    []string{testEnvironmentsGroup, "create", "Staging"},
+			wantErr: "environment name must be",
+		},
+		{
+			name:    "delete a name the API refuses",
+			args:    []string{testEnvironmentsGroup, testDeleteCommand, "Staging", testYesFlag},
+			wantErr: "environment name must be",
+		},
+		{
 			name:    "create negative budget",
 			args:    append(create, "--budget", "-5"),
 			wantErr: errBudgetAmount.Error(),
@@ -405,7 +424,7 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		{
 			name:    "defaults set with nothing to set",
 			args:    defaultsSet,
-			wantErr: errNothingToSetOnDefs.Error(),
+			wantErr: errNothingToSetOnDefaults.Error(),
 		},
 		{
 			name:    "defaults set clears a field it does not take",
@@ -493,6 +512,12 @@ func TestEnvironmentDefaultsSetSendsBackWhatItDoesNotChange(t *testing.T) {
 			want:    `{"maxConcurrentGpus":2,"unauthenticatedAccess":"allow"}`,
 		},
 		{
+			name:    "clear the other cap",
+			current: `{"maxConcurrentWorkers":5,"maxConcurrentGpus":2,"unauthenticatedAccess":"allow"}`,
+			args:    []string{testClearFlag, maxGPUsField},
+			want:    `{"maxConcurrentWorkers":5,"unauthenticatedAccess":"allow"}`,
+		},
+		{
 			name:    "set a cap where there was none",
 			current: `{"unauthenticatedAccess":"allow"}`,
 			args:    []string{testMaxWorkersFlag, "0"},
@@ -573,7 +598,7 @@ type deleteConflictCase struct {
 func TestEnvironmentsDeleteNamesTheCommandsThatEmptyIt(t *testing.T) {
 	const detail = "Environment still has live apps"
 	hint := "\nList what it still holds with 'runware serverless apps list --env staging' and " +
-		"'runware serverless secrets list --env staging', and remove each with 'apps delete' or 'secrets remove' under the same --env."
+		"'runware serverless secrets list --env staging', remove each with 'apps delete' or 'secrets remove' under the same --env, and retry once no app shows as deleting."
 	cases := []deleteConflictCase{
 		{
 			name:        "still holds apps",
@@ -634,19 +659,26 @@ func TestEnvironmentsDeleteAsksFirst(t *testing.T) {
 }
 
 func TestEnvironmentsDeleteWithYesDeletes(t *testing.T) {
-	api := environmentAPI(t, &bodyRecorder{}, map[string]stubResponse{
-		"DELETE " + testStagingPath: {
-			status: http.StatusNoContent,
-		},
-	})
+	for _, flag := range []string{"-y", testYesFlag, "--force"} {
+		t.Run(flag, func(t *testing.T) {
+			api := environmentAPI(t, &bodyRecorder{}, map[string]stubResponse{
+				"DELETE " + testStagingPath: {
+					status: http.StatusNoContent,
+				},
+			})
 
-	run := runServerlessAgainst(t, api, testEnvironmentsGroup, testDeleteCommand, testEnvironment, "-y")
+			run := runServerlessAgainst(t, api, testEnvironmentsGroup, testDeleteCommand, testEnvironment, flag)
 
-	if run.err != nil {
-		t.Fatal(run.err)
-	}
-	if len(run.requests) != 1 || run.requests[0].String() != "DELETE "+testStagingPath {
-		t.Fatalf("requests = %v, want one DELETE %s", run.requests, testStagingPath)
+			if run.err != nil {
+				t.Fatal(run.err)
+			}
+			if len(run.requests) != 1 || run.requests[0].String() != "DELETE "+testStagingPath {
+				t.Fatalf("requests = %v, want one DELETE %s", run.requests, testStagingPath)
+			}
+			if !strings.Contains(run.stdout, testEnvironment) {
+				t.Fatalf("output = %q, want the deleted name", run.stdout)
+			}
+		})
 	}
 }
 
@@ -687,12 +719,16 @@ func TestEnvironmentNameArgumentCompletesFromTheList(t *testing.T) {
 	}
 }
 
+// clearCompletionCase is a command line completing --clear and the fields
+// offered.
+type clearCompletionCase struct {
+	name string
+	args []string
+	want string
+}
+
 func TestClearCompletesTheFieldsTheCommandTakes(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-		want string
-	}{
+	cases := []clearCompletionCase{
 		{
 			name: testUpdateCommand,
 			args: []string{testEnvironmentsGroup, testUpdateCommand, testEnvironment, testClearFlag, ""},

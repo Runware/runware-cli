@@ -3,7 +3,6 @@ package serverless
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -38,9 +37,9 @@ var moneyAmountPattern = regexp.MustCompile(`^\d+\.\d+$`)
 var wholeAmountPattern = regexp.MustCompile(`^\d+$`)
 
 var (
-	errBudgetAmount       = errors.New("--budget takes a USD amount such as 50 or 49.99")
-	errNothingToUpdate    = errors.New("nothing to update; pass a setting flag or --clear <field>")
-	errNothingToSetOnDefs = errors.New("nothing to set; pass --max-workers, --max-gpus or --clear <field>")
+	errBudgetAmount           = errors.New("--budget takes a USD amount such as 50 or 49.99")
+	errNothingToUpdate        = errors.New("nothing to update; pass a setting flag or --clear <field>")
+	errNothingToSetOnDefaults = errors.New("nothing to set; pass --max-workers, --max-gpus or --clear <field>")
 )
 
 // updateClearFields are the fields environments update clears.
@@ -124,7 +123,7 @@ func newEnvironmentsShowCmd(logger *log.Logger) *cobra.Command {
 A cap the environment does not set shows the organization default it inherits,
 marked (org default); - means no cap.`,
 		Example:           `  runware serverless environments show staging`,
-		Args:              cobra.ExactArgs(1),
+		Args:              environmentNameArg,
 		ValidArgsFunction: environmentArgCompletion(logger),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -164,7 +163,7 @@ Deploy to the new environment with --env <name> on deploy and app commands.`,
 
   # alert at 25 and 75 percent of the budget
   runware serverless environments create staging --budget 100.00 --alert-percents 25,75`,
-		Args: cobra.ExactArgs(1),
+		Args: environmentNameArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body, err := environmentCreateBody(args[0], cmd.Flags(), settings)
 			if err != nil {
@@ -211,7 +210,7 @@ and cleared alert percents send no budget alert.`,
 
   # inherit the organization's worker cap again and remove the budget
   runware serverless environments update staging --clear max-workers,budget`,
-		Args:              cobra.ExactArgs(1),
+		Args:              environmentNameArg,
 		ValidArgsFunction: environmentArgCompletion(logger),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -259,7 +258,7 @@ Confirmation is required unless --yes or --force is passed.`,
 
   # skip the confirmation prompt
   runware serverless environments delete staging --yes`,
-		Args:              cobra.ExactArgs(1),
+		Args:              environmentNameArg,
 		ValidArgsFunction: environmentArgCompletion(logger),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -347,7 +346,7 @@ that inherits the cap at once; it does not restart running apps.`,
 				return err
 			}
 			if len(cleared) == 0 && !cmd.Flags().Changed(maxWorkersField) && !cmd.Flags().Changed(maxGPUsField) {
-				return errNothingToSetOnDefs
+				return errNothingToSetOnDefaults
 			}
 
 			spin := cmdutil.NewSpinner("Saving organization defaults...")
@@ -390,6 +389,14 @@ func addClearFlag(cmd *cobra.Command, clears *[]string, fields []string) {
 	if err := cmd.RegisterFlagCompletionFunc(clearFlag, cobra.FixedCompletions(fields, cobra.ShellCompDirectiveNoFileComp)); err != nil {
 		panic(err)
 	}
+}
+
+// environmentNameArg takes one argument, an environment name the API accepts.
+func environmentNameArg(cmd *cobra.Command, args []string) error {
+	if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+		return err
+	}
+	return new(environmentValue).Set(args[0])
 }
 
 // environmentArgCompletion completes a command's one environment name
@@ -542,12 +549,12 @@ func changedDefaults(current serverlessapi.EnvironmentDefaults, flags *pflag.Fla
 // them. production is refused for being production, so it gets no hint.
 func withEnvironmentContentsHint(err error, name string) error {
 	re, ok := errors.AsType[*transport.RunwareError](err)
-	if !ok || re.StatusCode != http.StatusConflict || isDefaultEnvironment(name) {
+	if !ok || !isHTTPConflict(err) || isDefaultEnvironment(name) {
 		return err
 	}
 	hinted := *re
 	hinted.Message = re.Message + "\nList what it still holds with '" + serverlessCommand(name, "apps", "list") +
 		"' and '" + serverlessCommand(name, "secrets", "list") +
-		"', and remove each with 'apps delete' or 'secrets remove' under the same --env."
+		"', remove each with 'apps delete' or 'secrets remove' under the same --env, and retry once no app shows as deleting."
 	return &hinted
 }
