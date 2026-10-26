@@ -30,7 +30,6 @@ const (
 	testDefaultsPath      = "/v1/environment-defaults"
 	testStagingPath       = testEnvironmentsPath + "/" + testEnvironment
 	testRefusedName       = "Staging"
-	testNameRule          = "environment name must be"
 
 	// testStagingEnvironment sets its own worker cap and inherits its GPU cap.
 	testStagingEnvironment = `{
@@ -401,17 +400,22 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		{
 			name:    "create a name the API refuses",
 			args:    []string{testEnvironmentsGroup, "create", testRefusedName},
-			wantErr: testNameRule,
+			wantErr: errEnvironmentName.Error(),
 		},
 		{
 			name:    "show a name the API refuses",
 			args:    []string{testEnvironmentsGroup, appHealthShowCommand, testRefusedName},
-			wantErr: testNameRule,
+			wantErr: errEnvironmentName.Error(),
 		},
 		{
 			name:    "update a name with an equals sign",
 			args:    []string{testEnvironmentsGroup, testUpdateCommand, "a=b", testMaxWorkersFlag, "1"},
-			wantErr: testNameRule,
+			wantErr: errEnvironmentName.Error(),
+		},
+		{
+			name:    "show with two names",
+			args:    []string{testEnvironmentsGroup, appHealthShowCommand, testEnvironment, testProductionEnvironment},
+			wantErr: "accepts 1 arg(s), received 2",
 		},
 		{
 			name:    "show without a name",
@@ -421,7 +425,7 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		{
 			name:    "delete a name the API refuses",
 			args:    []string{testEnvironmentsGroup, testDeleteCommand, testRefusedName, testYesFlag},
-			wantErr: testNameRule,
+			wantErr: errEnvironmentName.Error(),
 		},
 		{
 			name:    "create negative budget",
@@ -764,5 +768,12 @@ func TestClearCompletesTheFieldsTheCommandTakes(t *testing.T) {
 				t.Fatalf("completions = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestDeleteHintLeavesOtherErrorsAlone(t *testing.T) {
+	err := errors.New("connection refused")
+	if got := withEnvironmentContentsHint(err, testEnvironment); !errors.Is(got, err) || got.Error() != err.Error() {
+		t.Fatalf("withEnvironmentContentsHint(%v) = %v, want it unchanged", err, got)
 	}
 }
