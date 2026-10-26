@@ -33,7 +33,12 @@ const (
 	completionTimeout = 3 * time.Second
 )
 
-var errEnvironmentIsVariable = errors.New("--env takes an environment name; use --env-var KEY=VALUE for an environment variable")
+var (
+	// environmentNamePattern is the API's EnvironmentName rule.
+	environmentNamePattern   = config.EnvironmentNamePattern
+	errEnvironmentIsVariable = errors.New("--env takes an environment name; use --env-var KEY=VALUE for an environment variable")
+	errEnvironmentName       = config.ErrEnvironmentName
+)
 
 // environmentValue is the --env flag value.
 type environmentValue string
@@ -46,8 +51,8 @@ func (v *environmentValue) Set(name string) error {
 	if strings.Contains(name, "=") {
 		return errEnvironmentIsVariable
 	}
-	if !config.EnvironmentNamePattern.MatchString(name) {
-		return config.ErrEnvironmentName
+	if !environmentNamePattern.MatchString(name) {
+		return errEnvironmentName
 	}
 	*v = environmentValue(name)
 	return nil

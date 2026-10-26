@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -1093,8 +1092,8 @@ func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
 	if want == "" {
 		t.Fatal("the spec has no EnvironmentName pattern")
 	}
-	if got := config.EnvironmentNamePattern.String(); got != want {
-		t.Fatalf("config.EnvironmentNamePattern = %q, spec says %q", got, want)
+	if got := environmentNamePattern.String(); got != want {
+		t.Fatalf("environmentNamePattern = %q, spec says %q", got, want)
 	}
 }
 
