@@ -22,7 +22,11 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
   runware config set format json
 
   # set the default transport (ws, http)
-  runware config set transport http`,
+  runware config set transport http
+
+  # address the staging environment in serverless commands without --env
+  # (RUNWARE_ENV overrides it; set production to go back)
+  runware config set environment staging`,
 		Args: cobra.ExactArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			if len(args) == 0 {
@@ -30,6 +34,7 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 					keyOutputDir,
 					keyFormat,
 					keyTransport,
+					keyEnvironment,
 				}, cobra.ShellCompDirectiveNoFileComp
 			}
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -81,6 +86,10 @@ func validateConfigValue(key, value string) error {
 	case keyTransport:
 		if !transport.ValidTransport(value) {
 			return fmt.Errorf("invalid transport %q: must be one of: %s", value, strings.Join(transport.ValidTransports(), ", "))
+		}
+	case keyEnvironment:
+		if !config.EnvironmentNamePattern.MatchString(value) {
+			return fmt.Errorf("invalid environment %q: %w", value, config.ErrEnvironmentName)
 		}
 	}
 	return nil

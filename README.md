@@ -229,7 +229,7 @@ runware serverless open my-app
 
 `--volume`, `--env-var`, `--env-file`, and `--name` apply on create only. Change `--gpu-type` and other worker settings with `apps scale`, environment variables with `apps env-vars`, and the display name with `apps rename`. An environment variable change or a secret attach, detach, or rotation records a new version (or rolls live workers) — you do not need to redeploy source to apply them.
 
-Every app command and every `secrets` command takes `--env <name>` (`-e`) to address the copy in that environment. Without it, commands address `production`. A secret belongs to one environment, and an app attaches only secrets of its own. `usage` takes `--env` to report one environment instead of the whole organization. `usage events` takes `--env` only together with `--app`. `gpus` takes no environment.
+Every app command and every `secrets` command takes `--env <name>` (`-e`) to address the copy in that environment. Without it, commands address `RUNWARE_ENV`, else the config's `environment` (`runware config set environment staging`), else `production`, and say which one when it is not `production`. Commands the CLI prints for you to run next always name a non-production environment with `--env`, so they run the same anywhere. A secret belongs to one environment, and an app attaches only secrets of its own. `usage` takes `--env` to report one environment instead of the whole organization. `usage events` takes `--env` only together with `--app`. `gpus` takes no environment.
 
 `.env` files are never packed into the source archive. Prefer `--env-file` and `secrets set --value-file` so values stay out of the process list.
 
@@ -343,6 +343,7 @@ All commands support `--format json` for piping into `jq` or scripts.
 | Variable | Description |
 |----------|-------------|
 | `RUNWARE_API_KEY` | API key (overrides config file) |
+| `RUNWARE_ENV` | Serverless environment a command addresses without `--env` (overrides config file) |
 
 ### Config file
 
@@ -353,6 +354,7 @@ defaults:
     output_dir: ./outputs
     format: table
     transport: ws
+    environment: staging  # serverless commands without --env; omit for production
 presets:
     quick:
         model: runware:100@1

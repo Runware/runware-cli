@@ -8,10 +8,11 @@ import (
 )
 
 type configShowResult struct {
-	APIKey    string `json:"api_key"`
-	OutputDir string `json:"output_dir"`
-	Format    string `json:"format"`
-	Transport string `json:"transport"`
+	APIKey      string `json:"api_key"`
+	OutputDir   string `json:"output_dir"`
+	Format      string `json:"format"`
+	Transport   string `json:"transport"`
+	Environment string `json:"environment"`
 }
 
 func (r configShowResult) Headers() []string {
@@ -24,6 +25,7 @@ func (r configShowResult) Rows() [][]any {
 		{keyOutputDir, r.OutputDir},
 		{keyFormat, r.Format},
 		{keyTransport, r.Transport},
+		{keyEnvironment, r.Environment},
 	}
 }
 
@@ -43,11 +45,17 @@ func newShowCmd() *cobra.Command {
 				apiKey = config.MaskKey(apiKey)
 			}
 
+			environment, _ := config.GetEnvironment()
+			if environment == "" {
+				environment = "production"
+			}
+
 			return output.Print(cmdutil.FormatFor(cmd), configShowResult{
-				APIKey:    apiKey,
-				OutputDir: cfg.Defaults.OutputDir,
-				Format:    cfg.Defaults.Format,
-				Transport: cfg.Defaults.Transport,
+				APIKey:      apiKey,
+				OutputDir:   cfg.Defaults.OutputDir,
+				Format:      cfg.Defaults.Format,
+				Transport:   cfg.Defaults.Transport,
+				Environment: environment,
 			})
 		},
 	}

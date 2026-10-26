@@ -31,7 +31,7 @@ environment, production unless --env names another.`
 		newSecretsAttachCmd(logger),
 		newSecretsDetachCmd(logger),
 	)
-	addEnvironmentFlag(cmd, cmd.PersistentFlags(), logger, "Environment the secret belongs to (default production)")
+	addEnvironmentFlag(cmd, cmd.PersistentFlags(), logger, "Environment the secret belongs to "+environmentFlagDefault)
 	return cmd
 }
 

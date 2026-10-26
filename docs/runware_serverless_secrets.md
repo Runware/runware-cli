@@ -17,7 +17,7 @@ runware serverless secrets [flags]
 ### Options
 
 ```
-  -e, --env name   Environment the secret belongs to (default production)
+  -e, --env name   Environment the secret belongs to (default RUNWARE_ENV, else the config's environment, else production)
   -h, --help       help for secrets
 ```
 

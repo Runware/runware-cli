@@ -4,8 +4,8 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
@@ -21,19 +21,19 @@ const (
 	defaultEnvironment   = "production"
 	environmentFlag      = "env"
 	environmentShorthand = "e"
-	environmentFlagHelp  = "Environment the app runs in (default production)"
+	environmentFlagHelp  = "Environment the app runs in " + environmentFlagDefault
+	// environmentFlagDefault is the --env help's account of a command without
+	// the flag.
+	environmentFlagDefault = "(default RUNWARE_ENV, else the config's environment, else production)"
+	// reportsOrganization marks an --env that only narrows a report of the
+	// whole organization, which the default environment does not narrow.
+	reportsOrganization = "runware.reportsOrganization"
 	// completionTimeout bounds the environments read behind tab completion;
 	// the shell waits for it.
 	completionTimeout = 3 * time.Second
 )
 
-// environmentNamePattern is the API's EnvironmentName rule.
-var environmentNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
-
-var (
-	errEnvironmentIsVariable = errors.New("--env takes an environment name; use --env-var KEY=VALUE for an environment variable")
-	errEnvironmentName       = errors.New("environment name must be 1-63 lowercase letters, digits, hyphens, underscores or periods, starting with a letter or digit")
-)
+var errEnvironmentIsVariable = errors.New("--env takes an environment name; use --env-var KEY=VALUE for an environment variable")
 
 // environmentValue is the --env flag value.
 type environmentValue string
@@ -46,8 +46,8 @@ func (v *environmentValue) Set(name string) error {
 	if strings.Contains(name, "=") {
 		return errEnvironmentIsVariable
 	}
-	if !environmentNamePattern.MatchString(name) {
-		return errEnvironmentName
+	if !config.EnvironmentNamePattern.MatchString(name) {
+		return config.ErrEnvironmentName
 	}
 	*v = environmentValue(name)
 	return nil
@@ -62,6 +62,15 @@ func (v *environmentValue) Type() string {
 func addEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Logger, help string) {
 	flags.VarP(new(environmentValue), environmentFlag, environmentShorthand, help)
 	if err := cmd.RegisterFlagCompletionFunc(environmentFlag, environmentCompletion(logger, completionTimeout)); err != nil {
+		panic(err)
+	}
+}
+
+// addReportEnvironmentFlag registers --env on a command that reports the
+// whole organization without it, so the default environment does not apply.
+func addReportEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Logger, help string) {
+	addEnvironmentFlag(cmd, flags, logger, help)
+	if err := flags.SetAnnotation(environmentFlag, reportsOrganization, nil); err != nil {
 		panic(err)
 	}
 }
@@ -84,31 +93,52 @@ func environmentCompletion(logger *log.Logger, timeout time.Duration) cobra.Comp
 	}
 }
 
-// commandEnvironment returns the --env value, or "" when the command has no
-// such flag or it was not set.
+// commandEnvironment returns the environment cmd addresses, or "" for
+// production. See resolveEnvironment.
 func commandEnvironment(cmd *cobra.Command) string {
-	if f := cmd.Flag(environmentFlag); f != nil {
-		if v, ok := f.Value.(*environmentValue); ok {
-			return string(*v)
-		}
-	}
-	return ""
+	name, _ := resolveEnvironment(cmd)
+	return name
 }
 
-// newServerlessClient builds the API client for cmd, scoped to its --env.
+// resolveEnvironment returns the environment cmd addresses and, when --env
+// did not name it, where the default came from: --env, else RUNWARE_ENV, else
+// the config's environment. A command without --env, or whose --env only
+// narrows an organization report, addresses no default.
+func resolveEnvironment(cmd *cobra.Command) (name, source string) {
+	f := cmd.Flag(environmentFlag)
+	if f == nil {
+		return "", ""
+	}
+	v, ok := f.Value.(*environmentValue)
+	if !ok {
+		return "", ""
+	}
+	if _, report := f.Annotations[reportsOrganization]; *v != "" || report {
+		return string(*v), ""
+	}
+	return config.GetEnvironment()
+}
+
+// newServerlessClient builds the API client for cmd, scoped to the
+// environment it addresses. An environment other than production that --env
+// did not name is announced, so a default set elsewhere is never silent.
 func newServerlessClient(cmd *cobra.Command, logger *log.Logger) *serverlessapi.Client {
+	name, source := resolveEnvironment(cmd)
+	if source != "" && !isDefaultEnvironment(name) {
+		logger.Info(fmt.Sprintf("Using environment %s from %s", name, source))
+	}
 	client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-	return client.WithEnvironment(commandEnvironment(cmd))
+	return client.WithEnvironment(name)
 }
 
 // deleteSubject is what a delete prompt names: the subject and the environment
-// the command addresses, production when --env is not set.
+// the command addresses.
 func deleteSubject(cmd *cobra.Command, subject string) string {
 	return subject + " in " + cmp.Or(commandEnvironment(cmd), defaultEnvironment)
 }
 
-// environmentArgs is the --env part of a printed command: nothing for the
-// default environment, which a command without the flag already addresses.
+// environmentArgs is the --env part of a printed command: nothing for
+// production, which the command addresses without the flag wherever it runs.
 func environmentArgs(environment string) []string {
 	if isDefaultEnvironment(environment) {
 		return nil
@@ -116,8 +146,8 @@ func environmentArgs(environment string) []string {
 	return appendFlag(nil, "--"+environmentFlag, environment)
 }
 
-// isDefaultEnvironment reports whether environment is the one a command
-// without --env addresses.
+// isDefaultEnvironment reports whether environment is production, the one the
+// API addresses when a request names none.
 func isDefaultEnvironment(environment string) bool {
 	return environment == "" || environment == defaultEnvironment
 }

@@ -131,7 +131,7 @@ runware serverless deploy [file] [flags]
       --available-workers-pct int32   Idle-worker buffer as a percentage of load (0-100)
       --base-image string             Builder base image (code deploys only; needs Python 3.12 or newer) (default "python:3.12-slim")
       --container string              Directory whose root contains Dockerfile and container.yaml
-  -e, --env name                      Environment the app runs in (default production)
+  -e, --env name                      Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
       --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable

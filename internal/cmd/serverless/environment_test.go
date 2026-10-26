@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -95,7 +96,9 @@ type serverlessRun struct {
 	// completions. Command data goes to os.Stdout and lands in stdout.
 	cobraOutput string
 	stdout      string
-	err         error
+	// logs is what the command logged.
+	logs string
+	err  error
 }
 
 // runServerlessAgainst runs `serverless <args>` against a stub API that
@@ -129,7 +132,8 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
 
-	cmd := NewCmd(log.New(io.Discard))
+	var logs bytes.Buffer
+	cmd := NewCmd(log.New(&logs))
 	var cobraOutput bytes.Buffer
 	cmd.SetOut(&cobraOutput)
 	cmd.SetErr(&cobraOutput)
@@ -153,6 +157,7 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 		requests:    rec.requests,
 		cobraOutput: cobraOutput.String(),
 		stdout:      string(out),
+		logs:        logs.String(),
 		err:         execErr,
 	}
 }
@@ -1092,8 +1097,8 @@ func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
 	if want == "" {
 		t.Fatal("the spec has no EnvironmentName pattern")
 	}
-	if got := environmentNamePattern.String(); got != want {
-		t.Fatalf("environmentNamePattern = %q, spec says %q", got, want)
+	if got := config.EnvironmentNamePattern.String(); got != want {
+		t.Fatalf("config.EnvironmentNamePattern = %q, spec says %q", got, want)
 	}
 }
 

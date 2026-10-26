@@ -2,6 +2,8 @@ package config
 
 import (
 	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/log"
@@ -163,6 +165,11 @@ func TestApplyConfigValue_KnownKeys(t *testing.T) {
 			value: "ws",
 			check: func(cfg *config.Config) string { return cfg.Defaults.Transport },
 		},
+		{
+			key:   keyEnvironment,
+			value: testStaging,
+			check: func(cfg *config.Config) string { return cfg.Defaults.Environment },
+		},
 	}
 
 	for _, tt := range tests {
@@ -183,4 +190,131 @@ func TestApplyConfigValue_UnknownKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown key, got nil")
 	}
+}
+
+const (
+	testStaging     = "staging"
+	testDevelopment = "development"
+)
+
+// withConfigHome gives the test an empty config file and no RUNWARE_ENV.
+func withConfigHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", "")
+	t.Setenv(config.EnvironmentFromEnvVar, "")
+	if err := config.Init(); err != nil {
+		t.Fatalf("config.Init() error: %v", err)
+	}
+}
+
+func TestSetEnvironmentChecksTheName(t *testing.T) {
+	withConfigHome(t)
+	cmd := newSetCmd(log.New(io.Discard))
+
+	if err := cmd.RunE(cmd, []string{keyEnvironment, "Staging"}); err == nil || !strings.Contains(err.Error(), "lowercase") {
+		t.Fatalf("set Staging: err = %v, want the name rule", err)
+	}
+	if got := config.Get().Defaults.Environment; got != "" {
+		t.Fatalf("environment = %q after a refused set, want none", got)
+	}
+
+	if err := cmd.RunE(cmd, []string{keyEnvironment, testStaging}); err != nil {
+		t.Fatalf("set staging: %v", err)
+	}
+	if got := config.Get().Defaults.Environment; got != testStaging {
+		t.Fatalf("environment = %q, want staging", got)
+	}
+}
+
+func TestResetClearsTheEnvironment(t *testing.T) {
+	withConfigHome(t)
+	if err := config.Save(&config.Config{Defaults: config.Defaults{Environment: testStaging}}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	cmd := newResetCmd(log.New(io.Discard))
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("reset RunE error: %v", err)
+	}
+	if name, _ := config.GetEnvironment(); name != "" {
+		t.Fatalf("environment = %q after reset, want production (empty)", name)
+	}
+}
+
+func TestShowNamesTheEnvironmentCommandsAddress(t *testing.T) {
+	cases := []struct {
+		name       string
+		configured string
+		envVar     string
+		want       string
+	}{
+		{
+			name: "unset",
+			want: "production",
+		},
+		{
+			name:       "config",
+			configured: testStaging,
+			want:       testStaging,
+		},
+		{
+			name:       "RUNWARE_ENV over config",
+			configured: testStaging,
+			envVar:     testDevelopment,
+			want:       testDevelopment,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withConfigHome(t)
+			if err := config.Save(&config.Config{Defaults: config.Defaults{Environment: tc.configured}}); err != nil {
+				t.Fatalf("Save() error: %v", err)
+			}
+			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
+
+			got := showOutput(t, "json")
+			if !strings.Contains(got, `"environment": "`+tc.want+`"`) {
+				t.Fatalf("config show = %s, want environment %q", got, tc.want)
+			}
+			if !environmentRowNames(showOutput(t, "table"), tc.want) {
+				t.Fatalf("config show table has no environment row naming %q", tc.want)
+			}
+		})
+	}
+}
+
+// showOutput runs `config show` in format and returns what it printed.
+func showOutput(t *testing.T, format string) string {
+	t.Helper()
+	stdout, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = stdout
+	cmd := newShowCmd()
+	cmd.PersistentFlags().String("format", format, "")
+	runErr := cmd.RunE(cmd, nil)
+	os.Stdout = old
+	_ = stdout.Close()
+	if runErr != nil {
+		t.Fatalf("show RunE error: %v", runErr)
+	}
+	data, err := os.ReadFile(stdout.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// environmentRowNames reports whether a `config show` table has an environment
+// row with value.
+func environmentRowNames(table, value string) bool {
+	for line := range strings.Lines(table) {
+		if strings.Contains(line, keyEnvironment) && strings.Contains(line, value) {
+			return true
+		}
+	}
+	return false
 }
