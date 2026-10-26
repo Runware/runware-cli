@@ -229,7 +229,11 @@ func TestSetEnvironmentChecksTheName(t *testing.T) {
 
 func TestResetClearsTheEnvironment(t *testing.T) {
 	withConfigHome(t)
-	if err := config.Save(&config.Config{Defaults: config.Defaults{Environment: testStaging}}); err != nil {
+	if err := config.Save(&config.Config{
+		Defaults: config.Defaults{
+			Environment: testStaging,
+		},
+	}); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
@@ -271,7 +275,11 @@ func TestShowNamesTheEnvironmentCommandsAddress(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			withConfigHome(t)
-			if err := config.Save(&config.Config{Defaults: config.Defaults{Environment: tc.configured}}); err != nil {
+			if err := config.Save(&config.Config{
+				Defaults: config.Defaults{
+					Environment: tc.configured,
+				},
+			}); err != nil {
 				t.Fatalf("Save() error: %v", err)
 			}
 			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
@@ -320,4 +328,18 @@ func environmentRowNames(table, value string) bool {
 		}
 	}
 	return false
+}
+
+func TestSetEnvironmentWarnsWhenRunwareEnvOverridesIt(t *testing.T) {
+	withConfigHome(t)
+	t.Setenv(config.EnvironmentFromEnvVar, testDevelopment)
+	var logs strings.Builder
+	cmd := newSetCmd(log.New(&logs))
+
+	if err := cmd.RunE(cmd, []string{keyEnvironment, testStaging}); err != nil {
+		t.Fatalf("set staging: %v", err)
+	}
+	if !strings.Contains(logs.String(), "RUNWARE_ENV overrides it") {
+		t.Fatalf("logs = %q, want the RUNWARE_ENV warning", logs.String())
+	}
 }

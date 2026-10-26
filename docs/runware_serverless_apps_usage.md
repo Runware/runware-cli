@@ -7,7 +7,8 @@ Show usage and cost for a serverless application
 Show GPU time and spend for one application over a time window.
 
 This is the account-wide report filtered to one appId in the environment --env
-selects, production unless --env names another. The filter narrows what
+selects, else the default environment (RUNWARE_ENV, else the config's) or
+production. The filter narrows what
 is reported, not what is measured: commitment coverage depends on every app's
 concurrent GPUs, so a per-app split between commitment and PAYG reflects the
 organization-wide allocation.

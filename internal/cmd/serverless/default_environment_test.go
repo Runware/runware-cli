@@ -101,6 +101,11 @@ func TestEnvironmentPrecedence(t *testing.T) {
 			want:       testProductionEnvironment,
 		},
 		{
+			name:       "RUNWARE_ENV=production over a config default",
+			configured: testEnvironment,
+			envVar:     testProductionEnvironment,
+		},
+		{
 			name:       "a production default sends none",
 			configured: testProductionEnvironment,
 		},
@@ -220,22 +225,61 @@ func TestAnInvalidDefaultEnvironmentNamesItsSource(t *testing.T) {
 			if !errors.Is(err, config.ErrEnvironmentName) || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q and the name rule", err, tc.want)
 			}
+			for _, args := range [][]string{{"gpus"}, {testUsageCommand}} {
+				if _, err := announce(t, args...); err != nil {
+					t.Errorf("%v: err = %v, want the default ignored", args, err)
+				}
+			}
 		})
 	}
 }
 
-func TestPrintedCommandsNameTheDefaultEnvironment(t *testing.T) {
-	withDefaultEnvironment(t, testEnvironment)
-	run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"data":[],"nextCursor":"`+testNextCursor+`"}`)
-	}, testAppsGroup, appHealthListCommand)
+// printedHintCase is a command run under a default environment and the
+// --env its next-page hint must carry, or none.
+type printedHintCase struct {
+	name     string
+	args     []string
+	wantHint string
+}
 
-	if run.err != nil {
-		t.Fatal(run.err)
+func TestPrintedCommandsNameTheEnvironmentUnderADefault(t *testing.T) {
+	cases := []printedHintCase{
+		{
+			name:     "the default",
+			args:     []string{testAppsGroup, appHealthListCommand},
+			wantHint: testStagingHint,
+		},
+		{
+			name:     "production named while a default is set",
+			args:     []string{testAppsGroup, appHealthListCommand, testEnvFlag, testProductionEnvironment},
+			wantHint: testEnvFlag + " " + testProductionEnvironment,
+		},
+		{
+			name: "an organization report",
+			args: []string{testUsageCommand, testEventsCommand},
+		},
 	}
-	if !strings.Contains(run.cobraOutput, testStagingHint) {
-		t.Fatalf("next-page hint %q, want %q so it runs the same anywhere", run.cobraOutput, testStagingHint)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withDefaultEnvironment(t, testEnvironment)
+			run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"data":[],"nextCursor":"`+testNextCursor+`"}`)
+			}, tc.args...)
+
+			if run.err != nil {
+				t.Fatal(run.err)
+			}
+			if !strings.Contains(run.cobraOutput, "--cursor") {
+				t.Fatalf("no next-page hint in %q", run.cobraOutput)
+			}
+			if got := strings.Contains(run.cobraOutput, testEnvFlag); tc.wantHint == "" && got {
+				t.Fatalf("next-page hint %q names an environment", run.cobraOutput)
+			}
+			if tc.wantHint != "" && !strings.Contains(run.cobraOutput, tc.wantHint) {
+				t.Fatalf("next-page hint %q, want %q so it runs the same here and elsewhere", run.cobraOutput, tc.wantHint)
+			}
+		})
 	}
 }
 
@@ -265,5 +309,19 @@ func TestDeployChecksTheDefaultEnvironmentBeforeTheUpload(t *testing.T) {
 	wantPath := testEnvironmentsPath + "/" + testEnvironment
 	if len(run.requests) != 2 || run.requests[1].path != wantPath {
 		t.Fatalf("requests = %v, want the app lookup then %s, and no upload", run.requests, wantPath)
+	}
+}
+
+func TestCreateOnlyDeployHintNamesProductionUnderADefault(t *testing.T) {
+	withDefaultEnvironment(t, testEnvironment)
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+	run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, activeAppBody(""))
+	}, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID, testGPUTypeFlag, testGPUType, testEnvFlag, testProductionEnvironment)
+
+	if want := "apps scale --env production"; run.err == nil || !strings.Contains(run.err.Error(), want) {
+		t.Fatalf("err = %v, want %q", run.err, want)
 	}
 }

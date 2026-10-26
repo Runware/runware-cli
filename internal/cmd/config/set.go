@@ -68,6 +68,9 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			logger.Info("✓ Config updated", "key", key, "value", value)
+			if name, source := config.GetEnvironment(); key == keyEnvironment && source == config.EnvironmentFromEnvVar {
+				logger.Warn(config.EnvironmentFromEnvVar+" overrides it in this shell", "environment", name)
+			}
 			return nil
 		},
 	}

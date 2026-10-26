@@ -22,7 +22,8 @@ func newSecretsCmd(logger *log.Logger) *cobra.Command {
 
 A secret belongs to one environment, and an application attaches only secrets
 of its own environment. Every command here takes --env to select that
-environment, else the default environment (RUNWARE_ENV, else the config's) or production.`
+environment, else the default environment (RUNWARE_ENV, else the config's) or
+production.`
 	cmd.AddCommand(
 		newSecretsListCmd(logger),
 		newSecretsSetCmd(logger),

@@ -47,7 +47,7 @@ func newShowCmd() *cobra.Command {
 
 			environment, _ := config.GetEnvironment()
 			if environment == "" {
-				environment = config.DefaultEnvironment
+				environment = config.ProductionEnvironment
 			}
 
 			return output.Print(cmdutil.FormatFor(cmd), configShowResult{

@@ -5,7 +5,8 @@ List serverless applications
 ### Synopsis
 
 List the serverless applications in one environment: the one --env names,
-else the default environment (RUNWARE_ENV, else the config's) or production. A next-page cursor is valid only in the environment it
+else the default environment (RUNWARE_ENV, else the config's) or production. A
+next-page cursor is valid only in the environment it
 came from.
 
 ```

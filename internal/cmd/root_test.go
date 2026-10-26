@@ -89,3 +89,32 @@ func TestRootRefusesAnInvalidDefaultEnvironmentBeforeAnyRequest(t *testing.T) {
 		t.Fatalf("sent %d requests before refusing the environment", n)
 	}
 }
+
+func TestRootAnnouncesTheDefaultEnvironmentFirst(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	}))
+	defer srv.Close()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+	t.Setenv("RUNWARE_ENV", "staging")
+	var logs bytes.Buffer
+
+	cmd := NewRootCmd(log.New(&logs))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{
+		"serverless",
+		"apps",
+		"list",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Using environment staging from RUNWARE_ENV"; !strings.Contains(logs.String(), want) {
+		t.Fatalf("logs = %q, want %q", logs.String(), want)
+	}
+}

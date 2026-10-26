@@ -148,7 +148,8 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 
 The same --id can run once in each environment as a separate copy, with its
 own versions, workers, variables and secrets. --env selects the copy this
-deploy creates or updates, else the default environment (RUNWARE_ENV, else the config's) or production.
+deploy creates or updates, else the default environment (RUNWARE_ENV, else the
+config's) or production.
 
 A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,

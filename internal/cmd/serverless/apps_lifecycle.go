@@ -92,7 +92,8 @@ func newAppsDeleteCmd(logger *log.Logger) *cobra.Command {
 		Long: `Soft-delete a serverless application.
 
 Only the copy in the environment --env selects is deleted, else the copy in
-the default environment (RUNWARE_ENV, else the config's) or production. Copies of the same app id in other environments keep
+the default environment (RUNWARE_ENV, else the config's) or production. Copies
+of the same app id in other environments keep
 running.
 
 The server accepts the delete and returns immediately with status deleting.

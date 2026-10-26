@@ -64,9 +64,9 @@ func ValidDefaultsKeys() map[string]struct{} {
 	}
 }
 
-// DefaultEnvironment is the environment the API addresses when a request
+// ProductionEnvironment is the environment the API addresses when a request
 // names none.
-const DefaultEnvironment = "production"
+const ProductionEnvironment = "production"
 
 // Where GetEnvironment found the default environment.
 const (

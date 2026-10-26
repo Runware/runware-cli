@@ -18,7 +18,7 @@ import (
 
 const (
 	// defaultEnvironment is the environment the API addresses when a request names none.
-	defaultEnvironment   = config.DefaultEnvironment
+	defaultEnvironment   = config.ProductionEnvironment
 	environmentFlag      = "env"
 	environmentShorthand = "e"
 	environmentFlagHelp  = "Environment the app runs in " + environmentFlagDefault
@@ -151,13 +151,28 @@ func deleteSubject(cmd *cobra.Command, subject string) string {
 	return subject + " in " + cmp.Or(commandEnvironment(cmd), defaultEnvironment)
 }
 
-// environmentArgs is the --env part of a printed command: nothing for
-// production, which the command addresses without the flag wherever it runs.
+// environmentArgs is the --env part of a printed command: nothing for a
+// command that names no environment, and nothing for production unless a
+// default environment would send the command elsewhere in this shell.
 func environmentArgs(environment string) []string {
-	if isDefaultEnvironment(environment) {
+	if name, _ := config.GetEnvironment(); isDefaultEnvironment(environment) && isDefaultEnvironment(name) {
 		return nil
 	}
 	return appendFlag(nil, "--"+environmentFlag, environment)
+}
+
+// printedEnvironment is the environment a command printed for cmd's copy
+// names: the one cmd addresses, else production, and none for a command that
+// addresses no environment or reports the whole organization.
+func printedEnvironment(cmd *cobra.Command) string {
+	f := cmd.Flag(environmentFlag)
+	if f == nil {
+		return ""
+	}
+	if _, report := f.Annotations[reportsOrganization]; report {
+		return commandEnvironment(cmd)
+	}
+	return cmp.Or(commandEnvironment(cmd), defaultEnvironment)
 }
 
 // isDefaultEnvironment reports whether environment is production, the one the
@@ -180,7 +195,7 @@ func appCommand(app *serverlessapi.App, args ...string) string {
 
 // cursorFlags prefixes a next-page hint's extra flags with the command's --env.
 func cursorFlags(cmd *cobra.Command, extra string) string {
-	parts := environmentArgs(commandEnvironment(cmd))
+	parts := environmentArgs(printedEnvironment(cmd))
 	if extra != "" {
 		parts = append(parts, extra)
 	}
