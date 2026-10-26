@@ -341,3 +341,22 @@ func assertAPIFieldsEqual(t *testing.T, raw string, re *RunwareError) {
 		t.Errorf("APIFields() = %#v, want %#v", got, want)
 	}
 }
+
+func TestEnvironmentPausedIsANonRetryableQuotaError(t *testing.T) {
+	re := CreateRunwareError("environmentPaused", "environment staging is paused", RunwareErrorDetails{StatusCode: 429})
+	if re.Code != CodeQuota || re.Retryable {
+		t.Errorf("code %q retryable %v, want quota false", re.Code, re.Retryable)
+	}
+}
+
+func TestRunwareErrorAPIFieldsCarryTheProblemType(t *testing.T) {
+	const pausedType = "https://docs.runware.ai/serverless/errors#environment-paused"
+	re := CreateRunwareError("environmentPaused", "paused", RunwareErrorDetails{StatusCode: 429})
+	re.ProblemType = pausedType
+	if got := re.APIFields()["problemType"]; got != pausedType {
+		t.Errorf("problemType = %v, want %q", got, pausedType)
+	}
+	if _, ok := CreateRunwareError("conflict", "taken", RunwareErrorDetails{}).APIFields()["problemType"]; ok {
+		t.Error("problemType present on an error without a problem type")
+	}
+}

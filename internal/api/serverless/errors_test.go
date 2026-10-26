@@ -2,6 +2,7 @@ package serverless
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -67,5 +68,58 @@ func TestProblemToError_PaymentRequiredIncludesShortfall(t *testing.T) {
 	}
 	if !strings.Contains(re.Message, "shortfall: 12.50 USD") {
 		t.Errorf("missing shortfall: %q", re.Message)
+	}
+}
+
+func TestProblemToError_EnvironmentPausedIsNotRetryable(t *testing.T) {
+	const pausedType = "https://docs.runware.ai/serverless/errors#environment-paused"
+	const detail = "environment staging is paused: its spend this month reached its monthly budget"
+	// Invoke answers the pause with 429; deploy, resume and scale with 409.
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusConflict} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			body := fmt.Sprintf(`{"type":%q,"title":%q,"status":%d,"detail":%q}`, pausedType, http.StatusText(status), status, detail)
+			var re *transport.RunwareError
+			if !errors.As(problemFromBody([]byte(body), status), &re) {
+				t.Fatalf("expected *transport.RunwareError")
+			}
+			if re.RawCode != "environmentPaused" || re.Code != transport.CodeQuota || re.Retryable {
+				t.Errorf("raw %q code %q retryable %v, want environmentPaused quota false", re.RawCode, re.Code, re.Retryable)
+			}
+			if re.ProblemType != pausedType {
+				t.Errorf("problem type %q, want %q", re.ProblemType, pausedType)
+			}
+			if re.Message != detail {
+				t.Errorf("message %q, want the detail", re.Message)
+			}
+		})
+	}
+}
+
+func TestProblemToError_TooManyRequestsIsARetryableRateLimit(t *testing.T) {
+	err := problemFromBody([]byte(`{"type":"about:blank","title":"Too Many Requests","status":429}`), http.StatusTooManyRequests)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.RawCode != "rateLimitExceeded" || re.Code != transport.CodeRateLimit || !re.Retryable {
+		t.Errorf("raw %q code %q retryable %v, want rateLimitExceeded rateLimit true", re.RawCode, re.Code, re.Retryable)
+	}
+	if re.ProblemType != "" {
+		t.Errorf("problem type %q, want none for about:blank", re.ProblemType)
+	}
+}
+
+func TestProblemToError_KeepsTheProblemTypeOfAConflict(t *testing.T) {
+	const capType = "https://docs.runware.ai/serverless/errors#environment-cap-reached"
+	err := problemFromBody([]byte(`{"type":"`+capType+`","title":"Conflict","status":409,"detail":"cap is 1"}`), http.StatusConflict)
+	var re *transport.RunwareError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	if re.ProblemType != capType {
+		t.Errorf("problem type %q, want %q", re.ProblemType, capType)
+	}
+	if re.RawCode != "conflict" || re.Code != transport.CodeValidation {
+		t.Errorf("raw %q code %q, want conflict validation", re.RawCode, re.Code)
 	}
 }
