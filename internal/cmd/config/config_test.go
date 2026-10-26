@@ -330,16 +330,61 @@ func environmentRowNames(table, value string) bool {
 	return false
 }
 
-func TestSetEnvironmentWarnsWhenRunwareEnvOverridesIt(t *testing.T) {
-	withConfigHome(t)
-	t.Setenv(config.EnvironmentFromEnvVar, testDevelopment)
-	var logs strings.Builder
-	cmd := newSetCmd(log.New(&logs))
+// overrideWarningCase is a config change under a RUNWARE_ENV and whether it
+// warns that RUNWARE_ENV overrides it.
+type overrideWarningCase struct {
+	name   string
+	envVar string
+	args   []string
+	reset  bool
+	want   bool
+}
 
-	if err := cmd.RunE(cmd, []string{keyEnvironment, testStaging}); err != nil {
-		t.Fatalf("set staging: %v", err)
+func TestConfigWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
+	cases := []overrideWarningCase{
+		{
+			name:   "set another environment",
+			envVar: testDevelopment,
+			args:   []string{keyEnvironment, testStaging},
+			want:   true,
+		},
+		{
+			name:   "set the same environment",
+			envVar: testStaging,
+			args:   []string{keyEnvironment, testStaging},
+		},
+		{
+			name: "set without RUNWARE_ENV",
+			args: []string{keyEnvironment, testStaging},
+		},
+		{
+			name:   "set another key",
+			envVar: testDevelopment,
+			args:   []string{keyTransport, "http"},
+		},
+		{
+			name:   "reset",
+			envVar: testDevelopment,
+			reset:  true,
+			want:   true,
+		},
 	}
-	if !strings.Contains(logs.String(), "RUNWARE_ENV overrides it") {
-		t.Fatalf("logs = %q, want the RUNWARE_ENV warning", logs.String())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withConfigHome(t)
+			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
+			var logs strings.Builder
+			cmd := newSetCmd(log.New(&logs))
+			if tc.reset {
+				cmd = newResetCmd(log.New(&logs))
+			}
+
+			if err := cmd.RunE(cmd, tc.args); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(logs.String(), "RUNWARE_ENV overrides it"); got != tc.want {
+				t.Fatalf("warned = %v, want %v (logs %q)", got, tc.want, logs.String())
+			}
+		})
 	}
 }

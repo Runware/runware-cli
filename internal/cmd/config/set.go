@@ -68,8 +68,8 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			logger.Info("✓ Config updated", "key", key, "value", value)
-			if name, source := config.GetEnvironment(); key == keyEnvironment && source == config.EnvironmentFromEnvVar {
-				logger.Warn(config.EnvironmentFromEnvVar+" overrides it in this shell", "environment", name)
+			if key == keyEnvironment {
+				warnEnvironmentOverride(logger, value)
 			}
 			return nil
 		},
@@ -96,4 +96,12 @@ func validateConfigValue(key, value string) error {
 		}
 	}
 	return nil
+}
+
+// warnEnvironmentOverride warns when RUNWARE_ENV names another environment
+// than the configured one, which it overrides in this shell.
+func warnEnvironmentOverride(logger *log.Logger, configured string) {
+	if name, source := config.GetEnvironment(); source == config.EnvironmentFromEnvVar && name != configured {
+		logger.Warn(config.EnvironmentFromEnvVar+" overrides it in this shell", "environment", name)
+	}
 }

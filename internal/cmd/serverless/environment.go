@@ -136,8 +136,8 @@ func AnnounceEnvironment(cmd *cobra.Command, logger *log.Logger) error {
 	if source == "" {
 		return nil
 	}
-	if !config.EnvironmentNamePattern.MatchString(name) {
-		return fmt.Errorf("environment %q from %s: %w", name, source, config.ErrEnvironmentName)
+	if !environmentNamePattern.MatchString(name) {
+		return fmt.Errorf("environment %q from %s: %w", name, source, errEnvironmentName)
 	}
 	logger.Info(fmt.Sprintf("Using environment %s from %s", name, source))
 	return nil
@@ -166,20 +166,6 @@ func environmentArgs(environment string) []string {
 	return appendFlag(nil, "--"+environmentFlag, environment)
 }
 
-// printedEnvironment is the environment a command printed for cmd's copy
-// names: the one cmd addresses, else production, and none for a command that
-// addresses no environment or reports the whole organization.
-func printedEnvironment(cmd *cobra.Command) string {
-	f := cmd.Flag(environmentFlag)
-	if f == nil {
-		return ""
-	}
-	if _, report := f.Annotations[reportsOrganization]; report {
-		return commandEnvironment(cmd)
-	}
-	return cmp.Or(commandEnvironment(cmd), defaultEnvironment)
-}
-
 // isDefaultEnvironment reports whether environment is production, the one the
 // API addresses when a request names none.
 func isDefaultEnvironment(environment string) bool {
@@ -200,7 +186,7 @@ func appCommand(app *serverlessapi.App, args ...string) string {
 
 // cursorFlags prefixes a next-page hint's extra flags with the command's --env.
 func cursorFlags(cmd *cobra.Command, extra string) string {
-	parts := environmentArgs(printedEnvironment(cmd))
+	parts := environmentArgs(commandEnvironment(cmd))
 	if extra != "" {
 		parts = append(parts, extra)
 	}

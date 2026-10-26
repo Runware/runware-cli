@@ -90,7 +90,7 @@ func TestRootRefusesAnInvalidDefaultEnvironmentBeforeAnyRequest(t *testing.T) {
 	}
 }
 
-func TestRootAnnouncesTheDefaultEnvironmentFirst(t *testing.T) {
+func TestRootAnnouncesTheDefaultEnvironment(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"data":[]}`)

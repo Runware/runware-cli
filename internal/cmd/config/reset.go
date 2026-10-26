@@ -35,6 +35,7 @@ func newResetCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			logger.Info("✓ Configuration reset to defaults")
+			warnEnvironmentOverride(logger, config.ProductionEnvironment)
 			return nil
 		},
 	}
