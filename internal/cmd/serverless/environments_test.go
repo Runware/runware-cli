@@ -142,7 +142,7 @@ func TestEnvironmentsListShowsOwnInheritedAndMissingValues(t *testing.T) {
 	}
 
 	want := [][]any{
-		{"production", "yes", "4 (org default)", "-", "-", "-", "no"},
+		{testProductionEnvironment, "yes", "4 (org default)", "-", "-", "-", "no"},
 		{testEnvironment, "no", "2", testInheritedGPUs, "50.00 USD", "50, 80, 100%", "yes"},
 	}
 	if got := envs.Rows(); !reflect.DeepEqual(got, want) {
@@ -206,7 +206,7 @@ func TestEnvironmentsListAndShowRunAgainstTheAPI(t *testing.T) {
 					body:   `{"data":[` + testProductionEnvironmentBody + `,` + testStagingEnvironment + `]}`,
 				},
 			},
-			want: []string{"production", "4 (org default)", "staging", testInheritedGPUs, "50.00 USD", "50, 80, 100%"},
+			want: []string{testProductionEnvironment, "4 (org default)", "staging", testInheritedGPUs, "50.00 USD", "50, 80, 100%"},
 		},
 		{
 			name: "show",
