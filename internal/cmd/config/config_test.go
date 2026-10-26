@@ -24,7 +24,7 @@ func TestResetPreservesPresetsAndAPIKey(t *testing.T) {
 		APIKey: "secret-key-1234567890",
 		Defaults: config.Defaults{
 			OutputDir: "./custom-output",
-			Format:    "json",
+			Format:    testJSON,
 			Transport: "http",
 		},
 		Presets: map[string]config.Preset{
@@ -112,7 +112,7 @@ func TestSetDoesNotPersistEnvAPIKey(t *testing.T) {
 	}
 
 	cmd := newSetCmd(log.New(io.Discard))
-	if err := cmd.RunE(cmd, []string{"format", "json"}); err != nil {
+	if err := cmd.RunE(cmd, []string{"format", testJSON}); err != nil {
 		t.Fatalf("set RunE error: %v", err)
 	}
 
@@ -148,7 +148,7 @@ func TestApplyConfigValue_KnownKeys(t *testing.T) {
 		},
 		{
 			key:   keyFormat,
-			value: "json",
+			value: testJSON,
 			check: func(cfg *config.Config) string { return cfg.Defaults.Format },
 		},
 		{
@@ -196,6 +196,7 @@ func TestApplyConfigValue_UnknownKey(t *testing.T) {
 const (
 	testStaging     = "staging"
 	testDevelopment = "development"
+	testJSON        = "json"
 )
 
 // withConfigHome gives the test an empty config file and no RUNWARE_ENV.
@@ -209,22 +210,42 @@ func withConfigHome(t *testing.T) {
 	}
 }
 
+// setEnvironmentCase is a name given to `config set environment` and the
+// environment the config holds after it.
+type setEnvironmentCase struct {
+	name    string
+	value   string
+	wantErr bool
+	want    string
+}
+
 func TestSetEnvironmentChecksTheName(t *testing.T) {
-	withConfigHome(t)
-	cmd := newSetCmd(log.New(io.Discard))
+	cases := []setEnvironmentCase{
+		{
+			name:    "a name the API refuses",
+			value:   "Staging",
+			wantErr: true,
+		},
+		{
+			name:  "a valid name",
+			value: testStaging,
+			want:  testStaging,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withConfigHome(t)
+			cmd := newSetCmd(log.New(io.Discard))
 
-	if err := cmd.RunE(cmd, []string{keyEnvironment, "Staging"}); err == nil || !strings.Contains(err.Error(), "lowercase") {
-		t.Fatalf("set Staging: err = %v, want the name rule", err)
-	}
-	if got := config.Get().Defaults.Environment; got != "" {
-		t.Fatalf("environment = %q after a refused set, want none", got)
-	}
+			err := cmd.RunE(cmd, []string{keyEnvironment, tc.value})
 
-	if err := cmd.RunE(cmd, []string{keyEnvironment, testStaging}); err != nil {
-		t.Fatalf("set staging: %v", err)
-	}
-	if got := config.Get().Defaults.Environment; got != testStaging {
-		t.Fatalf("environment = %q, want staging", got)
+			if gotErr := err != nil && strings.Contains(err.Error(), "lowercase"); gotErr != tc.wantErr {
+				t.Fatalf("set %s: err = %v, want the name rule %v", tc.value, err, tc.wantErr)
+			}
+			if got := config.Get().Defaults.Environment; got != tc.want {
+				t.Fatalf("environment = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -247,30 +268,41 @@ func TestResetClearsTheEnvironment(t *testing.T) {
 	}
 }
 
-// showEnvironmentCase is a default environment and what `config show` names.
+// showEnvironmentCase is a default environment, a `config show` format and
+// the environment it names.
 type showEnvironmentCase struct {
 	name       string
 	configured string
 	envVar     string
+	format     string
 	want       string
 }
 
-func TestShowNamesTheEnvironmentCommandsAddress(t *testing.T) {
+func TestShowNamesTheConfiguredEnvironment(t *testing.T) {
 	cases := []showEnvironmentCase{
 		{
-			name: "unset",
-			want: "production",
+			name:   "unset",
+			format: testJSON,
+			want:   "production",
 		},
 		{
 			name:       "config",
 			configured: testStaging,
+			format:     testJSON,
 			want:       testStaging,
 		},
 		{
-			name:       "RUNWARE_ENV over config",
+			name:       "config under another RUNWARE_ENV",
 			configured: testStaging,
 			envVar:     testDevelopment,
-			want:       testDevelopment,
+			format:     testJSON,
+			want:       testStaging,
+		},
+		{
+			name:       "config in a table",
+			configured: testStaging,
+			format:     "table",
+			want:       testStaging,
 		},
 	}
 	for _, tc := range cases {
@@ -285,15 +317,20 @@ func TestShowNamesTheEnvironmentCommandsAddress(t *testing.T) {
 			}
 			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
 
-			got := showOutput(t, "json")
-			if !strings.Contains(got, `"environment": "`+tc.want+`"`) {
+			if got := showOutput(t, tc.format); !showNamesEnvironment(got, tc.format, tc.want) {
 				t.Fatalf("config show = %s, want environment %q", got, tc.want)
-			}
-			if !environmentRowNames(showOutput(t, "table"), tc.want) {
-				t.Fatalf("config show table has no environment row naming %q", tc.want)
 			}
 		})
 	}
+}
+
+// showNamesEnvironment reports whether `config show` output in format names
+// environment.
+func showNamesEnvironment(output, format, environment string) bool {
+	if format == testJSON {
+		return strings.Contains(output, `"environment": "`+environment+`"`)
+	}
+	return environmentRowNames(output, environment)
 }
 
 // showOutput runs `config show` in format and returns what it printed.
@@ -337,48 +374,36 @@ type overrideWarningCase struct {
 	name   string
 	envVar string
 	args   []string
-	reset  bool
 	want   bool
 }
 
-func TestConfigWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
+func TestSetWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
 	cases := []overrideWarningCase{
 		{
-			name:   "set another environment",
+			name:   "another environment",
 			envVar: testDevelopment,
 			args:   []string{keyEnvironment, testStaging},
 			want:   true,
 		},
 		{
-			name:   "set the same environment",
+			name:   "the same environment",
 			envVar: testStaging,
 			args:   []string{keyEnvironment, testStaging},
 		},
 		{
-			name:   "set while RUNWARE_ENV is production",
+			name:   "while RUNWARE_ENV is production",
 			envVar: config.ProductionEnvironment,
 			args:   []string{keyEnvironment, testStaging},
 			want:   true,
 		},
 		{
-			name:   "reset while RUNWARE_ENV is production",
-			envVar: config.ProductionEnvironment,
-			reset:  true,
-		},
-		{
-			name: "set without RUNWARE_ENV",
+			name: "without RUNWARE_ENV",
 			args: []string{keyEnvironment, testStaging},
 		},
 		{
-			name:   "set another key",
+			name:   "another key",
 			envVar: testDevelopment,
 			args:   []string{keyTransport, "http"},
-		},
-		{
-			name:   "reset",
-			envVar: testDevelopment,
-			reset:  true,
-			want:   true,
 		},
 	}
 	for _, tc := range cases {
@@ -387,18 +412,50 @@ func TestConfigWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
 			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
 			var logs strings.Builder
 			cmd := newSetCmd(log.New(&logs))
-			if tc.reset {
-				cmd = newResetCmd(log.New(&logs))
-			}
 
 			if err := cmd.RunE(cmd, tc.args); err != nil {
 				t.Fatal(err)
 			}
-			if got := strings.Contains(logs.String(), "RUNWARE_ENV overrides it"); got != tc.want {
+			if got := warnedOverride(logs.String()); got != tc.want {
 				t.Fatalf("warned = %v, want %v (logs %q)", got, tc.want, logs.String())
 			}
 		})
 	}
+}
+
+func TestResetWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
+	cases := []overrideWarningCase{
+		{
+			name:   "another environment",
+			envVar: testDevelopment,
+			want:   true,
+		},
+		{
+			name:   "while RUNWARE_ENV is production",
+			envVar: config.ProductionEnvironment,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withConfigHome(t)
+			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
+			var logs strings.Builder
+			cmd := newResetCmd(log.New(&logs))
+
+			if err := cmd.RunE(cmd, nil); err != nil {
+				t.Fatal(err)
+			}
+			if got := warnedOverride(logs.String()); got != tc.want {
+				t.Fatalf("warned = %v, want %v (logs %q)", got, tc.want, logs.String())
+			}
+		})
+	}
+}
+
+// warnedOverride reports whether logs warn that RUNWARE_ENV overrides the
+// configured environment.
+func warnedOverride(logs string) bool {
+	return strings.Contains(logs, "RUNWARE_ENV overrides it")
 }
 
 func TestSetCompletesTheEnvironmentKey(t *testing.T) {

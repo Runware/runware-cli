@@ -78,7 +78,7 @@ Replay a cursor with the same --env, --app, --from, --to, and --limit.`,
 	cmd.Flags().StringVar(&flags.to, "to", "", "Exclusive end on event time (RFC 3339 or YYYY-MM-DD UTC)")
 	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of events to return (1-100)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --env/--app/--from/--to/--limit)")
-	addReportEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment the app runs in (default production)")
+	addReportEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment of the --app copy (default production)")
 	return cmd
 }
 

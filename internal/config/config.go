@@ -28,8 +28,9 @@ type Defaults struct {
 	OutputDir string `yaml:"output_dir"`
 	Format    string `yaml:"format"`
 	Transport string `yaml:"transport"`
-	// Environment is the serverless environment a command addresses when
-	// --env is omitted. Empty means production.
+	// Environment is the serverless environment an app or secret command
+	// addresses when neither --env nor RUNWARE_ENV names one. Empty means
+	// production.
 	Environment string `yaml:"environment,omitempty"`
 }
 

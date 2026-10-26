@@ -349,7 +349,7 @@ func TestReportDeployEndpoints_SaysNothingWhenThereAreNoPaths(t *testing.T) {
 	var out bytes.Buffer
 	reportDeployEndpoints(&out, &serverlessapi.App{
 		AppId: testAppID,
-	}, nil)
+	}, nil, "")
 	if out.Len() != 0 {
 		t.Fatalf("empty set wrote %q", out.String())
 	}
@@ -381,7 +381,7 @@ func TestReportDeployEndpoints_PrintsPathsAndAnInvokeExampleForTheSameCopy(t *te
 			reportDeployEndpoints(&out, &serverlessapi.App{
 				AppId:       testAppID,
 				Environment: tc.environment,
-			}, []string{testEndpointPath, testOtherEndpointPath})
+			}, []string{testEndpointPath, testOtherEndpointPath}, "")
 
 			got := out.String()
 			if !strings.Contains(got, "'"+testEndpointPath+"'") || !strings.Contains(got, "'"+testOtherEndpointPath+"'") {

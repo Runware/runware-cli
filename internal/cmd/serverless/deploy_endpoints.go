@@ -206,14 +206,15 @@ func reportEndpointSetChange(w io.Writer, change endpointSetChange) {
 	}
 }
 
-// reportDeployEndpoints tells the customer how to call a first deploy. w must
-// be stderr: stdout carries the app record --format json promises.
-func reportDeployEndpoints(w io.Writer, app *serverlessapi.App, paths []string) {
+// reportDeployEndpoints tells the customer how to call a first deploy, under
+// shellDefault. w must be stderr: stdout carries the app record --format json
+// promises.
+func reportDeployEndpoints(w io.Writer, app *serverlessapi.App, paths []string, shellDefault string) {
 	if len(paths) == 0 {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "Endpoints: %s\n", quotedPaths(paths))
-	_, _ = fmt.Fprintf(w, "Invoke: %s\n", appCommand(app, "apps", "invoke", app.AppId, paths[0], "-f", "payload.json"))
+	_, _ = fmt.Fprintf(w, "Invoke: %s\n", appCommand(app, shellDefault, "apps", "invoke", app.AppId, paths[0], "-f", "payload.json"))
 }
 
 func quotedPaths(paths []string) string {

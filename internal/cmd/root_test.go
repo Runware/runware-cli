@@ -115,7 +115,7 @@ func TestRootAnnouncesTheDefaultEnvironment(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if want := "Using environment staging from RUNWARE_ENV"; !strings.Contains(logs.String(), want) {
+	if want := "Using environment environment=staging source=RUNWARE_ENV"; !strings.Contains(logs.String(), want) {
 		t.Fatalf("logs = %q, want %q", logs.String(), want)
 	}
 }

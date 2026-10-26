@@ -63,7 +63,7 @@ func newOpenCmd(logger *log.Logger) *cobra.Command {
 // production adds no query, as the console shows it without one.
 func appDashboardURL(base, appID, environment string) string {
 	link := strings.TrimSuffix(base, "/") + "/serverless/apps/" + url.PathEscape(appID)
-	if isDefaultEnvironment(environment) {
+	if isProductionEnvironment(environment) {
 		return link
 	}
 	return link + "?" + url.Values{

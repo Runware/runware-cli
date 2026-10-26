@@ -50,6 +50,9 @@ var reportsOrganizationCases = map[string]struct{}{
 
 func TestCommandsWithoutTheFlagAddressTheDefaultEnvironment(t *testing.T) {
 	for _, tc := range appCommandCases() {
+		if _, report := reportsOrganizationCases[tc.name]; report {
+			continue
+		}
 		t.Run(tc.name, func(t *testing.T) {
 			withDefaultEnvironment(t, testEnvironment)
 			run := runServerless(t, tc.args...)
@@ -57,13 +60,30 @@ func TestCommandsWithoutTheFlagAddressTheDefaultEnvironment(t *testing.T) {
 			if len(run.requests) == 0 {
 				t.Fatalf("no request reached the API: %v", run.err)
 			}
-			_, report := reportsOrganizationCases[tc.name]
 			for _, r := range run.requests {
-				switch {
-				case report && r.query.Has("environment"):
-					t.Errorf("%s: an organization report sent environment %q", r, r.query.Get("environment"))
-				case !report && r.query.Get("environment") != testEnvironment:
+				if r.query.Get("environment") != testEnvironment {
 					t.Errorf("%s: environment = %q, want the default %q", r, r.query.Get("environment"), testEnvironment)
+				}
+			}
+		})
+	}
+}
+
+func TestOrganizationReportsIgnoreTheDefaultEnvironment(t *testing.T) {
+	for _, tc := range appCommandCases() {
+		if _, report := reportsOrganizationCases[tc.name]; !report {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			withDefaultEnvironment(t, testEnvironment)
+			run := runServerless(t, tc.args...)
+
+			if len(run.requests) == 0 {
+				t.Fatalf("no request reached the API: %v", run.err)
+			}
+			for _, r := range run.requests {
+				if r.query.Has("environment") {
+					t.Errorf("%s: an organization report sent environment %q", r, r.query.Get("environment"))
 				}
 			}
 		})
@@ -131,7 +151,7 @@ func TestEnvironmentPrecedence(t *testing.T) {
 
 func TestCommandsWithoutAnEnvironmentIgnoreTheDefault(t *testing.T) {
 	withDefaultEnvironment(t, testEnvironment)
-	run := runServerless(t, "gpus")
+	run := runServerless(t, testGPUsCommand)
 
 	if len(run.requests) == 0 {
 		t.Fatalf("no request reached the API: %v", run.err)
@@ -140,9 +160,6 @@ func TestCommandsWithoutAnEnvironmentIgnoreTheDefault(t *testing.T) {
 		if r.query.Has("environment") {
 			t.Errorf("%s: sent environment %q", r, r.query.Get("environment"))
 		}
-	}
-	if logs, err := announce(t, "gpus"); err != nil || logs != "" {
-		t.Errorf("announce gpus = %q, %v, want nothing", logs, err)
 	}
 }
 
@@ -167,12 +184,12 @@ func TestDefaultEnvironmentIsAnnounced(t *testing.T) {
 		{
 			name:       "from config",
 			configured: testEnvironment,
-			want:       "Using environment staging from config",
+			want:       "Using environment environment=staging source=config",
 		},
 		{
 			name:   "from RUNWARE_ENV",
 			envVar: testEnvironment,
-			want:   "Using environment staging from RUNWARE_ENV",
+			want:   "Using environment environment=staging source=RUNWARE_ENV",
 		},
 		{
 			name:       "named by --env",
@@ -207,12 +224,12 @@ func TestAnInvalidDefaultEnvironmentNamesItsSource(t *testing.T) {
 	cases := []environmentDefaultCase{
 		{
 			name:   "RUNWARE_ENV",
-			envVar: "Staging",
+			envVar: testInvalidEnvironment,
 			want:   `environment "Staging" from RUNWARE_ENV`,
 		},
 		{
 			name:       "hand-edited config",
-			configured: "Staging",
+			configured: testInvalidEnvironment,
 			want:       `environment "Staging" from config`,
 		},
 	}
@@ -225,10 +242,49 @@ func TestAnInvalidDefaultEnvironmentNamesItsSource(t *testing.T) {
 			if !errors.Is(err, config.ErrEnvironmentName) || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q and the name rule", err, tc.want)
 			}
-			for _, args := range [][]string{{"gpus"}, {testUsageCommand}} {
-				if _, err := announce(t, args...); err != nil {
-					t.Errorf("%v: err = %v, want the default ignored", args, err)
-				}
+		})
+	}
+}
+
+// ignoredDefaultCase is a command that addresses no default environment,
+// run under an invalid one.
+type ignoredDefaultCase struct {
+	name       string
+	configured string
+	envVar     string
+	args       []string
+}
+
+func TestCommandsThatIgnoreTheDefaultNeitherCheckNorAnnounceIt(t *testing.T) {
+	cases := []ignoredDefaultCase{
+		{
+			name:   "gpus under RUNWARE_ENV",
+			envVar: testInvalidEnvironment,
+			args:   []string{testGPUsCommand},
+		},
+		{
+			name:       "gpus under the config",
+			configured: testInvalidEnvironment,
+			args:       []string{testGPUsCommand},
+		},
+		{
+			name:   "an organization report under RUNWARE_ENV",
+			envVar: testInvalidEnvironment,
+			args:   []string{testUsageCommand},
+		},
+		{
+			name:       "an organization report under the config",
+			configured: testInvalidEnvironment,
+			args:       []string{testUsageCommand},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withDefaultEnvironment(t, tc.configured)
+			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
+
+			if logs, err := announce(t, tc.args...); err != nil || logs != "" {
+				t.Fatalf("announce = %q, %v, want the default ignored", logs, err)
 			}
 		})
 	}
@@ -323,5 +379,58 @@ func TestCreateOnlyDeployHintNamesProductionUnderADefault(t *testing.T) {
 
 	if want := "apps scale --env production"; run.err == nil || !strings.Contains(run.err.Error(), want) {
 		t.Fatalf("err = %v, want %q", run.err, want)
+	}
+}
+
+func TestOpenLinksTheConsoleToTheDefaultEnvironment(t *testing.T) {
+	withDefaultEnvironment(t, testEnvironment)
+	t.Setenv("PATH", "")
+	t.Setenv("BROWSER", "")
+
+	run := runServerless(t, "open", testAppID)
+
+	if run.err != nil {
+		t.Fatalf("open: %v", run.err)
+	}
+	if !strings.Contains(run.stdout, "environment="+testEnvironment) {
+		t.Fatalf("stdout = %q, want the link to carry environment=%s", run.stdout, testEnvironment)
+	}
+}
+
+// configSwitchingInput moves the config's default environment to another one
+// when a prompt reads its answer, as `config set environment` in another shell
+// could.
+type configSwitchingInput struct {
+	t  *testing.T
+	to string
+	io.Reader
+}
+
+func (r *configSwitchingInput) Read(p []byte) (int, error) {
+	if r.to != "" {
+		if err := config.Save(&config.Config{Defaults: config.Defaults{Environment: r.to}}); err != nil {
+			r.t.Fatal(err)
+		}
+		r.to = ""
+	}
+	return r.Reader.Read(p)
+}
+
+func TestDeleteAddressesTheEnvironmentItsPromptNamed(t *testing.T) {
+	withDefaultEnvironment(t, testEnvironment)
+	stdin := terminalInput{&configSwitchingInput{t: t, to: testDevelopmentEnvironment, Reader: strings.NewReader("y\n")}}
+
+	run := runServerlessWith(t, nil, stdin, testAppsGroup, testDeleteCommand, testAppID)
+
+	if !strings.Contains(run.cobraOutput, " in "+testEnvironment+"?") {
+		t.Fatalf("prompt = %q, want it to name %q", run.cobraOutput, testEnvironment)
+	}
+	if len(run.requests) == 0 {
+		t.Fatalf("no request reached the API: %v", run.err)
+	}
+	for _, r := range run.requests {
+		if got := r.query.Get("environment"); got != testEnvironment {
+			t.Errorf("%s: environment = %q, want %q, the one the prompt named", r, got, testEnvironment)
+		}
 	}
 }

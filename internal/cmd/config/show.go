@@ -1,6 +1,8 @@
 package config
 
 import (
+	"cmp"
+
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -45,17 +47,12 @@ func newShowCmd() *cobra.Command {
 				apiKey = config.MaskKey(apiKey)
 			}
 
-			environment, _ := config.GetEnvironment()
-			if environment == "" {
-				environment = config.ProductionEnvironment
-			}
-
 			return output.Print(cmdutil.FormatFor(cmd), configShowResult{
 				APIKey:      apiKey,
 				OutputDir:   cfg.Defaults.OutputDir,
 				Format:      cfg.Defaults.Format,
 				Transport:   cfg.Defaults.Transport,
-				Environment: environment,
+				Environment: cmp.Or(cfg.Defaults.Environment, config.ProductionEnvironment),
 			})
 		},
 	}

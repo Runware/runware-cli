@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -24,6 +25,8 @@ import (
 
 const (
 	testEnvironment           = "staging"
+	testInvalidEnvironment    = "Staging"
+	testGPUsCommand           = "gpus"
 	testProductionEnvironment = "production"
 	testUUID                  = "11111111-1111-1111-1111-111111111111"
 	testAppsGroup             = "apps"
@@ -399,7 +402,7 @@ func TestCommandsWithoutAnEnvironmentRejectTheFlag(t *testing.T) {
 	cases := []appCommandCase{
 		{
 			name: "gpus",
-			args: []string{"gpus"},
+			args: []string{testGPUsCommand},
 		},
 		{
 			name: "init",
@@ -435,7 +438,7 @@ func TestEnvironmentFlagRejectsBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "uppercase",
-			value:   "Staging",
+			value:   testInvalidEnvironment,
 			wantErr: "lowercase",
 		},
 		{
@@ -837,7 +840,7 @@ func TestCreateOnlyDeployHintAddressesTheSameCopy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := createOnlyDeployHint(tc.flag, tc.environment)
+			got := createOnlyDeployHint(tc.flag, tc.environment, "")
 
 			if want := "use '" + tc.wantCommand + "'"; !strings.HasPrefix(got, want) {
 				t.Fatalf("hint = %q, want it to start with %q", got, want)
@@ -1092,8 +1095,8 @@ func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
 	if want == "" {
 		t.Fatal("the spec has no EnvironmentName pattern")
 	}
-	if got := environmentNamePattern.String(); got != want {
-		t.Fatalf("environmentNamePattern = %q, spec says %q", got, want)
+	if got := config.EnvironmentNamePattern.String(); got != want {
+		t.Fatalf("config.EnvironmentNamePattern = %q, spec says %q", got, want)
 	}
 }
 

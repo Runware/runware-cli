@@ -411,7 +411,7 @@ paths and an invoke example once the application is active.`,
 				}
 			} else if wait && !update && app.Status == serverlessapi.AppStatusActive {
 				if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
-					reportDeployEndpoints(cmd.ErrOrStderr(), app, paths)
+					reportDeployEndpoints(cmd.ErrOrStderr(), app, paths, shellEnvironment(cmd))
 				}
 			}
 
@@ -421,7 +421,7 @@ paths and an invoke example once the application is active.`,
 			if !wait {
 				return nil
 			}
-			return appFailedErr(cmd.Context(), client, app)
+			return appFailedErr(cmd.Context(), client, app, shellEnvironment(cmd))
 		},
 	}
 
@@ -549,26 +549,26 @@ func validateAvailableWorkersPct(n int32) error {
 func validateUpdateDeployFlags(cmd *cobra.Command) error {
 	for _, name := range createOnlyDeployFlags {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name, commandEnvironment(cmd)))
+			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name, commandEnvironment(cmd), shellEnvironment(cmd)))
 		}
 	}
 	return nil
 }
 
 // createOnlyDeployHint says how to change a create-only setting on the copy
-// in environment.
-func createOnlyDeployHint(name, environment string) string {
+// in environment, under shellDefault.
+func createOnlyDeployHint(name, environment, shellDefault string) string {
 	switch name {
 	case "gpu-type", "max-workers", "idle-ttl", "scaling-delay", "min-workers", "gpus-per-worker", "fallback-gpu-type", "min-available-workers", "available-workers-pct":
-		return "use '" + serverlessCommand(environment, "apps", "scale") + "' to change worker configuration"
+		return "use '" + serverlessCommand(environment, shellDefault, "apps", "scale") + "' to change worker configuration"
 	case envVarFlag, "env-file":
-		return "use '" + serverlessCommand(environment, "apps", envVarsGroup) + "' to change environment variables"
+		return "use '" + serverlessCommand(environment, shellDefault, "apps", envVarsGroup) + "' to change environment variables"
 	case "secret":
-		return "use '" + serverlessCommand(environment, "secrets", "attach") + "' to attach a secret"
+		return "use '" + serverlessCommand(environment, shellDefault, "secrets", "attach") + "' to attach a secret"
 	case "volume":
 		return "volumes are immutable after create"
 	case "name":
-		return "use '" + serverlessCommand(environment, "apps", "rename") + "' to change the display name"
+		return "use '" + serverlessCommand(environment, shellDefault, "apps", "rename") + "' to change the display name"
 	default:
 		return "omit it when updating an existing application"
 	}
@@ -692,7 +692,7 @@ func latestBuildStatus(ctx context.Context, client *serverlessapi.Client, appID 
 	return string(page.Data[0].Status)
 }
 
-func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *serverlessapi.App) error {
+func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *serverlessapi.App, shellDefault string) error {
 	if app == nil {
 		return nil
 	}
@@ -703,7 +703,7 @@ func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *server
 		if msg := latestBuildError(ctx, client, app.AppId); msg != "" {
 			return fmt.Errorf("application %s failed: %s", app.AppId, msg)
 		}
-		return fmt.Errorf("application %s failed; inspect builds with '%s'", app.AppId, appCommand(app, "apps", "builds", "list", app.AppId))
+		return fmt.Errorf("application %s failed; inspect builds with '%s'", app.AppId, appCommand(app, shellDefault, "apps", "builds", "list", app.AppId))
 	default:
 		return fmt.Errorf("application %s ended in status %s", app.AppId, app.Status)
 	}
