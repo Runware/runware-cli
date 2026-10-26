@@ -771,7 +771,7 @@ func TestClearCompletesTheFieldsTheCommandTakes(t *testing.T) {
 	}
 }
 
-func TestDeleteHintLeavesOtherErrorsAlone(t *testing.T) {
+func TestEnvironmentsDeleteHintLeavesOtherErrorsAlone(t *testing.T) {
 	err := errors.New("connection refused")
 	if got := withEnvironmentContentsHint(err, testEnvironment); !errors.Is(got, err) || got.Error() != err.Error() {
 		t.Fatalf("withEnvironmentContentsHint(%v) = %v, want it unchanged", err, got)
