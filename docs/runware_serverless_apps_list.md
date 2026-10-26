@@ -6,8 +6,7 @@ List serverless applications
 
 List the serverless applications in one environment: the one --env names,
 else the default environment (RUNWARE_ENV, else the config's) or production. A
-next-page cursor is valid only in the environment it
-came from.
+next-page cursor is valid only in the environment it came from.
 
 ```
 runware serverless apps list [flags]

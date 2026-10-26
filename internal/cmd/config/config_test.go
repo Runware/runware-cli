@@ -3,6 +3,7 @@ package config
 import (
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -354,6 +355,17 @@ func TestConfigWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
 			args:   []string{keyEnvironment, testStaging},
 		},
 		{
+			name:   "set while RUNWARE_ENV is production",
+			envVar: config.ProductionEnvironment,
+			args:   []string{keyEnvironment, testStaging},
+			want:   true,
+		},
+		{
+			name:   "reset while RUNWARE_ENV is production",
+			envVar: config.ProductionEnvironment,
+			reset:  true,
+		},
+		{
 			name: "set without RUNWARE_ENV",
 			args: []string{keyEnvironment, testStaging},
 		},
@@ -386,5 +398,13 @@ func TestConfigWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
 				t.Fatalf("warned = %v, want %v (logs %q)", got, tc.want, logs.String())
 			}
 		})
+	}
+}
+
+func TestSetCompletesTheEnvironmentKey(t *testing.T) {
+	cmd := newSetCmd(log.New(io.Discard))
+	keys, _ := cmd.ValidArgsFunction(cmd, nil, "")
+	if !slices.Contains(keys, keyEnvironment) {
+		t.Fatalf("config set completes %v, want %q among them", keys, keyEnvironment)
 	}
 }

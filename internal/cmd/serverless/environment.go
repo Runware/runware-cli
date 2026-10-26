@@ -98,8 +98,9 @@ func environmentCompletion(logger *log.Logger, timeout time.Duration) cobra.Comp
 	}
 }
 
-// commandEnvironment returns the environment cmd addresses, or "" for
-// production. See resolveEnvironment.
+// commandEnvironment returns the environment cmd addresses, or "" when it
+// names none: production for an app command, the whole organization for a
+// report. See resolveEnvironment.
 func commandEnvironment(cmd *cobra.Command) string {
 	name, _ := resolveEnvironment(cmd)
 	return name

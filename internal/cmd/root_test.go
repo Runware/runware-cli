@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/config"
 )
 
 func TestRootLongMatchesReadme(t *testing.T) {
@@ -70,7 +71,7 @@ func TestRootRefusesAnInvalidDefaultEnvironmentBeforeAnyRequest(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
-	t.Setenv("RUNWARE_ENV", "Staging")
+	t.Setenv(config.EnvironmentFromEnvVar, "Staging")
 
 	cmd := NewRootCmd(log.New(io.Discard))
 	cmd.SetOut(io.Discard)
@@ -99,7 +100,7 @@ func TestRootAnnouncesTheDefaultEnvironment(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
-	t.Setenv("RUNWARE_ENV", "staging")
+	t.Setenv(config.EnvironmentFromEnvVar, "staging")
 	var logs bytes.Buffer
 
 	cmd := NewRootCmd(log.New(&logs))

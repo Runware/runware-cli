@@ -58,8 +58,7 @@ func newAppsListCmd(logger *log.Logger) *cobra.Command {
 		Short: "List serverless applications",
 		Long: `List the serverless applications in one environment: the one --env names,
 else the default environment (RUNWARE_ENV, else the config's) or production. A
-next-page cursor is valid only in the environment it
-came from.`,
+next-page cursor is valid only in the environment it came from.`,
 		Example: `  # list all serverless applications
   runware serverless apps list
 
