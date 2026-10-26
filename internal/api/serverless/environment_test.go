@@ -336,6 +336,42 @@ func orgScopedCalls() []environmentCall {
 			},
 		},
 		{
+			operation: "CreateEnvironment",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.CreateEnvironment(ctx, EnvironmentCreate{
+					Name: testEnvironment,
+				})
+				return err
+			},
+		},
+		{
+			operation: "UpdateEnvironment",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.UpdateEnvironment(ctx, testEnvironment, EnvironmentUpdate{})
+				return err
+			},
+		},
+		{
+			operation: "DeleteEnvironment",
+			call: func(ctx context.Context, c *Client) error {
+				return c.DeleteEnvironment(ctx, testEnvironment)
+			},
+		},
+		{
+			operation: "GetEnvironmentDefaults",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.GetEnvironmentDefaults(ctx)
+				return err
+			},
+		},
+		{
+			operation: "PutEnvironmentDefaults",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.PutEnvironmentDefaults(ctx, EnvironmentDefaults{})
+				return err
+			},
+		},
+		{
 			operation: "CreateSourceUpload",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.CreateSourceUpload(ctx, SourceUploadCreate{})

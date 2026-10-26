@@ -26,6 +26,7 @@ Deploy, monitor, and manage Runware serverless applications on the platform
 * [runware](runware.md)	 - CLI tool for the Runware API
 * [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
 * [runware serverless deploy](runware_serverless_deploy.md)	 - Create or update a serverless application
+* [runware serverless environments](runware_serverless_environments.md)	 - Manage the organization's environments
 * [runware serverless gpus](runware_serverless_gpus.md)	 - List available GPU types and pricing
 * [runware serverless init](runware_serverless_init.md)	 - Create an App directory with the Serverless library installed
 * [runware serverless open](runware_serverless_open.md)	 - Open an application in the Runware dashboard

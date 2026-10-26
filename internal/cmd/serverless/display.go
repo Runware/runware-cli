@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -700,4 +701,135 @@ func printNamedCursor(errOut io.Writer, label string, cursor *string, extraFlags
 	}
 	_, err := fmt.Fprintf(errOut, "\n%s: %s\n", label, hint)
 	return err
+}
+
+const (
+	colDefault       = "Default"
+	colMaxGPUs       = "Max GPUs"
+	colMonthlyBudget = "Monthly budget"
+	colBudgetAlerts  = "Budget alerts"
+	colPauseAtBudget = "Pause at budget"
+
+	// noValue stands for a setting that is not set: no cap, no budget, no alert.
+	noValue = "-"
+	// inheritedSuffix marks a value an environment inherits from the
+	// organization defaults.
+	inheritedSuffix = " (org default)"
+)
+
+// environmentResult wraps a single environment for table/json/yaml display.
+type environmentResult serverlessapi.Environment
+
+func (r environmentResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r environmentResult) Rows() [][]any {
+	return [][]any{
+		{colName, r.Name},
+		{colDefault, formatYesNo(r.IsDefault)},
+		{colMaxWorkers, formatEnvironmentCap(r.MaxConcurrentWorkers, r.Resolved.MaxConcurrentWorkers)},
+		{colMaxGPUs, formatEnvironmentCap(r.MaxConcurrentGpus, r.Resolved.MaxConcurrentGpus)},
+		{colMonthlyBudget, formatBudget(r.MonthlyBudget)},
+		{colBudgetAlerts, formatAlertPercents(r.BudgetAlertPercents)},
+		{colPauseAtBudget, formatYesNo(r.PauseAtBudget)},
+		{colCreated, r.CreatedAt.Format(time.RFC3339)},
+		{colUpdated, r.UpdatedAt.Format(time.RFC3339)},
+	}
+}
+
+// environmentsResult wraps an environment list for table display.
+type environmentsResult []serverlessapi.Environment
+
+func (r environmentsResult) Headers() []string {
+	return []string{colName, colDefault, colMaxWorkers, colMaxGPUs, colMonthlyBudget, colBudgetAlerts, colPauseAtBudget}
+}
+
+func (r environmentsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		e := &r[i]
+		rows[i] = []any{
+			e.Name,
+			formatYesNo(e.IsDefault),
+			formatEnvironmentCap(e.MaxConcurrentWorkers, e.Resolved.MaxConcurrentWorkers),
+			formatEnvironmentCap(e.MaxConcurrentGpus, e.Resolved.MaxConcurrentGpus),
+			formatBudget(e.MonthlyBudget),
+			formatAlertPercents(e.BudgetAlertPercents),
+			formatYesNo(e.PauseAtBudget),
+		}
+	}
+	return rows
+}
+
+// environmentDeletedResult is the success payload for deleting an environment.
+type environmentDeletedResult struct {
+	Name string `json:"name" yaml:"name"`
+}
+
+func (r environmentDeletedResult) Headers() []string {
+	return []string{colName}
+}
+
+func (r environmentDeletedResult) Rows() [][]any {
+	return [][]any{{r.Name}}
+}
+
+// environmentDefaultsResult wraps the organization defaults for
+// table/json/yaml display.
+type environmentDefaultsResult serverlessapi.EnvironmentDefaults
+
+func (r environmentDefaultsResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r environmentDefaultsResult) Rows() [][]any {
+	return [][]any{
+		{colMaxWorkers, formatCap(r.MaxConcurrentWorkers)},
+		{colMaxGPUs, formatCap(r.MaxConcurrentGpus)},
+	}
+}
+
+// formatEnvironmentCap is the environment's own cap, else the organization
+// default it inherits marked as such, else no cap.
+func formatEnvironmentCap(own, resolved *int32) string {
+	if own != nil {
+		return formatCap(own)
+	}
+	if resolved != nil {
+		return formatCap(resolved) + inheritedSuffix
+	}
+	return noValue
+}
+
+func formatCap(v *int32) string {
+	if v == nil {
+		return noValue
+	}
+	return fmt.Sprintf("%d", *v)
+}
+
+func formatBudget(amount *serverlessapi.MoneyAmount) string {
+	if amount == nil {
+		return noValue
+	}
+	return amount.Amount + " " + string(amount.Currency)
+}
+
+func formatAlertPercents(percents []int) string {
+	if len(percents) == 0 {
+		return noValue
+	}
+	parts := make([]string, len(percents))
+	for i, p := range percents {
+		parts[i] = fmt.Sprintf("%d", p)
+	}
+	return strings.Join(parts, ", ") + "%"
+}
+
+func formatYesNo(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
 }
