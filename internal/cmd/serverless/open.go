@@ -59,8 +59,8 @@ func newOpenCmd(logger *log.Logger) *cobra.Command {
 	return cmd
 }
 
-// appDashboardURL is the console page for the app's copy in environment. The
-// default environment adds no query, as a command without --env does not.
+// appDashboardURL is the console page for the app's copy in environment.
+// production adds no query, as the console shows it without one.
 func appDashboardURL(base, appID, environment string) string {
 	link := strings.TrimSuffix(base, "/") + "/serverless/apps/" + url.PathEscape(appID)
 	if isDefaultEnvironment(environment) {

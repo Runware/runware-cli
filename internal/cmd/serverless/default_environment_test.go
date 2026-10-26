@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/config"
 )
 
@@ -68,14 +70,18 @@ func TestCommandsWithoutTheFlagAddressTheDefaultEnvironment(t *testing.T) {
 	}
 }
 
+// environmentDefaultCase sets the default environment one way or another and
+// says what a command without --env should do.
+type environmentDefaultCase struct {
+	name       string
+	configured string
+	envVar     string
+	args       []string
+	want       string
+}
+
 func TestEnvironmentPrecedence(t *testing.T) {
-	cases := []struct {
-		name       string
-		configured string
-		envVar     string
-		args       []string
-		want       string
-	}{
+	cases := []environmentDefaultCase{
 		{
 			name:       "config",
 			configured: testEnvironment,
@@ -95,6 +101,10 @@ func TestEnvironmentPrecedence(t *testing.T) {
 			want:       testProductionEnvironment,
 		},
 		{
+			name:       "a production default sends none",
+			configured: testProductionEnvironment,
+		},
+		{
 			name: "nothing set sends none",
 		},
 	}
@@ -107,21 +117,48 @@ func TestEnvironmentPrecedence(t *testing.T) {
 			if len(run.requests) != 1 {
 				t.Fatalf("requests = %v, want one", run.requests)
 			}
-			if got := run.requests[0].query.Get("environment"); got != tc.want {
-				t.Fatalf("environment = %q, want %q", got, tc.want)
+			if got := run.requests[0].query.Get("environment"); got != tc.want || run.requests[0].query.Has("environment") != (tc.want != "") {
+				t.Fatalf("environment = %q (sent %v), want %q", got, run.requests[0].query.Has("environment"), tc.want)
 			}
 		})
 	}
 }
 
+func TestCommandsWithoutAnEnvironmentIgnoreTheDefault(t *testing.T) {
+	withDefaultEnvironment(t, testEnvironment)
+	run := runServerless(t, "gpus")
+
+	if len(run.requests) == 0 {
+		t.Fatalf("no request reached the API: %v", run.err)
+	}
+	for _, r := range run.requests {
+		if r.query.Has("environment") {
+			t.Errorf("%s: sent environment %q", r, r.query.Get("environment"))
+		}
+	}
+	if logs, err := announce(t, "gpus"); err != nil || logs != "" {
+		t.Errorf("announce gpus = %q, %v, want nothing", logs, err)
+	}
+}
+
+// announce runs AnnounceEnvironment for the serverless command args name,
+// with its flags parsed, and returns what it logged.
+func announce(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	cmd, rest, err := NewCmd(log.New(io.Discard)).Find(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.ParseFlags(rest); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	err = AnnounceEnvironment(cmd, log.New(&logs))
+	return logs.String(), err
+}
+
 func TestDefaultEnvironmentIsAnnounced(t *testing.T) {
-	cases := []struct {
-		name       string
-		configured string
-		envVar     string
-		args       []string
-		want       string
-	}{
+	cases := []environmentDefaultCase{
 		{
 			name:       "from config",
 			configured: testEnvironment,
@@ -146,14 +183,42 @@ func TestDefaultEnvironmentIsAnnounced(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			withDefaultEnvironment(t, tc.configured)
 			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
-			run := runServerless(t, append([]string{testAppsGroup, "stop", testAppID}, tc.args...)...)
+			logs, err := announce(t, append([]string{testAppsGroup, "stop", testAppID}, tc.args...)...)
 
-			got := strings.Contains(run.logs, "Using environment")
-			if tc.want == "" && got {
-				t.Fatalf("logs = %q, want no notice", run.logs)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if tc.want != "" && !strings.Contains(run.logs, tc.want) {
-				t.Fatalf("logs = %q, want %q", run.logs, tc.want)
+			if tc.want == "" && strings.Contains(logs, "Using environment") {
+				t.Fatalf("logs = %q, want no notice", logs)
+			}
+			if tc.want != "" && !strings.Contains(logs, tc.want) {
+				t.Fatalf("logs = %q, want %q", logs, tc.want)
+			}
+		})
+	}
+}
+
+func TestAnInvalidDefaultEnvironmentNamesItsSource(t *testing.T) {
+	cases := []environmentDefaultCase{
+		{
+			name:   "RUNWARE_ENV",
+			envVar: "Staging",
+			want:   `environment "Staging" from RUNWARE_ENV`,
+		},
+		{
+			name:       "hand-edited config",
+			configured: "Staging",
+			want:       `environment "Staging" from config`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withDefaultEnvironment(t, tc.configured)
+			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
+			_, err := announce(t, testAppsGroup, appHealthListCommand)
+
+			if !errors.Is(err, config.ErrEnvironmentName) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q and the name rule", err, tc.want)
 			}
 		})
 	}

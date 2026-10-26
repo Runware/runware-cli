@@ -64,6 +64,10 @@ func ValidDefaultsKeys() map[string]struct{} {
 	}
 }
 
+// DefaultEnvironment is the environment the API addresses when a request
+// names none.
+const DefaultEnvironment = "production"
+
 // Where GetEnvironment found the default environment.
 const (
 	EnvironmentFromEnvVar = "RUNWARE_ENV"

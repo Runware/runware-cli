@@ -22,7 +22,7 @@ func newSecretsCmd(logger *log.Logger) *cobra.Command {
 
 A secret belongs to one environment, and an application attaches only secrets
 of its own environment. Every command here takes --env to select that
-environment, production unless --env names another.`
+environment, else the default environment (RUNWARE_ENV, else the config's) or production.`
 	cmd.AddCommand(
 		newSecretsListCmd(logger),
 		newSecretsSetCmd(logger),
@@ -48,7 +48,7 @@ func newSecretsListCmd(logger *log.Logger) *cobra.Command {
 never returned.
 
 To list secrets attached to an application, use 'secrets attachments'.`,
-		Example: `  # list the production secrets
+		Example: `  # list the secrets of the default environment (production unless set)
   runware serverless secrets list
 
   # list the staging secrets
@@ -157,7 +157,7 @@ func newSecretsRemoveCmd(logger *log.Logger) *cobra.Command {
 		Long: `Remove a secret from one environment. Returns a conflict if any application in
 that environment still has it attached — detach each holder first with
 'secrets detach <appId> <name>' under the same --env.`,
-		Example: `  # remove a production secret
+		Example: `  # remove a secret from the default environment (production unless set)
   runware serverless secrets remove FOO
 
   # remove the staging copy

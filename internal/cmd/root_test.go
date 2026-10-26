@@ -2,10 +2,16 @@ package cmd
 
 import (
 	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/charmbracelet/log"
 )
 
 func TestRootLongMatchesReadme(t *testing.T) {
@@ -51,5 +57,35 @@ func TestServerlessInitHelpNamesInit(t *testing.T) {
 	}
 	if want := "runware serverless init"; !strings.Contains(stdout.String(), want) {
 		t.Errorf("stdout does not contain %q:\n%s", want, stdout.String())
+	}
+}
+
+func TestRootRefusesAnInvalidDefaultEnvironmentBeforeAnyRequest(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+	t.Setenv("RUNWARE_ENV", "Staging")
+
+	cmd := NewRootCmd(log.New(io.Discard))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{
+		"serverless",
+		"apps",
+		"list",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "RUNWARE_ENV") {
+		t.Fatalf("err = %v, want the RUNWARE_ENV name refused", err)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Fatalf("sent %d requests before refusing the environment", n)
 	}
 }

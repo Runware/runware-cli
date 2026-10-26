@@ -18,7 +18,7 @@ import (
 
 const (
 	// defaultEnvironment is the environment the API addresses when a request names none.
-	defaultEnvironment   = "production"
+	defaultEnvironment   = config.DefaultEnvironment
 	environmentFlag      = "env"
 	environmentShorthand = "e"
 	environmentFlagHelp  = "Environment the app runs in " + environmentFlagDefault
@@ -102,8 +102,9 @@ func commandEnvironment(cmd *cobra.Command) string {
 
 // resolveEnvironment returns the environment cmd addresses and, when --env
 // did not name it, where the default came from: --env, else RUNWARE_ENV, else
-// the config's environment. A command without --env, or whose --env only
-// narrows an organization report, addresses no default.
+// the config's environment. A production default counts as none. A command
+// without --env, or whose --env only narrows an organization report,
+// addresses no default.
 func resolveEnvironment(cmd *cobra.Command) (name, source string) {
 	f := cmd.Flag(environmentFlag)
 	if f == nil {
@@ -116,19 +117,32 @@ func resolveEnvironment(cmd *cobra.Command) (name, source string) {
 	if _, report := f.Annotations[reportsOrganization]; *v != "" || report {
 		return string(*v), ""
 	}
-	return config.GetEnvironment()
+	if name, source = config.GetEnvironment(); isDefaultEnvironment(name) {
+		return "", ""
+	}
+	return name, source
+}
+
+// AnnounceEnvironment checks the default environment cmd addresses and logs
+// it, so a default set elsewhere is never silent.
+// The root command runs it before every command, ahead of any spinner.
+func AnnounceEnvironment(cmd *cobra.Command, logger *log.Logger) error {
+	name, source := resolveEnvironment(cmd)
+	if source == "" {
+		return nil
+	}
+	if !config.EnvironmentNamePattern.MatchString(name) {
+		return fmt.Errorf("environment %q from %s: %w", name, source, config.ErrEnvironmentName)
+	}
+	logger.Info(fmt.Sprintf("Using environment %s from %s", name, source))
+	return nil
 }
 
 // newServerlessClient builds the API client for cmd, scoped to the
-// environment it addresses. An environment other than production that --env
-// did not name is announced, so a default set elsewhere is never silent.
+// environment it addresses.
 func newServerlessClient(cmd *cobra.Command, logger *log.Logger) *serverlessapi.Client {
-	name, source := resolveEnvironment(cmd)
-	if source != "" && !isDefaultEnvironment(name) {
-		logger.Info(fmt.Sprintf("Using environment %s from %s", name, source))
-	}
 	client := serverlessapi.NewClient(config.GetAPIKey(), config.GetServerlessBaseURL(), slog.New(logger))
-	return client.WithEnvironment(name)
+	return client.WithEnvironment(commandEnvironment(cmd))
 }
 
 // deleteSubject is what a delete prompt names: the subject and the environment

@@ -242,13 +242,16 @@ func TestResetClearsTheEnvironment(t *testing.T) {
 	}
 }
 
+// showEnvironmentCase is a default environment and what `config show` names.
+type showEnvironmentCase struct {
+	name       string
+	configured string
+	envVar     string
+	want       string
+}
+
 func TestShowNamesTheEnvironmentCommandsAddress(t *testing.T) {
-	cases := []struct {
-		name       string
-		configured string
-		envVar     string
-		want       string
-	}{
+	cases := []showEnvironmentCase{
 		{
 			name: "unset",
 			want: "production",
@@ -293,10 +296,10 @@ func showOutput(t *testing.T, format string) string {
 	}
 	old := os.Stdout
 	os.Stdout = stdout
+	defer func() { os.Stdout = old }()
 	cmd := newShowCmd()
 	cmd.PersistentFlags().String("format", format, "")
 	runErr := cmd.RunE(cmd, nil)
-	os.Stdout = old
 	_ = stdout.Close()
 	if runErr != nil {
 		t.Fatalf("show RunE error: %v", runErr)

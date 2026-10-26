@@ -60,7 +60,10 @@ Use of Runware services is subject to our Terms of Service (https://runware.ai/t
 					return fmt.Errorf("invalid transport %q: must be one of: %s", t, strings.Join(transport.ValidTransports(), ", "))
 				}
 			}
-			return config.Init()
+			if err := config.Init(); err != nil {
+				return err
+			}
+			return serverless.AnnounceEnvironment(cmd, logger)
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,

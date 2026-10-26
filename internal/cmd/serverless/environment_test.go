@@ -96,9 +96,7 @@ type serverlessRun struct {
 	// completions. Command data goes to os.Stdout and lands in stdout.
 	cobraOutput string
 	stdout      string
-	// logs is what the command logged.
-	logs string
-	err  error
+	err         error
 }
 
 // runServerlessAgainst runs `serverless <args>` against a stub API that
@@ -132,8 +130,7 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
 
-	var logs bytes.Buffer
-	cmd := NewCmd(log.New(&logs))
+	cmd := NewCmd(log.New(io.Discard))
 	var cobraOutput bytes.Buffer
 	cmd.SetOut(&cobraOutput)
 	cmd.SetErr(&cobraOutput)
@@ -157,7 +154,6 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 		requests:    rec.requests,
 		cobraOutput: cobraOutput.String(),
 		stdout:      string(out),
-		logs:        logs.String(),
 		err:         execErr,
 	}
 }

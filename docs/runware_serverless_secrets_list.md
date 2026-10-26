@@ -16,7 +16,7 @@ runware serverless secrets list [flags]
 ### Examples
 
 ```
-  # list the production secrets
+  # list the secrets of the default environment (production unless set)
   runware serverless secrets list
 
   # list the staging secrets

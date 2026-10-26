@@ -38,6 +38,7 @@ reservation covered. Coverage itself is on the usage summary.
 
 An unknown --app is an empty page, not a missing app. --app reports the
 production copy unless --env names another environment; --env needs --app.
+The default environment (RUNWARE_ENV or the config's) does not apply here.
 Replay a cursor with the same --env, --app, --from, --to, and --limit.`,
 		Example: `  # the latest page of the ledger
   runware serverless usage events

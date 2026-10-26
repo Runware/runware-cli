@@ -6,8 +6,8 @@ Delete a serverless application
 
 Soft-delete a serverless application.
 
-Only the copy in the environment --env selects is deleted, production unless
---env names another. Copies of the same app id in other environments keep
+Only the copy in the environment --env selects is deleted, else the copy in
+the default environment (RUNWARE_ENV, else the config's) or production. Copies of the same app id in other environments keep
 running.
 
 The server accepts the delete and returns immediately with status deleting.

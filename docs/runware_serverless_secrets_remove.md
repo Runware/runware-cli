@@ -15,7 +15,7 @@ runware serverless secrets remove <name> [flags]
 ### Examples
 
 ```
-  # remove a production secret
+  # remove a secret from the default environment (production unless set)
   runware serverless secrets remove FOO
 
   # remove the staging copy
