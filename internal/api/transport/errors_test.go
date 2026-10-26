@@ -349,14 +349,32 @@ func TestEnvironmentPausedIsANonRetryableQuotaError(t *testing.T) {
 	}
 }
 
-func TestRunwareErrorAPIFieldsCarryTheProblemType(t *testing.T) {
-	const pausedType = "https://docs.runware.ai/serverless/errors#environment-paused"
-	re := CreateRunwareError("environmentPaused", "paused", RunwareErrorDetails{StatusCode: 429})
-	re.ProblemType = pausedType
-	if got := re.APIFields()["problemType"]; got != pausedType {
-		t.Errorf("problemType = %v, want %q", got, pausedType)
-	}
-	if _, ok := CreateRunwareError("conflict", "taken", RunwareErrorDetails{}).APIFields()["problemType"]; ok {
-		t.Error("problemType present on an error without a problem type")
+// apiFieldsProblemTypeCase is an error's problem type and the problemType
+// field its APIFields should carry.
+type apiFieldsProblemTypeCase struct {
+	name            string
+	problemType     string
+	wantProblemType bool
+}
+
+func TestRunwareErrorAPIFieldsProblemType(t *testing.T) {
+	for _, tc := range []apiFieldsProblemTypeCase{
+		{
+			name:            "with a problem type",
+			problemType:     "https://docs.runware.ai/serverless/errors#environment-paused",
+			wantProblemType: true,
+		},
+		{
+			name: "without a problem type",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			re := CreateRunwareError("environmentPaused", "paused", RunwareErrorDetails{StatusCode: 429})
+			re.ProblemType = tc.problemType
+			got, ok := re.APIFields()["problemType"]
+			if ok != tc.wantProblemType || (ok && got != tc.problemType) {
+				t.Errorf("problemType = %v (present %v), want %q (present %v)", got, ok, tc.problemType, tc.wantProblemType)
+			}
+		})
 	}
 }

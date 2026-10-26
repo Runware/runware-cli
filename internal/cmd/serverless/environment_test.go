@@ -49,6 +49,7 @@ const (
 	testDeleteCommand         = "delete"
 	testInferEndpoint         = "infer"
 	testResumeCommand         = "resume"
+	testInvokeCommand         = "invoke"
 	testScaleCommand          = "scale"
 	testPausedType            = "https://docs.runware.ai/serverless/errors#environment-paused"
 	testPausedDetail          = "the environment is paused: its spend this UTC month has reached its monthly budget"
@@ -224,7 +225,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "apps invoke",
-			args: []string{testAppsGroup, "invoke", testAppID, testInferEndpoint},
+			args: []string{testAppsGroup, testInvokeCommand, testAppID, testInferEndpoint},
 		},
 		{
 			name: "apps tasks",
@@ -1122,7 +1123,7 @@ type errorOutput struct {
 	Errors []map[string]any `json:"errors"`
 }
 
-// writePaused answers like an environment its budget paused.
+// writePaused answers like an environment whose budget paused it.
 func writePaused(w http.ResponseWriter, status int) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
@@ -1165,8 +1166,8 @@ type pausedCommandCase struct {
 func TestCommandsInAPausedEnvironmentReportThePause(t *testing.T) {
 	cases := []pausedCommandCase{
 		{
-			name:   "invoke",
-			args:   []string{testAppsGroup, "invoke", testAppID, testInferEndpoint, testEnvFlag, testEnvironment},
+			name:   testInvokeCommand,
+			args:   []string{testAppsGroup, testInvokeCommand, testAppID, testInferEndpoint, testEnvFlag, testEnvironment},
 			status: http.StatusTooManyRequests,
 		},
 		{

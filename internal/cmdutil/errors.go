@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	fieldMessage = "message"
-	// fieldProblemType is left out of text output: the code already names the
-	// refusal there, and the URI is for scripts reading json or yaml.
+	fieldMessage     = "message"
 	fieldProblemType = "problemType"
 )
 
