@@ -3,6 +3,7 @@ package serverless
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -18,8 +19,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// The settings an environment takes, each named the same as its flag and as
-// the --clear value that clears it.
+// The flags of the environments commands. A *Field flag is a setting, also
+// named as the --clear value that clears it.
 const (
 	maxWorkersField    = "max-workers"
 	maxGPUsField       = "max-gpus"
@@ -396,7 +397,10 @@ func environmentNameArg(cmd *cobra.Command, args []string) error {
 	if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 		return err
 	}
-	return new(environmentValue).Set(args[0])
+	if !environmentNamePattern.MatchString(args[0]) {
+		return errEnvironmentName
+	}
+	return nil
 }
 
 // environmentArgCompletion completes a command's one environment name
@@ -549,7 +553,7 @@ func changedDefaults(current serverlessapi.EnvironmentDefaults, flags *pflag.Fla
 // them. production is refused for being production, so it gets no hint.
 func withEnvironmentContentsHint(err error, name string) error {
 	re, ok := errors.AsType[*transport.RunwareError](err)
-	if !ok || !isHTTPConflict(err) || isDefaultEnvironment(name) {
+	if !ok || re.StatusCode != http.StatusConflict || isDefaultEnvironment(name) {
 		return err
 	}
 	hinted := *re

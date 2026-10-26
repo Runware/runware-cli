@@ -231,6 +231,8 @@ runware serverless open my-app
 
 Every app command and every `secrets` command takes `--env <name>` (`-e`) to address the copy in that environment. Without it, commands address `production`. A secret belongs to one environment, and an app attaches only secrets of its own. `usage` takes `--env` to report one environment instead of the whole organization. `usage events` takes `--env` only together with `--app`. `gpus` takes no environment.
 
+`.env` files are never packed into the source archive. Prefer `--env-file` and `secrets set --value-file` so values stay out of the process list.
+
 #### Environments
 
 `runware serverless environments` manages the organization's environments: the worker and GPU caps each one holds, its monthly budget, the budget alert thresholds, and whether it pauses at the budget. A cap an environment does not set is inherited from the organization defaults, and `list` and `show` mark it `(org default)`.
@@ -246,8 +248,6 @@ runware serverless environments delete staging   # only once it holds no apps or
 runware serverless environments defaults get
 runware serverless environments defaults set --max-workers 10 --clear max-gpus
 ```
-
-`.env` files are never packed into the source archive. Prefer `--env-file` and `secrets set --value-file` so values stay out of the process list.
 
 ### Authentication
 

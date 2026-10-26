@@ -29,6 +29,8 @@ const (
 	testUpdateCommand     = "update"
 	testDefaultsPath      = "/v1/environment-defaults"
 	testStagingPath       = testEnvironmentsPath + "/" + testEnvironment
+	testRefusedName       = "Staging"
+	testNameRule          = "environment name must be"
 
 	// testStagingEnvironment sets its own worker cap and inherits its GPU cap.
 	testStagingEnvironment = `{
@@ -398,13 +400,28 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "create a name the API refuses",
-			args:    []string{testEnvironmentsGroup, "create", "Staging"},
-			wantErr: "environment name must be",
+			args:    []string{testEnvironmentsGroup, "create", testRefusedName},
+			wantErr: testNameRule,
+		},
+		{
+			name:    "show a name the API refuses",
+			args:    []string{testEnvironmentsGroup, appHealthShowCommand, testRefusedName},
+			wantErr: testNameRule,
+		},
+		{
+			name:    "update a name with an equals sign",
+			args:    []string{testEnvironmentsGroup, testUpdateCommand, "a=b", testMaxWorkersFlag, "1"},
+			wantErr: testNameRule,
+		},
+		{
+			name:    "show without a name",
+			args:    []string{testEnvironmentsGroup, appHealthShowCommand},
+			wantErr: "accepts 1 arg(s), received 0",
 		},
 		{
 			name:    "delete a name the API refuses",
-			args:    []string{testEnvironmentsGroup, testDeleteCommand, "Staging", testYesFlag},
-			wantErr: "environment name must be",
+			args:    []string{testEnvironmentsGroup, testDeleteCommand, testRefusedName, testYesFlag},
+			wantErr: testNameRule,
 		},
 		{
 			name:    "create negative budget",
