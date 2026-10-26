@@ -13,7 +13,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const fieldMessage = "message"
+const (
+	fieldMessage = "message"
+	// fieldProblemType is left out of text output: the code already names the
+	// refusal there, and the URI is for scripts reading json or yaml.
+	fieldProblemType = "problemType"
+)
 
 // PrintError logs err with formatting that matches the CLI output format.
 //
@@ -121,7 +126,7 @@ func runwareErrorLogArgs(re *transport.RunwareError) []any {
 func sortedFieldKeys(fields map[string]any) []string {
 	keys := make([]string, 0, len(fields))
 	for k := range fields {
-		if k == fieldMessage {
+		if k == fieldMessage || k == fieldProblemType {
 			continue
 		}
 		keys = append(keys, k)
