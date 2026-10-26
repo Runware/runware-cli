@@ -180,7 +180,7 @@ func TestDefaultEnvironmentIsAnnounced(t *testing.T) {
 			args:       []string{testEnvFlag, testEnvironment},
 		},
 		{
-			name:       "production",
+			name:       testProductionEnvironment,
 			configured: testProductionEnvironment,
 		},
 	}
