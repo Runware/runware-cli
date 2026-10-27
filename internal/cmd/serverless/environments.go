@@ -307,19 +307,19 @@ func newEnvironmentsDefaultsCmd(logger *log.Logger) *cobra.Command {
 	cmd.Long = `Manage the organization defaults: the worker and GPU caps an environment
 inherits when it does not set its own.`
 	cmd.AddCommand(
-		newEnvironmentsDefaultsGetCmd(logger),
+		newEnvironmentsDefaultsShowCmd(logger),
 		newEnvironmentsDefaultsSetCmd(logger),
 	)
 	return cmd
 }
 
-func newEnvironmentsDefaultsGetCmd(logger *log.Logger) *cobra.Command {
+func newEnvironmentsDefaultsShowCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
-		Use:   "get",
+		Use:   "show",
 		Short: "Show the organization defaults",
 		Long: `Show the worker and GPU caps an environment inherits when it does not set
 its own; - means no cap.`,
-		Example: `  runware serverless environments defaults get`,
+		Example: `  runware serverless environments defaults show`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			spin := cmdutil.NewSpinner("Fetching organization defaults...")

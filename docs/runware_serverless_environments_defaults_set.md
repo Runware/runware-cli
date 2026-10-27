@@ -10,6 +10,10 @@ Change the organization defaults the flags name and keep the rest as they are.
 repeat it or separate fields with commas. The change reaches every environment
 that inherits the cap at once; it does not restart running apps.
 
+The API replaces the defaults as a whole, so this reads them and writes them
+back with the change. Do not run it while anyone else changes the defaults, in
+the CLI or the console: a change made between the read and the write is lost.
+
 ```
 runware serverless environments defaults set [flags]
 ```

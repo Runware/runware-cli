@@ -29,6 +29,6 @@ runware serverless environments defaults [flags]
 ### SEE ALSO
 
 * [runware serverless environments](runware_serverless_environments.md)	 - Manage the organization's environments
-* [runware serverless environments defaults get](runware_serverless_environments_defaults_get.md)	 - Show the organization defaults
 * [runware serverless environments defaults set](runware_serverless_environments_defaults_set.md)	 - Change the organization defaults
+* [runware serverless environments defaults show](runware_serverless_environments_defaults_show.md)	 - Show the organization defaults
 

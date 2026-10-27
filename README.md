@@ -245,7 +245,7 @@ runware serverless environments show staging
 runware serverless environments delete staging   # only once it holds no apps or secrets
 
 # The caps an environment inherits when it sets none of its own
-runware serverless environments defaults get
+runware serverless environments defaults show
 runware serverless environments defaults set --max-workers 10 --clear max-gpus
 ```
 

@@ -1,4 +1,4 @@
-## runware serverless environments defaults get
+## runware serverless environments defaults show
 
 Show the organization defaults
 
@@ -8,19 +8,19 @@ Show the worker and GPU caps an environment inherits when it does not set
 its own; - means no cap.
 
 ```
-runware serverless environments defaults get [flags]
+runware serverless environments defaults show [flags]
 ```
 
 ### Examples
 
 ```
-  runware serverless environments defaults get
+  runware serverless environments defaults show
 ```
 
 ### Options
 
 ```
-  -h, --help   help for get
+  -h, --help   help for show
 ```
 
 ### Options inherited from parent commands

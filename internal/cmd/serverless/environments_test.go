@@ -572,7 +572,7 @@ func TestEnvironmentDefaultsSetWritesNothingWhenTheReadFails(t *testing.T) {
 	}
 }
 
-func TestEnvironmentDefaultsGetReadsTheDefaults(t *testing.T) {
+func TestEnvironmentDefaultsShowReadsTheDefaults(t *testing.T) {
 	api := environmentAPI(t, &bodyRecorder{}, map[string]stubResponse{
 		"GET " + testDefaultsPath: {
 			status: http.StatusOK,
@@ -580,7 +580,7 @@ func TestEnvironmentDefaultsGetReadsTheDefaults(t *testing.T) {
 		},
 	})
 
-	run := runServerlessAgainst(t, api, testEnvironmentsGroup, testDefaultsGroup, "get")
+	run := runServerlessAgainst(t, api, testEnvironmentsGroup, testDefaultsGroup, testShowCommand)
 
 	if run.err != nil {
 		t.Fatal(run.err)
