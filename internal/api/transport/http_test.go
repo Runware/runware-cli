@@ -51,3 +51,13 @@ func TestHTTPTransport_BrokenResponseBodyIsConnectionError(t *testing.T) {
 		})
 	}
 }
+
+func TestDialHTTP_DefaultTimeoutOutlastsServerSyncWait(t *testing.T) {
+	tr, err := DialHTTP(context.Background(), "key", "https://api.example.com", slog.Default())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if tr.httpClient.Timeout <= 120*time.Second {
+		t.Errorf("default timeout %s does not outlast the server's 120s sync wait", tr.httpClient.Timeout)
+	}
+}
