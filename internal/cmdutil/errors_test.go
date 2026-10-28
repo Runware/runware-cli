@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/log"
@@ -180,4 +181,38 @@ func normalizeMapJSON(t *testing.T, m map[string]any) map[string]any {
 		t.Fatalf("unmarshal map: %v", err)
 	}
 	return out
+}
+
+// printProblemTypeCase is an output format and whether PrintErrorTo should
+// name the problem type in it.
+type printProblemTypeCase struct {
+	name            string
+	format          output.Format
+	wantProblemType bool
+}
+
+func TestPrintErrorProblemType(t *testing.T) {
+	re := transport.CreateRunwareError("resourceNotFound", "app not found", transport.RunwareErrorDetails{StatusCode: 404})
+	re.ProblemType = "https://docs.runware.ai/serverless/errors#not-found"
+
+	for _, tc := range []printProblemTypeCase{
+		{
+			name:   "text leaves it out",
+			format: output.FormatTable,
+		},
+		{
+			name:            "json carries it",
+			format:          output.FormatJSON,
+			wantProblemType: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Text goes to the logger and structured output to w; capture both.
+			var out bytes.Buffer
+			PrintErrorTo(log.New(&out), &out, tc.format, re)
+			if got := strings.Contains(out.String(), re.ProblemType); got != tc.wantProblemType {
+				t.Errorf("output %q names the problem type: %v, want %v", out.String(), got, tc.wantProblemType)
+			}
+		})
+	}
 }

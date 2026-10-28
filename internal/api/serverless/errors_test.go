@@ -2,6 +2,7 @@ package serverless
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -67,5 +68,81 @@ func TestProblemToError_PaymentRequiredIncludesShortfall(t *testing.T) {
 	}
 	if !strings.Contains(re.Message, "shortfall: 12.50 USD") {
 		t.Errorf("missing shortfall: %q", re.Message)
+	}
+}
+
+// problemTypeCase is a problem body, its status and the error it maps to.
+type problemTypeCase struct {
+	name            string
+	status          int
+	body            string
+	wantRawCode     string
+	wantCode        transport.ErrorCode
+	wantRetryable   bool
+	wantProblemType string
+	// wantMessage is checked only when set.
+	wantMessage string
+}
+
+func TestProblemToError_ProblemTypes(t *testing.T) {
+	const pausedType = "https://docs.runware.ai/serverless/errors#environment-paused"
+	const capType = "https://docs.runware.ai/serverless/errors#environment-cap-reached"
+	const detail = "environment staging is paused: its spend this month reached its monthly budget"
+	paused := func(status int) string {
+		return fmt.Sprintf(`{"type":%q,"title":%q,"status":%d,"detail":%q}`, pausedType, http.StatusText(status), status, detail)
+	}
+	cases := []problemTypeCase{
+		{
+			name:            "paused invoke answers 429",
+			status:          http.StatusTooManyRequests,
+			body:            paused(http.StatusTooManyRequests),
+			wantRawCode:     "environmentPaused",
+			wantCode:        transport.CodeQuota,
+			wantProblemType: pausedType,
+			wantMessage:     detail,
+		},
+		{
+			name:            "paused deploy, resume and scale answer 409",
+			status:          http.StatusConflict,
+			body:            paused(http.StatusConflict),
+			wantRawCode:     "environmentPaused",
+			wantCode:        transport.CodeQuota,
+			wantProblemType: pausedType,
+			wantMessage:     detail,
+		},
+		{
+			name:          "about:blank 429 is a retryable rate limit",
+			status:        http.StatusTooManyRequests,
+			body:          `{"type":"about:blank","title":"Too Many Requests","status":429}`,
+			wantRawCode:   "rateLimitExceeded",
+			wantCode:      transport.CodeRateLimit,
+			wantRetryable: true,
+		},
+		{
+			name:            "conflict keeps its problem type",
+			status:          http.StatusConflict,
+			body:            `{"type":"` + capType + `","title":"Conflict","status":409,"detail":"cap is 1"}`,
+			wantRawCode:     "conflict",
+			wantCode:        transport.CodeValidation,
+			wantProblemType: capType,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := problemFromBody([]byte(tc.body), tc.status)
+			var re *transport.RunwareError
+			if !errors.As(err, &re) {
+				t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+			}
+			if re.RawCode != tc.wantRawCode || re.Code != tc.wantCode || re.Retryable != tc.wantRetryable {
+				t.Errorf("raw %q code %q retryable %v, want %q %q %v", re.RawCode, re.Code, re.Retryable, tc.wantRawCode, tc.wantCode, tc.wantRetryable)
+			}
+			if re.ProblemType != tc.wantProblemType {
+				t.Errorf("problem type %q, want %q", re.ProblemType, tc.wantProblemType)
+			}
+			if tc.wantMessage != "" && re.Message != tc.wantMessage {
+				t.Errorf("message %q, want %q", re.Message, tc.wantMessage)
+			}
+		})
 	}
 }
