@@ -18,6 +18,8 @@ import (
 // testModelAIR is a placeholder AIR identifier used across Client.Run tests.
 const testModelAIR = "test:model@1"
 
+const fieldSeed = "seed"
+
 // inferenceSchemaServer starts an httptest.Server that returns the given
 // requestSchema JSON for any request. The returned URL (with trailing slash) is
 // suitable for use as Client.schemaBaseURLOverride in tests.
@@ -475,12 +477,12 @@ func TestClientRun_SyncRowsWithoutStatusAreReturnedDirectly(t *testing.T) {
 	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
 
 	row := rawJSON(t, map[string]any{
-		"seed": 7,
+		fieldSeed: 7,
 	})
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{row}},
-			{data: []json.RawMessage{successItem(t, map[string]any{"seed": 8})}},
+			{data: []json.RawMessage{successItem(t, map[string]any{fieldSeed: 8})}},
 		},
 	}
 
@@ -545,15 +547,15 @@ func TestClientRun_SyncHandedOffReturnsEveryResultOnce(t *testing.T) {
 	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
 
 	early := rawJSON(t, map[string]any{
-		"seed":     1,
+		fieldSeed:  1,
 		"imageURL": "https://example.com/one.png",
 	})
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{early, processingItem(t, 0)}},
 			{data: []json.RawMessage{
-				successItem(t, map[string]any{"seed": 1}),
-				successItem(t, map[string]any{"seed": 2}),
+				successItem(t, map[string]any{fieldSeed: 1}),
+				successItem(t, map[string]any{fieldSeed: 2}),
 			}},
 		},
 	}
