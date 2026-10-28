@@ -341,3 +341,40 @@ func assertAPIFieldsEqual(t *testing.T, raw string, re *RunwareError) {
 		t.Errorf("APIFields() = %#v, want %#v", got, want)
 	}
 }
+
+func TestEnvironmentPausedIsANonRetryableQuotaError(t *testing.T) {
+	re := CreateRunwareError("environmentPaused", "environment staging is paused", RunwareErrorDetails{StatusCode: 429})
+	if re.Code != CodeQuota || re.Retryable {
+		t.Errorf("code %q retryable %v, want quota false", re.Code, re.Retryable)
+	}
+}
+
+// apiFieldsProblemTypeCase is an error's problem type and the problemType
+// field its APIFields should carry.
+type apiFieldsProblemTypeCase struct {
+	name            string
+	problemType     string
+	wantProblemType bool
+}
+
+func TestRunwareErrorAPIFieldsProblemType(t *testing.T) {
+	for _, tc := range []apiFieldsProblemTypeCase{
+		{
+			name:            "with a problem type",
+			problemType:     "https://docs.runware.ai/serverless/errors#environment-paused",
+			wantProblemType: true,
+		},
+		{
+			name: "without a problem type",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			re := CreateRunwareError("environmentPaused", "paused", RunwareErrorDetails{StatusCode: 429})
+			re.ProblemType = tc.problemType
+			got, ok := re.APIFields()["problemType"]
+			if ok != tc.wantProblemType || (ok && got != tc.problemType) {
+				t.Errorf("problemType = %v (present %v), want %q (present %v)", got, ok, tc.problemType, tc.wantProblemType)
+			}
+		})
+	}
+}
