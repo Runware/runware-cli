@@ -118,7 +118,7 @@ runware run <model> [key=value ...] [flags]
 | `--output-dir` | Directory to save downloaded output files (default `./outputs`) |
 | `--no-download` | Skip auto-downloading media files |
 | `--delivery-method` | Delivery method (`sync` or `async`) (default `async`) |
-| `--poll-interval` | Polling interval for async requests (default `2s`) |
+| `--poll-interval` | Polling interval while waiting for a result (default `2s`) |
 | `--validate` | Validate parameters against the model schema before submitting |
 
 #### Image generation

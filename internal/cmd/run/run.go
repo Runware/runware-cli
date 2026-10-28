@@ -180,7 +180,7 @@ The model positional argument may be omitted when --preset supplies one.`,
 	f.StringVar(&flags.outputDir, "output-dir", config.Get().Defaults.OutputDir, "Directory to save downloaded output files")
 	f.BoolVar(&flags.noDownload, "no-download", false, "Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)")
 	f.StringVar(&flags.deliveryMethod, "delivery-method", string(api.DeliveryMethodAsync), "Delivery method (sync or async)")
-	f.DurationVar(&flags.pollInterval, "poll-interval", 2*time.Second, "Polling interval when delivery method is async")
+	f.DurationVar(&flags.pollInterval, "poll-interval", 2*time.Second, "Polling interval while waiting for a result")
 	f.BoolVar(&flags.validate, "validate", false, "Validate parameters against the model schema before submitting (off by default; the API validates the request)")
 
 	//nolint:errcheck,gosec

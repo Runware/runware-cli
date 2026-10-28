@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // testModelAIR is a placeholder AIR identifier used across Client.Run tests.
@@ -466,5 +468,100 @@ func TestClientRun_UserProvidedTaskUUID_Invalid(t *testing.T) {
 	}
 	if mock.callCount != 0 {
 		t.Errorf("expected 0 transport calls, got %d", mock.callCount)
+	}
+}
+
+func TestClientRun_SyncHandedOffPollsForResult(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	pollResult := successItem(t, map[string]any{"imageURL": "https://example.com/img.png"})
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{processingItem(t, 0)}},
+			{data: []json.RawMessage{processingItem(t, 0)}},
+			{data: []json.RawMessage{pollResult}},
+		},
+	}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	var submitted uuid.UUID
+	results, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
+		PollInterval: time.Millisecond,
+		OnSubmit: func(taskUUID uuid.UUID) {
+			submitted = taskUUID
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 || string(results[0]) != string(pollResult) {
+		t.Fatalf("expected the polled result, got %s", results)
+	}
+	if mock.callCount != 3 {
+		t.Errorf("expected 3 transport calls (submit + 2 polls), got %d", mock.callCount)
+	}
+	poll, ok := mock.captured[1][0].(*GetResponseRequest)
+	if !ok {
+		t.Fatalf("expected a getResponse poll, got %T", mock.captured[1][0])
+	}
+	if submitted == uuid.Nil || poll.TaskUUID != submitted {
+		t.Errorf("expected the poll for the submitted task %s, got %s", submitted, poll.TaskUUID)
+	}
+}
+
+func TestClientRun_SyncHandedOffReturnsEveryResultOnce(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	early := rawJSON(t, map[string]any{
+		"seed":     1,
+		"imageURL": "https://example.com/one.png",
+	})
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{early, processingItem(t, 0)}},
+			{data: []json.RawMessage{
+				successItem(t, map[string]any{"seed": 1}),
+				successItem(t, map[string]any{"seed": 2}),
+			}},
+		},
+	}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	results, err := c.Run(context.Background(), testModelAIR, []string{"numberResults=2"}, RunOptions{
+		PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if mock.callCount != 2 {
+		t.Errorf("expected 2 transport calls (submit + poll), got %d", mock.callCount)
+	}
+}
+
+func TestClientRun_SyncHandedOffTaskFails(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{processingItem(t, 0)}},
+			{data: []json.RawMessage{errorItem(t, "timeoutProvider", "The provider did not respond")}},
+		},
+	}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	_, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
+		PollInterval: time.Millisecond,
+	})
+	if err == nil || !strings.Contains(err.Error(), "did not respond") {
+		t.Fatalf("expected the task's error, got %v", err)
 	}
 }
