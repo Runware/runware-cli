@@ -475,12 +475,12 @@ func TestClientRun_SyncRowsWithoutStatusAreReturnedDirectly(t *testing.T) {
 	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
 
 	row := rawJSON(t, map[string]any{
-		"imageURL": "https://example.com/img.png",
+		"seed": 7,
 	})
 	mock := &mockTransport{
 		responses: []mockResponse{
 			{data: []json.RawMessage{row}},
-			{data: []json.RawMessage{successItem(t, map[string]any{"imageURL": "https://example.com/polled.png"})}},
+			{data: []json.RawMessage{successItem(t, map[string]any{"seed": 8})}},
 		},
 	}
 
