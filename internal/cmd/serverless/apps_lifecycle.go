@@ -154,7 +154,7 @@ func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, actio
 	if !wait.Wait {
 		return nil
 	}
-	return appFailedErr(cmd.Context(), client, app, shellEnvironment(cmd))
+	return appFailedErr(cmd.Context(), client, app, defaultEnvironment(cmd))
 }
 
 func addDeleteConfirmFlags(cmd *cobra.Command, yes, force *bool) {

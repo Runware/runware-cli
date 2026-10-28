@@ -177,7 +177,7 @@ app that is deleting is 409.`,
 			if _, skip := activateWaitNote(app.Status); skip {
 				return nil
 			}
-			return appFailedErr(cmd.Context(), client, app, shellEnvironment(cmd))
+			return appFailedErr(cmd.Context(), client, app, defaultEnvironment(cmd))
 		},
 	}
 	addAppWaitFlags(cmd, &wait, &timeout, &pollInterval)

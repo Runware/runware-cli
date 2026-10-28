@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"io"
 	"os"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/config"
 )
 
@@ -239,7 +241,7 @@ func TestSetEnvironmentChecksTheName(t *testing.T) {
 
 			err := cmd.RunE(cmd, []string{keyEnvironment, tc.value})
 
-			if gotErr := err != nil && strings.Contains(err.Error(), "lowercase"); gotErr != tc.wantErr {
+			if gotErr := err != nil && errors.Is(err, serverlessapi.ErrEnvironmentName); gotErr != tc.wantErr {
 				t.Fatalf("set %s: err = %v, want the name rule %v", tc.value, err, tc.wantErr)
 			}
 			if got := config.Get().Defaults.Environment; got != tc.want {

@@ -648,9 +648,10 @@ func TestAppFailedErr(t *testing.T) {
 }
 
 type buildsHintCase struct {
-	name        string
-	environment string
-	wantHint    string
+	name               string
+	environment        string
+	defaultEnvironment string
+	wantHint           string
 }
 
 func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
@@ -664,6 +665,12 @@ func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
 			name:        "staging copy",
 			environment: testEnvironment,
 			wantHint:    "'runware serverless apps builds list " + testAppID + " --env " + testEnvironment + "'",
+		},
+		{
+			name:               "production copy under a staging default",
+			environment:        testProductionEnvironment,
+			defaultEnvironment: testEnvironment,
+			wantHint:           "'runware serverless apps builds list " + testAppID + " --env " + testProductionEnvironment + "'",
 		},
 	}
 	for _, tc := range cases {
@@ -679,7 +686,7 @@ func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
 				Status:      serverlessapi.AppStatusFailed,
 			}
 
-			err := appFailedErr(context.Background(), serverlessapi.NewClient("test-key", empty.URL, slog.Default()), failed, "")
+			err := appFailedErr(context.Background(), serverlessapi.NewClient("test-key", empty.URL, slog.Default()), failed, tc.defaultEnvironment)
 
 			if err == nil || !strings.Contains(err.Error(), tc.wantHint) {
 				t.Fatalf("err = %v, want it to contain %q", err, tc.wantHint)

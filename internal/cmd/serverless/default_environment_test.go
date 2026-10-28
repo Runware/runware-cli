@@ -43,9 +43,17 @@ func withDefaultEnvironment(t *testing.T, name string) {
 }
 
 // reportsOrganizationCases are the commands whose --env only narrows a report
-// of the whole organization. usage events is not one: its case names an app.
+// of the whole organization. usage events is one only without --app.
 var reportsOrganizationCases = map[string]struct{}{
-	"usage": {},
+	"usage":                        {},
+	usageEventsWithoutAppCase.name: {},
+}
+
+// usageEventsWithoutAppCase reports every environment's events. It is no app
+// command case, because it refuses --env.
+var usageEventsWithoutAppCase = appCommandCase{
+	name: "usage events without --app",
+	args: []string{testUsageCommand, testEventsCommand},
 }
 
 func TestCommandsWithoutTheFlagAddressTheDefaultEnvironment(t *testing.T) {
@@ -70,7 +78,7 @@ func TestCommandsWithoutTheFlagAddressTheDefaultEnvironment(t *testing.T) {
 }
 
 func TestOrganizationReportsIgnoreTheDefaultEnvironment(t *testing.T) {
-	for _, tc := range appCommandCases() {
+	for _, tc := range append(appCommandCases(), usageEventsWithoutAppCase) {
 		if _, report := reportsOrganizationCases[tc.name]; !report {
 			continue
 		}

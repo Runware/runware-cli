@@ -94,17 +94,17 @@ func environmentCompletion(logger *log.Logger, timeout time.Duration) cobra.Comp
 	}
 }
 
-// environmentChoice is the environment a command addresses, resolved once so
-// that a prompt and the request after it cannot disagree.
+// environmentChoice is the environment a command addresses.
 type environmentChoice struct {
 	// name is the environment the command addresses, or "" when it names
 	// none: production for an app command, the whole organization for a report.
 	name string
 	// source is where a default name came from, or "" when --env named it.
 	source string
-	// shellDefault is the default environment in this shell, or "" for
-	// production. A printed production command needs --env when it is set.
-	shellDefault string
+	// defaultEnvironment is the default environment, from RUNWARE_ENV or the
+	// config, or "" for production. A printed production command needs --env
+	// when it is set.
+	defaultEnvironment string
 }
 
 type environmentChoiceKey struct{}
@@ -127,22 +127,22 @@ func commandEnvironment(cmd *cobra.Command) string {
 	return environmentFor(cmd).name
 }
 
-// shellEnvironment returns the default environment in this shell, or "" for
-// production. See environmentFor.
-func shellEnvironment(cmd *cobra.Command) string {
-	return environmentFor(cmd).shellDefault
+// defaultEnvironment returns the default environment, from RUNWARE_ENV or the
+// config, or "" for production. See environmentFor.
+func defaultEnvironment(cmd *cobra.Command) string {
+	return environmentFor(cmd).defaultEnvironment
 }
 
 // resolveEnvironment reads the environment cmd addresses: --env, else
 // RUNWARE_ENV, else the config's environment. A production default counts as
-// none. A command without --env, or whose --env only narrows an organization
-// report that names no app, addresses no default.
+// none. A command that has no --env flag, or whose --env only narrows an
+// organization report that names no app, addresses no default.
 func resolveEnvironment(cmd *cobra.Command) environmentChoice {
-	shellDefault, source := config.GetEnvironment()
-	if isProductionEnvironment(shellDefault) {
-		shellDefault, source = "", ""
+	defaultEnvironment, source := config.GetEnvironment()
+	if isProductionEnvironment(defaultEnvironment) {
+		defaultEnvironment, source = "", ""
 	}
-	choice := environmentChoice{shellDefault: shellDefault}
+	choice := environmentChoice{defaultEnvironment: defaultEnvironment}
 	f := cmd.Flag(environmentFlag)
 	if f == nil {
 		return choice
@@ -152,11 +152,12 @@ func resolveEnvironment(cmd *cobra.Command) environmentChoice {
 		return choice
 	}
 	appFlags, report := f.Annotations[reportsOrganization]
-	if *v != "" || report && !namesApp(cmd, appFlags) {
+	orgReport := report && !namesApp(cmd, appFlags)
+	if *v != "" || orgReport {
 		choice.name = string(*v)
 		return choice
 	}
-	choice.name, choice.source = shellDefault, source
+	choice.name, choice.source = defaultEnvironment, source
 	return choice
 }
 
@@ -200,10 +201,9 @@ func deleteSubject(cmd *cobra.Command, subject string) string {
 
 // environmentArgs is the --env part of a printed command: nothing for a
 // command that names no environment, and nothing for production unless
-// shellDefault, the default environment in this shell, would send the command
-// elsewhere.
-func environmentArgs(environment, shellDefault string) []string {
-	if isProductionEnvironment(environment) && isProductionEnvironment(shellDefault) {
+// defaultEnvironment would send the command elsewhere.
+func environmentArgs(environment, defaultEnvironment string) []string {
+	if isProductionEnvironment(environment) && isProductionEnvironment(defaultEnvironment) {
 		return nil
 	}
 	return appendFlag(nil, "--"+environmentFlag, environment)
@@ -215,23 +215,23 @@ func isProductionEnvironment(environment string) bool {
 }
 
 // serverlessCommand is the runware serverless command line that addresses
-// the copy in environment, under shellDefault.
-func serverlessCommand(environment, shellDefault string, args ...string) string {
+// the copy in environment, under defaultEnvironment.
+func serverlessCommand(environment, defaultEnvironment string, args ...string) string {
 	parts := append([]string{"runware", "serverless"}, args...)
-	return strings.Join(append(parts, environmentArgs(environment, shellDefault)...), " ")
+	return strings.Join(append(parts, environmentArgs(environment, defaultEnvironment)...), " ")
 }
 
 // appCommand is the runware serverless command line that addresses the app's
-// copy, under shellDefault.
-func appCommand(app *serverlessapi.App, shellDefault string, args ...string) string {
-	return serverlessCommand(app.Environment, shellDefault, args...)
+// copy, under defaultEnvironment.
+func appCommand(app *serverlessapi.App, defaultEnvironment string, args ...string) string {
+	return serverlessCommand(app.Environment, defaultEnvironment, args...)
 }
 
 // cursorFlags prefixes a next-page hint's extra flags with --env for the
 // environment the command addresses.
 func cursorFlags(cmd *cobra.Command, extra string) string {
 	choice := environmentFor(cmd)
-	parts := environmentArgs(choice.name, choice.shellDefault)
+	parts := environmentArgs(choice.name, choice.defaultEnvironment)
 	if extra != "" {
 		parts = append(parts, extra)
 	}

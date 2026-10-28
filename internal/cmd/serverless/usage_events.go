@@ -12,6 +12,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// usageEventsAppFlag names the app whose copy usage events reads.
+const usageEventsAppFlag = "app"
+
 // usageEventFlags is the flag set of serverless usage events.
 type usageEventFlags struct {
 	app    string
@@ -74,12 +77,12 @@ Replay a cursor with the same --env, --app, --from, --to, and --limit.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&flags.app, "app", "", "Report only this app's transitions")
+	cmd.Flags().StringVar(&flags.app, usageEventsAppFlag, "", "Report only this app's transitions")
 	cmd.Flags().StringVar(&flags.from, "from", "", "Inclusive start on event time (RFC 3339 or YYYY-MM-DD UTC)")
 	cmd.Flags().StringVar(&flags.to, "to", "", "Exclusive end on event time (RFC 3339 or YYYY-MM-DD UTC)")
 	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of events to return (1-100)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --env/--app/--from/--to/--limit)")
-	addReportEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment of the --app copy "+environmentFlagDefault, "app")
+	addReportEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment of the --app copy "+environmentFlagDefault, usageEventsAppFlag)
 	return cmd
 }
 
@@ -119,7 +122,7 @@ func usageEventParamsFromFlags(flags usageEventFlags) (serverlessapi.ListUsageEv
 }
 
 func extraUsageEventCursorFlags(flags usageEventFlags) string {
-	parts := appendFlag(nil, "--app", strings.TrimSpace(flags.app))
+	parts := appendFlag(nil, "--"+usageEventsAppFlag, strings.TrimSpace(flags.app))
 	parts = appendFlag(parts, "--from", flags.from)
 	parts = appendFlag(parts, "--to", flags.to)
 	if flags.limit > 0 {

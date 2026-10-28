@@ -356,9 +356,10 @@ func TestReportDeployEndpoints_SaysNothingWhenThereAreNoPaths(t *testing.T) {
 }
 
 type invokeExampleCase struct {
-	name        string
-	environment string
-	wantInvoke  string
+	name               string
+	environment        string
+	defaultEnvironment string
+	wantInvoke         string
 }
 
 func TestReportDeployEndpoints_PrintsPathsAndAnInvokeExampleForTheSameCopy(t *testing.T) {
@@ -373,6 +374,12 @@ func TestReportDeployEndpoints_PrintsPathsAndAnInvokeExampleForTheSameCopy(t *te
 			environment: testEnvironment,
 			wantInvoke:  "Invoke: runware serverless apps invoke " + testAppID + " " + testEndpointPath + " -f payload.json --env " + testEnvironment + "\n",
 		},
+		{
+			name:               "production copy under a staging default",
+			environment:        testProductionEnvironment,
+			defaultEnvironment: testEnvironment,
+			wantInvoke:         "Invoke: runware serverless apps invoke " + testAppID + " " + testEndpointPath + " -f payload.json --env " + testProductionEnvironment + "\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -381,7 +388,7 @@ func TestReportDeployEndpoints_PrintsPathsAndAnInvokeExampleForTheSameCopy(t *te
 			reportDeployEndpoints(&out, &serverlessapi.App{
 				AppId:       testAppID,
 				Environment: tc.environment,
-			}, []string{testEndpointPath, testOtherEndpointPath}, "")
+			}, []string{testEndpointPath, testOtherEndpointPath}, tc.defaultEnvironment)
 
 			got := out.String()
 			if !strings.Contains(got, "'"+testEndpointPath+"'") || !strings.Contains(got, "'"+testOtherEndpointPath+"'") {
