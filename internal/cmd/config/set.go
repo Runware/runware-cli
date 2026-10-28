@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -91,8 +92,8 @@ func validateConfigValue(key, value string) error {
 			return fmt.Errorf("invalid transport %q: must be one of: %s", value, strings.Join(transport.ValidTransports(), ", "))
 		}
 	case keyEnvironment:
-		if !config.EnvironmentNamePattern.MatchString(value) {
-			return fmt.Errorf("invalid environment %q: %w", value, config.ErrEnvironmentName)
+		if !serverlessapi.EnvironmentNamePattern.MatchString(value) {
+			return fmt.Errorf("invalid environment %q: %w", value, serverlessapi.ErrEnvironmentName)
 		}
 	}
 	return nil

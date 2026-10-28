@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/runware/runware-cli/internal/config"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -33,6 +33,7 @@ const (
 	testVersionsGroup         = "versions"
 	testYesFlag               = "--yes"
 	testEnvFlag               = "--env"
+	testAppFlag               = "--app"
 	testAppsPath              = "/v1/apps"
 	testSourceUploadsPath     = "/v1/source-uploads"
 	testEnvironmentsPath      = "/v1/environments"
@@ -323,7 +324,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "usage events",
-			args: []string{testUsageCommand, testEventsCommand, "--app", testAppID},
+			args: []string{testUsageCommand, testEventsCommand, testAppFlag, testAppID},
 		},
 		{
 			name: "usage",
@@ -523,7 +524,7 @@ func TestOldEnvVariableSyntaxFailsWithTheEnvVarHintBeforeAnyRequest(t *testing.T
 func TestUsageEventsEnvironmentNeedsAnApp(t *testing.T) {
 	run := runServerless(t, testUsageCommand, testEventsCommand, testEnvFlag, testEnvironment)
 
-	if run.err == nil || !strings.Contains(run.err.Error(), "--app") {
+	if run.err == nil || !strings.Contains(run.err.Error(), testAppFlag) {
 		t.Fatalf("err = %v, want it to require --app", run.err)
 	}
 	if len(run.requests) != 0 {
@@ -690,7 +691,7 @@ func TestNextPageHintRepeatsTheEnvironment(t *testing.T) {
 		},
 		{
 			name:     "usage events",
-			args:     []string{testUsageCommand, testEventsCommand, "--app", testAppID},
+			args:     []string{testUsageCommand, testEventsCommand, testAppFlag, testAppID},
 			body:     listBody,
 			wantHint: testStagingHint + " --app " + testAppID,
 		},
@@ -1095,8 +1096,8 @@ func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
 	if want == "" {
 		t.Fatal("the spec has no EnvironmentName pattern")
 	}
-	if got := config.EnvironmentNamePattern.String(); got != want {
-		t.Fatalf("config.EnvironmentNamePattern = %q, spec says %q", got, want)
+	if got := serverlessapi.EnvironmentNamePattern.String(); got != want {
+		t.Fatalf("serverlessapi.EnvironmentNamePattern = %q, spec says %q", got, want)
 	}
 }
 

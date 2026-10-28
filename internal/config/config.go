@@ -1,11 +1,9 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -74,12 +72,6 @@ const (
 	EnvironmentFromEnvVar = "RUNWARE_ENV"
 	EnvironmentFromConfig = "config"
 )
-
-// EnvironmentNamePattern is the API's EnvironmentName rule.
-var EnvironmentNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
-
-// ErrEnvironmentName rejects a name EnvironmentNamePattern does not match.
-var ErrEnvironmentName = errors.New("environment name must be 1-63 lowercase letters, digits, hyphens, underscores or periods, starting with a letter or digit")
 
 // GetEnvironment returns the serverless environment a command addresses when
 // --env is omitted, and where it was found: RUNWARE_ENV, else the config

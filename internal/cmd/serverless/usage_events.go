@@ -36,9 +36,10 @@ the latest page of the ledger. Spend over a window is 'serverless usage'.
 Price/s is the catalog rate per GPU-second at that moment, including time a
 reservation covered. Coverage itself is on the usage summary.
 
-An unknown --app is an empty page, not a missing app. --app reports the
-production copy unless --env names another environment; --env needs --app.
-The default environment (RUNWARE_ENV or the config's) does not apply here.
+An unknown --app is an empty page, not a missing app. --app reports the copy
+in the environment --env selects, else the default environment (RUNWARE_ENV,
+else the config's) or production. --env needs --app: without an app the
+ledger covers every environment, and the default environment does not apply.
 Replay a cursor with the same --env, --app, --from, --to, and --limit.`,
 		Example: `  # the latest page of the ledger
   runware serverless usage events
@@ -78,7 +79,7 @@ Replay a cursor with the same --env, --app, --from, --to, and --limit.`,
 	cmd.Flags().StringVar(&flags.to, "to", "", "Exclusive end on event time (RFC 3339 or YYYY-MM-DD UTC)")
 	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of events to return (1-100)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor from a previous nextCursor (reuse the same --env/--app/--from/--to/--limit)")
-	addReportEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment of the --app copy (default production)")
+	addReportEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment of the --app copy "+environmentFlagDefault, "app")
 	return cmd
 }
 

@@ -24,7 +24,8 @@ const (
 	// the flag.
 	environmentFlagDefault = "(default RUNWARE_ENV, else the config's environment, else production)"
 	// reportsOrganization marks an --env that only narrows a report of the
-	// whole organization, which the default environment does not narrow.
+	// whole organization, which the default environment does not narrow. Its
+	// values name the flags that make the report read one app's copy instead.
 	reportsOrganization = "runware.reportsOrganization"
 	// completionTimeout bounds the environments read behind tab completion;
 	// the shell waits for it.
@@ -44,8 +45,8 @@ func (v *environmentValue) Set(name string) error {
 	if strings.Contains(name, "=") {
 		return errEnvironmentIsVariable
 	}
-	if !config.EnvironmentNamePattern.MatchString(name) {
-		return config.ErrEnvironmentName
+	if !serverlessapi.EnvironmentNamePattern.MatchString(name) {
+		return serverlessapi.ErrEnvironmentName
 	}
 	*v = environmentValue(name)
 	return nil
@@ -66,9 +67,11 @@ func addEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Lo
 
 // addReportEnvironmentFlag registers --env on a command that reports the
 // whole organization without it, so the default environment does not apply.
-func addReportEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Logger, help string) {
+// When one of appFlags names an app, the command reads that app's copy and
+// the default applies as it does for an app command.
+func addReportEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Logger, help string, appFlags ...string) {
 	addEnvironmentFlag(cmd, flags, logger, help)
-	if err := flags.SetAnnotation(environmentFlag, reportsOrganization, nil); err != nil {
+	if err := flags.SetAnnotation(environmentFlag, reportsOrganization, appFlags); err != nil {
 		panic(err)
 	}
 }
@@ -133,7 +136,7 @@ func shellEnvironment(cmd *cobra.Command) string {
 // resolveEnvironment reads the environment cmd addresses: --env, else
 // RUNWARE_ENV, else the config's environment. A production default counts as
 // none. A command without --env, or whose --env only narrows an organization
-// report, addresses no default.
+// report that names no app, addresses no default.
 func resolveEnvironment(cmd *cobra.Command) environmentChoice {
 	shellDefault, source := config.GetEnvironment()
 	if isProductionEnvironment(shellDefault) {
@@ -148,13 +151,23 @@ func resolveEnvironment(cmd *cobra.Command) environmentChoice {
 	if !ok {
 		return choice
 	}
-	_, report := f.Annotations[reportsOrganization]
-	if *v != "" || report {
+	appFlags, report := f.Annotations[reportsOrganization]
+	if *v != "" || report && !namesApp(cmd, appFlags) {
 		choice.name = string(*v)
 		return choice
 	}
 	choice.name, choice.source = shellDefault, source
 	return choice
+}
+
+// namesApp reports whether any of appFlags names an app on cmd.
+func namesApp(cmd *cobra.Command, appFlags []string) bool {
+	for _, name := range appFlags {
+		if f := cmd.Flag(name); f != nil && strings.TrimSpace(f.Value.String()) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // AnnounceEnvironment resolves the environment cmd addresses, checks a
@@ -165,8 +178,8 @@ func AnnounceEnvironment(cmd *cobra.Command, logger *log.Logger) error {
 	if choice.source == "" {
 		return nil
 	}
-	if !config.EnvironmentNamePattern.MatchString(choice.name) {
-		return fmt.Errorf("environment %q from %s: %w", choice.name, choice.source, config.ErrEnvironmentName)
+	if !serverlessapi.EnvironmentNamePattern.MatchString(choice.name) {
+		return fmt.Errorf("environment %q from %s: %w", choice.name, choice.source, serverlessapi.ErrEnvironmentName)
 	}
 	logger.Info("Using environment", "environment", choice.name, "source", choice.source)
 	return nil

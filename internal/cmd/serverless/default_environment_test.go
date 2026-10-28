@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/config"
 )
 
@@ -42,10 +43,9 @@ func withDefaultEnvironment(t *testing.T, name string) {
 }
 
 // reportsOrganizationCases are the commands whose --env only narrows a report
-// of the whole organization.
+// of the whole organization. usage events is not one: its case names an app.
 var reportsOrganizationCases = map[string]struct{}{
-	"usage":        {},
-	"usage events": {},
+	"usage": {},
 }
 
 func TestCommandsWithoutTheFlagAddressTheDefaultEnvironment(t *testing.T) {
@@ -220,6 +220,18 @@ func TestDefaultEnvironmentIsAnnounced(t *testing.T) {
 	}
 }
 
+func TestOneAppsUsageEventsAnnounceTheDefaultEnvironment(t *testing.T) {
+	withDefaultEnvironment(t, testEnvironment)
+	logs, err := announce(t, testUsageCommand, testEventsCommand, testAppFlag, testAppID)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "Using environment environment=staging source=config"; !strings.Contains(logs, want) {
+		t.Fatalf("logs = %q, want %q", logs, want)
+	}
+}
+
 func TestAnInvalidDefaultEnvironmentNamesItsSource(t *testing.T) {
 	cases := []environmentDefaultCase{
 		{
@@ -239,7 +251,7 @@ func TestAnInvalidDefaultEnvironmentNamesItsSource(t *testing.T) {
 			t.Setenv(config.EnvironmentFromEnvVar, tc.envVar)
 			_, err := announce(t, testAppsGroup, appHealthListCommand)
 
-			if !errors.Is(err, config.ErrEnvironmentName) || !strings.Contains(err.Error(), tc.want) {
+			if !errors.Is(err, serverlessapi.ErrEnvironmentName) || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q and the name rule", err, tc.want)
 			}
 		})
@@ -277,6 +289,11 @@ func TestCommandsThatIgnoreTheDefaultNeitherCheckNorAnnounceIt(t *testing.T) {
 			configured: testInvalidEnvironment,
 			args:       []string{testUsageCommand},
 		},
+		{
+			name:       "the organization's usage events under the config",
+			configured: testInvalidEnvironment,
+			args:       []string{testUsageCommand, testEventsCommand},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -313,6 +330,11 @@ func TestPrintedCommandsNameTheEnvironmentUnderADefault(t *testing.T) {
 		{
 			name: "an organization report",
 			args: []string{testUsageCommand, testEventsCommand},
+		},
+		{
+			name:     "one app's usage events",
+			args:     []string{testUsageCommand, testEventsCommand, testAppFlag, testAppID},
+			wantHint: testStagingHint + " --app " + testAppID,
 		},
 	}
 	for _, tc := range cases {

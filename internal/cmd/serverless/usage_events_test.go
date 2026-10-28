@@ -143,7 +143,7 @@ func TestUsageEvents_RequestsLedgerPage(t *testing.T) {
 	var errOut bytes.Buffer
 	cmd := newUsageEventsCmd(log.New(io.Discard))
 	cmd.SetErr(&errOut)
-	cmd.SetArgs([]string{"--app", testAppID, "--from", testUsageDate, "--to", "2026-10-02", "--limit", "10"})
+	cmd.SetArgs([]string{testAppFlag, testAppID, "--from", testUsageDate, "--to", "2026-10-02", "--limit", "10"})
 	execErr := cmd.Execute()
 
 	_ = w.Close()
