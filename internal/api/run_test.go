@@ -471,6 +471,36 @@ func TestClientRun_UserProvidedTaskUUID_Invalid(t *testing.T) {
 	}
 }
 
+func TestClientRun_SyncRowsWithoutStatusAreReturnedDirectly(t *testing.T) {
+	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
+
+	row := rawJSON(t, map[string]any{
+		"imageURL": "https://example.com/img.png",
+	})
+	mock := &mockTransport{
+		responses: []mockResponse{
+			{data: []json.RawMessage{row}},
+			{data: []json.RawMessage{successItem(t, map[string]any{"imageURL": "https://example.com/polled.png"})}},
+		},
+	}
+
+	c := NewClient(mock, slog.Default())
+	c.schemaBaseURLOverride = srv.URL + "/"
+
+	results, err := c.Run(context.Background(), testModelAIR, nil, RunOptions{
+		PollInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 || string(results[0]) != string(row) {
+		t.Fatalf("expected the sync row, got %s", results)
+	}
+	if mock.callCount != 1 {
+		t.Errorf("expected 1 transport call (submit only), got %d", mock.callCount)
+	}
+}
+
 func TestClientRun_SyncHandedOffPollsForResult(t *testing.T) {
 	srv := inferenceSchemaServer(t, requestSchemaWithTaskType("imageInference", "sync"))
 
