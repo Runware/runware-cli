@@ -282,6 +282,11 @@ func TestEnvironmentsCreateSendsOnlyTheFlagsSet(t *testing.T) {
 			args: []string{testBudgetFlag, " 50 "},
 			want: `{"name":"staging","monthlyBudget":{"amount":"50.00","currency":"USD"}}`,
 		},
+		{
+			name: "budget with six decimals",
+			args: []string{testBudgetFlag, "1.123456"},
+			want: `{"name":"staging","monthlyBudget":{"amount":"1.123456","currency":"USD"}}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -439,6 +444,11 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		{
 			name:    "create budget with a trailing point",
 			args:    append(create, testBudgetFlag, "50."),
+			wantErr: errBudgetAmount.Error(),
+		},
+		{
+			name:    "create budget with seven decimals",
+			args:    append(create, testBudgetFlag, "1.1234567"),
 			wantErr: errBudgetAmount.Error(),
 		},
 		{

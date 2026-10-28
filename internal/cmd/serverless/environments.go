@@ -37,6 +37,9 @@ var moneyAmountPattern = regexp.MustCompile(`^\d+\.\d+$`)
 // sends with two.
 var wholeAmountPattern = regexp.MustCompile(`^\d+$`)
 
+// maxBudgetDecimals is the most decimal places the API takes in a budget.
+const maxBudgetDecimals = 6
+
 var (
 	errBudgetAmount           = errors.New("--budget takes a USD amount such as 50 or 49.99")
 	errNothingToUpdate        = errors.New("nothing to update; pass a setting flag or --clear <field>")
@@ -457,7 +460,8 @@ func budgetAmount(value string) (serverlessapi.MoneyAmount, error) {
 	if wholeAmountPattern.MatchString(amount) {
 		amount += ".00"
 	}
-	if !moneyAmountPattern.MatchString(amount) {
+	_, decimals, _ := strings.Cut(amount, ".")
+	if !moneyAmountPattern.MatchString(amount) || len(decimals) > maxBudgetDecimals {
 		return serverlessapi.MoneyAmount{}, errBudgetAmount
 	}
 	return serverlessapi.MoneyAmount{
