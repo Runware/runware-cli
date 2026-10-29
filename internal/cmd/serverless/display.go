@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -819,7 +820,7 @@ func formatAlertPercents(percents []int) string {
 	}
 	parts := make([]string, len(percents))
 	for i, p := range percents {
-		parts[i] = fmt.Sprintf("%d", p)
+		parts[i] = strconv.Itoa(p)
 	}
 	return strings.Join(parts, ", ") + "%"
 }

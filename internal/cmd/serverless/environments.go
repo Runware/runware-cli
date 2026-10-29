@@ -30,20 +30,14 @@ const (
 	clearFlag          = "clear"
 )
 
-// moneyAmountPattern is the API's MoneyAmount amount rule.
-var moneyAmountPattern = regexp.MustCompile(`^\d+\.\d+$`)
-
-// wholeAmountPattern is a budget written without decimals, which the CLI
-// sends with two.
-var wholeAmountPattern = regexp.MustCompile(`^\d+$`)
-
-// maxBudgetDecimals is the most decimal places the API takes in a budget.
-const maxBudgetDecimals = 6
+// budgetPattern is a budget the API takes: whole dollars, or up to six
+// decimal places. Whole dollars are sent with two.
+var budgetPattern = regexp.MustCompile(`^\d+(\.\d{1,6})?$`)
 
 var (
-	errBudgetAmount           = errors.New("--budget takes a USD amount such as 50 or 49.99")
+	errBudgetAmount           = errors.New("want a USD amount with at most 6 decimals, such as 50 or 49.99")
 	errNothingToUpdate        = errors.New("nothing to update; pass a setting flag or --clear <field>")
-	errNothingToSetOnDefaults = errors.New("nothing to set; pass --max-workers, --max-gpus or --clear <field>")
+	errNothingToSetOnDefaults = errors.New("nothing to set; pass --" + strings.Join(defaultsFields, ", --") + " or --clear <field>")
 )
 
 // updateClearFields are the fields environments update clears.
@@ -60,7 +54,7 @@ var defaultsFields = []string{
 	maxGPUsField,
 }
 
-// environmentSettingFlags are the setting flags of environments create and
+// environmentSettingFlags names the setting flags of environments create and
 // update.
 var environmentSettingFlags = []string{
 	maxWorkersField,
@@ -457,12 +451,11 @@ func clearedFields(flags *pflag.FlagSet, values, valid []string) (map[string]str
 // budgetAmount is the USD MoneyAmount a --budget value sends.
 func budgetAmount(value string) (serverlessapi.MoneyAmount, error) {
 	amount := strings.TrimSpace(value)
-	if wholeAmountPattern.MatchString(amount) {
-		amount += ".00"
+	if !budgetPattern.MatchString(amount) {
+		return serverlessapi.MoneyAmount{}, fmt.Errorf("invalid --budget %q (%w)", value, errBudgetAmount)
 	}
-	_, decimals, _ := strings.Cut(amount, ".")
-	if !moneyAmountPattern.MatchString(amount) || len(decimals) > maxBudgetDecimals {
-		return serverlessapi.MoneyAmount{}, errBudgetAmount
+	if !strings.Contains(amount, ".") {
+		amount += ".00"
 	}
 	return serverlessapi.MoneyAmount{
 		Amount:   amount,
@@ -545,9 +538,7 @@ func (s environmentSettings) updateBody(flags *pflag.FlagSet, clears []string) (
 	return body, nil
 }
 
-// applyTo is current with the caps the flags set or clear changed; every
-// other field, unauthenticatedAccess included, is sent back as it is because
-// the API replaces the defaults as a whole.
+// applyTo is current with the caps the flags set or clear changed.
 func (s defaultsSettings) applyTo(current serverlessapi.EnvironmentDefaults, flags *pflag.FlagSet, cleared map[string]struct{}) serverlessapi.EnvironmentDefaults {
 	body := current
 	if flags.Changed(maxWorkersField) {
@@ -567,7 +558,7 @@ func (s defaultsSettings) applyTo(current serverlessapi.EnvironmentDefaults, fla
 
 // withEnvironmentContentsHint follows the API's refusal to delete an
 // environment that still holds apps or secrets with the commands that list
-// them. production is refused for being production, so it gets no hint.
+// them.
 func withEnvironmentContentsHint(err error, name string) error {
 	re, ok := errors.AsType[*transport.RunwareError](err)
 	if !ok || re.StatusCode != http.StatusConflict || isDefaultEnvironment(name) {

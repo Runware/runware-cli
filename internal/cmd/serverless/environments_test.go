@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -110,6 +112,17 @@ func environmentAPI(t *testing.T, rec *bodyRecorder, responses map[string]stubRe
 }
 
 // stubResponse is one canned API answer.
+// tableRowHas reports whether the row of a field/value table that names field
+// shows value.
+func tableRowHas(stdout, field, value string) bool {
+	for line := range strings.Lines(stdout) {
+		if strings.Contains(line, field) && slices.Contains(strings.Fields(line), value) {
+			return true
+		}
+	}
+	return false
+}
+
 type stubResponse struct {
 	status int
 	body   string
@@ -306,6 +319,9 @@ func TestEnvironmentsCreateSendsOnlyTheFlagsSet(t *testing.T) {
 			if got, want := rec.body(t, "POST "+testEnvironmentsPath), decodeJSONObject(t, tc.want); !reflect.DeepEqual(got, want) {
 				t.Fatalf("body = %v\nwant %v", got, want)
 			}
+			if !tableRowHas(run.stdout, colMaxWorkers, "2") {
+				t.Fatalf("output does not show the created environment's %s 2:\n%s", colMaxWorkers, run.stdout)
+			}
 		})
 	}
 }
@@ -370,6 +386,9 @@ func TestEnvironmentsUpdateSendsAbsentNullOrValue(t *testing.T) {
 			}
 			if got, want := rec.body(t, "PATCH "+testStagingPath), decodeJSONObject(t, tc.want); !reflect.DeepEqual(got, want) {
 				t.Fatalf("body = %v\nwant %v", got, want)
+			}
+			if !tableRowHas(run.stdout, colMaxWorkers, "2") {
+				t.Fatalf("output does not show the updated environment's %s 2:\n%s", colMaxWorkers, run.stdout)
 			}
 		})
 	}
@@ -449,7 +468,7 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		{
 			name:    "create budget with seven decimals",
 			args:    append(create, testBudgetFlag, "1.1234567"),
-			wantErr: errBudgetAmount.Error(),
+			wantErr: `invalid --budget "1.1234567" (` + errBudgetAmount.Error() + ")",
 		},
 		{
 			name:    "create takes no --clear",
@@ -491,14 +510,22 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 	}
 }
 
-func TestBudgetAppliesTheSpecsAmountRule(t *testing.T) {
-	want := loadOpenAPISpec(t).Components.Schemas["MoneyAmount"].Properties["amount"].Pattern
-
-	if want == "" {
+func TestBudgetSendsAnAmountTheSpecAccepts(t *testing.T) {
+	pattern := loadOpenAPISpec(t).Components.Schemas["MoneyAmount"].Properties["amount"].Pattern
+	if pattern == "" {
 		t.Fatal("the spec has no MoneyAmount amount pattern")
 	}
-	if got := moneyAmountPattern.String(); got != want {
-		t.Fatalf("moneyAmountPattern = %q, spec says %q", got, want)
+	spec := regexp.MustCompile(pattern)
+
+	for _, value := range []string{"0", "50", "49.9", "49.99", "1.123456"} {
+		amount, err := budgetAmount(value)
+
+		if err != nil {
+			t.Fatalf("budgetAmount(%q): %v", value, err)
+		}
+		if !spec.MatchString(amount.Amount) {
+			t.Errorf("budgetAmount(%q) = %q, which the spec pattern %s refuses", value, amount.Amount, pattern)
+		}
 	}
 }
 
@@ -546,7 +573,7 @@ func TestEnvironmentDefaultsSetSendsBackWhatItDoesNotChange(t *testing.T) {
 				},
 				"PUT " + testDefaultsPath: {
 					status: http.StatusOK,
-					body:   tc.want,
+					body:   `{"maxConcurrentWorkers":42}`,
 				},
 			})
 
@@ -557,6 +584,9 @@ func TestEnvironmentDefaultsSetSendsBackWhatItDoesNotChange(t *testing.T) {
 			}
 			if got, want := rec.body(t, "PUT "+testDefaultsPath), decodeJSONObject(t, tc.want); !reflect.DeepEqual(got, want) {
 				t.Fatalf("body = %v\nwant %v", got, want)
+			}
+			if !tableRowHas(run.stdout, colMaxWorkers, "42") {
+				t.Fatalf("output does not show the saved defaults' %s 42:\n%s", colMaxWorkers, run.stdout)
 			}
 		})
 	}
@@ -572,13 +602,11 @@ func TestEnvironmentDefaultsSetWritesNothingWhenTheReadFails(t *testing.T) {
 
 	run := runServerlessAgainst(t, api, testEnvironmentsGroup, testDefaultsGroup, testSetCommand, testMaxWorkersFlag, "1")
 
-	if run.err == nil {
-		t.Fatal("want the read error")
+	if re, ok := errors.AsType[*transport.RunwareError](run.err); !ok || re.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("err = %v, want the 503 from the read", run.err)
 	}
-	for _, r := range run.requests {
-		if r.method != http.MethodGet {
-			t.Fatalf("sent %s after a failed read", r)
-		}
+	if len(run.requests) != 1 || run.requests[0].method != http.MethodGet {
+		t.Fatalf("requests = %v, want the one read", run.requests)
 	}
 }
 
@@ -595,14 +623,8 @@ func TestEnvironmentDefaultsShowReadsTheDefaults(t *testing.T) {
 	if run.err != nil {
 		t.Fatal(run.err)
 	}
-	rows := map[string]string{}
-	for line := range strings.Lines(run.stdout) {
-		if cells := strings.Split(line, "│"); len(cells) == 4 {
-			rows[strings.TrimSpace(cells[1])] = strings.TrimSpace(cells[2])
-		}
-	}
-	if rows[colMaxWorkers] != "7" || rows[colMaxGPUs] != noValue {
-		t.Fatalf("%s = %q, %s = %q, want 7 and %s:\n%s", colMaxWorkers, rows[colMaxWorkers], colMaxGPUs, rows[colMaxGPUs], noValue, run.stdout)
+	if !tableRowHas(run.stdout, colMaxWorkers, "7") || !tableRowHas(run.stdout, colMaxGPUs, noValue) {
+		t.Fatalf("want %s 7 and %s %s:\n%s", colMaxWorkers, colMaxGPUs, noValue, run.stdout)
 	}
 }
 
@@ -716,23 +738,51 @@ func completions(t *testing.T, handler http.HandlerFunc, args ...string) ([]stri
 	return nil, ""
 }
 
+// testEnvironmentNames are the names the completion stub lists.
+const testEnvironmentNames = "production,staging"
+
+// nameArgCompletionCase is a command line completing an environment name
+// and the names offered.
+type nameArgCompletionCase struct {
+	name string
+	args []string
+	want string
+}
+
 func TestEnvironmentNameArgumentCompletesFromTheList(t *testing.T) {
 	list := func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"data":[{"name":"production"},{"name":"staging"}]}`)
 	}
 	noFiles := fmt.Sprintf(":%d", cobra.ShellCompDirectiveNoFileComp)
-	cases := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{name: "show completes the name", args: []string{testShowCommand, ""}, want: "production,staging"},
-		{name: "show offers nothing for a second name", args: []string{testShowCommand, testEnvironment, ""}},
-		{name: "update completes the name", args: []string{testUpdateCommand, ""}, want: "production,staging"},
-		{name: "update offers nothing for a second name", args: []string{testUpdateCommand, testEnvironment, ""}},
-		{name: "delete completes the name", args: []string{testDeleteCommand, ""}, want: "production,staging"},
-		{name: "delete offers nothing for a second name", args: []string{testDeleteCommand, testEnvironment, ""}},
+	cases := []nameArgCompletionCase{
+		{
+			name: "show completes the name",
+			args: []string{testShowCommand, ""},
+			want: testEnvironmentNames,
+		},
+		{
+			name: "show offers nothing for a second name",
+			args: []string{testShowCommand, testEnvironment, ""},
+		},
+		{
+			name: "update completes the name",
+			args: []string{testUpdateCommand, ""},
+			want: testEnvironmentNames,
+		},
+		{
+			name: "update offers nothing for a second name",
+			args: []string{testUpdateCommand, testEnvironment, ""},
+		},
+		{
+			name: "delete completes the name",
+			args: []string{testDeleteCommand, ""},
+			want: testEnvironmentNames,
+		},
+		{
+			name: "delete offers nothing for a second name",
+			args: []string{testDeleteCommand, testEnvironment, ""},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -769,6 +819,7 @@ func TestClearCompletesTheFieldsTheCommandTakes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			names, _ := completions(t, nil, tc.args...)
+
 			if got := strings.Join(names, ","); got != tc.want {
 				t.Fatalf("completions = %q, want %q", got, tc.want)
 			}
@@ -778,7 +829,10 @@ func TestClearCompletesTheFieldsTheCommandTakes(t *testing.T) {
 
 func TestEnvironmentsDeleteHintLeavesOtherErrorsAlone(t *testing.T) {
 	err := errors.New("connection refused")
-	if got := withEnvironmentContentsHint(err, testEnvironment); !errors.Is(got, err) || got.Error() != err.Error() {
+
+	got := withEnvironmentContentsHint(err, testEnvironment)
+
+	if !errors.Is(got, err) || got.Error() != err.Error() {
 		t.Fatalf("withEnvironmentContentsHint(%v) = %v, want it unchanged", err, got)
 	}
 }
