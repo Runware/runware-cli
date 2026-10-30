@@ -1,7 +1,9 @@
 package serverless
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -19,6 +21,17 @@ type EnvironmentUpdate = gen.EnvironmentUpdate
 // EnvironmentDefaults are the organization defaults an environment inherits
 // for each cap and the access setting it leaves empty.
 type EnvironmentDefaults = gen.EnvironmentDefaults
+
+// EnvironmentDefaultsFields are the organization defaults keyed by JSON field.
+// Unlike EnvironmentDefaults they keep a field this client does not know, so
+// writing them back with PutEnvironmentDefaults loses nothing.
+type EnvironmentDefaultsFields map[string]json.RawMessage
+
+// The EnvironmentDefaultsFields keys of the default caps.
+const (
+	EnvironmentDefaultsMaxWorkers = "maxConcurrentWorkers"
+	EnvironmentDefaultsMaxGPUs    = "maxConcurrentGpus"
+)
 
 // CurrencyUSD is the only currency the platform bills in.
 const CurrencyUSD = gen.USD
@@ -126,6 +139,28 @@ func (c *Client) DeleteEnvironment(ctx context.Context, name EnvironmentName) er
 
 // GetEnvironmentDefaults returns the organization defaults.
 func (c *Client) GetEnvironmentDefaults(ctx context.Context) (*EnvironmentDefaults, error) {
+	resp, err := c.getEnvironmentDefaults(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return resp.JSON200, nil
+}
+
+// GetEnvironmentDefaultsFields returns the organization defaults field by
+// field, to change and write back with PutEnvironmentDefaults.
+func (c *Client) GetEnvironmentDefaultsFields(ctx context.Context) (EnvironmentDefaultsFields, error) {
+	resp, err := c.getEnvironmentDefaults(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var fields EnvironmentDefaultsFields
+	if err := json.Unmarshal(resp.Body, &fields); err != nil {
+		return nil, fmt.Errorf("get environment defaults: %w", err)
+	}
+	return fields, nil
+}
+
+func (c *Client) getEnvironmentDefaults(ctx context.Context) (*gen.GetEnvironmentDefaultsResponse, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
@@ -142,7 +177,7 @@ func (c *Client) GetEnvironmentDefaults(ctx context.Context) (*EnvironmentDefaul
 		if resp.JSON200 == nil {
 			return nil, fmt.Errorf("get environment defaults: empty 200 response")
 		}
-		return resp.JSON200, nil
+		return resp, nil
 	case http.StatusUnauthorized:
 		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
 	default:
@@ -152,12 +187,16 @@ func (c *Client) GetEnvironmentDefaults(ctx context.Context) (*EnvironmentDefaul
 
 // PutEnvironmentDefaults replaces the organization defaults as a whole: a cap
 // body leaves out means no cap.
-func (c *Client) PutEnvironmentDefaults(ctx context.Context, body EnvironmentDefaults) (*EnvironmentDefaults, error) {
+func (c *Client) PutEnvironmentDefaults(ctx context.Context, body EnvironmentDefaultsFields) (*EnvironmentDefaults, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.PutEnvironmentDefaultsWithResponse(ctx, body)
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("put environment defaults: %w", err)
+	}
+	resp, err := c.inner.PutEnvironmentDefaultsWithBodyWithResponse(ctx, "application/json", bytes.NewReader(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("put environment defaults: %w", err)
 	}

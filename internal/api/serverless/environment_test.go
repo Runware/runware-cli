@@ -365,9 +365,16 @@ func orgScopedCalls() []environmentCall {
 			},
 		},
 		{
+			operation: "GetEnvironmentDefaultsFields",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.GetEnvironmentDefaultsFields(ctx)
+				return err
+			},
+		},
+		{
 			operation: "PutEnvironmentDefaults",
 			call: func(ctx context.Context, c *Client) error {
-				_, err := c.PutEnvironmentDefaults(ctx, EnvironmentDefaults{})
+				_, err := c.PutEnvironmentDefaults(ctx, EnvironmentDefaultsFields{})
 				return err
 			},
 		},

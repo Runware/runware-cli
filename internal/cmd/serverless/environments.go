@@ -1,11 +1,14 @@
 package serverless
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/log"
@@ -370,12 +373,12 @@ the CLI or the console: a change made between the read and the write is lost.`,
 			spin.Start()
 
 			client := newServerlessClient(cmd, logger)
-			current, err := client.GetEnvironmentDefaults(cmd.Context())
+			current, err := client.GetEnvironmentDefaultsFields(cmd.Context())
 			if err != nil {
 				spin.Stop()
 				return err
 			}
-			body := settings.applyTo(*current, cmd.Flags(), cleared)
+			body := settings.applyTo(current, cmd.Flags(), cleared)
 			saved, err := client.PutEnvironmentDefaults(cmd.Context(), body)
 			spin.Stop()
 			if err != nil {
@@ -539,21 +542,29 @@ func (s environmentSettings) updateBody(flags *pflag.FlagSet, clears []string) (
 }
 
 // applyTo is current with the caps the flags set or clear changed.
-func (s defaultsSettings) applyTo(current serverlessapi.EnvironmentDefaults, flags *pflag.FlagSet, cleared map[string]struct{}) serverlessapi.EnvironmentDefaults {
-	body := current
+func (s defaultsSettings) applyTo(current serverlessapi.EnvironmentDefaultsFields, flags *pflag.FlagSet, cleared map[string]struct{}) serverlessapi.EnvironmentDefaultsFields {
+	body := maps.Clone(current)
+	if body == nil {
+		body = serverlessapi.EnvironmentDefaultsFields{}
+	}
 	if flags.Changed(maxWorkersField) {
-		body.MaxConcurrentWorkers = &s.maxWorkers
+		body[serverlessapi.EnvironmentDefaultsMaxWorkers] = jsonInt(s.maxWorkers)
 	}
 	if flags.Changed(maxGPUsField) {
-		body.MaxConcurrentGpus = &s.maxGPUs
+		body[serverlessapi.EnvironmentDefaultsMaxGPUs] = jsonInt(s.maxGPUs)
 	}
 	if _, ok := cleared[maxWorkersField]; ok {
-		body.MaxConcurrentWorkers = nil
+		delete(body, serverlessapi.EnvironmentDefaultsMaxWorkers)
 	}
 	if _, ok := cleared[maxGPUsField]; ok {
-		body.MaxConcurrentGpus = nil
+		delete(body, serverlessapi.EnvironmentDefaultsMaxGPUs)
 	}
 	return body
+}
+
+// jsonInt is n as a JSON number.
+func jsonInt(n int32) json.RawMessage {
+	return json.RawMessage(strconv.FormatInt(int64(n), 10))
 }
 
 // withEnvironmentContentsHint follows the API's refusal to delete an

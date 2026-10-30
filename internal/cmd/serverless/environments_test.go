@@ -562,6 +562,12 @@ func TestEnvironmentDefaultsSetSendsBackWhatItDoesNotChange(t *testing.T) {
 			args:    []string{testMaxWorkersFlag, "0"},
 			want:    `{"maxConcurrentWorkers":0,"unauthenticatedAccess":"allow"}`,
 		},
+		{
+			name:    "keep a default this CLI does not know",
+			current: `{"maxConcurrentWorkers":5,"unauthenticatedAccess":"deny","monthlyBudget":"100.00"}`,
+			args:    []string{testMaxWorkersFlag, "6"},
+			want:    `{"maxConcurrentWorkers":6,"unauthenticatedAccess":"deny","monthlyBudget":"100.00"}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
