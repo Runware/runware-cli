@@ -529,6 +529,19 @@ func TestBudgetSendsAnAmountTheSpecAccepts(t *testing.T) {
 	}
 }
 
+func TestEnvironmentDefaultsKeysAreTheSpecsProperties(t *testing.T) {
+	properties := loadOpenAPISpec(t).Components.Schemas["EnvironmentDefaults"].Properties
+	if len(properties) == 0 {
+		t.Fatal("the spec has no EnvironmentDefaults properties")
+	}
+
+	for _, key := range []string{serverlessapi.EnvironmentDefaultsMaxWorkers, serverlessapi.EnvironmentDefaultsMaxGPUs} {
+		if _, ok := properties[key]; !ok {
+			t.Errorf("EnvironmentDefaults in the spec has no property %q", key)
+		}
+	}
+}
+
 type defaultsSetCase struct {
 	name    string
 	current string
@@ -548,13 +561,13 @@ func TestEnvironmentDefaultsSetSendsBackWhatItDoesNotChange(t *testing.T) {
 			name:    "clear one cap keeps the other and the access setting",
 			current: `{"maxConcurrentWorkers":5,"maxConcurrentGpus":2,"unauthenticatedAccess":"allow"}`,
 			args:    []string{testClearFlag, maxWorkersField},
-			want:    `{"maxConcurrentGpus":2,"unauthenticatedAccess":"allow"}`,
+			want:    `{"maxConcurrentWorkers":null,"maxConcurrentGpus":2,"unauthenticatedAccess":"allow"}`,
 		},
 		{
 			name:    "clear the other cap",
 			current: `{"maxConcurrentWorkers":5,"maxConcurrentGpus":2,"unauthenticatedAccess":"allow"}`,
 			args:    []string{testClearFlag, maxGPUsField},
-			want:    `{"maxConcurrentWorkers":5,"unauthenticatedAccess":"allow"}`,
+			want:    `{"maxConcurrentWorkers":5,"maxConcurrentGpus":null,"unauthenticatedAccess":"allow"}`,
 		},
 		{
 			name:    "set a cap where there was none",

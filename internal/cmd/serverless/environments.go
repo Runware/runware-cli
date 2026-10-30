@@ -554,13 +554,16 @@ func (s defaultsSettings) applyTo(current serverlessapi.EnvironmentDefaultsField
 		body[serverlessapi.EnvironmentDefaultsMaxGPUs] = jsonInt(s.maxGPUs)
 	}
 	if _, ok := cleared[maxWorkersField]; ok {
-		delete(body, serverlessapi.EnvironmentDefaultsMaxWorkers)
+		body[serverlessapi.EnvironmentDefaultsMaxWorkers] = jsonNull
 	}
 	if _, ok := cleared[maxGPUsField]; ok {
-		delete(body, serverlessapi.EnvironmentDefaultsMaxGPUs)
+		body[serverlessapi.EnvironmentDefaultsMaxGPUs] = jsonNull
 	}
 	return body
 }
+
+// jsonNull clears a default cap, as updateBody clears an environment's.
+var jsonNull = json.RawMessage("null")
 
 // jsonInt is n as a JSON number.
 func jsonInt(n int32) json.RawMessage {
