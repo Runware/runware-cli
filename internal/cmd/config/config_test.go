@@ -394,7 +394,7 @@ func TestSetWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
 		},
 		{
 			name:   "while RUNWARE_ENV is production",
-			envVar: config.ProductionEnvironment,
+			envVar: serverlessapi.ProductionEnvironment,
 			args:   []string{keyEnvironment, testStaging},
 			want:   true,
 		},
@@ -434,7 +434,7 @@ func TestResetWarnsWhenRunwareEnvOverridesTheEnvironment(t *testing.T) {
 		},
 		{
 			name:   "while RUNWARE_ENV is production",
-			envVar: config.ProductionEnvironment,
+			envVar: serverlessapi.ProductionEnvironment,
 		},
 	}
 	for _, tc := range cases {

@@ -39,6 +39,10 @@ func NewRootCmd(logger *log.Logger) *cobra.Command {
 	_ = config.Init()
 	cfg := config.Get()
 
+	// Run every PersistentPreRunE from the root down, so a command group such
+	// as serverless can add its own after this one initialises the config.
+	cobra.EnableTraverseRunHooks = true
+
 	root := &cobra.Command{
 		Use:   "runware",
 		Short: "CLI tool for the Runware API",
@@ -60,10 +64,7 @@ Use of Runware services is subject to our Terms of Service (https://runware.ai/t
 					return fmt.Errorf("invalid transport %q: must be one of: %s", t, strings.Join(transport.ValidTransports(), ", "))
 				}
 			}
-			if err := config.Init(); err != nil {
-				return err
-			}
-			return serverless.AnnounceEnvironment(cmd, logger)
+			return config.Init()
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,

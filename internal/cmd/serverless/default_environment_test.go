@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -171,7 +172,7 @@ func TestCommandsWithoutAnEnvironmentIgnoreTheDefault(t *testing.T) {
 	}
 }
 
-// announce runs AnnounceEnvironment for the serverless command args name,
+// announce runs announceEnvironment for the serverless command args name,
 // with its flags parsed, and returns what it logged.
 func announce(t *testing.T, args ...string) (string, error) {
 	t.Helper()
@@ -183,7 +184,7 @@ func announce(t *testing.T, args ...string) (string, error) {
 		t.Fatal(err)
 	}
 	var logs bytes.Buffer
-	err = AnnounceEnvironment(cmd, log.New(&logs))
+	err = announceEnvironment(cmd, log.New(&logs))
 	return logs.String(), err
 }
 
@@ -379,6 +380,30 @@ func TestDeletePromptNamesTheDefaultEnvironment(t *testing.T) {
 	want := "Delete application " + testAppID + " in " + testEnvironment + "? [y/N]"
 	if !strings.Contains(run.cobraOutput, want) {
 		t.Fatalf("prompt = %q, want %q", run.cobraOutput, want)
+	}
+}
+
+func TestASecondExecuteResolvesTheEnvironmentAgain(t *testing.T) {
+	rec := &requestRecorder{}
+	srv := httptest.NewServer(rec)
+	defer srv.Close()
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+	cmd := NewCmd(log.New(io.Discard))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{testAppsGroup, testDeleteCommand, testAppID, testYesFlag})
+
+	t.Setenv(config.EnvironmentFromEnvVar, testEnvironment)
+	_ = cmd.Execute()
+	t.Setenv(config.EnvironmentFromEnvVar, testDevelopmentEnvironment)
+	_ = cmd.Execute()
+
+	if len(rec.requests) != 2 {
+		t.Fatalf("requests = %v, want one per Execute", rec.requests)
+	}
+	if got := rec.requests[1].query.Get("environment"); got != testDevelopmentEnvironment {
+		t.Fatalf("second Execute addressed %q, want %q", got, testDevelopmentEnvironment)
 	}
 }
 

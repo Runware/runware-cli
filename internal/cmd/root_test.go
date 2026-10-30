@@ -15,6 +15,8 @@ import (
 	"github.com/runware/runware-cli/internal/config"
 )
 
+const testServerlessGroup = "serverless"
+
 func TestRootLongMatchesReadme(t *testing.T) {
 	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
@@ -48,7 +50,7 @@ func TestServerlessInitHelpNamesInit(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{
-		"serverless",
+		testServerlessGroup,
 		"init",
 		"--help",
 	})
@@ -77,7 +79,7 @@ func TestRootRefusesAnInvalidDefaultEnvironmentBeforeAnyRequest(t *testing.T) {
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{
-		"serverless",
+		testServerlessGroup,
 		"apps",
 		"list",
 	})
@@ -88,6 +90,27 @@ func TestRootRefusesAnInvalidDefaultEnvironmentBeforeAnyRequest(t *testing.T) {
 	}
 	if n := requests.Load(); n != 0 {
 		t.Fatalf("sent %d requests before refusing the environment", n)
+	}
+}
+
+// TestRootChecksAServerlessCommandsFlags pins that the serverless group's own
+// hook runs after the root's, not instead of it.
+func TestRootChecksAServerlessCommandsFlags(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cmd := NewRootCmd(log.New(io.Discard))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{
+		testServerlessGroup,
+		"apps",
+		"list",
+		"--format",
+		"xml",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `invalid format "xml"`) {
+		t.Fatalf("err = %v, want the format refused", err)
 	}
 }
 
@@ -107,7 +130,7 @@ func TestRootAnnouncesTheDefaultEnvironment(t *testing.T) {
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{
-		"serverless",
+		testServerlessGroup,
 		"apps",
 		"list",
 	})

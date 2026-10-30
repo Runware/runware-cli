@@ -222,6 +222,10 @@ var EnvironmentNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
 // ErrEnvironmentName rejects a name EnvironmentNamePattern does not match.
 var ErrEnvironmentName = errors.New("environment name must be 1-63 lowercase letters, digits, hyphens, underscores or periods, starting with a letter or digit")
 
+// ProductionEnvironment is the environment the API addresses when a request
+// names none.
+const ProductionEnvironment = "production"
+
 // Environment is a deployment context that holds one copy of each app deployed to it.
 type Environment = gen.Environment
 

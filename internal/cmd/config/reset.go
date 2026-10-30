@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +36,7 @@ func newResetCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			logger.Info("✓ Configuration reset to defaults")
-			warnEnvironmentOverride(logger, config.ProductionEnvironment)
+			warnEnvironmentOverride(logger, serverlessapi.ProductionEnvironment)
 			return nil
 		},
 	}

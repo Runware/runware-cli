@@ -109,13 +109,21 @@ type environmentChoice struct {
 
 type environmentChoiceKey struct{}
 
-// environmentFor returns the environment cmd addresses. The first call
-// resolves it and stores it on cmd's context; later calls read only that.
+// environmentFor returns the environment cmd addresses: the one
+// announceEnvironment stored on cmd's context, else a new resolution.
 func environmentFor(cmd *cobra.Command) environmentChoice {
-	ctx := cmp.Or(cmd.Context(), context.Background())
-	if choice, ok := ctx.Value(environmentChoiceKey{}).(environmentChoice); ok {
-		return choice
+	if cmd.Context() != nil {
+		if choice, ok := cmd.Context().Value(environmentChoiceKey{}).(environmentChoice); ok {
+			return choice
+		}
 	}
+	return storeEnvironment(cmd)
+}
+
+// storeEnvironment resolves the environment cmd addresses and stores it on
+// cmd's context, replacing any an earlier Execute of the same tree left there.
+func storeEnvironment(cmd *cobra.Command) environmentChoice {
+	ctx := cmp.Or(cmd.Context(), context.Background())
 	choice := resolveEnvironment(cmd)
 	cmd.SetContext(context.WithValue(ctx, environmentChoiceKey{}, choice))
 	return choice
@@ -171,11 +179,12 @@ func namesApp(cmd *cobra.Command, appFlags []string) bool {
 	return false
 }
 
-// AnnounceEnvironment resolves the environment cmd addresses, checks a
+// announceEnvironment resolves the environment cmd addresses, checks a
 // default one and logs it, so a default set elsewhere is never silent.
-// The root command runs it before every command, ahead of any spinner.
-func AnnounceEnvironment(cmd *cobra.Command, logger *log.Logger) error {
-	choice := environmentFor(cmd)
+// The serverless command runs it before each of its commands, ahead of any
+// spinner.
+func announceEnvironment(cmd *cobra.Command, logger *log.Logger) error {
+	choice := storeEnvironment(cmd)
 	if choice.source == "" {
 		return nil
 	}
@@ -196,7 +205,7 @@ func newServerlessClient(cmd *cobra.Command, logger *log.Logger) *serverlessapi.
 // deleteSubject is what a delete prompt names: the subject and the environment
 // the command addresses.
 func deleteSubject(cmd *cobra.Command, subject string) string {
-	return subject + " in " + cmp.Or(commandEnvironment(cmd), config.ProductionEnvironment)
+	return subject + " in " + cmp.Or(commandEnvironment(cmd), serverlessapi.ProductionEnvironment)
 }
 
 // environmentArgs is the --env part of a printed command: nothing for a
@@ -211,7 +220,7 @@ func environmentArgs(environment, defaultEnvironment string) []string {
 
 // isProductionEnvironment reports whether environment names production.
 func isProductionEnvironment(environment string) bool {
-	return environment == "" || environment == config.ProductionEnvironment
+	return environment == "" || environment == serverlessapi.ProductionEnvironment
 }
 
 // serverlessCommand is the runware serverless command line that addresses

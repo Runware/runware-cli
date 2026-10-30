@@ -3,6 +3,7 @@ package config
 import (
 	"cmp"
 
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -52,7 +53,7 @@ func newShowCmd() *cobra.Command {
 				OutputDir:   cfg.Defaults.OutputDir,
 				Format:      cfg.Defaults.Format,
 				Transport:   cfg.Defaults.Transport,
-				Environment: cmp.Or(cfg.Defaults.Environment, config.ProductionEnvironment),
+				Environment: cmp.Or(cfg.Defaults.Environment, serverlessapi.ProductionEnvironment),
 			})
 		},
 	}
