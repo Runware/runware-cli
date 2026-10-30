@@ -96,7 +96,16 @@ func TestRootRefusesAnInvalidDefaultEnvironmentBeforeAnyRequest(t *testing.T) {
 // TestRootChecksAServerlessCommandsFlags pins that the serverless group's own
 // hook runs after the root's, not instead of it.
 func TestRootChecksAServerlessCommandsFlags(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+	t.Setenv(config.EnvironmentFromEnvVar, "")
 	cmd := NewRootCmd(log.New(io.Discard))
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
@@ -111,6 +120,9 @@ func TestRootChecksAServerlessCommandsFlags(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), `invalid format "xml"`) {
 		t.Fatalf("err = %v, want the format refused", err)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Fatalf("sent %d requests before refusing the format", n)
 	}
 }
 
