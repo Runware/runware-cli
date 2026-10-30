@@ -13,6 +13,9 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		Use:   "serverless",
 		Short: "Manage Runware serverless applications",
 		Long:  "Deploy, monitor, and manage Runware serverless applications on the platform",
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			return announceEnvironment(cmd, logger)
+		},
 	}
 	cmd.AddCommand(
 		newInitCmd(),

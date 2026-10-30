@@ -91,9 +91,9 @@ func newAppsDeleteCmd(logger *log.Logger) *cobra.Command {
 		Short: "Delete a serverless application",
 		Long: `Soft-delete a serverless application.
 
-Only the copy in the environment --env selects is deleted, production unless
---env names another. Copies of the same app id in other environments keep
-running.
+Only the copy in the environment --env selects is deleted, else the copy in
+the default environment (RUNWARE_ENV, else the config's) or production. Copies
+of the same app id in other environments keep running.
 
 The server accepts the delete and returns immediately with status deleting.
 Router removal and worker drain are asynchronous; this command does not wait
@@ -154,7 +154,7 @@ func runLifecycle(cmd *cobra.Command, logger *log.Logger, id, verb string, actio
 	if !wait.Wait {
 		return nil
 	}
-	return appFailedErr(cmd.Context(), client, app)
+	return appFailedErr(cmd.Context(), client, app, defaultEnvironment(cmd))
 }
 
 func addDeleteConfirmFlags(cmd *cobra.Command, yes, force *bool) {

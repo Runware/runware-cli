@@ -6,9 +6,9 @@ Delete a serverless application
 
 Soft-delete a serverless application.
 
-Only the copy in the environment --env selects is deleted, production unless
---env names another. Copies of the same app id in other environments keep
-running.
+Only the copy in the environment --env selects is deleted, else the copy in
+the default environment (RUNWARE_ENV, else the config's) or production. Copies
+of the same app id in other environments keep running.
 
 The server accepts the delete and returns immediately with status deleting.
 Router removal and worker drain are asynchronous; this command does not wait
@@ -42,7 +42,7 @@ runware serverless apps delete <appId> [flags]
 
 ```
       --debug              Show full debug output
-  -e, --env name           Environment the app runs in (default production)
+  -e, --env name           Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

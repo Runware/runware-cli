@@ -8,7 +8,8 @@ Manage encrypted secrets and attach them to serverless applications.
 
 A secret belongs to one environment, and an application attaches only secrets
 of its own environment. Every command here takes --env to select that
-environment, production unless --env names another.
+environment, else the default environment (RUNWARE_ENV, else the config's) or
+production.
 
 ```
 runware serverless secrets [flags]
@@ -17,7 +18,7 @@ runware serverless secrets [flags]
 ### Options
 
 ```
-  -e, --env name   Environment the secret belongs to (default production)
+  -e, --env name   Environment the secret belongs to (default RUNWARE_ENV, else the config's environment, else production)
   -h, --help       help for secrets
 ```
 

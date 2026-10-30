@@ -26,6 +26,10 @@ type Defaults struct {
 	OutputDir string `yaml:"output_dir"`
 	Format    string `yaml:"format"`
 	Transport string `yaml:"transport"`
+	// Environment is the serverless environment an app or secret command
+	// addresses when neither --env nor RUNWARE_ENV names one. Empty means
+	// production.
+	Environment string `yaml:"environment,omitempty"`
 }
 
 // Preset is a named set of inference parameters for use with the run command.
@@ -52,10 +56,30 @@ var configDir string
 // "defaults" namespace and can be set via `config set`.
 func ValidDefaultsKeys() map[string]struct{} {
 	return map[string]struct{}{
-		"output_dir": {},
-		"format":     {},
-		"transport":  {},
+		"output_dir":  {},
+		"format":      {},
+		"transport":   {},
+		"environment": {},
 	}
+}
+
+// Where GetEnvironment found the default environment.
+const (
+	EnvironmentFromEnvVar = "RUNWARE_ENV"
+	EnvironmentFromConfig = "config"
+)
+
+// GetEnvironment returns the serverless environment a command addresses when
+// --env is omitted, and where it was found: RUNWARE_ENV, else the config
+// file's defaults.environment. An empty name means production.
+func GetEnvironment() (name, source string) {
+	if v := os.Getenv(EnvironmentFromEnvVar); v != "" {
+		return v, EnvironmentFromEnvVar
+	}
+	if v := Get().Defaults.Environment; v != "" {
+		return v, EnvironmentFromConfig
+	}
+	return "", ""
 }
 
 // Init locates the config directory (~/.runware) and validates that the

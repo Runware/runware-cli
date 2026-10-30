@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
@@ -22,7 +23,11 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
   runware config set format json
 
   # set the default transport (ws, http)
-  runware config set transport http`,
+  runware config set transport http
+
+  # address the staging environment in serverless commands without --env
+  # (RUNWARE_ENV overrides it; set production to go back)
+  runware config set environment staging`,
 		Args: cobra.ExactArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			if len(args) == 0 {
@@ -30,6 +35,7 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 					keyOutputDir,
 					keyFormat,
 					keyTransport,
+					keyEnvironment,
 				}, cobra.ShellCompDirectiveNoFileComp
 			}
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -63,6 +69,9 @@ func newSetCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			logger.Info("✓ Config updated", "key", key, "value", value)
+			if key == keyEnvironment {
+				warnEnvironmentOverride(logger, value)
+			}
 			return nil
 		},
 	}
@@ -82,6 +91,18 @@ func validateConfigValue(key, value string) error {
 		if !transport.ValidTransport(value) {
 			return fmt.Errorf("invalid transport %q: must be one of: %s", value, strings.Join(transport.ValidTransports(), ", "))
 		}
+	case keyEnvironment:
+		if !serverlessapi.EnvironmentNamePattern.MatchString(value) {
+			return fmt.Errorf("invalid environment %q: %w", value, serverlessapi.ErrEnvironmentName)
+		}
 	}
 	return nil
+}
+
+// warnEnvironmentOverride warns when RUNWARE_ENV names another environment
+// than the configured one, which it overrides in this shell.
+func warnEnvironmentOverride(logger *log.Logger, configured string) {
+	if name, source := config.GetEnvironment(); source == config.EnvironmentFromEnvVar && name != configured {
+		logger.Warn(config.EnvironmentFromEnvVar+" overrides it in this shell", "environment", name)
+	}
 }

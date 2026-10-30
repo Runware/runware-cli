@@ -148,7 +148,8 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 
 The same --id can run once in each environment as a separate copy, with its
 own versions, workers, variables and secrets. --env selects the copy this
-deploy creates or updates, production unless --env names another.
+deploy creates or updates, else the default environment (RUNWARE_ENV, else the
+config's) or production.
 
 A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,
@@ -410,7 +411,7 @@ paths and an invoke example once the application is active.`,
 				}
 			} else if wait && !update && app.Status == serverlessapi.AppStatusActive {
 				if paths, err := deployEndpointPaths(cmd.Context(), client, app.AppId); err == nil {
-					reportDeployEndpoints(cmd.ErrOrStderr(), app, paths)
+					reportDeployEndpoints(cmd.ErrOrStderr(), app, paths, defaultEnvironment(cmd))
 				}
 			}
 
@@ -420,7 +421,7 @@ paths and an invoke example once the application is active.`,
 			if !wait {
 				return nil
 			}
-			return appFailedErr(cmd.Context(), client, app)
+			return appFailedErr(cmd.Context(), client, app, defaultEnvironment(cmd))
 		},
 	}
 
@@ -548,26 +549,26 @@ func validateAvailableWorkersPct(n int32) error {
 func validateUpdateDeployFlags(cmd *cobra.Command) error {
 	for _, name := range createOnlyDeployFlags {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name, commandEnvironment(cmd)))
+			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name, commandEnvironment(cmd), defaultEnvironment(cmd)))
 		}
 	}
 	return nil
 }
 
 // createOnlyDeployHint says how to change a create-only setting on the copy
-// in environment.
-func createOnlyDeployHint(name, environment string) string {
+// in environment, under defaultEnvironment.
+func createOnlyDeployHint(name, environment, defaultEnvironment string) string {
 	switch name {
 	case "gpu-type", "max-workers", "idle-ttl", "scaling-delay", "min-workers", "gpus-per-worker", "fallback-gpu-type", "min-available-workers", "available-workers-pct":
-		return "use '" + serverlessCommand(environment, "apps", "scale") + "' to change worker configuration"
+		return "use '" + serverlessCommand(environment, defaultEnvironment, "apps", "scale") + "' to change worker configuration"
 	case envVarFlag, "env-file":
-		return "use '" + serverlessCommand(environment, "apps", envVarsGroup) + "' to change environment variables"
+		return "use '" + serverlessCommand(environment, defaultEnvironment, "apps", envVarsGroup) + "' to change environment variables"
 	case "secret":
-		return "use '" + serverlessCommand(environment, "secrets", "attach") + "' to attach a secret"
+		return "use '" + serverlessCommand(environment, defaultEnvironment, "secrets", "attach") + "' to attach a secret"
 	case "volume":
 		return "volumes are immutable after create"
 	case "name":
-		return "use '" + serverlessCommand(environment, "apps", "rename") + "' to change the display name"
+		return "use '" + serverlessCommand(environment, defaultEnvironment, "apps", "rename") + "' to change the display name"
 	default:
 		return "omit it when updating an existing application"
 	}
@@ -691,7 +692,7 @@ func latestBuildStatus(ctx context.Context, client *serverlessapi.Client, appID 
 	return string(page.Data[0].Status)
 }
 
-func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *serverlessapi.App) error {
+func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *serverlessapi.App, defaultEnvironment string) error {
 	if app == nil {
 		return nil
 	}
@@ -702,7 +703,7 @@ func appFailedErr(ctx context.Context, client *serverlessapi.Client, app *server
 		if msg := latestBuildError(ctx, client, app.AppId); msg != "" {
 			return fmt.Errorf("application %s failed: %s", app.AppId, msg)
 		}
-		return fmt.Errorf("application %s failed; inspect builds with '%s'", app.AppId, appCommand(app, "apps", "builds", "list", app.AppId))
+		return fmt.Errorf("application %s failed; inspect builds with '%s'", app.AppId, appCommand(app, defaultEnvironment, "apps", "builds", "list", app.AppId))
 	default:
 		return fmt.Errorf("application %s ended in status %s", app.AppId, app.Status)
 	}
