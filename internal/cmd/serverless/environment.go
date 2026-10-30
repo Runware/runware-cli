@@ -66,8 +66,8 @@ func addEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Lo
 	}
 }
 
-// environmentCompletion completes --env from the organization's environments,
-// giving up after timeout with no names.
+// environmentCompletion completes an environment name from the organization's
+// environments, giving up after timeout with no names.
 func environmentCompletion(logger *log.Logger, timeout time.Duration) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
