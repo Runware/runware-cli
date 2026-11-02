@@ -428,17 +428,17 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		{
 			name:    "create a name the API refuses",
 			args:    []string{testEnvironmentsGroup, "create", testRefusedName},
-			wantErr: errEnvironmentName.Error(),
+			wantErr: serverlessapi.ErrEnvironmentName.Error(),
 		},
 		{
 			name:    "show a name the API refuses",
 			args:    []string{testEnvironmentsGroup, testShowCommand, testRefusedName},
-			wantErr: errEnvironmentName.Error(),
+			wantErr: serverlessapi.ErrEnvironmentName.Error(),
 		},
 		{
 			name:    "update a name with an equals sign",
 			args:    []string{testEnvironmentsGroup, testUpdateCommand, "a=b", testMaxWorkersFlag, "1"},
-			wantErr: errEnvironmentName.Error(),
+			wantErr: serverlessapi.ErrEnvironmentName.Error(),
 		},
 		{
 			name:    "show with two names",
@@ -453,7 +453,7 @@ func TestEnvironmentCommandsRejectBeforeAnyRequest(t *testing.T) {
 		{
 			name:    "delete a name the API refuses",
 			args:    []string{testEnvironmentsGroup, testDeleteCommand, testRefusedName, testYesFlag},
-			wantErr: errEnvironmentName.Error(),
+			wantErr: serverlessapi.ErrEnvironmentName.Error(),
 		},
 		{
 			name:    "create negative budget",
@@ -849,7 +849,7 @@ func TestClearCompletesTheFieldsTheCommandTakes(t *testing.T) {
 func TestEnvironmentsDeleteHintLeavesOtherErrorsAlone(t *testing.T) {
 	err := errors.New("connection refused")
 
-	got := withEnvironmentContentsHint(err, testEnvironment)
+	got := withEnvironmentContentsHint(err, testEnvironment, "")
 
 	if !errors.Is(got, err) || got.Error() != err.Error() {
 		t.Fatalf("withEnvironmentContentsHint(%v) = %v, want it unchanged", err, got)

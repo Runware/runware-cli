@@ -178,7 +178,9 @@ func (c *Client) submit(ctx context.Context, payload map[string]any) ([]json.Raw
 // taskUUID is optional: supply it to use a specific identifier, or omit it to have one generated.
 //
 // For async delivery Run polls until a success result is received or the context
-// is canceled. For sync delivery the submit response is returned directly.
+// is canceled. For sync delivery the submit response is returned directly, unless
+// the task was still processing when the server stopped waiting, in which case
+// Run polls for it the same way.
 func (c *Client) Run(ctx context.Context, model string, args []string, opts RunOptions) ([]json.RawMessage, error) {
 	if model == "" {
 		return nil, ErrModelRequired
@@ -292,7 +294,7 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	}
 
 	// For async delivery, discard the submit acknowledgment and poll until done.
-	if deliveryMethod == string(DeliveryMethodAsync) {
+	if deliveryMethod == string(DeliveryMethodAsync) || hasProcessingItem(initialResults) {
 		if opts.OnSubmit != nil {
 			opts.OnSubmit(taskUUID)
 		}
@@ -302,6 +304,19 @@ func (c *Client) Run(ctx context.Context, model string, args []string, opts RunO
 	}
 
 	return initialResults, nil
+}
+
+func hasProcessingItem(items []json.RawMessage) bool {
+	for _, raw := range items {
+		var item pollResponseItem
+		if err := json.Unmarshal(raw, &item); err != nil {
+			continue
+		}
+		if item.Status == "processing" {
+			return true
+		}
+	}
+	return false
 }
 
 // ModelSearch searches for models on the Runware platform.

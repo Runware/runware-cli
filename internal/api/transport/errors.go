@@ -126,7 +126,7 @@ func DeriveCode(raw string) ErrorCode {
 		return CodeConnection
 	}
 
-	if strings.Contains(raw, "Credits") || strings.Contains(raw, "Quota") || strings.Contains(raw, "Balance") || raw == "quotaExceeded" || raw == "paymentRequired" {
+	if strings.Contains(raw, "Credits") || strings.Contains(raw, "Quota") || strings.Contains(raw, "Balance") || raw == "quotaExceeded" || raw == "paymentRequired" || raw == "environmentPaused" {
 		return CodeQuota
 	}
 	if strings.Contains(raw, "RateLimit") || raw == "rateLimitExceeded" {
@@ -248,6 +248,9 @@ type RunwareError struct {
 	Documentation string
 	// StatusCode is the HTTP status code when the error originated from an HTTP response.
 	StatusCode int
+	// ProblemType is the RFC 9457 problem type URI when the error came from a
+	// problem document, which tells apart refusals that share a status.
+	ProblemType string
 	// RawItem holds the original API error object when the error was decoded from
 	// the API. Used by APIFields to preserve fields not modeled on RunwareError.
 	RawItem json.RawMessage
@@ -288,6 +291,9 @@ func (e *RunwareError) APIFields() map[string]any {
 	}
 	if len(e.AllowedValues) > 0 {
 		m["allowedValues"] = e.AllowedValues
+	}
+	if e.ProblemType != "" {
+		m["problemType"] = e.ProblemType
 	}
 	return m
 }

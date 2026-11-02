@@ -17,7 +17,7 @@ type RunOptions struct {
 	// Accepted values: "sync", "async". Empty means resolve from schema or payload.
 	DeliveryMethod string
 
-	// PollInterval is the interval between getResponse polls when delivery is async.
+	// PollInterval is the interval between getResponse polls while Run waits for a result.
 	// Defaults to 2 seconds when zero.
 	PollInterval time.Duration
 

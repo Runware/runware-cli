@@ -16,7 +16,7 @@ runware serverless secrets list [flags]
 ### Examples
 
 ```
-  # list the production secrets
+  # list the secrets of the default environment (production unless set)
   runware serverless secrets list
 
   # list the staging secrets
@@ -38,7 +38,7 @@ runware serverless secrets list [flags]
 
 ```
       --debug              Show full debug output
-  -e, --env name           Environment the secret belongs to (default production)
+  -e, --env name           Environment the secret belongs to (default RUNWARE_ENV, else the config's environment, else production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

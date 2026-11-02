@@ -289,7 +289,7 @@ Confirmation is required unless --yes or --force is passed.`,
 			err := newServerlessClient(cmd, logger).DeleteEnvironment(cmd.Context(), name)
 			spin.Stop()
 			if err != nil {
-				return withEnvironmentContentsHint(err, name)
+				return withEnvironmentContentsHint(err, name, defaultEnvironment(cmd))
 			}
 
 			return output.Print(cmdutil.FormatFor(cmd), environmentDeletedResult{
@@ -416,8 +416,8 @@ func environmentNameArg(cmd *cobra.Command, args []string) error {
 	if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 		return err
 	}
-	if !environmentNamePattern.MatchString(args[0]) {
-		return errEnvironmentName
+	if !serverlessapi.EnvironmentNamePattern.MatchString(args[0]) {
+		return serverlessapi.ErrEnvironmentName
 	}
 	return nil
 }
@@ -573,14 +573,14 @@ func jsonInt(n int32) json.RawMessage {
 // withEnvironmentContentsHint follows the API's refusal to delete an
 // environment that still holds apps or secrets with the commands that list
 // them.
-func withEnvironmentContentsHint(err error, name string) error {
+func withEnvironmentContentsHint(err error, name, defaultEnvironment string) error {
 	re, ok := errors.AsType[*transport.RunwareError](err)
-	if !ok || re.StatusCode != http.StatusConflict || isDefaultEnvironment(name) {
+	if !ok || re.StatusCode != http.StatusConflict || isProductionEnvironment(name) {
 		return err
 	}
 	hinted := *re
-	hinted.Message = re.Message + "\nList what it still holds with '" + serverlessCommand(name, "apps", "list") +
-		"' and '" + serverlessCommand(name, "secrets", "list") +
+	hinted.Message = re.Message + "\nList what it still holds with '" + serverlessCommand(name, defaultEnvironment, "apps", "list") +
+		"' and '" + serverlessCommand(name, defaultEnvironment, "secrets", "list") +
 		"', remove each with 'apps delete' or 'secrets remove' under the same --env, and retry once no app shows as deleting."
 	return &hinted
 }

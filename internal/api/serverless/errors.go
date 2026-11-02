@@ -10,12 +10,18 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
+// environmentPausedType is the problem type of a request refused because the
+// environment's budget paused it. The pause holds until the budget is raised
+// or the UTC month turns, so the refusal is not retryable.
+const environmentPausedType = "https://docs.runware.ai/serverless/errors#environment-paused"
+
 // problemToError converts an RFC 9457 ProblemDetails (or a bare status) into a
 // *transport.RunwareError so the CLI's shared error rendering (including the
 // auth hint on 401/403) applies uniformly. Field-level 422 entries in `errors`
 // are appended so validation failures are readable.
 func problemToError(p *gen.ProblemDetails, statusCode int) error {
 	msg := fmt.Sprintf("HTTP %d: %s", statusCode, http.StatusText(statusCode))
+	var problemType string
 	if p != nil {
 		if p.Status != 0 {
 			statusCode = int(p.Status)
@@ -32,12 +38,21 @@ func problemToError(p *gen.ProblemDetails, statusCode int) error {
 		if shortfall := formatShortfall(p.Shortfall); shortfall != "" {
 			msg = msg + "\n  shortfall: " + shortfall
 		}
+		if p.Type != "about:blank" {
+			problemType = p.Type
+		}
 	}
-	return transport.CreateRunwareError(
-		rawCodeForStatus(statusCode),
+	rawCode := rawCodeForStatus(statusCode)
+	if problemType == environmentPausedType {
+		rawCode = "environmentPaused"
+	}
+	re := transport.CreateRunwareError(
+		rawCode,
 		msg,
 		transport.RunwareErrorDetails{StatusCode: statusCode},
 	)
+	re.ProblemType = problemType
+	return re
 }
 
 func formatProblemErrors(errors *[]gen.ProblemError) string {
@@ -101,6 +116,8 @@ func rawCodeForStatus(statusCode int) string {
 		return "validationFailed"
 	case http.StatusPaymentRequired:
 		return "paymentRequired"
+	case http.StatusTooManyRequests:
+		return "rateLimitExceeded"
 	default:
 		// Must be a key in transport.serverErrorCodes so DeriveCode returns
 		// CodeServerError rather than CodeUnknown.

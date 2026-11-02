@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	keyAPIKey    = "api_key"
-	keyOutputDir = "output_dir"
-	keyFormat    = "format"
-	keyTransport = "transport"
+	keyAPIKey      = "api_key"
+	keyOutputDir   = "output_dir"
+	keyFormat      = "format"
+	keyTransport   = "transport"
+	keyEnvironment = "environment"
 )
 
 // NewCmd returns the config command with show, set, reset, and path subcommands.
@@ -48,6 +49,8 @@ func applyConfigValue(cfg *config.Config, key, value string) error {
 		cfg.Defaults.Format = value
 	case "defaults." + keyTransport:
 		cfg.Defaults.Transport = value
+	case "defaults." + keyEnvironment:
+		cfg.Defaults.Environment = value
 	default:
 		return fmt.Errorf("unknown config key %q", key)
 	}

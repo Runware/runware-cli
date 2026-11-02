@@ -17,6 +17,10 @@ runware config set <key> <value> [flags]
 
   # set the default transport (ws, http)
   runware config set transport http
+
+  # address the staging environment in serverless commands without --env
+  # (RUNWARE_ENV overrides it; set production to go back)
+  runware config set environment staging
 ```
 
 ### Options

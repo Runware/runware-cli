@@ -79,7 +79,7 @@ runware run <model> [key=value ...] [flags]
   -h, --help                     help for run
       --no-download              Skip auto-downloading media files (imageURL, videoURL, audioURL, outputs.files[].url)
       --output-dir string        Directory to save downloaded output files (default "./outputs")
-      --poll-interval duration   Polling interval when delivery method is async (default 2s)
+      --poll-interval duration   Polling interval while waiting for a result (default 2s)
       --preset string            Load parameters from a saved preset (model and params used as defaults)
       --task-type string         Override the detected task type (e.g. imageInference, videoInference, textInference, audioInference, 3dInference, training)
       --validate                 Validate parameters against the model schema before submitting (off by default; the API validates the request)

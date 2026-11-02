@@ -13,7 +13,7 @@ runware serverless apps [flags]
 ### Options
 
 ```
-  -e, --env name   Environment the app runs in (default production)
+  -e, --env name   Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
   -h, --help       help for apps
 ```
 

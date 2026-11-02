@@ -17,6 +17,8 @@ import (
 // Compile-time interface check.
 var _ Transport = (*HTTPTransport)(nil)
 
+const defaultHTTPTimeout = 180 * time.Second
+
 // HTTPTransport implements [Transport] using the Runware REST API.
 type HTTPTransport struct {
 	apiKey     string
@@ -53,13 +55,14 @@ func WithHTTPClient(c *http.Client) HTTPTransportOption {
 // DialHTTP creates an HTTP transport for the given API key and base URL.
 // The ctx argument is accepted for interface symmetry but is not used — HTTP
 // is stateless and requires no connection handshake.
-// Default timeout is 120s. Use WithTimeout or WithHTTPClient to override.
+// Default timeout is 180s, longer than the server's 120s wait on a sync request.
+// Use WithTimeout or WithHTTPClient to override.
 func DialHTTP(_ context.Context, apiKey, baseURL string, logger *slog.Logger, opts ...HTTPTransportOption) (*HTTPTransport, error) {
 	if err := checkBaseURL(baseURL, "http", "https"); err != nil {
 		return nil, err
 	}
 	o := httpTransportOptions{
-		timeout: 120 * time.Second,
+		timeout: defaultHTTPTimeout,
 	}
 	for _, opt := range opts {
 		opt(&o)

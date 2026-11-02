@@ -3,6 +3,7 @@ package serverless
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -24,12 +28,15 @@ import (
 
 const (
 	testEnvironment           = "staging"
+	testInvalidEnvironment    = "Staging"
+	testGPUsCommand           = "gpus"
 	testProductionEnvironment = "production"
 	testUUID                  = "11111111-1111-1111-1111-111111111111"
 	testAppsGroup             = "apps"
 	testVersionsGroup         = "versions"
 	testYesFlag               = "--yes"
 	testEnvFlag               = "--env"
+	testAppFlag               = "--app"
 	testAppsPath              = "/v1/apps"
 	testSourceUploadsPath     = "/v1/source-uploads"
 	testEnvironmentsPath      = "/v1/environments"
@@ -44,6 +51,12 @@ const (
 	testDeployCommand         = "deploy"
 	testSetCommand            = "set"
 	testDeleteCommand         = "delete"
+	testInferEndpoint         = "infer"
+	testResumeCommand         = "resume"
+	testInvokeCommand         = "invoke"
+	testScaleCommand          = "scale"
+	testPausedType            = "https://docs.runware.ai/serverless/errors#environment-paused"
+	testPausedDetail          = "the environment is paused: its spend this UTC month has reached its monthly budget"
 	testStagingHint           = testEnvFlag + " " + testEnvironment
 	testEnvironmentBody       = `{"name":"` + testEnvironment + `","createdAt":"2026-09-01T00:00:00Z","budgetAlertPercents":[]}`
 )
@@ -216,7 +229,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "apps invoke",
-			args: []string{testAppsGroup, "invoke", testAppID, "infer"},
+			args: []string{testAppsGroup, testInvokeCommand, testAppID, testInferEndpoint},
 		},
 		{
 			name: "apps tasks",
@@ -296,7 +309,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "apps scale",
-			args: []string{testAppsGroup, "scale", testAppID, "--max-workers", "2"},
+			args: []string{testAppsGroup, testScaleCommand, testAppID, "--max-workers", "2"},
 		},
 		{
 			name: "apps rename",
@@ -312,7 +325,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "apps resume",
-			args: []string{testAppsGroup, "resume", testAppID},
+			args: []string{testAppsGroup, testResumeCommand, testAppID},
 		},
 		{
 			name: "apps delete",
@@ -320,7 +333,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "usage events",
-			args: []string{testUsageCommand, testEventsCommand, "--app", testAppID},
+			args: []string{testUsageCommand, testEventsCommand, testAppFlag, testAppID},
 		},
 		{
 			name: "usage",
@@ -399,7 +412,7 @@ func TestCommandsWithoutAnEnvironmentRejectTheFlag(t *testing.T) {
 	cases := []appCommandCase{
 		{
 			name: "gpus",
-			args: []string{"gpus"},
+			args: []string{testGPUsCommand},
 		},
 		{
 			name: "init",
@@ -435,7 +448,7 @@ func TestEnvironmentFlagRejectsBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "uppercase",
-			value:   "Staging",
+			value:   testInvalidEnvironment,
 			wantErr: "lowercase",
 		},
 		{
@@ -520,7 +533,7 @@ func TestOldEnvVariableSyntaxFailsWithTheEnvVarHintBeforeAnyRequest(t *testing.T
 func TestUsageEventsEnvironmentNeedsAnApp(t *testing.T) {
 	run := runServerless(t, testUsageCommand, testEventsCommand, testEnvFlag, testEnvironment)
 
-	if run.err == nil || !strings.Contains(run.err.Error(), "--app") {
+	if run.err == nil || !strings.Contains(run.err.Error(), testAppFlag) {
 		t.Fatalf("err = %v, want it to require --app", run.err)
 	}
 	if len(run.requests) != 0 {
@@ -687,7 +700,7 @@ func TestNextPageHintRepeatsTheEnvironment(t *testing.T) {
 		},
 		{
 			name:     "usage events",
-			args:     []string{testUsageCommand, testEventsCommand, "--app", testAppID},
+			args:     []string{testUsageCommand, testEventsCommand, testAppFlag, testAppID},
 			body:     listBody,
 			wantHint: testStagingHint + " --app " + testAppID,
 		},
@@ -837,7 +850,7 @@ func TestCreateOnlyDeployHintAddressesTheSameCopy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := createOnlyDeployHint(tc.flag, tc.environment)
+			got := createOnlyDeployHint(tc.flag, tc.environment, "")
 
 			if want := "use '" + tc.wantCommand + "'"; !strings.HasPrefix(got, want) {
 				t.Fatalf("hint = %q, want it to start with %q", got, want)
@@ -1100,8 +1113,8 @@ func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
 	if want == "" {
 		t.Fatal("the spec has no EnvironmentName pattern")
 	}
-	if got := environmentNamePattern.String(); got != want {
-		t.Fatalf("environmentNamePattern = %q, spec says %q", got, want)
+	if got := serverlessapi.EnvironmentNamePattern.String(); got != want {
+		t.Fatalf("serverlessapi.EnvironmentNamePattern = %q, spec says %q", got, want)
 	}
 }
 
@@ -1115,4 +1128,95 @@ func TestEnvironmentFlagOnAFlagSetTheCommandDoesNotOwnPanics(t *testing.T) {
 	}()
 
 	addEnvironmentFlag(cmd, foreign, log.New(io.Discard), environmentFlagHelp)
+}
+
+// errorOutput is the structured error output of a command.
+type errorOutput struct {
+	Errors []map[string]any `json:"errors"`
+}
+
+// writePaused answers like an environment whose budget paused it.
+func writePaused(w http.ResponseWriter, status int) {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(status)
+	_, _ = fmt.Fprintf(w, `{"type":%q,"title":%q,"status":%d,"detail":%q}`, testPausedType, http.StatusText(status), status, testPausedDetail)
+}
+
+// assertPauseReported checks that err prints as the pause, with its code,
+// detail and problem type in json and its code and detail in text.
+func assertPauseReported(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+
+	var structured bytes.Buffer
+	cmdutil.PrintErrorTo(log.New(io.Discard), &structured, output.FormatJSON, err)
+	var got errorOutput
+	if jsonErr := json.Unmarshal(structured.Bytes(), &got); jsonErr != nil || len(got.Errors) != 1 {
+		t.Fatalf("json output %q: %v", structured.String(), jsonErr)
+	}
+	if item := got.Errors[0]; item["code"] != "environmentPaused" || item["message"] != testPausedDetail || item["problemType"] != testPausedType {
+		t.Errorf("json error = %v, want code environmentPaused, the detail and the problem type", item)
+	}
+
+	var text bytes.Buffer
+	cmdutil.PrintErrorTo(log.New(&text), io.Discard, output.FormatTable, err)
+	if !strings.Contains(text.String(), testPausedDetail) || !strings.Contains(text.String(), "code=environmentPaused") {
+		t.Errorf("text output %q, want the detail and code=environmentPaused", text.String())
+	}
+}
+
+// pausedCommandCase is a command and the status a paused environment answers
+// it with.
+type pausedCommandCase struct {
+	name   string
+	args   []string
+	status int
+}
+
+func TestCommandsInAPausedEnvironmentReportThePause(t *testing.T) {
+	cases := []pausedCommandCase{
+		{
+			name:   testInvokeCommand,
+			args:   []string{testAppsGroup, testInvokeCommand, testAppID, testInferEndpoint, testEnvFlag, testEnvironment},
+			status: http.StatusTooManyRequests,
+		},
+		{
+			name:   testResumeCommand,
+			args:   []string{testAppsGroup, testResumeCommand, testAppID, testEnvFlag, testEnvironment},
+			status: http.StatusConflict,
+		},
+		{
+			name:   testScaleCommand,
+			args:   []string{testAppsGroup, testScaleCommand, testAppID, "--min-workers", "1", testEnvFlag, testEnvironment},
+			status: http.StatusConflict,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
+				writePaused(w, tc.status)
+			}, tc.args...)
+
+			assertPauseReported(t, run.err)
+		})
+	}
+}
+
+func TestDeployInAPausedEnvironmentReportsThePause(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+	serveSourceUpload := newSourceUploadStub(t)
+	run := runServerlessAgainst(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case serveSourceUpload(w, r):
+		case r.Method == http.MethodGet:
+			writeNotFound(w)
+		default:
+			writePaused(w, http.StatusConflict)
+		}
+	}, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID, testGPUTypeFlag, testGPUType)
+
+	assertPauseReported(t, run.err)
 }
