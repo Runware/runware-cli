@@ -27,14 +27,23 @@ func (d modelDetail) Rows() [][]any {
 	rows := [][]any{
 		{"Name", m.Name},
 		{colAIR, m.AIR},
-		{"Version", m.Version},
+		{colSource, m.Source},
+		{"Version", orDash(m.Version)},
 		{"Category", m.Category},
-		{"Architecture", m.Architecture},
+		{"Architecture", orDash(m.Architecture)},
 		{colType, orDash(m.Type)},
-		{"Base Model", orDash(m.BaseModel)},
 		{"Private", m.Private},
 	}
 
+	if len(m.Capabilities) > 0 {
+		rows = append(rows, []any{"Capabilities", strings.Join(m.Capabilities, ", ")})
+	}
+	if m.FloatingPoint != "" {
+		rows = append(rows, []any{"Floating Point", m.FloatingPoint})
+	}
+	if m.UniqueIdentifier != "" {
+		rows = append(rows, []any{"Unique Identifier", m.UniqueIdentifier})
+	}
 	if m.DefaultWidth != 0 || m.DefaultHeight != 0 {
 		rows = append(rows, []any{"Default Size", formatDefaultSize(m.DefaultWidth, m.DefaultHeight)})
 	}
@@ -53,6 +62,15 @@ func (d modelDetail) Rows() [][]any {
 	if m.DefaultWeight != 0 {
 		rows = append(rows, []any{"Default Weight", m.DefaultWeight})
 	}
+	if m.DefaultFPS != 0 {
+		rows = append(rows, []any{"Default FPS", m.DefaultFPS})
+	}
+	if m.DefaultNumberOfFrames != 0 {
+		rows = append(rows, []any{"Default Frames", m.DefaultNumberOfFrames})
+	}
+	if m.DefaultDuration != 0 {
+		rows = append(rows, []any{"Default Duration", m.DefaultDuration})
+	}
 	if m.PositiveTriggerWords != "" {
 		rows = append(rows, []any{"Positive Triggers", m.PositiveTriggerWords})
 	}
@@ -62,8 +80,8 @@ func (d modelDetail) Rows() [][]any {
 	if len(m.Tags) > 0 {
 		rows = append(rows, []any{"Tags", strings.Join(m.Tags, ", ")})
 	}
-	if m.ImageURL != "" {
-		rows = append(rows, []any{"Image URL", m.ImageURL})
+	if m.HeroImage != "" {
+		rows = append(rows, []any{"Hero Image", m.HeroImage})
 	}
 
 	return rows

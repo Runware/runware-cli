@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
@@ -23,9 +24,9 @@ type modelSearchResults struct {
 
 func (r modelSearchResults) Headers() []string {
 	if r.wide {
-		return []string{"Name", colAIR, "Category", "Architecture", colType, "Version", "Private", "Default Size", "Tags"}
+		return []string{"Name", colAIR, colSource, "Category", "Architecture", colType, "Version", "Private", "Default Size", "Tags"}
 	}
-	return []string{"Name", colAIR, "Category", "Architecture", colType, "Version"}
+	return []string{"Name", colAIR, colSource, "Category", "Architecture", colType, "Version"}
 }
 
 func (r modelSearchResults) Rows() [][]any {
@@ -36,6 +37,7 @@ func (r modelSearchResults) Rows() [][]any {
 			rows[i] = []any{
 				m.Name,
 				m.AIR,
+				m.Source,
 				m.Category,
 				m.Architecture,
 				m.Type,
@@ -45,7 +47,7 @@ func (r modelSearchResults) Rows() [][]any {
 				formatTags(m.Tags, 4),
 			}
 		} else {
-			rows[i] = []any{m.Name, m.AIR, m.Category, m.Architecture, m.Type, m.Version}
+			rows[i] = []any{m.Name, m.AIR, m.Source, m.Category, m.Architecture, m.Type, m.Version}
 		}
 	}
 	return rows
@@ -87,19 +89,36 @@ func formatTags(tags []string, maxTags int) string {
 	return s
 }
 
-func newSearchCmd(logger *log.Logger) *cobra.Command {
-	var flags struct {
-		search       string
-		tags         []string
-		category     string
-		architecture string
-		modelType    string
-		conditioning string
-		visibility   string
-		limit        int
-		offset       int
-		wide         bool
+const (
+	minSearchLength = 2
+	maxSearchLength = 48
+)
+
+// validateSearch applies the API's rule for the search term: empty, or between
+// minSearchLength and maxSearchLength characters.
+func validateSearch(search string) error {
+	n := utf8.RuneCountInString(search)
+	if n != 0 && (n < minSearchLength || n > maxSearchLength) {
+		return fmt.Errorf("--search must be between %d and %d characters", minSearchLength, maxSearchLength)
 	}
+	return nil
+}
+
+type searchFlags struct {
+	search       string
+	source       string
+	category     string
+	architecture string
+	capabilities []string
+	visibility   string
+	limit        int
+	offset       int
+	sort         string
+	wide         bool
+}
+
+func newSearchCmd(logger *log.Logger) *cobra.Command {
+	var flags searchFlags
 
 	cmd := &cobra.Command{
 		Use:   "search",
@@ -110,6 +129,12 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
   # Filter to SDXL checkpoints only
   runware model search --search "portrait" --category checkpoint --architecture sdxl
 
+  # Search only Runware's official models, sorted by name
+  runware model search --search "flux" --source official --sort name
+
+  # Filter by capability
+  runware model search --source official --capabilities op:inpaint
+
   # Show extra columns including tags and default size
   runware model search --search "anime" --wide
 
@@ -119,6 +144,9 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
   # Paginate through results
   runware model search --search "anime" --limit 10 --offset 20`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateSearch(flags.search); err != nil {
+				return err
+			}
 			if flags.limit < 1 || flags.limit > 100 {
 				return fmt.Errorf("--limit must be between 1 and 100")
 			}
@@ -140,14 +168,14 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 
 			req := api.ModelSearchRequest{
 				Search:       flags.search,
-				Tags:         flags.tags,
+				Source:       flags.source,
 				Category:     flags.category,
 				Architecture: flags.architecture,
-				Type:         flags.modelType,
-				Conditioning: flags.conditioning,
+				Capabilities: flags.capabilities,
 				Visibility:   flags.visibility,
 				Limit:        flags.limit,
 				Offset:       flags.offset,
+				Sort:         flags.sort,
 			}
 
 			result, err := client.ModelSearch(cmd.Context(), req)
@@ -171,36 +199,38 @@ func newSearchCmd(logger *log.Logger) *cobra.Command {
 	}
 
 	f := cmd.Flags()
-	f.StringVarP(&flags.search, "search", "q", "", "Search query (name, description, or AIR ID)")
-	f.StringSliceVar(&flags.tags, "tags", nil, "Filter by tags (repeatable: --tags style --tags portrait)")
+	f.StringVarP(&flags.search, "search", "q", "", "Search query (name, description, or AIR ID), 2-48 characters")
+	f.StringVar(&flags.source, "source", "", "Filter by model source: official, community (default: both)")
 	f.StringVarP(&flags.category, "category", "c", "", "Filter by category: checkpoint, lora, lycoris, vae, embeddings")
 	f.StringVarP(&flags.architecture, "architecture", "a", "", "Filter by model architecture (e.g. sdxl, flux)")
-	f.StringVarP(&flags.modelType, "type", "t", "", "Filter by checkpoint type (only with --category checkpoint): base, inpainting, refiner")
-	f.StringVar(&flags.conditioning, "conditioning", "", "Filter ControlNet models by conditioning type")
-	f.StringVar(&flags.visibility, "visibility", "public", "Filter by visibility: public, private, community, favorite, owned")
+	f.StringSliceVar(&flags.capabilities, "capabilities", nil, "Filter by capabilities (repeatable: --capabilities io:text-to-image --capabilities op:inpaint)")
+	f.StringVar(&flags.visibility, "visibility", "public", "Filter by visibility: public, private, favorite, owned")
 	f.IntVarP(&flags.limit, "limit", "l", 20, "Maximum number of results to return (1-100)")
 	f.IntVar(&flags.offset, "offset", 0, "Number of results to skip for pagination")
+	f.StringVar(&flags.sort, "sort", "", "Sort order: _score, popularity, name, addedUnixTimestamp or updatedDateUnixTimestamp. A - prefix reverses any of them except _score (default: _score with --search, popularity without)")
 	f.BoolVarP(&flags.wide, "wide", "W", false, "Show additional columns: private, default size, tags")
 
-	if err := cmd.MarkFlagRequired("search"); err != nil {
-		panic(err)
-	}
-
+	cmd.RegisterFlagCompletionFunc("source", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{"official", "community"}, cobra.ShellCompDirectiveNoFileComp
+	})
 	cmd.RegisterFlagCompletionFunc("category", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
 		return []cobra.Completion{"checkpoint", "lora", "lycoris", "vae", "embeddings"}, cobra.ShellCompDirectiveNoFileComp
 	})
-	cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []cobra.Completion{"base", "inpainting", "refiner"}, cobra.ShellCompDirectiveNoFileComp
-	})
-	cmd.RegisterFlagCompletionFunc("conditioning", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []cobra.Completion{
-			"blur", "canny", "depth", "gray", "hed", "inpaint", "inpaintdepth",
-			"lineart", "lowquality", "normal", "openmlsd", "openpose", "outfit",
-			"pix2pix", "qrcode", "scribble", "seg", "shuffle", "sketch", "softedge", "tile",
-		}, cobra.ShellCompDirectiveNoFileComp
-	})
 	cmd.RegisterFlagCompletionFunc("visibility", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
-		return []cobra.Completion{"public", "private", "community", "favorite", "owned"}, cobra.ShellCompDirectiveNoFileComp
+		return []cobra.Completion{"public", "private", "favorite", "owned"}, cobra.ShellCompDirectiveNoFileComp
+	})
+	cmd.RegisterFlagCompletionFunc("sort", func(_ *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) { //nolint:errcheck,gosec
+		return []cobra.Completion{
+			"_score",
+			"popularity",
+			"-popularity",
+			"name",
+			"-name",
+			"addedUnixTimestamp",
+			"-addedUnixTimestamp",
+			"updatedDateUnixTimestamp",
+			"-updatedDateUnixTimestamp",
+		}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd

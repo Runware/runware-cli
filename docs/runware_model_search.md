@@ -15,6 +15,12 @@ runware model search [flags]
   # Filter to SDXL checkpoints only
   runware model search --search "portrait" --category checkpoint --architecture sdxl
 
+  # Search only Runware's official models, sorted by name
+  runware model search --search "flux" --source official --sort name
+
+  # Filter by capability
+  runware model search --source official --capabilities op:inpaint
+
   # Show extra columns including tags and default size
   runware model search --search "anime" --wide
 
@@ -28,17 +34,17 @@ runware model search [flags]
 ### Options
 
 ```
-  -a, --architecture string   Filter by model architecture (e.g. sdxl, flux)
-  -c, --category string       Filter by category: checkpoint, lora, lycoris, vae, embeddings
-      --conditioning string   Filter ControlNet models by conditioning type
-  -h, --help                  help for search
-  -l, --limit int             Maximum number of results to return (1-100) (default 20)
-      --offset int            Number of results to skip for pagination
-  -q, --search string         Search query (name, description, or AIR ID)
-      --tags strings          Filter by tags (repeatable: --tags style --tags portrait)
-  -t, --type string           Filter by checkpoint type (only with --category checkpoint): base, inpainting, refiner
-      --visibility string     Filter by visibility: public, private, community, favorite, owned (default "public")
-  -W, --wide                  Show additional columns: private, default size, tags
+  -a, --architecture string    Filter by model architecture (e.g. sdxl, flux)
+      --capabilities strings   Filter by capabilities (repeatable: --capabilities io:text-to-image --capabilities op:inpaint)
+  -c, --category string        Filter by category: checkpoint, lora, lycoris, vae, embeddings
+  -h, --help                   help for search
+  -l, --limit int              Maximum number of results to return (1-100) (default 20)
+      --offset int             Number of results to skip for pagination
+  -q, --search string          Search query (name, description, or AIR ID), 2-48 characters
+      --sort string            Sort order: _score, popularity, name, addedUnixTimestamp or updatedDateUnixTimestamp. A - prefix reverses any of them except _score (default: _score with --search, popularity without)
+      --source string          Filter by model source: official, community (default: both)
+      --visibility string      Filter by visibility: public, private, favorite, owned (default "public")
+  -W, --wide                   Show additional columns: private, default size, tags
 ```
 
 ### Options inherited from parent commands

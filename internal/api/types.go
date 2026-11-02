@@ -294,14 +294,14 @@ type ModelSearchRequest struct {
 	TaskType     TaskType  `json:"taskType"`
 	TaskUUID     uuid.UUID `json:"taskUUID"`
 	Search       string    `json:"search,omitempty"`
-	Tags         []string  `json:"tags,omitempty"`
+	Source       string    `json:"source,omitempty"`
 	Category     string    `json:"category,omitempty"`
-	Type         string    `json:"type,omitempty"`
 	Architecture string    `json:"architecture,omitempty"`
-	Conditioning string    `json:"conditioning,omitempty"`
+	Capabilities []string  `json:"capabilities,omitempty"`
 	Visibility   string    `json:"visibility,omitempty"`
 	Limit        int       `json:"limit,omitempty"`
 	Offset       int       `json:"offset,omitempty"`
+	Sort         string    `json:"sort,omitempty"`
 }
 
 // ModelTags decodes a JSON array of strings. Non-string elements (e.g. internal
@@ -334,28 +334,36 @@ type ModelSearchResponse struct {
 
 // ModelResult is a single model from the search results.
 type ModelResult struct {
-	Name                 string    `json:"name"`
-	AIR                  string    `json:"air"`
-	Tags                 ModelTags `json:"tags"`
-	ImageURL             string    `json:"imageURL"`
-	ThumbnailURL         string    `json:"thumbnailURL"`
-	Category             string    `json:"category"`
-	Private              bool      `json:"private"`
-	BaseModel            string    `json:"baseModel,omitempty"`
-	Version              string    `json:"version"`
-	Architecture         string    `json:"architecture"`
-	NSFWLevel            int       `json:"nsfwLevel"`
-	Type                 string    `json:"type,omitempty"`
-	DefaultWeight        float64   `json:"defaultWeight,omitempty"`
-	DefaultWidth         int       `json:"defaultWidth,omitempty"`
-	DefaultHeight        int       `json:"defaultHeight,omitempty"`
-	DefaultSteps         int       `json:"defaultSteps,omitempty"`
-	DefaultScheduler     string    `json:"defaultScheduler,omitempty"`
-	DefaultCFG           float64   `json:"defaultCFG,omitempty"`
-	DefaultStrength      float64   `json:"defaultStrength,omitempty"`
-	PositiveTriggerWords string    `json:"positiveTriggerWords,omitempty"`
-	NegativeTriggerWords string    `json:"negativeTriggerWords,omitempty"`
-	Primary              bool      `json:"primary,omitempty"`
+	AIR                      string    `json:"air"`
+	Name                     string    `json:"name"`
+	Category                 string    `json:"category"`
+	Architecture             string    `json:"architecture"`
+	Capabilities             []string  `json:"capabilities"`
+	Source                   string    `json:"source"`
+	HeroImage                string    `json:"heroImage"`
+	Private                  bool      `json:"private"`
+	IsFavorite               bool      `json:"isFavorite,omitempty"`
+	ShortDescription         string    `json:"shortDescription,omitempty"`
+	PositiveTriggerWords     string    `json:"positiveTriggerWords,omitempty"`
+	NegativeTriggerWords     string    `json:"negativeTriggerWords,omitempty"`
+	Comment                  string    `json:"comment,omitempty"`
+	Type                     string    `json:"type,omitempty"`
+	Version                  string    `json:"version,omitempty"`
+	Tags                     ModelTags `json:"tags,omitempty"`
+	AddedUnixTimestamp       int64     `json:"addedUnixTimestamp,omitempty"`
+	UpdatedDateUnixTimestamp int64     `json:"updatedDateUnixTimestamp,omitempty"`
+	FloatingPoint            string    `json:"floatingPoint,omitempty"`
+	UniqueIdentifier         string    `json:"uniqueIdentifier,omitempty"`
+	DefaultWidth             int       `json:"defaultWidth,omitempty"`
+	DefaultHeight            int       `json:"defaultHeight,omitempty"`
+	DefaultSteps             int       `json:"defaultSteps,omitempty"`
+	DefaultCFG               float64   `json:"defaultCFG,omitempty"`
+	DefaultScheduler         string    `json:"defaultScheduler,omitempty"`
+	DefaultStrength          float64   `json:"defaultStrength,omitempty"`
+	DefaultWeight            float64   `json:"defaultWeight,omitempty"`
+	DefaultFPS               int       `json:"defaultFPS,omitempty"`
+	DefaultNumberOfFrames    int       `json:"defaultNumberOfFrames,omitempty"`
+	DefaultDuration          float64   `json:"defaultDuration,omitempty"`
 }
 
 // ModelUploadRequest contains fields for the modelUpload task type.
