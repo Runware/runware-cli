@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -27,12 +28,15 @@ import (
 
 const (
 	testEnvironment           = "staging"
+	testInvalidEnvironment    = "Staging"
+	testGPUsCommand           = "gpus"
 	testProductionEnvironment = "production"
 	testUUID                  = "11111111-1111-1111-1111-111111111111"
 	testAppsGroup             = "apps"
 	testVersionsGroup         = "versions"
 	testYesFlag               = "--yes"
 	testEnvFlag               = "--env"
+	testAppFlag               = "--app"
 	testAppsPath              = "/v1/apps"
 	testSourceUploadsPath     = "/v1/source-uploads"
 	testEnvironmentsPath      = "/v1/environments"
@@ -329,7 +333,7 @@ func appCommandCases() []appCommandCase {
 		},
 		{
 			name: "usage events",
-			args: []string{testUsageCommand, testEventsCommand, "--app", testAppID},
+			args: []string{testUsageCommand, testEventsCommand, testAppFlag, testAppID},
 		},
 		{
 			name: "usage",
@@ -408,7 +412,7 @@ func TestCommandsWithoutAnEnvironmentRejectTheFlag(t *testing.T) {
 	cases := []appCommandCase{
 		{
 			name: "gpus",
-			args: []string{"gpus"},
+			args: []string{testGPUsCommand},
 		},
 		{
 			name: "init",
@@ -444,7 +448,7 @@ func TestEnvironmentFlagRejectsBeforeAnyRequest(t *testing.T) {
 		},
 		{
 			name:    "uppercase",
-			value:   "Staging",
+			value:   testInvalidEnvironment,
 			wantErr: "lowercase",
 		},
 		{
@@ -529,7 +533,7 @@ func TestOldEnvVariableSyntaxFailsWithTheEnvVarHintBeforeAnyRequest(t *testing.T
 func TestUsageEventsEnvironmentNeedsAnApp(t *testing.T) {
 	run := runServerless(t, testUsageCommand, testEventsCommand, testEnvFlag, testEnvironment)
 
-	if run.err == nil || !strings.Contains(run.err.Error(), "--app") {
+	if run.err == nil || !strings.Contains(run.err.Error(), testAppFlag) {
 		t.Fatalf("err = %v, want it to require --app", run.err)
 	}
 	if len(run.requests) != 0 {
@@ -696,7 +700,7 @@ func TestNextPageHintRepeatsTheEnvironment(t *testing.T) {
 		},
 		{
 			name:     "usage events",
-			args:     []string{testUsageCommand, testEventsCommand, "--app", testAppID},
+			args:     []string{testUsageCommand, testEventsCommand, testAppFlag, testAppID},
 			body:     listBody,
 			wantHint: testStagingHint + " --app " + testAppID,
 		},
@@ -846,7 +850,7 @@ func TestCreateOnlyDeployHintAddressesTheSameCopy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := createOnlyDeployHint(tc.flag, tc.environment)
+			got := createOnlyDeployHint(tc.flag, tc.environment, "")
 
 			if want := "use '" + tc.wantCommand + "'"; !strings.HasPrefix(got, want) {
 				t.Fatalf("hint = %q, want it to start with %q", got, want)
@@ -1101,8 +1105,8 @@ func TestEnvironmentFlagAppliesTheSpecsNameRule(t *testing.T) {
 	if want == "" {
 		t.Fatal("the spec has no EnvironmentName pattern")
 	}
-	if got := environmentNamePattern.String(); got != want {
-		t.Fatalf("environmentNamePattern = %q, spec says %q", got, want)
+	if got := serverlessapi.EnvironmentNamePattern.String(); got != want {
+		t.Fatalf("serverlessapi.EnvironmentNamePattern = %q, spec says %q", got, want)
 	}
 }
 

@@ -260,3 +260,25 @@ func TestConfigPath(t *testing.T) {
 		t.Errorf("ConfigPath() = %q, want %q", got, expected)
 	}
 }
+
+func TestEnvironmentPrecedence(t *testing.T) {
+	configDir = t.TempDir()
+	t.Setenv("RUNWARE_API_KEY", "")
+	t.Setenv(EnvironmentFromEnvVar, "")
+
+	if name, source := GetEnvironment(); name != "" || source != "" {
+		t.Errorf("unset: GetEnvironment() = %q, %q, want production (empty)", name, source)
+	}
+
+	if err := Save(&Config{Defaults: Defaults{Environment: "staging"}}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	if name, source := GetEnvironment(); name != "staging" || source != EnvironmentFromConfig {
+		t.Errorf("config: GetEnvironment() = %q, %q, want staging from config", name, source)
+	}
+
+	t.Setenv(EnvironmentFromEnvVar, "development")
+	if name, source := GetEnvironment(); name != "development" || source != EnvironmentFromEnvVar {
+		t.Errorf("RUNWARE_ENV: GetEnvironment() = %q, %q, want development from RUNWARE_ENV", name, source)
+	}
+}

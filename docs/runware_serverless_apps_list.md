@@ -4,9 +4,9 @@ List serverless applications
 
 ### Synopsis
 
-List the serverless applications in one environment, production unless
---env names another. A next-page cursor is valid only in the environment it
-came from.
+List the serverless applications in one environment: the one --env names,
+else the default environment (RUNWARE_ENV, else the config's) or production. A
+next-page cursor is valid only in the environment it came from.
 
 ```
 runware serverless apps list [flags]
@@ -50,7 +50,7 @@ runware serverless apps list [flags]
 
 ```
       --debug              Show full debug output
-  -e, --env name           Environment the app runs in (default production)
+  -e, --env name           Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details
