@@ -48,7 +48,7 @@ const (
 	colEvent          = "Event"
 	colGPUs           = "GPUs"
 	colPricePerGPU    = "Price/s"
-	colDefault        = "Default"
+	colProduction     = "Production"
 	colMaxGPUs        = "Max GPUs"
 	colMonthlyBudget  = "Monthly budget"
 	colBudgetAlerts   = "Budget alerts"
@@ -728,7 +728,7 @@ func (r environmentResult) Headers() []string {
 func (r environmentResult) Rows() [][]any {
 	return [][]any{
 		{colName, r.Name},
-		{colDefault, formatYesNo(r.IsDefault)},
+		{colProduction, formatYesNo(r.IsDefault)},
 		{colMaxWorkers, formatEnvironmentCap(r.MaxConcurrentWorkers, r.Resolved.MaxConcurrentWorkers)},
 		{colMaxGPUs, formatEnvironmentCap(r.MaxConcurrentGpus, r.Resolved.MaxConcurrentGpus)},
 		{colMonthlyBudget, formatBudget(r.MonthlyBudget)},
@@ -743,7 +743,7 @@ func (r environmentResult) Rows() [][]any {
 type environmentsResult []serverlessapi.Environment
 
 func (r environmentsResult) Headers() []string {
-	return []string{colName, colDefault, colMaxWorkers, colMaxGPUs, colMonthlyBudget, colBudgetAlerts, colPauseAtBudget}
+	return []string{colName, colProduction, colMaxWorkers, colMaxGPUs, colMonthlyBudget, colBudgetAlerts, colPauseAtBudget}
 }
 
 func (r environmentsResult) Rows() [][]any {

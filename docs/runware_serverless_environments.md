@@ -7,7 +7,8 @@ Manage the organization's environments
 Manage the organization's environments and the defaults they inherit.
 
 An environment holds one copy of each app deployed to it, and its own secrets.
-production is the default environment: a command without --env addresses it.
+A command without --env addresses RUNWARE_ENV, else the config's environment,
+else production.
 
 An environment can cap the workers and GPUs it holds, set a monthly budget with
 alert thresholds, and pause its workers once the budget is reached. A cap it

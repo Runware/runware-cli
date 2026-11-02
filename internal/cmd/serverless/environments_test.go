@@ -159,7 +159,7 @@ func TestEnvironmentsListShowsOwnInheritedAndMissingValues(t *testing.T) {
 	if got := envs.Rows(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("rows = %v\nwant %v", got, want)
 	}
-	wantHeaders := []string{"Name", "Default", "Max workers", colMaxGPUs, "Monthly budget", "Budget alerts", "Pause at budget"}
+	wantHeaders := []string{"Name", "Production", "Max workers", colMaxGPUs, "Monthly budget", "Budget alerts", "Pause at budget"}
 	if got := envs.Headers(); !reflect.DeepEqual(got, wantHeaders) {
 		t.Fatalf("headers = %v, want %v", got, wantHeaders)
 	}
@@ -170,7 +170,7 @@ func TestEnvironmentsShowListsEverySetting(t *testing.T) {
 
 	want := [][]any{
 		{"Name", testEnvironment},
-		{"Default", "no"},
+		{"Production", "no"},
 		{"Max workers", "2"},
 		{colMaxGPUs, testInheritedGPUs},
 		{"Monthly budget", "50.00 USD"},
