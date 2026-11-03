@@ -44,6 +44,35 @@ func TestModelResultDecodesSearchRow(t *testing.T) {
 	}
 }
 
+func TestModelResultKeepsIsFavoriteAsSent(t *testing.T) {
+	for _, row := range []string{
+		`{"air": "civitai:249421@281440"}`,
+		`{"air": "civitai:249421@281440", "isFavorite": false}`,
+		`{"air": "civitai:249421@281440", "isFavorite": true}`,
+	} {
+		var m ModelResult
+		if err := json.Unmarshal([]byte(row), &m); err != nil {
+			t.Fatalf("unmarshal %s: %v", row, err)
+		}
+		data, err := json.Marshal(m)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var sent, printed map[string]any
+		if err := json.Unmarshal([]byte(row), &sent); err != nil {
+			t.Fatalf("unmarshal %s: %v", row, err)
+		}
+		if err := json.Unmarshal(data, &printed); err != nil {
+			t.Fatalf("unmarshal %s: %v", data, err)
+		}
+		wantValue, wantPresent := sent["isFavorite"]
+		gotValue, gotPresent := printed["isFavorite"]
+		if wantPresent != gotPresent || wantValue != gotValue {
+			t.Errorf("isFavorite: sent %s, printed %s", row, data)
+		}
+	}
+}
+
 func TestModelSearchRequestOmitsUnsetFilters(t *testing.T) {
 	data, err := json.Marshal(ModelSearchRequest{
 		TaskType: taskTypeModelSearch,
