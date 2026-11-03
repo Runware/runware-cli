@@ -1,6 +1,7 @@
 package model
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -32,20 +33,25 @@ func TestValidateSearch(t *testing.T) {
 }
 
 func TestModelSearchRowsIncludeSource(t *testing.T) {
-	r := modelSearchResults{models: []api.ModelResult{
-		{
-			Name:     "PhotoRealistic XL",
-			AIR:      "civitai:249421@281440",
-			Source:   "community",
-			Category: "checkpoint",
-		},
-	}}
-	headers := r.Headers()
-	rows := r.Rows()
-	if headers[2] != colSource {
-		t.Fatalf("expected the third column to be %q, got %q", colSource, headers[2])
-	}
-	if rows[0][2] != "community" {
-		t.Errorf("expected source community, got %v", rows[0][2])
+	for _, wide := range []bool{false, true} {
+		r := modelSearchResults{
+			models: []api.ModelResult{
+				{
+					Name:     "PhotoRealistic XL",
+					AIR:      "civitai:249421@281440",
+					Source:   "community",
+					Category: "checkpoint",
+				},
+			},
+			wide: wide,
+		}
+		headers := r.Headers()
+		i := slices.Index(headers, colSource)
+		if i < 0 {
+			t.Fatalf("wide=%v: expected a %q column, got %v", wide, colSource, headers)
+		}
+		if got := r.Rows()[0][i]; got != "community" {
+			t.Errorf("wide=%v: expected source community, got %v", wide, got)
+		}
 	}
 }
