@@ -60,7 +60,7 @@ The model positional argument may be omitted when --preset supplies one.`,
   runware run minimax:m3@0 messages.0.role=user messages.0.content="What is Go?" messages.1.role=assistant messages.1.content="A compiled language." messages.2.role=user messages.2.content="How do I install it?"
 
   # Video generation
-  runware run klingai:5@3 positivePrompt="Ocean waves at sunset" width=1920 height=1080 duration=10
+  runware run klingai:kling-video@3.0-turbo positivePrompt="Ocean waves at sunset" width=1920 height=1080 duration=10
 
   # 3D inference — text to 3D
   runware run tencent:hunyuan-3d@3.1-pro positivePrompt="A red vintage sports car"
