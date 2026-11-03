@@ -343,6 +343,7 @@ type ModelResult struct {
 	HeroImage                string    `json:"heroImage"`
 	Private                  bool      `json:"private"`
 	IsFavorite               *bool     `json:"isFavorite,omitempty"`
+	Provider                 string    `json:"provider,omitempty"`
 	ShortDescription         string    `json:"shortDescription,omitempty"`
 	PositiveTriggerWords     string    `json:"positiveTriggerWords,omitempty"`
 	NegativeTriggerWords     string    `json:"negativeTriggerWords,omitempty"`
