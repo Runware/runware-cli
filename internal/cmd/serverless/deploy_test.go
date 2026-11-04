@@ -26,6 +26,8 @@ const (
 	testSrcDirFlag    = "--src-dir"
 	testFromFlag      = "--from"
 	testFallbackGPU   = "l40s"
+	testBaseImageFlag = "--base-image"
+	testRequirement   = "--requirement"
 	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
 	testIDFlag        = "--id"
 	testWaitFlag      = "--wait"
@@ -88,13 +90,13 @@ func TestValidateDeployArgs(t *testing.T) {
 		},
 		{
 			name:    "container with base-image",
-			flags:   []string{testContainerFlag, testWrapperDir, "--base-image", "python:3.12-slim"},
-			wantErr: "--base-image",
+			flags:   []string{testContainerFlag, testWrapperDir, testBaseImageFlag, "python:3.12-slim"},
+			wantErr: testBaseImageFlag,
 		},
 		{
 			name:    "container with requirement",
-			flags:   []string{testContainerFlag, testWrapperDir, "--requirement", testPipPackage},
-			wantErr: "--requirement",
+			flags:   []string{testContainerFlag, testWrapperDir, testRequirement, testPipPackage},
+			wantErr: testRequirement,
 		},
 		{
 			name:  "code with src-dir",
@@ -482,8 +484,8 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
 		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
 		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
-		{flags: []string{"--requirement", testPipPackage}},
-		{flags: []string{"--base-image", "python:3.12-slim"}},
+		{flags: []string{testRequirement, testPipPackage}},
+		{flags: []string{testBaseImageFlag, "python:3.12-slim"}},
 		{flags: []string{testSrcDirFlag, "."}},
 		{flags: []string{testWaitFlag}},
 	}
@@ -721,6 +723,62 @@ func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
 
 			if err == nil || !strings.Contains(err.Error(), tc.wantHint) {
 				t.Fatalf("err = %v, want it to contain %q", err, tc.wantHint)
+			}
+		})
+	}
+}
+
+// --from cannot judge the code-only flags up front, because the source type is
+// inside the archive. Once the manifest says container, they have to be refused
+// rather than accepted and dropped by the packer.
+func TestRefuseCodeOnlyFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		flags   []string
+		wantErr string
+	}{
+		{
+			name:  "nothing code-only passed",
+			flags: []string{testFromFlag, testArchiveURL},
+		},
+		{
+			name:    "base-image",
+			flags:   []string{testFromFlag, testArchiveURL, testBaseImageFlag, "python:3.12-slim"},
+			wantErr: testBaseImageFlag,
+		},
+		{
+			name:    "requirement",
+			flags:   []string{testFromFlag, testArchiveURL, testRequirement, testPipPackage},
+			wantErr: testRequirement,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newDeployCmd(nil)
+			if err := cmd.ParseFlags(tc.flags); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+
+			// What validateDeployArgs cannot do before the fetch, and what the
+			// deploy does as soon as the manifest names a container source.
+			if err := validateDeployArgs(cmd, nil, "", testArchiveURL); err != nil {
+				t.Fatalf("the source choice itself was refused: %v", err)
+			}
+
+			err := refuseCodeOnlyFlags(cmd, "this archive holds a container source")
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q does not name %q", err, tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), "container source") {
+				t.Errorf("error %q does not say why", err)
 			}
 		})
 	}

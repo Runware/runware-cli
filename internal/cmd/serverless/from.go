@@ -71,8 +71,10 @@ func downloadArchive(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
 	}
+	// Closed without being drained. The happy path reads the body to the end
+	// anyway, and on every other path the body is one we have just refused:
+	// reading the rest of it only gives a hostile source longer to send.
 	defer func() {
-		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
 
@@ -153,7 +155,15 @@ func unpackEntry(entry *zip.File, dir string) (int64, error) {
 		_ = source.Close()
 	}()
 
-	dest, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // safeArchivePath keeps path under dir
+	// Owner-only, since this directory is ours, but the executable bit is kept:
+	// the packer that reads the directory back archives an executable entry as
+	// 0755, and a container whose entrypoint script lost it would not start.
+	mode := os.FileMode(0o600)
+	if entry.Mode().Perm()&0o111 != 0 {
+		mode = 0o700
+	}
+
+	dest, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode) //nolint:gosec // safeArchivePath keeps path under dir
 	if err != nil {
 		return 0, fmt.Errorf("write %s: %w", entry.Name, err)
 	}

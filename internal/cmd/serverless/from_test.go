@@ -273,3 +273,36 @@ func TestSafeArchivePathKeepsOrdinaryNames(t *testing.T) {
 		t.Error("an empty name was accepted")
 	}
 }
+
+// The packer archives an executable entry as 0755, so an entrypoint script that
+// arrives executable has to still be executable when the packer walks it back.
+func TestFetchSourceArchiveKeepsTheExecutableBit(t *testing.T) {
+	archive := buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: codeManifest},
+		{name: testEntryFile, body: testPySource},
+		{name: "entrypoint.sh", body: "#!/bin/sh\nexec python model.py\n", mode: 0o755},
+		{name: "notes.txt", body: "plain\n", mode: 0o644},
+	})
+
+	dir, cleanup, err := fetchSourceArchive(context.Background(), serveArchive(t, archive))
+	if err != nil {
+		t.Fatalf("fetchSourceArchive: %v", err)
+	}
+	defer cleanup()
+
+	executable, err := os.Stat(filepath.Join(dir, "entrypoint.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executable.Mode().Perm()&0o100 == 0 {
+		t.Errorf("entrypoint.sh came out %v, with no owner execute bit", executable.Mode().Perm())
+	}
+
+	plain, err := os.Stat(filepath.Join(dir, "notes.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Mode().Perm()&0o111 != 0 {
+		t.Errorf("notes.txt came out %v, executable when the archive said otherwise", plain.Mode().Perm())
+	}
+}

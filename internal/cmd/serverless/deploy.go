@@ -102,14 +102,23 @@ func validateDeployArgs(cmd *cobra.Command, args []string, containerDir, from st
 				return fmt.Errorf("--%s names a local source; --from takes the source from the archive", name)
 			}
 		}
+		// The source type is inside the archive, so the code-only flags cannot be
+		// judged yet. refuseCodeOnlyFlags runs again once the manifest is read.
 		return nil
 	}
 	if !hasContainer {
 		return nil
 	}
+	return refuseCodeOnlyFlags(cmd, "omit it when using --container")
+}
+
+// refuseCodeOnlyFlags rejects the flags a container deploy has no use for. A
+// deploy that accepted and then discarded them would differ from the command
+// the person wrote without saying so.
+func refuseCodeOnlyFlags(cmd *cobra.Command, remedy string) error {
 	for _, name := range codeOnlyDeployFlags {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s applies to code deploys only; omit it when using --container", name)
+			return fmt.Errorf("--%s applies to code deploys only; %s", name, remedy)
 		}
 	}
 	return nil
@@ -329,6 +338,12 @@ paths and an invoke example once the application is active.`,
 				// refused on an update by exactly that test, and a manifest that
 				// carries a GPU type is describing the app, not asking to change a
 				// running one, so a redeploy from the same archive has to go through.
+				if manifest.Source.Type == string(serverlessapi.AppSourceTypeContainer) {
+					if err := refuseCodeOnlyFlags(cmd, "this archive holds a container source"); err != nil {
+						return err
+					}
+				}
+
 				args, srcDir, containerDir = manifest.localSource(dir)
 				id = manifestString(cmd, "id", id, manifest.ID)
 				name = manifestString(cmd, "name", name, manifest.Name)
