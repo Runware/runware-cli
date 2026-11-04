@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -277,6 +278,9 @@ func TestSafeArchivePathKeepsOrdinaryNames(t *testing.T) {
 // The packer archives an executable entry as 0755, so an entrypoint script that
 // arrives executable has to still be executable when the packer walks it back.
 func TestFetchSourceArchiveKeepsTheExecutableBit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no executable bit to preserve on Windows")
+	}
 	archive := buildTestArchive(t, []archiveEntry{
 		{name: manifestFile, body: codeManifest},
 		{name: testEntryFile, body: testPySource},
