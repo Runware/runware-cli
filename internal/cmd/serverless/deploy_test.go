@@ -694,3 +694,48 @@ func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
 		})
 	}
 }
+
+// TestDeployRefusesAShortAppID: an id outside 6 to 30 characters is a refusal.
+// The command must return that validation error before an upload or a create.
+// main exits 1 on the error, so a deploy step does not continue against a
+// version that was never created.
+func TestDeployRefusesAShortAppID(t *testing.T) {
+	withoutDefaultEnvironment(t)
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+	const (
+		shortAppID = "sdxl"
+		detail     = "appId must be 6 to 30 characters"
+	)
+
+	run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"type":"about:blank","title":"Bad Request","status":400,"detail":"`+detail+`"}`)
+	}, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, shortAppID, testGPUTypeFlag, testGPUType)
+
+	requireDeployRefused(t, run, detail, testAppsPath+"/"+shortAppID)
+}
+
+// TestDeployRefusesGPUTypeWhileDeleting: delete is asynchronous, so the app
+// still exists and this deploy is an update. A create-only flag has to fail
+// that update before any upload, or the caller continues with neither the
+// app that is leaving nor a new one.
+func TestDeployRefusesGPUTypeWhileDeleting(t *testing.T) {
+	withoutDefaultEnvironment(t)
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	deleting := `"status":"` + string(serverlessapi.AppStatusDeleting) + `"`
+	body := strings.Replace(activeAppBody(""), `"status":"`+string(serverlessapi.AppStatusActive)+`"`, deleting, 1)
+	if !strings.Contains(body, deleting) {
+		t.Fatalf("app fixture has no status to mark deleting: %s", body)
+	}
+	run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID, testGPUTypeFlag, testGPUType)
+
+	want := "--gpu-type applies to create only; use 'runware serverless apps scale' to change worker configuration"
+	requireDeployRefused(t, run, want, testAppsPath+"/"+testAppID)
+}
