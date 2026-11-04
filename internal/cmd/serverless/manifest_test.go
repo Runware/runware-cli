@@ -99,9 +99,10 @@ compute:
 	}
 }
 
-// envVarFlags has to be ordered: an unordered map would make two deploys of
-// one manifest differ in the order they report and send variables.
-func TestManifestEnvVarFlagsAreSorted(t *testing.T) {
+// The decoded values go to the deploy as they are. Rendering them as
+// KEY=VALUE and parsing them back would unquote a value whose quotes are part
+// of it, so the map is what travels.
+func TestManifestEnvVarsAreDecodedValues(t *testing.T) {
 	manifest := readManifestBody(t, `configVersion: 1
 id: config-and-secrets
 source:
@@ -110,13 +111,17 @@ source:
 envVars:
   LOG_LEVEL: info
   CACHE_DIR: /weights
-  BATCH: "8"
+  PAYLOAD: '"hello"'
 `)
 
-	got := strings.Join(manifest.envVarFlags(), " ")
-	want := "BATCH=8 CACHE_DIR=/weights LOG_LEVEL=info"
-	if got != want {
-		t.Errorf("envVarFlags = %q, want %q", got, want)
+	for key, want := range map[string]string{
+		"LOG_LEVEL": "info",
+		"CACHE_DIR": "/weights",
+		"PAYLOAD":   `"hello"`,
+	} {
+		if manifest.EnvVars[key] != want {
+			t.Errorf("envVars[%s] = %q, want %q", key, manifest.EnvVars[key], want)
+		}
 	}
 }
 

@@ -22,6 +22,12 @@ const fromFetchTimeout = 60 * time.Second
 // send and a directory each to create.
 const maxArchiveEntries = 2000
 
+// maxArchiveDepth bounds how deep an entry may sit. The entry cap alone does
+// not bound what unpacking creates: 2000 entries under distinct chains of a
+// thousand parents each are a handful of kilobytes to send and two million
+// directories to make.
+const maxArchiveDepth = 32
+
 // fetchSourceArchive downloads a packaged source and unpacks it into a new
 // directory, returning that directory and a function that removes it.
 //
@@ -200,8 +206,16 @@ func safeArchivePath(name string) (string, error) {
 	}
 
 	clean := filepath.Clean(filepath.FromSlash(name))
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+
+	// IsLocal rather than a prefix test: on Windows a drive-relative entry such
+	// as `C:../../../escaped.py` is not absolute and does not begin with "..",
+	// so it passes a hand-written check and then climbs out of the directory
+	// once joined. It also refuses the reserved device names.
+	if !filepath.IsLocal(clean) {
 		return "", fmt.Errorf("%q in the fetched archive points outside it", name)
+	}
+	if depth := len(strings.Split(filepath.ToSlash(clean), "/")); depth > maxArchiveDepth {
+		return "", fmt.Errorf("%q in the fetched archive is nested deeper than %d directories", name, maxArchiveDepth)
 	}
 	return clean, nil
 }

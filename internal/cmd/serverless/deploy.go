@@ -318,7 +318,10 @@ paths and an invoke example once the application is active.`,
 				return err
 			}
 
-			var manifest deployManifest
+			var (
+				manifest    deployManifest
+				manifestEnv map[string]string
+			)
 			if from != "" {
 				dir, cleanup, err := fetchSourceArchive(cmd.Context(), from)
 				if err != nil {
@@ -359,7 +362,10 @@ paths and an invoke example once the application is active.`,
 					volumes = manifest.Volumes
 				}
 				if !cmd.Flags().Changed(envVarFlag) {
-					envVars = manifest.envVarFlags()
+					// The map itself, not rendered as KEY=VALUE: a value that
+					// legitimately carries quotes would be unquoted a second
+					// time on the way back in.
+					manifestEnv = manifest.EnvVars
 				}
 				if !cmd.Flags().Changed("secret") {
 					secrets = manifest.secretFlags()
@@ -421,7 +427,7 @@ paths and an invoke example once the application is active.`,
 				if err != nil {
 					return err
 				}
-				appEnv, err = buildEnvironmentVariables(envFiles, envVars)
+				appEnv, err = buildEnvironmentVariables(envFiles, envVars, manifestEnv)
 				if err != nil {
 					return err
 				}

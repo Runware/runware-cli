@@ -310,3 +310,32 @@ func TestFetchSourceArchiveKeepsTheExecutableBit(t *testing.T) {
 		t.Errorf("notes.txt came out %v, executable when the archive said otherwise", plain.Mode().Perm())
 	}
 }
+
+// The entry cap bounds files, not the directories unpacking creates. A few
+// thousand entries under long chains of parents are kilobytes to send and
+// millions of directories to make.
+func TestFetchSourceArchiveRefusesDeepNesting(t *testing.T) {
+	deep := strings.Repeat("a/", maxArchiveDepth) + "model.py"
+	archive := buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: codeManifest},
+		{name: deep, body: testPySource},
+	})
+
+	_, cleanup, err := fetchSourceArchive(context.Background(), serveArchive(t, archive))
+	if cleanup != nil {
+		cleanup()
+	}
+	if err == nil {
+		t.Fatal("a deeply nested entry was accepted")
+	}
+	if !strings.Contains(err.Error(), "nested deeper than") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestSafeArchivePathAllowsOrdinaryNesting(t *testing.T) {
+	ok := strings.Repeat("a/", maxArchiveDepth-1) + "model.py"
+	if _, err := safeArchivePath(ok); err != nil {
+		t.Errorf("a path at the limit was refused: %v", err)
+	}
+}

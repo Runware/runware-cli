@@ -18,7 +18,7 @@ import (
 )
 
 func TestBuildEnvironmentVariables(t *testing.T) {
-	got, err := buildEnvironmentVariables(nil, []string{"HF_TOKEN=abc", "LOG_LEVEL=debug"})
+	got, err := buildEnvironmentVariables(nil, []string{"HF_TOKEN=abc", "LOG_LEVEL=debug"}, nil)
 	if err != nil {
 		t.Fatalf("buildEnvironmentVariables: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestBuildEnvironmentVariables(t *testing.T) {
 // Nothing supplied must send nil, not an empty map: the field is optional and an
 // explicit {} is a different statement from saying nothing.
 func TestBuildEnvironmentVariables_NoneIsNil(t *testing.T) {
-	got, err := buildEnvironmentVariables(nil, nil)
+	got, err := buildEnvironmentVariables(nil, nil, nil)
 	if err != nil {
 		t.Fatalf("buildEnvironmentVariables: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestBuildEnvironmentVariables_NoneIsNil(t *testing.T) {
 // A value may legitimately contain '=' -- base64 padding, a connection string --
 // so only the first separator splits.
 func TestBuildEnvironmentVariables_ValueMayContainEquals(t *testing.T) {
-	got, err := buildEnvironmentVariables(nil, []string{"TOKEN=abc==def="})
+	got, err := buildEnvironmentVariables(nil, []string{"TOKEN=abc==def="}, nil)
 	if err != nil {
 		t.Fatalf("buildEnvironmentVariables: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestBuildEnvironmentVariables_ValueMayContainEquals(t *testing.T) {
 // An empty value is a legitimate assignment: unsetting by setting empty is how
 // callers override a default the image bakes in.
 func TestBuildEnvironmentVariables_EmptyValueAllowed(t *testing.T) {
-	got, err := buildEnvironmentVariables(nil, []string{"QUIET="})
+	got, err := buildEnvironmentVariables(nil, []string{"QUIET="}, nil)
 	if err != nil {
 		t.Fatalf("buildEnvironmentVariables: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestBuildEnvironmentVariables_Rejects(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := buildEnvironmentVariables(nil, []string{tc.pair})
+			_, err := buildEnvironmentVariables(nil, []string{tc.pair}, nil)
 			if err == nil {
 				t.Fatalf("expected an error for %q", tc.pair)
 			}
@@ -89,7 +89,7 @@ func TestBuildEnvironmentVariables_Rejects(t *testing.T) {
 }
 
 func TestBuildEnvironmentVariables_TooLongValue(t *testing.T) {
-	_, err := buildEnvironmentVariables(nil, []string{"BIG=" + strings.Repeat("x", maxEnvValueLen+1)})
+	_, err := buildEnvironmentVariables(nil, []string{"BIG=" + strings.Repeat("x", maxEnvValueLen+1)}, nil)
 	if err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("expected a length error, got %v", err)
 	}
@@ -105,7 +105,7 @@ func TestBuildEnvironmentVariables_FromFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := buildEnvironmentVariables([]string{path}, nil)
+	got, err := buildEnvironmentVariables([]string{path}, nil, nil)
 	if err != nil {
 		t.Fatalf("buildEnvironmentVariables: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestBuildEnvironmentVariables_InlineOverridesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := buildEnvironmentVariables([]string{path}, []string{"LOG_LEVEL=debug"})
+	got, err := buildEnvironmentVariables([]string{path}, []string{"LOG_LEVEL=debug"}, nil)
 	if err != nil {
 		t.Fatalf("buildEnvironmentVariables: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestBuildEnvironmentVariables_FileErrorNamesTheLine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := buildEnvironmentVariables([]string{path}, nil)
+	_, err := buildEnvironmentVariables([]string{path}, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for a malformed line")
 	}
@@ -156,7 +156,7 @@ func TestBuildEnvironmentVariables_FileErrorNamesTheLine(t *testing.T) {
 }
 
 func TestBuildEnvironmentVariables_MissingFile(t *testing.T) {
-	_, err := buildEnvironmentVariables([]string{filepath.Join(t.TempDir(), "nope")}, nil)
+	_, err := buildEnvironmentVariables([]string{filepath.Join(t.TempDir(), "nope")}, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for a missing env file")
 	}
@@ -167,7 +167,7 @@ func TestBuildEnvironmentVariables_TooMany(t *testing.T) {
 	for i := range pairs {
 		pairs[i] = "VAR_" + strings.Repeat("a", i%20) + string(rune('A'+i%26)) + string(rune('A'+i/26)) + "=x"
 	}
-	if _, err := buildEnvironmentVariables(nil, pairs); err == nil {
+	if _, err := buildEnvironmentVariables(nil, pairs, nil); err == nil {
 		t.Fatal("expected an error past the variable limit")
 	}
 }
@@ -197,7 +197,7 @@ func TestBuildEnvironmentVariables_StripsSurroundingQuotes(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.line+"\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			got, err := buildEnvironmentVariables([]string{path}, nil)
+			got, err := buildEnvironmentVariables([]string{path}, nil, nil)
 			if err != nil {
 				t.Fatalf("buildEnvironmentVariables: %v", err)
 			}
@@ -220,7 +220,7 @@ func TestBuildEnvironmentVariables_PreservesValueWhitespace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := buildEnvironmentVariables([]string{path}, nil)
+	got, err := buildEnvironmentVariables([]string{path}, nil, nil)
 	if err != nil {
 		t.Fatalf("buildEnvironmentVariables: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestBuildEnvironmentVariables_PreservesValueWhitespace(t *testing.T) {
 func TestBuildEnvironmentVariables_LimitIsCountedInRunes(t *testing.T) {
 	// 4096 two-byte runes: 4096 characters, 8192 bytes.
 	value := strings.Repeat("é", maxEnvValueLen)
-	got, err := buildEnvironmentVariables(nil, []string{"MSG=" + value})
+	got, err := buildEnvironmentVariables(nil, []string{"MSG=" + value}, nil)
 	if err != nil {
 		t.Fatalf("a value of exactly the character limit was rejected: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestBuildEnvironmentVariables_LimitIsCountedInRunes(t *testing.T) {
 		t.Error("value did not survive")
 	}
 	// One rune past is still rejected.
-	if _, err := buildEnvironmentVariables(nil, []string{"MSG=" + value + "é"}); err == nil {
+	if _, err := buildEnvironmentVariables(nil, []string{"MSG=" + value + "é"}, nil); err == nil {
 		t.Error("expected a rejection one character past the limit")
 	}
 }
@@ -362,4 +362,44 @@ func derefEnv(in map[string]*string) map[string]string {
 		}
 	}
 	return out
+}
+
+// A manifest's values were decoded by the YAML parser, never typed as
+// KEY=VALUE. Running them back through that parser unquotes a value whose
+// quotes are part of it, and the app receives something it never asked for.
+func TestBuildEnvironmentVariablesKeepsDecodedValuesIntact(t *testing.T) {
+	quoted := `"hello"`
+
+	got, err := buildEnvironmentVariables(nil, nil, map[string]string{
+		"PAYLOAD": quoted,
+		"EMPTY":   `''`,
+	})
+	if err != nil {
+		t.Fatalf("buildEnvironmentVariables: %v", err)
+	}
+	if (*got)["PAYLOAD"] != quoted {
+		t.Errorf("PAYLOAD = %q, want %q", (*got)["PAYLOAD"], quoted)
+	}
+	if (*got)["EMPTY"] != `''` {
+		t.Errorf("EMPTY = %q, want two quote characters", (*got)["EMPTY"])
+	}
+
+	// The same value typed on the command line is unquoted, which is what the
+	// flag has always promised and what the map path exists to avoid.
+	viaFlag, err := buildEnvironmentVariables(nil, []string{"PAYLOAD=" + quoted}, nil)
+	if err != nil {
+		t.Fatalf("buildEnvironmentVariables: %v", err)
+	}
+	if (*viaFlag)["PAYLOAD"] != "hello" {
+		t.Errorf("the flag path changed: %q", (*viaFlag)["PAYLOAD"])
+	}
+}
+
+func TestBuildEnvironmentVariablesValidatesDecodedNames(t *testing.T) {
+	if _, err := buildEnvironmentVariables(nil, nil, map[string]string{"2BAD": "x"}); err == nil {
+		t.Error("a name that is not POSIX-style was accepted")
+	}
+	if _, err := buildEnvironmentVariables(nil, nil, map[string]string{"OK": strings.Repeat("x", maxEnvValueLen+1)}); err == nil {
+		t.Error("an oversized value was accepted")
+	}
 }

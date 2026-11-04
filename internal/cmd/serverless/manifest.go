@@ -3,11 +3,9 @@ package serverless
 import (
 	"bytes"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -197,16 +195,6 @@ func (m deployManifest) localSource(dir string) (args []string, srcDir, containe
 		return nil, "", dir
 	}
 	return []string{m.Source.Entry}, dir, ""
-}
-
-// envVarFlags renders the environment variables the way --env-var takes them,
-// in a fixed order so two deploys of the same manifest behave the same.
-func (m deployManifest) envVarFlags() []string {
-	out := make([]string, 0, len(m.EnvVars))
-	for _, key := range slices.Sorted(maps.Keys(m.EnvVars)) {
-		out = append(out, key+"="+m.EnvVars[key])
-	}
-	return out
 }
 
 // secretFlags renders the secrets the way --secret takes them.
