@@ -24,6 +24,9 @@ const (
 	testPipPackage    = "torch"
 	testSourceID      = "019c7654-8b21-7abc-9123-abcdef123456"
 	testSrcDirFlag    = "--src-dir"
+	testFromFlag      = "--from"
+	testFallbackGPU   = "l40s"
+	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
 	testIDFlag        = "--id"
 	testWaitFlag      = "--wait"
 	testTimeoutFlag   = "--timeout"
@@ -49,10 +52,34 @@ func TestValidateDeployArgs(t *testing.T) {
 			wantErr: deploySourceChoice,
 		},
 		{
-			name:    "both",
+			name:    "a file and a container",
 			args:    []string{testModelFile},
 			flags:   []string{testContainerFlag, testWrapperDir},
-			wantErr: "not both",
+			wantErr: "not more than one",
+		},
+		{
+			name:  "from only",
+			flags: []string{testFromFlag, testArchiveURL},
+		},
+		{
+			name:    "from and a file",
+			args:    []string{testModelFile},
+			flags:   []string{testFromFlag, testArchiveURL},
+			wantErr: "not more than one",
+		},
+		{
+			name:    "from and a container",
+			flags:   []string{testFromFlag, testArchiveURL, testContainerFlag, testWrapperDir},
+			wantErr: "not more than one",
+		},
+		{
+			name:    "from with src-dir",
+			flags:   []string{testFromFlag, testArchiveURL, testSrcDirFlag, "."},
+			wantErr: testSrcDirFlag,
+		},
+		{
+			name:  "from with a flag that overrides the manifest",
+			flags: []string{testFromFlag, testArchiveURL, "--gpu-type", testFallbackGPU},
 		},
 		{
 			name:    "container with src-dir",
@@ -90,7 +117,11 @@ func TestValidateDeployArgs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("container: %v", err)
 			}
-			err = validateDeployArgs(cmd, tc.args, containerDir)
+			from, err := cmd.Flags().GetString("from")
+			if err != nil {
+				t.Fatalf("from: %v", err)
+			}
+			err = validateDeployArgs(cmd, tc.args, containerDir, from)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -447,7 +478,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env-vars"},
 		{flags: []string{"--volume", "/data"}, wantErr: "immutable"},
 		{flags: []string{"--secret", "ORG_TOKEN"}, wantErr: "secrets attach"},
-		{flags: []string{"--fallback-gpu-type", "l40s"}, wantErr: scaleHint},
+		{flags: []string{"--fallback-gpu-type", testFallbackGPU}, wantErr: scaleHint},
 		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
 		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
 		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},

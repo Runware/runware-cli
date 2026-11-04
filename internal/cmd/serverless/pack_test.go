@@ -57,8 +57,10 @@ func unpack(t *testing.T, raw []byte) map[string]string {
 
 // Repeated across the table-free tests below; goconst wants them named.
 const (
-	testModelFile = "app.py"
-	testPySource  = "x = 1\n"
+	testModelFile  = "app.py"
+	testPySource   = "x = 1\n"
+	testEntryFile  = "model.py"
+	testNestedFile = "lib/helpers.py"
 )
 
 func names(packed map[string]string) []string {
@@ -78,7 +80,7 @@ func TestPackDirectory(t *testing.T) {
 	writeTree(t, dir, map[string]string{
 		testModelFile:      "import lib\n",
 		"lib/__init__.py":  "",
-		"lib/helpers.py":   "def go(): pass\n",
+		testNestedFile:     "def go(): pass\n",
 		"data/prompt.txt":  "hello",
 		"nested/deep/x.py": testPySource,
 	})
@@ -92,13 +94,13 @@ func TestPackDirectory(t *testing.T) {
 	}
 
 	packed := unpack(t, encoded)
-	for _, want := range []string{testModelFile, "lib/helpers.py", "data/prompt.txt", "nested/deep/x.py"} {
+	for _, want := range []string{testModelFile, testNestedFile, "data/prompt.txt", "nested/deep/x.py"} {
 		if _, ok := packed[want]; !ok {
 			t.Errorf("%q missing from the archive; got %v", want, names(packed))
 		}
 	}
-	if packed["lib/helpers.py"] != "def go(): pass\n" {
-		t.Errorf("lib/helpers.py content = %q", packed["lib/helpers.py"])
+	if packed[testNestedFile] != "def go(): pass\n" {
+		t.Errorf("lib/helpers.py content = %q", packed[testNestedFile])
 	}
 }
 

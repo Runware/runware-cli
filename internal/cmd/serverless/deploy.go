@@ -15,12 +15,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const deploySourceChoice = "pass an entry file or --container"
+const deploySourceChoice = "pass an entry file, --container, or --from"
 
 var codeOnlyDeployFlags = []string{
 	"src-dir",
 	"base-image",
 	"requirement",
+}
+
+// fromOnlyConflictFlags name a local source, which --from already supplies.
+var fromOnlyConflictFlags = []string{
+	"src-dir",
+	"container",
 }
 
 // createOnlyDeployFlags apply to CreateApp only. On an existing app they are
@@ -72,14 +78,31 @@ func (s deploySource) appSource(sourceID uuid.UUID) (serverlessapi.AppSourceUpse
 	}
 }
 
-func validateDeployArgs(cmd *cobra.Command, args []string, containerDir string) error {
+func validateDeployArgs(cmd *cobra.Command, args []string, containerDir, from string) error {
 	hasFile := len(args) == 1
 	hasContainer := containerDir != ""
-	if hasFile == hasContainer {
-		if hasFile {
-			return fmt.Errorf("%s, not both", deploySourceChoice)
+	hasFrom := from != ""
+
+	chosen := 0
+	for _, picked := range []bool{hasFile, hasContainer, hasFrom} {
+		if picked {
+			chosen++
 		}
-		return fmt.Errorf("%s", deploySourceChoice)
+	}
+	if chosen != 1 {
+		if chosen == 0 {
+			return fmt.Errorf("%s", deploySourceChoice)
+		}
+		return fmt.Errorf("%s, not more than one", deploySourceChoice)
+	}
+
+	if hasFrom {
+		for _, name := range fromOnlyConflictFlags {
+			if cmd.Flags().Changed(name) {
+				return fmt.Errorf("--%s names a local source; --from takes the source from the archive", name)
+			}
+		}
+		return nil
 	}
 	if !hasContainer {
 		return nil
@@ -132,6 +155,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		availableWorkersPct int32
 		srcDir              string
 		containerDir        string
+		from                string
 		volumes             []string
 		secrets             []string
 		envVars             []string
@@ -181,6 +205,19 @@ minWorkers=0 stays scaled to zero until the first invoke.
 
 --container cannot be combined with an entry file, --src-dir, --base-image, or
 --requirement.
+
+--from takes the URL of a packaged source: a zip whose root holds the app's
+files and a runware.yaml recording the deploy options. The CLI fetches it,
+reads that file, and deploys what it describes, so a published example deploys
+in one command instead of a clone and a command. Flags still win over the
+file, so the same archive goes to another GPU type or another --id without
+being edited first. The archive supplies the source directory, so --from
+cannot be combined with an entry file, --container, or --src-dir.
+
+A runware.yaml carries no secret values. Its secrets name what the app needs,
+and each one has to already exist in the environment. A manifest key this CLI
+does not know is an error rather than a silent omission, which is what
+configVersion is there to tell apart.
 
 Exclude what the app does not need with a .runwareignore file at the root of the
 source directory; it takes gitignore syntax. A .gitignore is NOT consulted --
@@ -255,14 +292,67 @@ paths and an invoke example once the application is active.`,
   runware serverless deploy --id my-app --gpu-type h100 --container ./wrapper
 
   # wait until the first rollout is active or failed
-  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait --timeout 10m`,
+  runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait --timeout 10m
+
+  # deploy a packaged source, reading its id and options from its runware.yaml
+  runware serverless deploy --from https://runware.ai/docs/serverless/examples/echo.zip
+
+  # the same archive under another id and on another GPU type
+  runware serverless deploy --from https://runware.ai/docs/serverless/examples/echo.zip \
+    --id my-echo --gpu-type l40s`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateWaitFlags(cmd, wait, timeout); err != nil {
 				return err
 			}
-			if err := validateDeployArgs(cmd, args, containerDir); err != nil {
+			if err := validateDeployArgs(cmd, args, containerDir, from); err != nil {
 				return err
+			}
+
+			var manifest deployManifest
+			if from != "" {
+				dir, cleanup, err := fetchSourceArchive(cmd.Context(), from)
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+
+				if manifest, err = readDeployManifest(dir); err != nil {
+					return err
+				}
+
+				// The manifest's own values, for every flag the command line left
+				// alone. A passed flag wins, which is what lets one packaged source
+				// deploy on another GPU type without being edited first.
+				//
+				// Nothing here marks a flag as changed. The create-only flags are
+				// refused on an update by exactly that test, and a manifest that
+				// carries a GPU type is describing the app, not asking to change a
+				// running one, so a redeploy from the same archive has to go through.
+				args, srcDir, containerDir = manifest.localSource(dir)
+				id = manifestString(cmd, "id", id, manifest.ID)
+				name = manifestString(cmd, "name", name, manifest.Name)
+				baseImage = manifestString(cmd, "base-image", baseImage, manifest.Build.BaseImage)
+				gpuType = manifestString(cmd, "gpu-type", gpuType, manifest.Compute.GpuType)
+				maxWorkers = manifestInt32(cmd, "max-workers", maxWorkers, manifest.Compute.MaxWorkers)
+				idleTTL = manifestInt32(cmd, "idle-ttl", idleTTL, manifest.Compute.IdleTTL)
+				scalingDelay = manifestInt32(cmd, "scaling-delay", scalingDelay, manifest.Compute.ScalingDelay)
+				if !cmd.Flags().Changed("requirement") {
+					requirements = manifest.Build.Requirements
+				}
+				if !cmd.Flags().Changed("volume") {
+					volumes = manifest.Volumes
+				}
+				if !cmd.Flags().Changed(envVarFlag) {
+					envVars = manifest.envVarFlags()
+				}
+				if !cmd.Flags().Changed("secret") {
+					secrets = manifest.secretFlags()
+				}
+			}
+
+			if id == "" {
+				return fmt.Errorf("--id is required")
 			}
 			if err := validateGPUsPerWorkerFlag(cmd, gpusPerWorker); err != nil {
 				return err
@@ -361,11 +451,11 @@ paths and an invoke example once the application is active.`,
 						IdleTtlSecs:         idleTTL,
 						ScalingDelaySecs:    scalingDelay,
 						GpuType:             gpuType,
-						MinWorkers:          optionalInt32Ptr(cmd, "min-workers", minWorkers),
-						GpusPerWorker:       optionalInt32Ptr(cmd, "gpus-per-worker", gpusPerWorker),
-						FallbackGpuType:     optionalFlagStringPtr(cmd, "fallback-gpu-type", fallbackGPUType),
-						MinAvailableWorkers: optionalInt32Ptr(cmd, "min-available-workers", minAvailableWorkers),
-						AvailableWorkersPct: optionalInt32Ptr(cmd, "available-workers-pct", availableWorkersPct),
+						MinWorkers:          manifestInt32Ptr(cmd, "min-workers", minWorkers, manifest.Compute.MinWorkers),
+						GpusPerWorker:       manifestInt32Ptr(cmd, "gpus-per-worker", gpusPerWorker, manifest.Compute.GpusPerWorker),
+						FallbackGpuType:     manifestStringPtr(cmd, "fallback-gpu-type", fallbackGPUType, manifest.Compute.FallbackGpuType),
+						MinAvailableWorkers: manifestInt32Ptr(cmd, "min-available-workers", minAvailableWorkers, manifest.Compute.MinAvailableWorkers),
+						AvailableWorkersPct: manifestInt32Ptr(cmd, "available-workers-pct", availableWorkersPct, manifest.Compute.AvailableWorkersPct),
 					},
 				})
 			}
@@ -427,6 +517,7 @@ paths and an invoke example once the application is active.`,
 
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
 	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
+	cmd.Flags().StringVar(&from, "from", "", "URL of a packaged source to fetch and deploy, reading its "+manifestFile)
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
@@ -448,10 +539,6 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait (0 = no limit)")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the application")
 	addEnvironmentFlag(cmd, cmd.Flags(), logger, environmentFlagHelp)
-
-	if err := cmd.MarkFlagRequired("id"); err != nil {
-		panic(err)
-	}
 
 	return cmd
 }
