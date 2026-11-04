@@ -303,3 +303,72 @@ func TestReadDeployManifestRejectsBadAppID(t *testing.T) {
 		}
 	}
 }
+
+// A secret is two fields. Validating it by rendering `--secret` and parsing
+// that back reads a name holding an `=` as a name and an alias, so a manifest
+// naming one secret would attach a different one under a variable nobody wrote.
+func TestReadDeployManifestRejectsASecretNameHoldingAnEquals(t *testing.T) {
+	msg := manifestError(t, `configVersion: 1
+id: echo-app
+source:
+  type: code
+  entry: model.py
+secrets:
+  - name: A_NAME=OTHER_VAR
+`)
+	if !strings.Contains(msg, "secret name") {
+		t.Errorf("error = %s", msg)
+	}
+}
+
+func TestReadDeployManifestChecksTheAliasToo(t *testing.T) {
+	msg := manifestError(t, `configVersion: 1
+id: echo-app
+source:
+  type: code
+  entry: model.py
+secrets:
+  - name: HF_TOKEN
+    envVarName: not a name
+`)
+	if !strings.Contains(msg, "POSIX-style") {
+		t.Errorf("error = %s", msg)
+	}
+
+	manifest := readManifestBody(t, `configVersion: 1
+id: echo-app
+source:
+  type: code
+  entry: model.py
+secrets:
+  - name: HF_TOKEN
+    envVarName: HUGGING_FACE_HUB_TOKEN
+`)
+	if got := manifest.secretFlags(); len(got) != 1 || got[0] != "HF_TOKEN=HUGGING_FACE_HUB_TOKEN" {
+		t.Errorf("secretFlags = %v", got)
+	}
+}
+
+// Read down to the first `---` and the rest would be dropped without a word.
+func TestReadDeployManifestRefusesASecondDocument(t *testing.T) {
+	msg := manifestError(t, `configVersion: 1
+id: echo-app
+source:
+  type: code
+  entry: model.py
+---
+id: something-else
+`)
+	if !strings.Contains(msg, "more than one document") {
+		t.Errorf("error = %s", msg)
+	}
+}
+
+func TestReadDeployManifestNamesAnEmptyFile(t *testing.T) {
+	if msg := manifestError(t, ""); !strings.Contains(msg, "is empty") {
+		t.Errorf("error = %s", msg)
+	}
+	if msg := manifestError(t, "\n# nothing but a comment\n"); !strings.Contains(msg, "is empty") {
+		t.Errorf("a comment-only file: %s", msg)
+	}
+}

@@ -2,7 +2,9 @@ package serverless
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -74,6 +76,20 @@ type manifestSecret struct {
 	EnvVarName string `yaml:"envVarName"`
 }
 
+// validate checks the two fields as the two fields they are. Rendering them
+// into `--secret` and parsing that back would read a name holding an `=` as a
+// name and an alias, so a manifest naming one secret would attach a different
+// one under a variable nobody wrote.
+func (s manifestSecret) validate() error {
+	if s.Name == "" || !envNamePattern.MatchString(s.Name) {
+		return fmt.Errorf("secret name %q must be POSIX-style: letters, digits and underscore, not starting with a digit", s.Name)
+	}
+	if s.EnvVarName != "" && !envNamePattern.MatchString(s.EnvVarName) {
+		return fmt.Errorf("secret %s names the environment variable %q, which must be POSIX-style", s.Name, s.EnvVarName)
+	}
+	return nil
+}
+
 // flag renders the secret the way --secret takes it.
 func (s manifestSecret) flag() string {
 	if s.EnvVarName == "" {
@@ -103,7 +119,17 @@ func readDeployManifest(dir string) (deployManifest, error) {
 
 	var manifest deployManifest
 	if err := decoder.Decode(&manifest); err != nil {
+		if errors.Is(err, io.EOF) {
+			return deployManifest{}, fmt.Errorf("%s is empty", manifestFile)
+		}
 		return deployManifest{}, fmt.Errorf("read %s: %w", manifestFile, err)
+	}
+
+	// A file holding more than one document would otherwise be read down to its
+	// first `---` and the rest dropped without a word, which is the silent
+	// omission KnownFields exists to prevent one key at a time.
+	if err := decoder.Decode(new(deployManifest)); !errors.Is(err, io.EOF) {
+		return deployManifest{}, fmt.Errorf("%s holds more than one document, and only the first would be deployed", manifestFile)
 	}
 
 	if err := manifest.validate(); err != nil {
@@ -151,8 +177,8 @@ func (m deployManifest) validate() error {
 	}
 
 	for _, secret := range m.Secrets {
-		if _, _, err := splitSecretAttach(secret.flag()); err != nil {
-			return fmt.Errorf("secret %q is not a name, or a name and an environment variable", secret.flag())
+		if err := secret.validate(); err != nil {
+			return err
 		}
 	}
 	if m.Compute.GpusPerWorker != nil {
@@ -180,8 +206,11 @@ func validateManifestEntry(entry string) error {
 	if filepath.IsAbs(entry) || strings.HasPrefix(entry, "/") {
 		return fmt.Errorf("source.entry %q must be relative to the source root", entry)
 	}
-	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(entry)))
-	if clean == ".." || strings.HasPrefix(clean, "../") {
+	// The same test safeArchivePath uses, because this is the same class of
+	// path: one an archive we did not write chose. A hand-written prefix check
+	// misses a Windows drive-relative name, which is neither absolute nor
+	// prefixed with "..", and the two guards must not disagree about that.
+	if !filepath.IsLocal(filepath.Clean(filepath.FromSlash(entry))) {
 		return fmt.Errorf("source.entry %q must stay inside the source root", entry)
 	}
 	return nil
