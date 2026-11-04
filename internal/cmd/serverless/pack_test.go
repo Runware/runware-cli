@@ -360,7 +360,7 @@ func TestPackDirectory_ModelFileAlwaysPacked(t *testing.T) {
 // TestPackDirectory_SkipsSymlinks: a symlink may point outside the tree, and the
 // archive is a copy rather than a checkout.
 func TestPackDirectory_SkipsSymlinks(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("symlink creation needs privileges on Windows")
 	}
 	dir := t.TempDir()
@@ -733,7 +733,7 @@ func TestPackDirectory_ExcludedDirectoryKeepsExcludingSiblings(t *testing.T) {
 // entrypoint script, and one that arrives non-executable fails at run time with
 // nothing about the archive to explain it.
 func TestPackDirectory_PreservesFileMode(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("no executable bit to preserve on Windows")
 	}
 	dir := t.TempDir()
@@ -767,7 +767,7 @@ func TestPackDirectory_PreservesFileMode(t *testing.T) {
 // A symlink as the model file used to pass the local stat and then be skipped by
 // the walk, uploading an archive whose declared entry point is absent.
 func TestPackDirectory_SymlinkModelFileRejected(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("symlink creation needs privileges on Windows")
 	}
 	dir := t.TempDir()

@@ -278,7 +278,7 @@ func TestSafeArchivePathKeepsOrdinaryNames(t *testing.T) {
 // The packer archives an executable entry as 0755, so an entrypoint script that
 // arrives executable has to still be executable when the packer walks it back.
 func TestFetchSourceArchiveKeepsTheExecutableBit(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("no executable bit to preserve on Windows")
 	}
 	archive := buildTestArchive(t, []archiveEntry{
