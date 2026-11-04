@@ -112,8 +112,8 @@ type serverlessRun struct {
 }
 
 // requireDeployRefused fails when a refused deploy returns success, prints an
-// application, or sends anything beyond the one lookup. main exits 1 on the
-// error, which is what a deploy step in CI reads.
+// application, or sends anything beyond the one lookup. The process exit on
+// that error is pinned in cmd/runware.
 func requireDeployRefused(t *testing.T, run serverlessRun, want, path string) {
 	t.Helper()
 	if run.err == nil || !strings.Contains(run.err.Error(), want) {
