@@ -26,9 +26,15 @@ func main() {
 	os.Exit(run())
 }
 
-// run executes the root command under a context that SIGINT and SIGTERM
-// cancel, so long-running commands stop cleanly, and returns the exit status.
+// run executes the root command for the process arguments.
 func run() int {
+	return runArgs(os.Args[1:])
+}
+
+// runArgs executes the root command for args under a context that SIGINT and
+// SIGTERM cancel, so long-running commands stop cleanly, and returns the exit
+// status. A refused command returns 1, which is what a deploy step in CI reads.
+func runArgs(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Once the first signal has canceled the context, hand the signals back so
@@ -39,6 +45,7 @@ func run() int {
 	}()
 
 	rootCmd, logger := cmd.NewRoot()
+	rootCmd.SetArgs(args)
 	err := rootCmd.ExecuteContext(ctx)
 	if err == nil {
 		return 0

@@ -256,13 +256,16 @@ func TestExistingApp(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			exists, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", srv.URL, slog.Default()), testAppID)
+			app, err := existingApp(context.Background(), serverlessapi.NewClient("test-key", srv.URL, slog.Default()), testAppID)
 
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err = %v, want error %v", err, tc.wantErr)
 			}
-			if exists != tc.wantExists {
-				t.Fatalf("exists = %v, want %v", exists, tc.wantExists)
+			if got := app != nil; got != tc.wantExists {
+				t.Fatalf("app = %v, want exists %v", app, tc.wantExists)
+			}
+			if tc.wantExists && app.Status != serverlessapi.AppStatusActive {
+				t.Fatalf("status = %q, want the getApp body returned", app.Status)
 			}
 		})
 	}
@@ -693,4 +696,78 @@ func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
 			}
 		})
 	}
+}
+
+// appIDValidationDetail is the getApp 422 for an appId outside the AppId
+// schema: one errors entry naming the path parameter, and no pointer, because
+// a parameter is not a field of the body.
+const appIDValidationDetail = `parameter "appId" in path: minimum string length is 6`
+
+// TestDeployStopsWhenTheAppLookupFails: getApp's 422 ValidationError stops
+// the deploy before an upload or a create. The CLI does not check id length
+// itself, so the stub is the refusal getApp returns for a bad appId.
+func TestDeployStopsWhenTheAppLookupFails(t *testing.T) {
+	withoutDefaultEnvironment(t)
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+	const shortAppID = "sdxl"
+	problem, err := json.Marshal(map[string]any{
+		"type":   "https://docs.runware.ai/serverless/errors#unprocessable-entity",
+		"title":  "Unprocessable Entity",
+		"status": http.StatusUnprocessableEntity,
+		"detail": appIDValidationDetail,
+		"errors": []map[string]string{{"detail": appIDValidationDetail}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := runServerlessAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write(problem)
+	}, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, shortAppID, testGPUTypeFlag, testGPUType)
+
+	requireDeployRefused(t, run, appIDValidationDetail, testAppsPath+"/"+shortAppID)
+}
+
+// TestDeployRefusesCreateWithoutGPUType: a 404 is a create, and a create
+// without --gpu-type is refused before the upload.
+func TestDeployRefusesCreateWithoutGPUType(t *testing.T) {
+	withoutDefaultEnvironment(t)
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	run := runServerless(t, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID)
+
+	requireDeployRefused(t, run, "--gpu-type is required", testAppsPath+"/"+testAppID)
+}
+
+// TestDeployRefusesADeletingApp: delete is asynchronous, so the copy still
+// exists. Deploying it, with or without a create-only flag, has to stop
+// before the upload and tell the caller to wait until the copy is deleted.
+func TestDeployRefusesADeletingApp(t *testing.T) {
+	withoutDefaultEnvironment(t)
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	deleting := `"status":"` + string(serverlessapi.AppStatusDeleting) + `"`
+	body := strings.Replace(activeAppBody(""), `"status":"`+string(serverlessapi.AppStatusActive)+`"`, deleting, 1)
+	if !strings.Contains(body, deleting) {
+		t.Fatalf("app fixture has no status to mark deleting: %s", body)
+	}
+	handler := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}
+	want := `application "` + testAppID + `" is deleting; wait until it is deleted, then deploy`
+
+	t.Run("with --gpu-type", func(t *testing.T) {
+		run := runServerlessAgainst(t, handler, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID, testGPUTypeFlag, testGPUType)
+		requireDeployRefused(t, run, want, testAppsPath+"/"+testAppID)
+	})
+	t.Run("without --gpu-type", func(t *testing.T) {
+		run := runServerlessAgainst(t, handler, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID)
+		requireDeployRefused(t, run, want, testAppsPath+"/"+testAppID)
+	})
 }
