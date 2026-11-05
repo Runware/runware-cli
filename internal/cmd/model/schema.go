@@ -15,10 +15,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// colType and colAIR are shared column/field labels used across model table views.
+// colType, colAIR and colSource are shared column/field labels used across model table views.
 const (
 	colType           = "Type"
 	colAIR            = "AIR"
+	colSource         = "Source"
 	defaultEmptyValue = "—"
 )
 

@@ -111,6 +111,22 @@ type serverlessRun struct {
 	err         error
 }
 
+// requireDeployRefused fails when a refused deploy returns success, prints an
+// application, or sends anything beyond the one lookup. The process exit on
+// that error is pinned in cmd/runware.
+func requireDeployRefused(t *testing.T, run serverlessRun, want, path string) {
+	t.Helper()
+	if run.err == nil || !strings.Contains(run.err.Error(), want) {
+		t.Fatalf("err = %v, want %q", run.err, want)
+	}
+	if run.stdout != "" {
+		t.Fatalf("stdout = %q, want no application printed", run.stdout)
+	}
+	if len(run.requests) != 1 || run.requests[0].method != http.MethodGet || run.requests[0].path != path {
+		t.Fatalf("requests = %v, want GET %s and no deploy", run.requests, path)
+	}
+}
+
 // runServerlessAgainst runs `serverless <args>` against a stub API that
 // answers with handler, or with 404 when handler is nil.
 func runServerlessAgainst(t *testing.T, handler http.HandlerFunc, args ...string) serverlessRun {

@@ -43,6 +43,13 @@ func withDefaultEnvironment(t *testing.T, name string) {
 	}
 }
 
+// withoutDefaultEnvironment clears a default environment so a refusal addresses
+// the production copy. A developer's own config must not move it.
+func withoutDefaultEnvironment(t *testing.T) {
+	t.Helper()
+	withDefaultEnvironment(t, "")
+}
+
 // reportsOrganizationCases are the commands whose --env only narrows a report
 // of the whole organization. usage events is one only without --app.
 var reportsOrganizationCases = map[string]struct{}{
@@ -432,9 +439,7 @@ func TestCreateOnlyDeployHintNamesProductionUnderADefault(t *testing.T) {
 		_, _ = io.WriteString(w, activeAppBody(""))
 	}, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID, testGPUTypeFlag, testGPUType, testEnvFlag, testProductionEnvironment)
 
-	if want := "apps scale --env production"; run.err == nil || !strings.Contains(run.err.Error(), want) {
-		t.Fatalf("err = %v, want %q", run.err, want)
-	}
+	requireDeployRefused(t, run, "apps scale --env production", testAppsPath+"/"+testAppID)
 }
 
 func TestOpenLinksTheConsoleToTheDefaultEnvironment(t *testing.T) {

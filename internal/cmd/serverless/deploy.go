@@ -575,14 +575,18 @@ paths and an invoke example once the application is active.`,
 }
 
 // resolveDeployTarget reports whether the deploy updates an existing copy or
-// creates one. Before the archive is uploaded it refuses create-only flags on
-// an update, and an unknown --env or a missing --gpu-type on a create.
+// creates one. Before the archive is uploaded it refuses a copy that is still
+// deleting, create-only flags on an update, and an unknown --env or a missing
+// --gpu-type on a create.
 func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, gpuType string) (update bool, err error) {
-	update, err = existingApp(cmd.Context(), client, id)
+	app, err := existingApp(cmd.Context(), client, id)
 	if err != nil {
 		return false, err
 	}
-	if update {
+	if app != nil {
+		if app.Status == serverlessapi.AppStatusDeleting {
+			return false, fmt.Errorf("application %q is deleting; wait until it is deleted, then deploy", id)
+		}
 		return true, validateUpdateDeployFlags(cmd)
 	}
 	if err := requireEnvironment(cmd.Context(), client, commandEnvironment(cmd)); err != nil {
@@ -591,16 +595,18 @@ func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, g
 	return false, validateCreateDeployGPU(gpuType)
 }
 
-// existingApp reports whether the app has a copy in the client's environment.
-func existingApp(ctx context.Context, client *serverlessapi.Client, id string) (bool, error) {
-	_, err := client.GetApp(ctx, id)
+// existingApp returns the copy in the client's environment, or nil when getApp
+// answers 404. The body is kept so a deleting copy can be refused before the
+// upload; any other failure, including a 422 for a bad appId, is returned.
+func existingApp(ctx context.Context, client *serverlessapi.Client, id string) (*serverlessapi.App, error) {
+	app, err := client.GetApp(ctx, id)
 	if err == nil {
-		return true, nil
+		return app, nil
 	}
 	if isHTTPNotFound(err) {
-		return false, nil
+		return nil, nil
 	}
-	return false, err
+	return nil, err
 }
 
 // requireEnvironment fails when the named environment does not exist.
