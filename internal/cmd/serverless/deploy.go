@@ -220,8 +220,10 @@ files and a runware.yaml recording the deploy options. The CLI fetches it,
 reads that file, and deploys what it describes, so a published example deploys
 in one command instead of a clone and a command. Flags still win over the
 file, so the same archive goes to another GPU type or another --id without
-being edited first. The archive supplies the source directory, so --from
-cannot be combined with an entry file, --container, or --src-dir.
+being edited first. An --env-var or --env-file sets one key over the
+manifest's and leaves the rest, while --volume, --requirement and --secret
+replace the manifest's whole list. The archive supplies the source directory,
+so --from cannot be combined with an entry file, --container, or --src-dir.
 
 A runware.yaml carries no secret values. Its secrets name what the app needs,
 and each one has to already exist in the environment. A manifest key this CLI
@@ -361,12 +363,15 @@ paths and an invoke example once the application is active.`,
 				if !cmd.Flags().Changed("volume") {
 					volumes = manifest.Volumes
 				}
-				if !cmd.Flags().Changed(envVarFlag) {
-					// The map itself, not rendered as KEY=VALUE: a value that
-					// legitimately carries quotes would be unquoted a second
-					// time on the way back in.
-					manifestEnv = manifest.EnvVars
-				}
+				// The map itself, not rendered as KEY=VALUE: a value that
+				// legitimately carries quotes would be unquoted a second time
+				// on the way back in.
+				//
+				// Passed whether or not --env-var was, because
+				// buildEnvironmentVariables reads it before --env-file and
+				// --env-var. One flag then overrides one key rather than
+				// dropping the whole set a template needs to run.
+				manifestEnv = manifest.EnvVars
 				if !cmd.Flags().Changed("secret") {
 					secrets = manifest.secretFlags()
 				}

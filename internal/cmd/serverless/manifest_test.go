@@ -116,7 +116,7 @@ envVars:
 
 	for key, want := range map[string]string{
 		"LOG_LEVEL": "info",
-		"CACHE_DIR": "/weights",
+		"CACHE_DIR": testVolumePath,
 		"PAYLOAD":   `"hello"`,
 	} {
 		if manifest.EnvVars[key] != want {

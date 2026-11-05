@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -31,6 +32,7 @@ const (
 	testRequirement   = "--requirement"
 	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
 	testIDFlag        = "--id"
+	testVolumePath    = "/weights"
 	testWaitFlag      = "--wait"
 	testTimeoutFlag   = "--timeout"
 )
@@ -861,7 +863,7 @@ func TestDeployFrom_CreatesFromTheManifest(t *testing.T) {
 	if created.Configuration.GpuType != testGPUType {
 		t.Fatalf("gpuType = %q, want %q", created.Configuration.GpuType, testGPUType)
 	}
-	if created.Volumes == nil || len(*created.Volumes) != 1 || (*created.Volumes)[0].MountPath != "/weights" {
+	if created.Volumes == nil || len(*created.Volumes) != 1 || (*created.Volumes)[0].MountPath != testVolumePath {
 		t.Fatalf("volumes = %#v", created.Volumes)
 	}
 }
@@ -929,7 +931,7 @@ func TestDeployFrom_RedeploysAnExistingApp(t *testing.T) {
 
 func TestUnappliedManifestSections(t *testing.T) {
 	full := deployManifest{
-		Volumes: []string{"/weights"},
+		Volumes: []string{testVolumePath},
 		EnvVars: map[string]string{"A": "1"},
 		Secrets: []manifestSecret{{Name: "HF_TOKEN"}},
 		Compute: manifestCompute{GpuType: testGPUType},
@@ -944,5 +946,80 @@ func TestUnappliedManifestSections(t *testing.T) {
 	}
 	if got := unappliedManifestSections(testArchiveURL, deployManifest{}); got != nil {
 		t.Fatalf("empty manifest: %v, want nil", got)
+	}
+}
+
+// deployFromEnvManifest carries two environment variables, so a single
+// --env-var can be seen to override one of them and keep the other.
+const deployFromEnvManifest = `configVersion: 1
+id: ` + testAppID + `
+source:
+  type: code
+  entry: ` + testModelFile + `
+compute:
+  gpuType: ` + testGPUType + `
+envVars:
+  MODEL_REVISION: main
+  CACHE_DIR: /weights
+`
+
+func TestDeployFrom_EnvVarOverridesOneManifestKey(t *testing.T) {
+	from := serveArchive(t, buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: deployFromEnvManifest},
+		{name: testModelFile, body: testPySource},
+	}))
+
+	var created serverlessapi.AppCreate
+	serveSourceUpload := newSourceUploadStub(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Errorf("decode create: %v", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		testFromFlag, from,
+		"--" + envVarFlag, "MODEL_REVISION=abc123",
+		"--" + envVarFlag, "EXTRA=1",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deploy %s: %v", testFromFlag, err)
+	}
+
+	if created.EnvironmentVariables == nil {
+		t.Fatal("environmentVariables = nil")
+	}
+	want := map[string]string{
+		"MODEL_REVISION": "abc123",
+		"CACHE_DIR":      testVolumePath,
+		"EXTRA":          "1",
+	}
+	if got := *created.EnvironmentVariables; !maps.Equal(got, want) {
+		t.Fatalf("environmentVariables = %v, want %v", got, want)
 	}
 }
