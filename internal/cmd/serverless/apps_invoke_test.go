@@ -11,8 +11,18 @@ import (
 
 func TestParseInvokeInput_RejectsLeadingSlash(t *testing.T) {
 	_, _, err := parseInvokeInput("/infer", "", strings.NewReader(""))
-	if err == nil || !strings.Contains(err.Error(), "bare segment") {
+	if err == nil || !strings.Contains(err.Error(), "leading slash") {
 		t.Fatalf("expected leading-slash error, got %v", err)
+	}
+}
+
+func TestParseInvokeInput_AcceptsNestedPath(t *testing.T) {
+	path, _, err := parseInvokeInput("v1/chat/completions", "", strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("parseInvokeInput: %v", err)
+	}
+	if path != "v1/chat/completions" {
+		t.Fatalf("path = %q", path)
 	}
 }
 

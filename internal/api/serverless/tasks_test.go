@@ -26,6 +26,8 @@ const (
 )
 
 func TestValidateEndpointPath(t *testing.T) {
+	const wantInvalid = "invalid"
+
 	cases := []struct {
 		path    string
 		wantErr string
@@ -33,12 +35,21 @@ func TestValidateEndpointPath(t *testing.T) {
 		{path: "infer"},
 		{path: "a"},
 		{path: "my-endpoint"},
+		{path: "v1/chat/completions"},
+		{path: "v1/models"},
+		{path: "a/b/c/d/e"},
+		{path: strings.Repeat("ab/", 84) + "ab"},
 		{path: "", wantErr: "required"},
-		{path: "/infer", wantErr: "bare segment"},
+		{path: "/infer", wantErr: "leading slash"},
 		{path: "/infer", wantErr: `"infer"`},
-		{path: "Infer", wantErr: "invalid"},
-		{path: "my_endpoint", wantErr: "invalid"},
-		{path: "infer/", wantErr: "invalid"},
+		{path: "/v1/chat/completions", wantErr: `"v1/chat/completions"`},
+		{path: "Infer", wantErr: wantInvalid},
+		{path: "my_endpoint", wantErr: wantInvalid},
+		{path: "infer/", wantErr: wantInvalid},
+		{path: "v1//completions", wantErr: wantInvalid},
+		{path: "v1/Chat", wantErr: wantInvalid},
+		{path: "v1/chat/completions/", wantErr: wantInvalid},
+		{path: strings.Repeat("ab/", 85) + "ab", wantErr: "over the 255"},
 		{path: "/", wantErr: "leading slash"},
 	}
 	for _, tc := range cases {
@@ -104,7 +115,7 @@ func TestInvokeAsync(t *testing.T) {
 func TestInvokeAsync_RejectsLeadingSlash(t *testing.T) {
 	c := NewClient("test-key", "https://example.invalid", slog.Default())
 	_, err := c.InvokeAsync(context.Background(), testAppID, "/infer", "", nil)
-	if err == nil || !strings.Contains(err.Error(), "bare segment") {
+	if err == nil || !strings.Contains(err.Error(), "leading slash") {
 		t.Fatalf("expected leading-slash error, got %v", err)
 	}
 }
@@ -417,5 +428,28 @@ func TestWaitTask_DoesNotPost(t *testing.T) {
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
 	if _, err := c.WaitTask(context.Background(), testAppID, testTaskID, time.Millisecond); err != nil {
 		t.Fatalf("WaitTask: %v", err)
+	}
+}
+
+func TestRestoreEndpointPathSeparators(t *testing.T) {
+	cases := []struct {
+		url  string
+		want string
+	}{
+		{url: "https://example.invalid/v1/apps/my-app/tasks/v1%2Fchat%2Fcompletions", want: "/v1/apps/my-app/tasks/v1/chat/completions"},
+		{url: "https://example.invalid/v1/apps/my-app/tasks/v1%2fchat%2fcompletions", want: "/v1/apps/my-app/tasks/v1/chat/completions"},
+		{url: "https://example.invalid/v1/apps/my-app/tasks/infer", want: "/v1/apps/my-app/tasks/infer"},
+	}
+	for _, tc := range cases {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, tc.url, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%q): %v", tc.url, err)
+		}
+		if err := restoreEndpointPathSeparators(context.Background(), req); err != nil {
+			t.Fatalf("restoreEndpointPathSeparators(%q): %v", tc.url, err)
+		}
+		if got := req.URL.EscapedPath(); got != tc.want {
+			t.Errorf("EscapedPath for %q = %q, want %q", tc.url, got, tc.want)
+		}
 	}
 }

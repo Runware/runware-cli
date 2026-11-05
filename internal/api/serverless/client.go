@@ -289,6 +289,7 @@ func newGeneratedClient(apiKey, baseURL string, httpClient gen.HttpRequestDoer) 
 			req.Header.Set("Accept", "application/json")
 			return nil
 		}),
+		gen.WithRequestEditorFn(restoreEndpointPathSeparators),
 	)
 	if err != nil {
 		// NewClientWithResponses only fails if an option returns an error;

@@ -28,8 +28,9 @@ func newAppsInvokeCmd(logger *log.Logger) *cobra.Command {
 		Short: "Invoke an application endpoint",
 		Long: `Submit a JSON payload to a named application endpoint.
 
-endpointPath is a bare lowercase segment as returned by apps endpoints
-(e.g. infer). A leading slash is rejected.
+endpointPath is the path apps endpoints reports, one or more lowercase
+segments joined by slashes (e.g. infer, or v1/chat/completions for a server
+that answers on a nested route). A leading slash is rejected.
 
 The default is async: the command prints the accepted task id. Pass --wait
 to poll until the task is completed or failed, and --timeout to bound that
