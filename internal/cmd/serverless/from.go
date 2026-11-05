@@ -55,6 +55,26 @@ func fetchSourceArchive(ctx context.Context, rawURL string) (dir string, cleanup
 	return dir, cleanup, nil
 }
 
+// maxArchiveRedirects is what the default client follows, kept so refusing a
+// downgrade does not also change how far a redirect chain may go.
+const maxArchiveRedirects = 10
+
+// archiveClient refuses a redirect that leaves https for anything else. The
+// scheme check in downloadArchive sees only the URL the person typed, and a
+// client that follows redirects blindly would fetch the archive in the clear
+// from a host the person never named.
+var archiveClient = &http.Client{
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxArchiveRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxArchiveRedirects)
+		}
+		if from := via[len(via)-1].URL.Scheme; from == "https" && req.URL.Scheme != "https" {
+			return fmt.Errorf("the source redirected from https to %s, which would fetch the archive unencrypted", req.URL.Scheme)
+		}
+		return nil
+	},
+}
+
 // downloadArchive reads the URL into memory, refusing anything larger than the
 // platform would accept as a source upload anyway.
 func downloadArchive(ctx context.Context, rawURL string) ([]byte, error) {
@@ -73,7 +93,7 @@ func downloadArchive(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := archiveClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
 	}
@@ -112,7 +132,22 @@ func unpackArchive(archive []byte, dir string) error {
 	}
 
 	var total int64
+	// Paths already written. unpackEntry opens each file with O_TRUNC and keeps
+	// no record, so without this the second of two entries naming one path
+	// silently replaces the first.
+	seen := make(map[string]struct{}, len(reader.File))
 	for _, entry := range reader.File {
+		rel, err := safeArchivePath(entry.Name)
+		if err != nil {
+			return err
+		}
+		if !entry.FileInfo().IsDir() {
+			if _, dup := seen[rel]; dup {
+				return fmt.Errorf("the fetched archive writes %s twice", rel)
+			}
+			seen[rel] = struct{}{}
+		}
+
 		written, err := unpackEntry(entry, dir)
 		if err != nil {
 			return err

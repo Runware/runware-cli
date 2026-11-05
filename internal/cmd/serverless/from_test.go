@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -337,5 +338,64 @@ func TestSafeArchivePathAllowsOrdinaryNesting(t *testing.T) {
 	ok := strings.Repeat("a/", maxArchiveDepth-1) + "model.py"
 	if _, err := safeArchivePath(ok); err != nil {
 		t.Errorf("a path at the limit was refused: %v", err)
+	}
+}
+
+// A TLS httptest server signs with a CA the client does not trust, so the rule
+// is tested where it lives rather than through a redirect the fetch cannot make.
+func TestArchiveClientRefusesAnHTTPSDowngrade(t *testing.T) {
+	chain := func(schemes ...string) []*http.Request {
+		var via []*http.Request
+		for _, scheme := range schemes {
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, scheme+"://example.invalid/echo.zip", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			via = append(via, req)
+		}
+		return via
+	}
+
+	cases := []struct {
+		name    string
+		to      string
+		via     []*http.Request
+		wantErr string
+	}{
+		{name: "https to http", to: "http", via: chain("https"), wantErr: "unencrypted"},
+		{name: "https to https", to: "https", via: chain("https")},
+		{name: "http to http", to: "http", via: chain("http")},
+		{name: "too many", to: "https", via: chain(slices.Repeat([]string{"https"}, maxArchiveRedirects)...), wantErr: "redirects"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, tc.to+"://elsewhere.invalid/echo.zip", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = archiveClient.CheckRedirect(req, tc.via)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("allowed redirect refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want one containing %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestFetchSourceArchiveRefusesTwoEntriesOnOnePath(t *testing.T) {
+	archive := buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: codeManifest},
+		{name: testEntryFile, body: testPySource},
+		{name: "./" + testEntryFile, body: "x = 2\n"},
+	})
+
+	_, _, err := fetchSourceArchive(context.Background(), serveArchive(t, archive))
+	if err == nil || !strings.Contains(err.Error(), "twice") {
+		t.Fatalf("expected a duplicate-path refusal, got %v", err)
 	}
 }
