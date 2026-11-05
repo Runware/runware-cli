@@ -379,7 +379,7 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps":
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
 			creates++
 			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
 				t.Errorf("decode create: %v", err)
@@ -531,7 +531,7 @@ func TestDeployWait_TimeoutDoesNotPanic(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(strings.Replace(activeAppBody(""), `"status":"active"`, `"status":"initializing"`, 1)))
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps":
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(strings.Replace(activeAppBody(""), `"status":"active"`, `"status":"initializing"`, 1)))
@@ -781,5 +781,138 @@ func TestRefuseCodeOnlyFlags(t *testing.T) {
 				t.Errorf("error %q does not say why", err)
 			}
 		})
+	}
+}
+
+// deployFromArchiveManifest is a packaged code source whose manifest carries a
+// GPU type and a volume. Both are create-only flags, which is what makes it the
+// fixture for the redeploy rule below.
+const deployFromArchiveManifest = `configVersion: 1
+id: ` + testAppID + `
+source:
+  type: code
+  entry: ` + testModelFile + `
+compute:
+  gpuType: ` + testGPUType + `
+volumes:
+  - /weights
+`
+
+// serveDeployFromArchive packages the manifest with its entry file and returns
+// the URL to deploy from.
+func serveDeployFromArchive(t *testing.T) string {
+	t.Helper()
+	return serveArchive(t, buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: deployFromArchiveManifest},
+		{name: testModelFile, body: testPySource},
+	}))
+}
+
+func TestDeployFrom_CreatesFromTheManifest(t *testing.T) {
+	from := serveDeployFromArchive(t)
+
+	var created serverlessapi.AppCreate
+	var creates int
+	serveSourceUpload := newSourceUploadStub(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Errorf("decode create: %v", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testFromFlag, from})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deploy %s: %v", testFromFlag, err)
+	}
+
+	if creates != 1 {
+		t.Fatalf("creates = %d, want 1", creates)
+	}
+	if created.AppId != testAppID {
+		t.Fatalf("appId = %q, want %q", created.AppId, testAppID)
+	}
+	if created.Configuration.GpuType != testGPUType {
+		t.Fatalf("gpuType = %q, want %q", created.Configuration.GpuType, testGPUType)
+	}
+	if created.Volumes == nil || len(*created.Volumes) != 1 || (*created.Volumes)[0].MountPath != "/weights" {
+		t.Fatalf("volumes = %#v", created.Volumes)
+	}
+}
+
+// TestDeployFrom_RedeploysAnExistingApp fixes the redeploy rule: the manifest
+// describes the app rather than asking to change a running one, so its
+// create-only GPU type and volume must not be refused on an update.
+func TestDeployFrom_RedeploysAnExistingApp(t *testing.T) {
+	from := serveDeployFromArchive(t)
+
+	var creates, updates int
+	serveSourceUpload := newSourceUploadStub(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(activeAppBody("")))
+		case r.Method == http.MethodPatch && r.URL.Path == testAppsPath+"/"+testAppID:
+			updates++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(activeAppBody("")))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testFromFlag, from})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("redeploy %s: %v", testFromFlag, err)
+	}
+
+	if updates != 1 {
+		t.Fatalf("updates = %d, want 1", updates)
+	}
+	if creates != 0 {
+		t.Fatalf("creates = %d, want 0", creates)
 	}
 }
