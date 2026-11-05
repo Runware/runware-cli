@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -901,12 +902,21 @@ func TestDeployFrom_RedeploysAnExistingApp(t *testing.T) {
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
 
+	var stderr bytes.Buffer
 	cmd := newDeployCmd(log.New(io.Discard))
 	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{testFromFlag, from})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("redeploy %s: %v", testFromFlag, err)
+	}
+
+	// The manifest carries a volume and a compute block, and an update sends
+	// neither, so the command has to say which sections it dropped.
+	for _, want := range []string{"volumes", "compute", "the source only"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want it to mention %q", stderr.String(), want)
+		}
 	}
 
 	if updates != 1 {
@@ -914,5 +924,25 @@ func TestDeployFrom_RedeploysAnExistingApp(t *testing.T) {
 	}
 	if creates != 0 {
 		t.Fatalf("creates = %d, want 0", creates)
+	}
+}
+
+func TestUnappliedManifestSections(t *testing.T) {
+	full := deployManifest{
+		Volumes: []string{"/weights"},
+		EnvVars: map[string]string{"A": "1"},
+		Secrets: []manifestSecret{{Name: "HF_TOKEN"}},
+		Compute: manifestCompute{GpuType: testGPUType},
+	}
+
+	if got := unappliedManifestSections("", full); got != nil {
+		t.Fatalf("without --from: %v, want nil", got)
+	}
+	want := []string{"volumes", "envVars", "secrets", "compute"}
+	if got := unappliedManifestSections(testArchiveURL, full); !slices.Equal(got, want) {
+		t.Fatalf("full manifest: %v, want %v", got, want)
+	}
+	if got := unappliedManifestSections(testArchiveURL, deployManifest{}); got != nil {
+		t.Fatalf("empty manifest: %v, want nil", got)
 	}
 }

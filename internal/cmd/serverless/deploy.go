@@ -452,6 +452,11 @@ paths and an invoke example once the application is active.`,
 
 			var app *serverlessapi.App
 			if update {
+				if sections := unappliedManifestSections(from, manifest); len(sections) > 0 {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+						"Updating the source only. An existing app keeps its configuration, so the manifest sections %s do not apply here. Change configuration with 'runware serverless apps scale' or 'apps env-vars'.\n",
+						strings.Join(sections, ", "))
+				}
 				spin = cmdutil.NewSpinner(fmt.Sprintf("Updating application %s...", id))
 				spin.Start()
 				app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
@@ -661,6 +666,31 @@ func validateUpdateDeployFlags(cmd *cobra.Command) error {
 		}
 	}
 	return nil
+}
+
+// unappliedManifestSections names the manifest sections an update does not
+// send. The update carries only the source, so a packaged version that adds a
+// volume or a secret would otherwise deploy its new code without them and say
+// nothing. Empty for a deploy that read no manifest.
+func unappliedManifestSections(from string, manifest deployManifest) []string {
+	if from == "" {
+		return nil
+	}
+
+	var sections []string
+	if len(manifest.Volumes) > 0 {
+		sections = append(sections, "volumes")
+	}
+	if len(manifest.EnvVars) > 0 {
+		sections = append(sections, "envVars")
+	}
+	if len(manifest.Secrets) > 0 {
+		sections = append(sections, "secrets")
+	}
+	if manifest.Compute != (manifestCompute{}) {
+		sections = append(sections, "compute")
+	}
+	return sections
 }
 
 // createOnlyDeployHint says how to change a create-only setting on the copy
