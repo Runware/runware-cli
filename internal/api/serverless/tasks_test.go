@@ -436,9 +436,11 @@ func TestRestoreEndpointPathSeparators(t *testing.T) {
 		url  string
 		want string
 	}{
-		{url: "https://example.invalid/v1/apps/my-app/tasks/v1%2Fchat%2Fcompletions", want: "/v1/apps/my-app/tasks/v1/chat/completions"},
-		{url: "https://example.invalid/v1/apps/my-app/tasks/v1%2fchat%2fcompletions", want: "/v1/apps/my-app/tasks/v1/chat/completions"},
-		{url: "https://example.invalid/v1/apps/my-app/tasks/infer", want: "/v1/apps/my-app/tasks/infer"},
+		{url: "https://example.invalid/v1/apps/my-app/invoke-sync/v1%2Fchat%2Fcompletions", want: "/v1/apps/my-app/invoke-sync/v1/chat/completions"},
+		{url: "https://example.invalid/v1/apps/my-app/invoke-async/v1%2fchat%2fcompletions", want: "/v1/apps/my-app/invoke-async/v1/chat/completions"},
+		{url: "https://example.invalid/v1/apps/my-app/invoke-sync/infer", want: "/v1/apps/my-app/invoke-sync/infer"},
+		{url: "https://proxy.invalid/tenant%2Fname/v1/apps/my-app/invoke-sync/v1%2Fchat%2Fcompletions", want: "/tenant%2Fname/v1/apps/my-app/invoke-sync/v1/chat/completions"},
+		{url: "https://proxy.invalid/tenant%2Fname/v1/apps/my-app/tasks/7c9e6679", want: "/tenant%2Fname/v1/apps/my-app/tasks/7c9e6679"},
 	}
 	for _, tc := range cases {
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, tc.url, nil)

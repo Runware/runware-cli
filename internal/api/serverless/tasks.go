@@ -23,22 +23,37 @@ var endpointPathPattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,62}[a-z0-9])?(/
 
 const endpointPathMaxLen = 255
 
+// endpointPathRoutes are the operation paths that carry an endpointPath.
+var endpointPathRoutes = []string{"/invoke-async/", "/invoke-sync/"}
+
 // restoreEndpointPathSeparators puts the slashes of a multi-segment endpoint
 // path back into the request URL. The generated client styles a path parameter
 // with simple escaping, which percent-encodes those slashes, and the API
-// rejects an endpointPath that arrives as %2F. No other path parameter here
-// admits a slash, so this is safe to run on every request.
+// rejects an endpointPath that arrives as %2F. Only the part after the route
+// marker is rewritten, so an escaped slash in a configured base URL is left as
+// the caller wrote it.
 func restoreEndpointPathSeparators(_ context.Context, req *http.Request) error {
 	if req.URL == nil || req.URL.RawPath == "" {
 		return nil
 	}
-	restored := strings.ReplaceAll(req.URL.RawPath, "%2F", "/")
+	raw := req.URL.RawPath
+	cut := -1
+	for _, marker := range endpointPathRoutes {
+		if i := strings.LastIndex(raw, marker); i >= 0 && i+len(marker) > cut {
+			cut = i + len(marker)
+		}
+	}
+	if cut < 0 {
+		return nil
+	}
+	head, tail := raw[:cut], raw[cut:]
+	restored := strings.ReplaceAll(tail, "%2F", "/")
 	restored = strings.ReplaceAll(restored, "%2f", "/")
-	if restored == req.URL.Path {
+	if head+restored == req.URL.Path {
 		req.URL.RawPath = ""
 		return nil
 	}
-	req.URL.RawPath = restored
+	req.URL.RawPath = head + restored
 	return nil
 }
 
