@@ -885,13 +885,11 @@ func TestDeployFrom_CreatesFromTheManifest(t *testing.T) {
 func TestDeployFrom_RefusesAnExistingApp(t *testing.T) {
 	from := serveDeployFromArchive(t)
 
+	// No upload stub: the refusal has to come before the source is uploaded, so
+	// an upload POST counts as a write here rather than being served.
 	var writes int
-	serveSourceUpload := newSourceUploadStub(t)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if serveSourceUpload(w, r) {
-			return
-		}
 		switch {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
 			w.Header().Set("Content-Type", "application/json")
