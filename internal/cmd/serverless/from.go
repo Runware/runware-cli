@@ -132,20 +132,30 @@ func unpackArchive(archive []byte, dir string) error {
 	}
 
 	var total int64
-	// Paths already written. unpackEntry opens each file with O_TRUNC and keeps
-	// no record, so without this the second of two entries naming one path
-	// silently replaces the first.
-	seen := make(map[string]struct{}, len(reader.File))
+	// Paths already written, keyed without case and holding the name they were
+	// written under. unpackEntry opens each file with O_TRUNC and keeps no
+	// record, so without this the second of two entries naming one path silently
+	// replaces the first.
+	//
+	// Case is folded because `app.py` and `App.py` are one file on macOS and
+	// Windows and two on Linux, so an archive carrying both deploys different
+	// code depending on the machine that unpacks it. That refuses a pair Linux
+	// would have handled, which is the price of one archive meaning one app.
+	seen := make(map[string]string, len(reader.File))
 	for _, entry := range reader.File {
 		rel, err := safeArchivePath(entry.Name)
 		if err != nil {
 			return err
 		}
 		if !entry.FileInfo().IsDir() {
-			if _, dup := seen[rel]; dup {
-				return fmt.Errorf("the fetched archive writes %s twice", rel)
+			key := strings.ToLower(rel)
+			if first, dup := seen[key]; dup {
+				if first == rel {
+					return fmt.Errorf("the fetched archive writes %s twice", rel)
+				}
+				return fmt.Errorf("the fetched archive writes both %s and %s, which are one file on a case-insensitive filesystem", first, rel)
 			}
-			seen[rel] = struct{}{}
+			seen[key] = rel
 		}
 
 		written, err := unpackEntry(entry, dir)

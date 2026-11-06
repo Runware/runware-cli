@@ -388,14 +388,40 @@ func TestArchiveClientRefusesAnHTTPSDowngrade(t *testing.T) {
 }
 
 func TestFetchSourceArchiveRefusesTwoEntriesOnOnePath(t *testing.T) {
-	archive := buildTestArchive(t, []archiveEntry{
-		{name: manifestFile, body: codeManifest},
-		{name: testEntryFile, body: testPySource},
-		{name: "./" + testEntryFile, body: "x = 2\n"},
-	})
+	for _, tc := range []struct {
+		name    string
+		entries []archiveEntry
+		wantErr string
+	}{
+		{
+			name: "the same path twice",
+			entries: []archiveEntry{
+				{name: testEntryFile, body: testPySource},
+				{name: "./" + testEntryFile, body: "x = 2\n"},
+			},
+			wantErr: "twice",
+		},
+		{
+			// One file on macOS and Windows, two on Linux, so the archive would
+			// deploy different code depending on where it was unpacked.
+			name: "two paths that differ only in case",
+			entries: []archiveEntry{
+				{name: testEntryFile, body: testPySource},
+				{name: strings.ToUpper(testEntryFile[:1]) + testEntryFile[1:], body: "x = 2\n"},
+			},
+			wantErr: "case-insensitive",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			archive := buildTestArchive(t, append(
+				[]archiveEntry{{name: manifestFile, body: codeManifest}},
+				tc.entries...,
+			))
 
-	_, _, err := fetchSourceArchive(context.Background(), serveArchive(t, archive))
-	if err == nil || !strings.Contains(err.Error(), "twice") {
-		t.Fatalf("expected a duplicate-path refusal, got %v", err)
+			_, _, err := fetchSourceArchive(context.Background(), serveArchive(t, archive))
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected a duplicate-path refusal naming %q, got %v", tc.wantErr, err)
+			}
+		})
 	}
 }
