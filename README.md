@@ -203,7 +203,7 @@ runware serverless apps show my-app
 runware serverless apps endpoints my-app
 runware serverless apps workers my-app --state live
 
-# Invoke an endpoint (path is a bare segment, e.g. infer)
+# Invoke an endpoint (the path apps endpoints reports, e.g. infer or v1/chat/completions)
 runware serverless apps invoke my-app infer -f payload.json --wait
 
 # Logs, events, and usage
