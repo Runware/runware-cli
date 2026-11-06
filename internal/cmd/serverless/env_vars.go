@@ -158,7 +158,7 @@ allowed.`,
 			if hasSingleValue {
 				return fmt.Errorf("%s", envSetUsage)
 			}
-			updates, err := buildEnvironmentVariables(envFiles, envPairs)
+			updates, err := buildEnvironmentVariables(envFiles, envPairs, nil)
 			if err != nil {
 				return err
 			}
@@ -332,12 +332,22 @@ var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 // buildEnvironmentVariables turns --env-var KEY=VALUE pairs and --env-file paths
 // into a name-to-value map. Files are read first, so an explicit --env-var wins
 // over a file entry with the same name.
-func buildEnvironmentVariables(files, pairs []string) (*map[string]string, error) {
-	if len(files) == 0 && len(pairs) == 0 {
+// buildEnvironmentVariables collects the variables a create sends. `decoded`
+// holds values that never were text, read from a manifest: they are taken as
+// they are, because running them back through the KEY=VALUE parser would
+// unquote a value that legitimately carries quotes.
+func buildEnvironmentVariables(files, pairs []string, decoded map[string]string) (*map[string]string, error) {
+	if len(files) == 0 && len(pairs) == 0 && len(decoded) == 0 {
 		return nil, nil
 	}
 
 	env := make(map[string]string)
+	for name, value := range decoded {
+		if err := validateEnvEntry(name, value); err != nil {
+			return nil, err
+		}
+		env[name] = value
+	}
 	for _, path := range files {
 		if err := readEnvFile(path, env); err != nil {
 			return nil, err
@@ -420,20 +430,32 @@ func splitEnvAssignment(assignment string) (name, value string, err error) {
 	name = strings.TrimSpace(name)
 	value = unquote(value)
 
-	switch {
-	case name == "":
+	if name == "" {
 		return "", "", fmt.Errorf("%q has an empty name", assignment)
+	}
+	if err := validateEnvEntry(name, value); err != nil {
+		return "", "", err
+	}
+	return name, value, nil
+}
+
+// validateEnvEntry checks one name and value against the limits the server
+// enforces. Separate from the parsing above because a value that was never
+// text -- one decoded from a manifest -- must be checked without being
+// unquoted a second time.
+func validateEnvEntry(name, value string) error {
+	switch {
 	// Counted in runes, not bytes: the API's maxLength is characters, so
 	// len() would reject a valid non-ASCII value at half the documented limit.
 	case utf8.RuneCountInString(name) > maxEnvNameLen:
-		return "", "", fmt.Errorf("environment variable name %q exceeds %d characters", name, maxEnvNameLen)
+		return fmt.Errorf("environment variable name %q exceeds %d characters", name, maxEnvNameLen)
 	case !envNamePattern.MatchString(name):
-		return "", "", fmt.Errorf(
+		return fmt.Errorf(
 			"environment variable name %q must be POSIX-style: letters, digits and underscore, not starting with a digit",
 			name,
 		)
 	case utf8.RuneCountInString(value) > maxEnvValueLen:
-		return "", "", fmt.Errorf("value for %q exceeds %d characters", name, maxEnvValueLen)
+		return fmt.Errorf("value for %q exceeds %d characters", name, maxEnvValueLen)
 	}
-	return name, value, nil
+	return nil
 }

@@ -57,8 +57,10 @@ func unpack(t *testing.T, raw []byte) map[string]string {
 
 // Repeated across the table-free tests below; goconst wants them named.
 const (
-	testModelFile = "app.py"
-	testPySource  = "x = 1\n"
+	testModelFile  = "app.py"
+	testPySource   = "x = 1\n"
+	testEntryFile  = "model.py"
+	testNestedFile = "lib/helpers.py"
 )
 
 func names(packed map[string]string) []string {
@@ -78,7 +80,7 @@ func TestPackDirectory(t *testing.T) {
 	writeTree(t, dir, map[string]string{
 		testModelFile:      "import lib\n",
 		"lib/__init__.py":  "",
-		"lib/helpers.py":   "def go(): pass\n",
+		testNestedFile:     "def go(): pass\n",
 		"data/prompt.txt":  "hello",
 		"nested/deep/x.py": testPySource,
 	})
@@ -92,13 +94,13 @@ func TestPackDirectory(t *testing.T) {
 	}
 
 	packed := unpack(t, encoded)
-	for _, want := range []string{testModelFile, "lib/helpers.py", "data/prompt.txt", "nested/deep/x.py"} {
+	for _, want := range []string{testModelFile, testNestedFile, "data/prompt.txt", "nested/deep/x.py"} {
 		if _, ok := packed[want]; !ok {
 			t.Errorf("%q missing from the archive; got %v", want, names(packed))
 		}
 	}
-	if packed["lib/helpers.py"] != "def go(): pass\n" {
-		t.Errorf("lib/helpers.py content = %q", packed["lib/helpers.py"])
+	if packed[testNestedFile] != "def go(): pass\n" {
+		t.Errorf("lib/helpers.py content = %q", packed[testNestedFile])
 	}
 }
 
@@ -358,7 +360,7 @@ func TestPackDirectory_ModelFileAlwaysPacked(t *testing.T) {
 // TestPackDirectory_SkipsSymlinks: a symlink may point outside the tree, and the
 // archive is a copy rather than a checkout.
 func TestPackDirectory_SkipsSymlinks(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("symlink creation needs privileges on Windows")
 	}
 	dir := t.TempDir()
@@ -731,7 +733,7 @@ func TestPackDirectory_ExcludedDirectoryKeepsExcludingSiblings(t *testing.T) {
 // entrypoint script, and one that arrives non-executable fails at run time with
 // nothing about the archive to explain it.
 func TestPackDirectory_PreservesFileMode(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("no executable bit to preserve on Windows")
 	}
 	dir := t.TempDir()
@@ -765,7 +767,7 @@ func TestPackDirectory_PreservesFileMode(t *testing.T) {
 // A symlink as the model file used to pass the local stat and then be skipped by
 // the walk, uploading an archive whose declared entry point is absent.
 func TestPackDirectory_SymlinkModelFileRejected(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("symlink creation needs privileges on Windows")
 	}
 	dir := t.TempDir()

@@ -42,6 +42,28 @@ minWorkers=0 stays scaled to zero until the first invoke.
 --container cannot be combined with an entry file, --src-dir, --base-image, or
 --requirement.
 
+--from takes the URL of a packaged source: a zip whose root holds the app's
+files and a runware.yaml recording the deploy options. The CLI fetches it,
+reads that file, and deploys what it describes, so a published example deploys
+in one command instead of a clone and a command. Flags still win over the
+file, so the same archive goes to another GPU type or another --id without
+being edited first. An --env-var or --env-file sets one key over the
+manifest's and leaves the rest, while --volume, --requirement and --secret
+replace the manifest's whole list. The archive supplies the source directory,
+so --from cannot be combined with an entry file, --container, or --src-dir.
+
+--from only creates. A manifest names an id, and deploying it over an
+application that already has that id would roll the archive out as that
+application's next version, running this code with the secrets, environment
+variables and volumes it already has. So an existing id is refused: pass --id
+to create a separate application, or unpack the archive and deploy the
+directory to update the one that is there.
+
+A runware.yaml carries no secret values. Its secrets name what the app needs,
+and each one has to already exist in the environment. A manifest key this CLI
+does not know is an error rather than a silent omission, which is what
+configVersion is there to tell apart.
+
 Exclude what the app does not need with a .runwareignore file at the root of the
 source directory; it takes gitignore syntax. A .gitignore is NOT consulted --
 what a project keeps out of version control is a different question from what it
@@ -124,6 +146,13 @@ runware serverless deploy [file] [flags]
 
   # wait until the first rollout is active or failed
   runware serverless deploy ./app.py --id my-app --gpu-type h100 --wait --timeout 10m
+
+  # deploy a packaged source, reading its id and options from its runware.yaml
+  runware serverless deploy --from https://runware.ai/docs/serverless/examples/echo.zip
+
+  # the same archive under another id and on another GPU type
+  runware serverless deploy --from https://runware.ai/docs/serverless/examples/echo.zip \
+    --id my-echo --gpu-type l40s
 ```
 
 ### Options
@@ -136,6 +165,7 @@ runware serverless deploy [file] [flags]
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
       --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
+      --from string                   URL of a packaged source to fetch and deploy as a new application, reading its runware.yaml
       --gpu-type string               GPU type ID (see 'serverless gpus'; required when creating)
       --gpus-per-worker int32         GPUs allocated per worker (1, 2, 4, or 8) (default 1)
   -h, --help                          help for deploy

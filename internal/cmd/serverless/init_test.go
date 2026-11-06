@@ -499,7 +499,7 @@ func TestInit_NoStarterAppWhenPythonFilesExist(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{
 		pyprojectFile: minimalPyproject,
-		"model.py":    testPySource,
+		testEntryFile: testPySource,
 	})
 
 	if err := h.run(dir); err != nil {

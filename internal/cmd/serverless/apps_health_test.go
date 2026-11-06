@@ -59,7 +59,7 @@ func TestAppsHealthFromAPI(t *testing.T) {
 						body = `{"data":[` + body + `]}`
 					}
 					srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						path := "/v1/apps"
+						path := testAppsPath
 						if command == appHealthShowCommand {
 							path += "/" + testAppID
 						}

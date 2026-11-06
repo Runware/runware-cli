@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +25,14 @@ const (
 	testPipPackage    = "torch"
 	testSourceID      = "019c7654-8b21-7abc-9123-abcdef123456"
 	testSrcDirFlag    = "--src-dir"
+	testFromFlag      = "--from"
+	testFallbackGPU   = "l40s"
+	testBaseImageFlag = "--base-image"
+	testBaseImage     = "python:3.12-slim"
+	testRequirement   = "--requirement"
+	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
 	testIDFlag        = "--id"
+	testVolumePath    = "/weights"
 	testWaitFlag      = "--wait"
 	testTimeoutFlag   = "--timeout"
 )
@@ -49,10 +57,34 @@ func TestValidateDeployArgs(t *testing.T) {
 			wantErr: deploySourceChoice,
 		},
 		{
-			name:    "both",
+			name:    "a file and a container",
 			args:    []string{testModelFile},
 			flags:   []string{testContainerFlag, testWrapperDir},
-			wantErr: "not both",
+			wantErr: "not more than one",
+		},
+		{
+			name:  "from only",
+			flags: []string{testFromFlag, testArchiveURL},
+		},
+		{
+			name:    "from and a file",
+			args:    []string{testModelFile},
+			flags:   []string{testFromFlag, testArchiveURL},
+			wantErr: "not more than one",
+		},
+		{
+			name:    "from and a container",
+			flags:   []string{testFromFlag, testArchiveURL, testContainerFlag, testWrapperDir},
+			wantErr: "not more than one",
+		},
+		{
+			name:    "from with src-dir",
+			flags:   []string{testFromFlag, testArchiveURL, testSrcDirFlag, "."},
+			wantErr: testSrcDirFlag,
+		},
+		{
+			name:  "from with a flag that overrides the manifest",
+			flags: []string{testFromFlag, testArchiveURL, "--gpu-type", testFallbackGPU},
 		},
 		{
 			name:    "container with src-dir",
@@ -61,13 +93,13 @@ func TestValidateDeployArgs(t *testing.T) {
 		},
 		{
 			name:    "container with base-image",
-			flags:   []string{testContainerFlag, testWrapperDir, "--base-image", "python:3.12-slim"},
-			wantErr: "--base-image",
+			flags:   []string{testContainerFlag, testWrapperDir, testBaseImageFlag, testBaseImage},
+			wantErr: testBaseImageFlag,
 		},
 		{
 			name:    "container with requirement",
-			flags:   []string{testContainerFlag, testWrapperDir, "--requirement", testPipPackage},
-			wantErr: "--requirement",
+			flags:   []string{testContainerFlag, testWrapperDir, testRequirement, testPipPackage},
+			wantErr: testRequirement,
 		},
 		{
 			name:  "code with src-dir",
@@ -90,7 +122,11 @@ func TestValidateDeployArgs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("container: %v", err)
 			}
-			err = validateDeployArgs(cmd, tc.args, containerDir)
+			from, err := cmd.Flags().GetString("from")
+			if err != nil {
+				t.Fatalf("from: %v", err)
+			}
+			err = validateDeployArgs(cmd, tc.args, containerDir, from)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -349,7 +385,7 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps":
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
 			creates++
 			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
 				t.Errorf("decode create: %v", err)
@@ -450,12 +486,12 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env-vars"},
 		{flags: []string{"--volume", "/data"}, wantErr: "immutable"},
 		{flags: []string{"--secret", "ORG_TOKEN"}, wantErr: "secrets attach"},
-		{flags: []string{"--fallback-gpu-type", "l40s"}, wantErr: scaleHint},
+		{flags: []string{"--fallback-gpu-type", testFallbackGPU}, wantErr: scaleHint},
 		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
 		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
 		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
-		{flags: []string{"--requirement", testPipPackage}},
-		{flags: []string{"--base-image", "python:3.12-slim"}},
+		{flags: []string{testRequirement, testPipPackage}},
+		{flags: []string{testBaseImageFlag, testBaseImage}},
 		{flags: []string{testSrcDirFlag, "."}},
 		{flags: []string{testWaitFlag}},
 	}
@@ -501,7 +537,7 @@ func TestDeployWait_TimeoutDoesNotPanic(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(strings.Replace(activeAppBody(""), `"status":"active"`, `"status":"initializing"`, 1)))
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/apps":
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(strings.Replace(activeAppBody(""), `"status":"active"`, `"status":"initializing"`, 1)))
@@ -695,6 +731,324 @@ func TestAppFailedErr_BuildsHintAddressesTheSameCopy(t *testing.T) {
 				t.Fatalf("err = %v, want it to contain %q", err, tc.wantHint)
 			}
 		})
+	}
+}
+
+// --from cannot judge the code-only flags up front, because the source type is
+// inside the archive. Once the manifest says container, they have to be refused
+// rather than accepted and dropped by the packer.
+func TestRefuseCodeOnlyFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		flags   []string
+		wantErr string
+	}{
+		{
+			name:  "nothing code-only passed",
+			flags: []string{testFromFlag, testArchiveURL},
+		},
+		{
+			name:    "base-image",
+			flags:   []string{testFromFlag, testArchiveURL, testBaseImageFlag, testBaseImage},
+			wantErr: testBaseImageFlag,
+		},
+		{
+			name:    "requirement",
+			flags:   []string{testFromFlag, testArchiveURL, testRequirement, testPipPackage},
+			wantErr: testRequirement,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newDeployCmd(nil)
+			if err := cmd.ParseFlags(tc.flags); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+
+			// What validateDeployArgs cannot do before the fetch, and what the
+			// deploy does as soon as the manifest names a container source.
+			if err := validateDeployArgs(cmd, nil, "", testArchiveURL); err != nil {
+				t.Fatalf("the source choice itself was refused: %v", err)
+			}
+
+			err := refuseCodeOnlyFlags(cmd, "this archive holds a container source")
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q does not name %q", err, tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), "container source") {
+				t.Errorf("error %q does not say why", err)
+			}
+		})
+	}
+}
+
+// deployFromArchiveManifest is a packaged code source whose manifest carries a
+// GPU type, a volume and a secret, so a create has to carry all three.
+const deployFromArchiveManifest = `configVersion: 1
+id: ` + testAppID + `
+source:
+  type: code
+  entry: ` + testModelFile + `
+compute:
+  gpuType: ` + testGPUType + `
+volumes:
+  - /weights
+secrets:
+  - name: ` + testManifestSecret + `
+`
+
+// testManifestSecret is the secret deployFromArchiveManifest names.
+const testManifestSecret = "HF_TOKEN"
+
+// serveDeployFromArchive packages the manifest with its entry file and returns
+// the URL to deploy from.
+func serveDeployFromArchive(t *testing.T) string {
+	t.Helper()
+	return serveArchive(t, buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: deployFromArchiveManifest},
+		{name: testModelFile, body: testPySource},
+	}))
+}
+
+func TestDeployFrom_CreatesFromTheManifest(t *testing.T) {
+	from := serveDeployFromArchive(t)
+
+	var created serverlessapi.AppCreate
+	var creates int
+	serveSourceUpload := newSourceUploadStub(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Errorf("decode create: %v", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testFromFlag, from})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deploy %s: %v", testFromFlag, err)
+	}
+
+	if creates != 1 {
+		t.Fatalf("creates = %d, want 1", creates)
+	}
+	if created.AppId != testAppID {
+		t.Fatalf("appId = %q, want %q", created.AppId, testAppID)
+	}
+	if created.Configuration.GpuType != testGPUType {
+		t.Fatalf("gpuType = %q, want %q", created.Configuration.GpuType, testGPUType)
+	}
+	if created.Volumes == nil || len(*created.Volumes) != 1 || (*created.Volumes)[0].MountPath != testVolumePath {
+		t.Fatalf("volumes = %#v", created.Volumes)
+	}
+	if created.Secrets == nil || len(*created.Secrets) != 1 || (*created.Secrets)[0].SecretName != testManifestSecret {
+		t.Fatalf("secrets = %#v", created.Secrets)
+	}
+}
+
+// TestDeployFrom_RefusesAnExistingApp fixes the create-only rule: a manifest
+// names an id, so deploying one over an application that already has that id
+// would roll this archive out as that application's next version, running it
+// with the secrets, environment variables and volumes already attached.
+func TestDeployFrom_RefusesAnExistingApp(t *testing.T) {
+	from := serveDeployFromArchive(t)
+
+	// No upload stub: the refusal has to come before the source is uploaded, so
+	// an upload POST counts as a write here rather than being served.
+	var writes int
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(activeAppBody("")))
+		case r.Method == http.MethodPatch || r.Method == http.MethodPost:
+			writes++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testFromFlag, from})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected the deploy to be refused")
+	}
+	for _, want := range []string{testAppID, "only creates", "--id"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+	if writes != 0 {
+		t.Fatalf("writes = %d, want 0", writes)
+	}
+}
+
+// deployFromContainerManifest is a packaged container source. Its archive
+// carries the container directory a container deploy expects.
+const deployFromContainerManifest = `configVersion: 1
+id: ` + testAppID + `
+source:
+  type: container
+compute:
+  gpuType: ` + testGPUType + `
+`
+
+// TestDeployFrom_RefusesCodeOnlyFlagsOnAContainerArchive drives the check
+// through the command. The source type is inside the archive, so a code-only
+// flag can only be refused once the manifest has been read, and the packer
+// would otherwise drop it without a word.
+func TestDeployFrom_RefusesCodeOnlyFlagsOnAContainerArchive(t *testing.T) {
+	from := serveArchive(t, buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: deployFromContainerManifest},
+		{name: containerDockerfile, body: testDockerfile},
+		{name: containerConfig, body: testContainer},
+	}))
+
+	var calls int
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testFromFlag, from, testBaseImageFlag, testBaseImage})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected the deploy to be refused")
+	}
+	for _, want := range []string{testBaseImageFlag, "container source"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("the API was called %d times, want 0", calls)
+	}
+}
+
+// deployFromEnvManifest carries two environment variables, so a single
+// --env-var can be seen to override one of them and keep the other.
+const deployFromEnvManifest = `configVersion: 1
+id: ` + testAppID + `
+source:
+  type: code
+  entry: ` + testModelFile + `
+compute:
+  gpuType: ` + testGPUType + `
+envVars:
+  MODEL_REVISION: main
+  CACHE_DIR: /weights
+`
+
+func TestDeployFrom_EnvVarOverridesOneManifestKey(t *testing.T) {
+	from := serveArchive(t, buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: deployFromEnvManifest},
+		{name: testModelFile, body: testPySource},
+	}))
+
+	var created serverlessapi.AppCreate
+	serveSourceUpload := newSourceUploadStub(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Errorf("decode create: %v", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		testFromFlag, from,
+		"--" + envVarFlag, "MODEL_REVISION=abc123",
+		"--" + envVarFlag, "EXTRA=1",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deploy %s: %v", testFromFlag, err)
+	}
+
+	if created.EnvironmentVariables == nil {
+		t.Fatal("environmentVariables = nil")
+	}
+	want := map[string]string{
+		"MODEL_REVISION": "abc123",
+		"CACHE_DIR":      testVolumePath,
+		"EXTRA":          "1",
+	}
+	if got := *created.EnvironmentVariables; !maps.Equal(got, want) {
+		t.Fatalf("environmentVariables = %v, want %v", got, want)
 	}
 }
 
