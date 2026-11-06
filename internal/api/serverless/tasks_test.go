@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,11 +17,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/runware/runware-cli/internal/api/transport"
+	"gopkg.in/yaml.v3"
 )
 
 const (
 	testTaskID     = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 	testEndpoint   = "infer"
+	testNested     = "v1/chat/completions"
 	testTaskJSON   = `{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","status":"pending","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z"}`
 	testTaskDone   = `{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","status":"completed","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z","completedAt":"2026-07-30T12:00:05Z","output":{"ok":true}}`
 	testTaskFailed = `{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","status":"failed","appId":"my-app","endpointPath":"infer","createdAt":"2026-07-30T12:00:00Z","error":"oom killed"}`
@@ -35,20 +39,20 @@ func TestValidateEndpointPath(t *testing.T) {
 		{path: "infer"},
 		{path: "a"},
 		{path: "my-endpoint"},
-		{path: "v1/chat/completions"},
+		{path: testNested},
 		{path: "v1/models"},
 		{path: "a/b/c/d/e"},
 		{path: strings.Repeat("ab/", 84) + "ab"},
 		{path: "", wantErr: "required"},
 		{path: "/infer", wantErr: "leading slash"},
 		{path: "/infer", wantErr: `"infer"`},
-		{path: "/v1/chat/completions", wantErr: `"v1/chat/completions"`},
+		{path: "/" + testNested, wantErr: `"` + testNested + `"`},
 		{path: "Infer", wantErr: wantInvalid},
 		{path: "my_endpoint", wantErr: wantInvalid},
 		{path: "infer/", wantErr: wantInvalid},
 		{path: "v1//completions", wantErr: wantInvalid},
 		{path: "v1/Chat", wantErr: wantInvalid},
-		{path: "v1/chat/completions/", wantErr: wantInvalid},
+		{path: testNested + "/", wantErr: wantInvalid},
 		{path: strings.Repeat("ab/", 85) + "ab", wantErr: "over the 255"},
 		{path: "/", wantErr: "leading slash"},
 	}
@@ -431,27 +435,154 @@ func TestWaitTask_DoesNotPost(t *testing.T) {
 	}
 }
 
-func TestRestoreEndpointPathSeparators(t *testing.T) {
+func TestEndpointPathEditorRestoresTheSeparators(t *testing.T) {
 	cases := []struct {
-		url  string
-		want string
+		name         string
+		endpointPath string
+		url          string
+		want         string
 	}{
-		{url: "https://example.invalid/v1/apps/my-app/invoke-sync/v1%2Fchat%2Fcompletions", want: "/v1/apps/my-app/invoke-sync/v1/chat/completions"},
-		{url: "https://example.invalid/v1/apps/my-app/invoke-async/v1%2fchat%2fcompletions", want: "/v1/apps/my-app/invoke-async/v1/chat/completions"},
-		{url: "https://example.invalid/v1/apps/my-app/invoke-sync/infer", want: "/v1/apps/my-app/invoke-sync/infer"},
-		{url: "https://proxy.invalid/tenant%2Fname/v1/apps/my-app/invoke-sync/v1%2Fchat%2Fcompletions", want: "/tenant%2Fname/v1/apps/my-app/invoke-sync/v1/chat/completions"},
-		{url: "https://proxy.invalid/tenant%2Fname/v1/apps/my-app/tasks/7c9e6679", want: "/tenant%2Fname/v1/apps/my-app/tasks/7c9e6679"},
+		{
+			name:         "a nested path",
+			endpointPath: testNested,
+			url:          "https://example.invalid/v1/apps/my-app/invoke-sync/v1%2Fchat%2Fcompletions",
+			want:         "/v1/apps/my-app/invoke-sync/v1/chat/completions",
+		},
+		{
+			name:         "escaped in lower case",
+			endpointPath: testNested,
+			url:          "https://example.invalid/v1/apps/my-app/invoke-async/v1%2fchat%2fcompletions",
+			want:         "/v1/apps/my-app/invoke-async/v1/chat/completions",
+		},
+		{
+			name:         "one segment",
+			endpointPath: "infer",
+			url:          "https://example.invalid/v1/apps/my-app/invoke-sync/infer",
+			want:         "/v1/apps/my-app/invoke-sync/infer",
+		},
+		{
+			name:         "an escaped slash in the base url is left alone",
+			endpointPath: testNested,
+			url:          "https://proxy.invalid/tenant%2Fname/v1/apps/my-app/invoke-sync/v1%2Fchat%2Fcompletions",
+			want:         "/tenant%2Fname/v1/apps/my-app/invoke-sync/v1/chat/completions",
+		},
+		{
+			// The editor is given to the two operations that carry an endpoint
+			// path, and rewrites only that parameter. `invoke-sync` is a valid
+			// app id, so a route recognized by its text alone would rewrite the
+			// escaped secret name on this request.
+			name:         "another operation on an app named like the route",
+			endpointPath: testNested,
+			url:          "https://example.invalid/v1/apps/invoke-sync/secrets/a%2Fb",
+			want:         "/v1/apps/invoke-sync/secrets/a%2Fb",
+		},
 	}
 	for _, tc := range cases {
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, tc.url, nil)
-		if err != nil {
-			t.Fatalf("NewRequest(%q): %v", tc.url, err)
-		}
-		if err := restoreEndpointPathSeparators(context.Background(), req); err != nil {
-			t.Fatalf("restoreEndpointPathSeparators(%q): %v", tc.url, err)
-		}
-		if got := req.URL.EscapedPath(); got != tc.want {
-			t.Errorf("EscapedPath for %q = %q, want %q", tc.url, got, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, tc.url, nil)
+			if err != nil {
+				t.Fatalf("NewRequest(%q): %v", tc.url, err)
+			}
+			if err := endpointPathEditor(tc.endpointPath)(context.Background(), req); err != nil {
+				t.Fatalf("endpointPathEditor(%q) on %q: %v", tc.endpointPath, tc.url, err)
+			}
+			if got := req.URL.EscapedPath(); got != tc.want {
+				t.Errorf("EscapedPath for %q = %q, want %q", tc.url, got, tc.want)
+			}
+		})
+	}
+}
+
+// endpointPathSchema is the EndpointPath rule the vendored API spec states.
+type endpointPathSchema struct {
+	Pattern   string `yaml:"pattern"`
+	MaxLength int    `yaml:"maxLength"`
+}
+
+type specComponents struct {
+	Schemas map[string]endpointPathSchema `yaml:"schemas"`
+}
+
+type specDocument struct {
+	Components specComponents `yaml:"components"`
+}
+
+// TestEndpointPathRuleMatchesTheSpec keeps the copy above honest. The bug this
+// file fixes was a stale copy of this rule, so a spec change that no table row
+// covers has to fail here.
+func TestEndpointPathRuleMatchesTheSpec(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "serverless", "openapi.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec specDocument
+	if err := yaml.Unmarshal(raw, &spec); err != nil {
+		t.Fatal(err)
+	}
+
+	schema, ok := spec.Components.Schemas["EndpointPath"]
+	if !ok {
+		t.Fatal("the spec has no EndpointPath schema")
+	}
+	if schema.Pattern == "" {
+		t.Fatal("the spec has no EndpointPath pattern")
+	}
+	if got := endpointPathPattern.String(); got != schema.Pattern {
+		t.Errorf("endpointPathPattern = %q, the spec says %q", got, schema.Pattern)
+	}
+	if schema.MaxLength != endpointPathMaxLen {
+		t.Errorf("endpointPathMaxLen = %d, the spec says %d", endpointPathMaxLen, schema.MaxLength)
+	}
+}
+
+// TestInvokeSendsANestedPathUnescaped drives both operations through the
+// generated client, which is where the escaping happens. The editor is attached
+// per operation, so a call that stops passing it fails here and nowhere else.
+func TestInvokeSendsANestedPathUnescaped(t *testing.T) {
+	cases := []struct {
+		name   string
+		verb   string
+		invoke func(*Client) error
+	}{
+		{
+			name: "sync",
+			verb: "invoke-sync",
+			invoke: func(c *Client) error {
+				_, err := c.InvokeSync(context.Background(), testAppID, testNested, testTaskID, nil)
+				return err
+			},
+		},
+		{
+			name: "async",
+			verb: "invoke-async",
+			invoke: func(c *Client) error {
+				_, err := c.InvokeAsync(context.Background(), testAppID, testNested, testTaskID, nil)
+				return err
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := "/v1/apps/" + testAppID + "/" + tc.verb + "/" + testNested
+			var got string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.URL.EscapedPath()
+				w.Header().Set("Content-Type", "application/json")
+				if tc.verb == "invoke-async" {
+					w.WriteHeader(http.StatusAccepted)
+				}
+				_, _ = w.Write([]byte(testTaskDone))
+			}))
+			defer srv.Close()
+
+			c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+			if err := tc.invoke(c); err != nil {
+				t.Fatalf("invoke: %v", err)
+			}
+			if got != want {
+				t.Errorf("the server saw %q, want %q", got, want)
+			}
+		})
 	}
 }
