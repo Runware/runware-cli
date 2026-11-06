@@ -9,7 +9,6 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +28,7 @@ const (
 	testFromFlag      = "--from"
 	testFallbackGPU   = "l40s"
 	testBaseImageFlag = "--base-image"
+	testBaseImage     = "python:3.12-slim"
 	testRequirement   = "--requirement"
 	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
 	testIDFlag        = "--id"
@@ -93,7 +93,7 @@ func TestValidateDeployArgs(t *testing.T) {
 		},
 		{
 			name:    "container with base-image",
-			flags:   []string{testContainerFlag, testWrapperDir, testBaseImageFlag, "python:3.12-slim"},
+			flags:   []string{testContainerFlag, testWrapperDir, testBaseImageFlag, testBaseImage},
 			wantErr: testBaseImageFlag,
 		},
 		{
@@ -491,7 +491,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
 		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
 		{flags: []string{testRequirement, testPipPackage}},
-		{flags: []string{testBaseImageFlag, "python:3.12-slim"}},
+		{flags: []string{testBaseImageFlag, testBaseImage}},
 		{flags: []string{testSrcDirFlag, "."}},
 		{flags: []string{testWaitFlag}},
 	}
@@ -749,7 +749,7 @@ func TestRefuseCodeOnlyFlags(t *testing.T) {
 		},
 		{
 			name:    "base-image",
-			flags:   []string{testFromFlag, testArchiveURL, testBaseImageFlag, "python:3.12-slim"},
+			flags:   []string{testFromFlag, testArchiveURL, testBaseImageFlag, testBaseImage},
 			wantErr: testBaseImageFlag,
 		},
 		{
@@ -791,8 +791,7 @@ func TestRefuseCodeOnlyFlags(t *testing.T) {
 }
 
 // deployFromArchiveManifest is a packaged code source whose manifest carries a
-// GPU type and a volume. Both are create-only flags, which is what makes it the
-// fixture for the redeploy rule below.
+// GPU type, a volume and a secret, so a create has to carry all three.
 const deployFromArchiveManifest = `configVersion: 1
 id: ` + testAppID + `
 source:
@@ -802,7 +801,12 @@ compute:
   gpuType: ` + testGPUType + `
 volumes:
   - /weights
+secrets:
+  - name: ` + testManifestSecret + `
 `
+
+// testManifestSecret is the secret deployFromArchiveManifest names.
+const testManifestSecret = "HF_TOKEN"
 
 // serveDeployFromArchive packages the manifest with its entry file and returns
 // the URL to deploy from.
@@ -869,15 +873,19 @@ func TestDeployFrom_CreatesFromTheManifest(t *testing.T) {
 	if created.Volumes == nil || len(*created.Volumes) != 1 || (*created.Volumes)[0].MountPath != testVolumePath {
 		t.Fatalf("volumes = %#v", created.Volumes)
 	}
+	if created.Secrets == nil || len(*created.Secrets) != 1 || (*created.Secrets)[0].SecretName != testManifestSecret {
+		t.Fatalf("secrets = %#v", created.Secrets)
+	}
 }
 
-// TestDeployFrom_RedeploysAnExistingApp fixes the redeploy rule: the manifest
-// describes the app rather than asking to change a running one, so its
-// create-only GPU type and volume must not be refused on an update.
-func TestDeployFrom_RedeploysAnExistingApp(t *testing.T) {
+// TestDeployFrom_RefusesAnExistingApp fixes the create-only rule: a manifest
+// names an id, so deploying one over an application that already has that id
+// would roll this archive out as that application's next version, running it
+// with the secrets, environment variables and volumes already attached.
+func TestDeployFrom_RefusesAnExistingApp(t *testing.T) {
 	from := serveDeployFromArchive(t)
 
-	var creates, updates int
+	var writes int
 	serveSourceUpload := newSourceUploadStub(t)
 
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -888,12 +896,8 @@ func TestDeployFrom_RedeploysAnExistingApp(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(activeAppBody("")))
-		case r.Method == http.MethodPatch && r.URL.Path == testAppsPath+"/"+testAppID:
-			updates++
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(activeAppBody("")))
-		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
-			creates++
+		case r.Method == http.MethodPatch || r.Method == http.MethodPost:
+			writes++
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(activeAppBody("")))
@@ -907,48 +911,71 @@ func TestDeployFrom_RedeploysAnExistingApp(t *testing.T) {
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
 
-	var stderr bytes.Buffer
 	cmd := newDeployCmd(log.New(io.Discard))
 	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&stderr)
+	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{testFromFlag, from})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("redeploy %s: %v", testFromFlag, err)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected the deploy to be refused")
 	}
-
-	// The manifest carries a volume and a compute block, and an update sends
-	// neither, so the command has to say which sections it dropped.
-	for _, want := range []string{"volumes", "compute", "the source only"} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Fatalf("stderr = %q, want it to mention %q", stderr.String(), want)
+	for _, want := range []string{testAppID, "only creates", "--id"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
 		}
 	}
-
-	if updates != 1 {
-		t.Fatalf("updates = %d, want 1", updates)
-	}
-	if creates != 0 {
-		t.Fatalf("creates = %d, want 0", creates)
+	if writes != 0 {
+		t.Fatalf("writes = %d, want 0", writes)
 	}
 }
 
-func TestUnappliedManifestSections(t *testing.T) {
-	full := deployManifest{
-		Volumes: []string{testVolumePath},
-		EnvVars: map[string]string{"A": "1"},
-		Secrets: []manifestSecret{{Name: "HF_TOKEN"}},
-		Compute: manifestCompute{GpuType: testGPUType},
-	}
+// deployFromContainerManifest is a packaged container source. Its archive
+// carries the container directory a container deploy expects.
+const deployFromContainerManifest = `configVersion: 1
+id: ` + testAppID + `
+source:
+  type: container
+compute:
+  gpuType: ` + testGPUType + `
+`
 
-	if got := unappliedManifestSections("", full); got != nil {
-		t.Fatalf("without --from: %v, want nil", got)
+// TestDeployFrom_RefusesCodeOnlyFlagsOnAContainerArchive drives the check
+// through the command. The source type is inside the archive, so a code-only
+// flag can only be refused once the manifest has been read, and the packer
+// would otherwise drop it without a word.
+func TestDeployFrom_RefusesCodeOnlyFlagsOnAContainerArchive(t *testing.T) {
+	from := serveArchive(t, buildTestArchive(t, []archiveEntry{
+		{name: manifestFile, body: deployFromContainerManifest},
+		{name: containerDockerfile, body: testDockerfile},
+		{name: containerConfig, body: testContainer},
+	}))
+
+	var calls int
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{testFromFlag, from, testBaseImageFlag, testBaseImage})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected the deploy to be refused")
 	}
-	want := []string{"volumes", "envVars", "secrets", "compute"}
-	if got := unappliedManifestSections(testArchiveURL, full); !slices.Equal(got, want) {
-		t.Fatalf("full manifest: %v, want %v", got, want)
+	for _, want := range []string{testBaseImageFlag, "container source"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
 	}
-	if got := unappliedManifestSections(testArchiveURL, deployManifest{}); got != nil {
-		t.Fatalf("empty manifest: %v, want nil", got)
+	if calls != 0 {
+		t.Fatalf("the API was called %d times, want 0", calls)
 	}
 }
 

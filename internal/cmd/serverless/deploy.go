@@ -225,6 +225,13 @@ manifest's and leaves the rest, while --volume, --requirement and --secret
 replace the manifest's whole list. The archive supplies the source directory,
 so --from cannot be combined with an entry file, --container, or --src-dir.
 
+--from only creates. A manifest names an id, and deploying it over an
+application that already has that id would roll the archive out as that
+application's next version, running this code with the secrets, environment
+variables and volumes it already has. So an existing id is refused: pass --id
+to create a separate application, or unpack the archive and deploy the
+directory to update the one that is there.
+
 A runware.yaml carries no secret values. Its secrets name what the app needs,
 and each one has to already exist in the environment. A manifest key this CLI
 does not know is an error rather than a silent omission, which is what
@@ -340,9 +347,9 @@ paths and an invoke example once the application is active.`,
 				// deploy on another GPU type without being edited first.
 				//
 				// Nothing here marks a flag as changed. The create-only flags are
-				// refused on an update by exactly that test, and a manifest that
-				// carries a GPU type is describing the app, not asking to change a
-				// running one, so a redeploy from the same archive has to go through.
+				// refused on an update by exactly that test, and a deploy from a
+				// packaged source only ever creates, so the manifest's own values
+				// always reach a create.
 				if manifest.Source.Type == string(serverlessapi.AppSourceTypeContainer) {
 					if err := refuseCodeOnlyFlags(cmd, "this archive holds a container source"); err != nil {
 						return err
@@ -404,7 +411,7 @@ paths and an invoke example once the application is active.`,
 
 			client := newServerlessClient(cmd, logger)
 
-			update, err := resolveDeployTarget(cmd, client, id, gpuType)
+			update, err := resolveDeployTarget(cmd, client, id, gpuType, from)
 			if err != nil {
 				return err
 			}
@@ -457,11 +464,6 @@ paths and an invoke example once the application is active.`,
 
 			var app *serverlessapi.App
 			if update {
-				if sections := unappliedManifestSections(from, manifest); len(sections) > 0 {
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-						"Updating the source only. An existing app keeps its configuration, so the manifest sections %s do not apply here. Change configuration with 'runware serverless apps scale' or 'apps env-vars'.\n",
-						strings.Join(sections, ", "))
-				}
 				spin = cmdutil.NewSpinner(fmt.Sprintf("Updating application %s...", id))
 				spin.Start()
 				app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
@@ -548,7 +550,7 @@ paths and an invoke example once the application is active.`,
 
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
 	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
-	cmd.Flags().StringVar(&from, "from", "", "URL of a packaged source to fetch and deploy, reading its "+manifestFile)
+	cmd.Flags().StringVar(&from, "from", "", "URL of a packaged source to fetch and deploy as a new application, reading its "+manifestFile)
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
@@ -578,7 +580,7 @@ paths and an invoke example once the application is active.`,
 // creates one. Before the archive is uploaded it refuses a copy that is still
 // deleting, create-only flags on an update, and an unknown --env or a missing
 // --gpu-type on a create.
-func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, gpuType string) (update bool, err error) {
+func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, gpuType, from string) (update bool, err error) {
 	app, err := existingApp(cmd.Context(), client, id)
 	if err != nil {
 		return false, err
@@ -586,6 +588,12 @@ func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, g
 	if app != nil {
 		if app.Status == serverlessapi.AppStatusDeleting {
 			return false, fmt.Errorf("application %q is deleting; wait until it is deleted, then deploy", id)
+		}
+		if from != "" {
+			return false, fmt.Errorf(
+				"application %q already exists, and --from only creates: deploying would roll out this archive as the next version of that application, which keeps the secrets, environment variables and volumes it has now. Pass --id to create a separate application, or unpack the archive and deploy the directory to update that one",
+				id,
+			)
 		}
 		return true, validateUpdateDeployFlags(cmd)
 	}
@@ -677,31 +685,6 @@ func validateUpdateDeployFlags(cmd *cobra.Command) error {
 		}
 	}
 	return nil
-}
-
-// unappliedManifestSections names the manifest sections an update does not
-// send. The update carries only the source, so a packaged version that adds a
-// volume or a secret would otherwise deploy its new code without them and say
-// nothing. Empty for a deploy that read no manifest.
-func unappliedManifestSections(from string, manifest deployManifest) []string {
-	if from == "" {
-		return nil
-	}
-
-	var sections []string
-	if len(manifest.Volumes) > 0 {
-		sections = append(sections, "volumes")
-	}
-	if len(manifest.EnvVars) > 0 {
-		sections = append(sections, "envVars")
-	}
-	if len(manifest.Secrets) > 0 {
-		sections = append(sections, "secrets")
-	}
-	if manifest.Compute != (manifestCompute{}) {
-		sections = append(sections, "compute")
-	}
-	return sections
 }
 
 // createOnlyDeployHint says how to change a create-only setting on the copy

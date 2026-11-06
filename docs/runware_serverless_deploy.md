@@ -52,6 +52,13 @@ manifest's and leaves the rest, while --volume, --requirement and --secret
 replace the manifest's whole list. The archive supplies the source directory,
 so --from cannot be combined with an entry file, --container, or --src-dir.
 
+--from only creates. A manifest names an id, and deploying it over an
+application that already has that id would roll the archive out as that
+application's next version, running this code with the secrets, environment
+variables and volumes it already has. So an existing id is refused: pass --id
+to create a separate application, or unpack the archive and deploy the
+directory to update the one that is there.
+
 A runware.yaml carries no secret values. Its secrets name what the app needs,
 and each one has to already exist in the environment. A manifest key this CLI
 does not know is an error rather than a silent omission, which is what
@@ -158,7 +165,7 @@ runware serverless deploy [file] [flags]
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
       --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
-      --from string                   URL of a packaged source to fetch and deploy, reading its runware.yaml
+      --from string                   URL of a packaged source to fetch and deploy as a new application, reading its runware.yaml
       --gpu-type string               GPU type ID (see 'serverless gpus'; required when creating)
       --gpus-per-worker int32         GPUs allocated per worker (1, 2, 4, or 8) (default 1)
   -h, --help                          help for deploy
