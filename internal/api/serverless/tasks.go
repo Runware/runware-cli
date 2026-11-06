@@ -23,38 +23,32 @@ var endpointPathPattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,62}[a-z0-9])?(/
 
 const endpointPathMaxLen = 255
 
-// endpointPathRoutes are the operation paths that carry an endpointPath.
-var endpointPathRoutes = []string{"/invoke-async/", "/invoke-sync/"}
-
-// restoreEndpointPathSeparators puts the slashes of a multi-segment endpoint
-// path back into the request URL. The generated client styles a path parameter
-// with simple escaping, which percent-encodes those slashes, and the API
-// rejects an endpointPath that arrives as %2F. Only the part after the route
-// marker is rewritten, so an escaped slash in a configured base URL is left as
-// the caller wrote it.
-func restoreEndpointPathSeparators(_ context.Context, req *http.Request) error {
-	if req.URL == nil || req.URL.RawPath == "" {
-		return nil
-	}
-	raw := req.URL.RawPath
-	cut := -1
-	for _, marker := range endpointPathRoutes {
-		if i := strings.LastIndex(raw, marker); i >= 0 && i+len(marker) > cut {
-			cut = i + len(marker)
+// endpointPathEditor restores the slashes of a multi-segment endpoint path in
+// the request URL. The generated client styles a path parameter with simple
+// escaping, which turns those slashes into %2F, and the API rejects an
+// endpointPath that arrives escaped.
+//
+// The editor is handed to the two operations that carry an endpointPath, so it
+// knows the value to look for. A path it is not given is left alone: `invoke-sync`
+// is itself a valid app id, so a route matched by its text would rewrite requests
+// that carry no endpoint path at all.
+func endpointPathEditor(endpointPath string) gen.RequestEditorFn {
+	return func(_ context.Context, req *http.Request) error {
+		if req.URL == nil || req.URL.RawPath == "" {
+			return nil
 		}
-	}
-	if cut < 0 {
+		// Path is already decoded, so the parameter we were handed is its last
+		// segments. Anything else on the URL is not ours to touch.
+		if !strings.HasSuffix(req.URL.Path, "/"+endpointPath) {
+			return nil
+		}
+		// The escaped parameter carries no slash of its own, so it is whatever
+		// follows the last one, and the base URL keeps the encoding it came with.
+		raw := req.URL.RawPath
+		cut := strings.LastIndex(raw, "/") + 1
+		req.URL.RawPath = raw[:cut] + endpointPath
 		return nil
 	}
-	head, tail := raw[:cut], raw[cut:]
-	restored := strings.ReplaceAll(tail, "%2F", "/")
-	restored = strings.ReplaceAll(restored, "%2f", "/")
-	if head+restored == req.URL.Path {
-		req.URL.RawPath = ""
-		return nil
-	}
-	req.URL.RawPath = head + restored
-	return nil
 }
 
 // taskNotFoundRetry is how long WaitTask retries getTask 404s. A freshly
@@ -103,7 +97,7 @@ func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath, taskID st
 
 	resp, err := c.inner.StartAsyncTaskWithResponse(ctx, appID, endpointPath, &gen.StartAsyncTaskParams{
 		Environment: c.environmentParam(),
-	}, invocation)
+	}, invocation, endpointPathEditor(endpointPath))
 	if err != nil {
 		return nil, fmt.Errorf("invoke async: %w", err)
 	}
@@ -152,7 +146,7 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 
 	resp, err := c.innerWithMinTimeout(invokeSyncTimeout).StartSyncTaskWithResponse(ctx, appID, endpointPath, &gen.StartSyncTaskParams{
 		Environment: c.environmentParam(),
-	}, invocation)
+	}, invocation, endpointPathEditor(endpointPath))
 	if err != nil {
 		return nil, fmt.Errorf("invoke sync: %w", err)
 	}
