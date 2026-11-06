@@ -15,8 +15,47 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 )
 
-// endpointPathPattern is ADR-034: a bare lowercase segment, no leading slash.
-var endpointPathPattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$`)
+// endpointPathPattern and endpointPathMaxLen mirror the EndpointPath schema in
+// api/serverless/openapi.yaml. A path is one or more lowercase segments joined
+// by slashes, so an endpoint that answers on a nested route, as an
+// OpenAI-compatible server does, is addressable here too.
+var endpointPathPattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,62}[a-z0-9])?(/[a-z]([a-z0-9-]{0,62}[a-z0-9])?)*$`)
+
+const endpointPathMaxLen = 255
+
+// endpointPathRoutes are the operation paths that carry an endpointPath.
+var endpointPathRoutes = []string{"/invoke-async/", "/invoke-sync/"}
+
+// restoreEndpointPathSeparators puts the slashes of a multi-segment endpoint
+// path back into the request URL. The generated client styles a path parameter
+// with simple escaping, which percent-encodes those slashes, and the API
+// rejects an endpointPath that arrives as %2F. Only the part after the route
+// marker is rewritten, so an escaped slash in a configured base URL is left as
+// the caller wrote it.
+func restoreEndpointPathSeparators(_ context.Context, req *http.Request) error {
+	if req.URL == nil || req.URL.RawPath == "" {
+		return nil
+	}
+	raw := req.URL.RawPath
+	cut := -1
+	for _, marker := range endpointPathRoutes {
+		if i := strings.LastIndex(raw, marker); i >= 0 && i+len(marker) > cut {
+			cut = i + len(marker)
+		}
+	}
+	if cut < 0 {
+		return nil
+	}
+	head, tail := raw[:cut], raw[cut:]
+	restored := strings.ReplaceAll(tail, "%2F", "/")
+	restored = strings.ReplaceAll(restored, "%2f", "/")
+	if head+restored == req.URL.Path {
+		req.URL.RawPath = ""
+		return nil
+	}
+	req.URL.RawPath = head + restored
+	return nil
+}
 
 // taskNotFoundRetry is how long WaitTask retries getTask 404s. A freshly
 // accepted id can temporarily miss the result store.
@@ -25,8 +64,9 @@ const taskNotFoundRetry = 30 * time.Second
 // defaultTaskPollInterval is used when WaitTask is called with a non-positive interval.
 const defaultTaskPollInterval = 2 * time.Second
 
-// ValidateEndpointPath checks ADR-034. A leading slash is rejected by the API
-// with 422; fail locally with a hint naming the bare segment.
+// ValidateEndpointPath checks a path against the API's own EndpointPath schema.
+// A leading slash is rejected by the API with 422; fail locally with a hint
+// naming the path without it.
 func ValidateEndpointPath(path string) error {
 	if path == "" {
 		return fmt.Errorf("endpoint path is required")
@@ -34,12 +74,15 @@ func ValidateEndpointPath(path string) error {
 	if strings.HasPrefix(path, "/") {
 		bare := strings.TrimLeft(path, "/")
 		if endpointPathPattern.MatchString(bare) {
-			return fmt.Errorf("endpoint path %q must be a bare segment without a leading slash (e.g. %q)", path, bare)
+			return fmt.Errorf("endpoint path %q must carry no leading slash (e.g. %q)", path, bare)
 		}
-		return fmt.Errorf("endpoint path %q must be a bare lowercase segment without a leading slash", path)
+		return fmt.Errorf("endpoint path %q must carry no leading slash", path)
+	}
+	if len(path) > endpointPathMaxLen {
+		return fmt.Errorf("endpoint path is %d characters, over the %d the API accepts", len(path), endpointPathMaxLen)
 	}
 	if !endpointPathPattern.MatchString(path) {
-		return fmt.Errorf("endpoint path %q is invalid: use a lowercase segment of 1-64 characters (letters, digits, hyphens)", path)
+		return fmt.Errorf("endpoint path %q is invalid: use the path apps endpoints reports, one or more lowercase segments joined by slashes, such as generate or v1/chat/completions", path)
 	}
 	return nil
 }
