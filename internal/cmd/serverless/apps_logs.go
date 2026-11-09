@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -40,6 +41,7 @@ type logsFlags struct {
 	cursor string
 	sort   string
 	follow bool
+	errors bool
 }
 
 func newAppsLogsCmd(logger *log.Logger) *cobra.Command {
@@ -115,11 +117,23 @@ entry is printed as one JSON object per line.`,
 			}
 
 			page.Entries = chronologicalLogEntries(page.Entries, flags.sort)
+			if flags.errors {
+				page.Entries = errorLogEntries(page.Entries)
+			}
 			if !flags.follow {
 				return printLogPage(format, page, out, errOut, cursorFlags(cmd, extraLogsCursorFlags(flags)))
 			}
 
 			emit := logEmitter(format, out)
+			if flags.errors {
+				next := emit
+				emit = func(entry serverlessapi.LogEntry) error {
+					if !isErrorLog(entry) {
+						return nil
+					}
+					return next(entry)
+				}
+			}
 			for _, entry := range page.Entries {
 				if err := emit(entry); err != nil {
 					return err
@@ -137,6 +151,7 @@ entry is printed as one JSON object per line.`,
 	cmd.Flags().StringVar(&flags.sort, "sort", "", "Order of the recent page ("+logSorts+"; default: latest page, oldest first)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor (nextCursor or prevCursor)")
 	cmd.Flags().BoolVarP(&flags.follow, "follow", "f", false, "Stream new log entries until interrupted")
+	cmd.Flags().BoolVar(&flags.errors, "errors", false, "Show only error lines from the fetched page: level error, a traceback, or an exception message")
 	return cmd
 }
 
@@ -287,6 +302,10 @@ func writeLogLine(out io.Writer, entry serverlessapi.LogEntry) error {
 	return err
 }
 
+var ansiEscape = regexp.MustCompile("\x1b\\[[\\x30-\\x3f]*[\\x20-\\x2f]*[\\x40-\\x7e]")
+
+const exceptionMessageField = "exception.message"
+
 func formatLogLine(entry serverlessapi.LogEntry) string {
 	ts := "-"
 	if entry.Time != 0 {
@@ -296,7 +315,42 @@ func formatLogLine(entry serverlessapi.LogEntry) string {
 	if l := entryLevel(entry); l != "" {
 		level = strings.ToUpper(l)
 	}
-	return fmt.Sprintf("%-20s %-5s %s", ts, level, entry.Body)
+	body := stripANSI(entry.Body)
+	if msg := logField(entry, exceptionMessageField); msg != "" && !strings.Contains(body, msg) {
+		body += ": " + stripANSI(msg)
+	}
+	return fmt.Sprintf("%-20s %-5s %s", ts, level, body)
+}
+
+func stripANSI(text string) string {
+	return ansiEscape.ReplaceAllString(text, "")
+}
+
+func logField(entry serverlessapi.LogEntry, key string) string {
+	if entry.Fields == nil {
+		return ""
+	}
+	return (*entry.Fields)[key]
+}
+
+func isErrorLog(entry serverlessapi.LogEntry) bool {
+	if strings.EqualFold(entryLevel(entry), "error") {
+		return true
+	}
+	if logField(entry, exceptionMessageField) != "" {
+		return true
+	}
+	return strings.Contains(entry.Body, "Traceback (most recent call last)")
+}
+
+func errorLogEntries(entries []serverlessapi.LogEntry) []serverlessapi.LogEntry {
+	kept := make([]serverlessapi.LogEntry, 0, len(entries))
+	for _, entry := range entries {
+		if isErrorLog(entry) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // severityField is the structured-log field the store keeps the level under
