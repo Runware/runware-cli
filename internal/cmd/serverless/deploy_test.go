@@ -1125,3 +1125,16 @@ func TestDeployRefusesADeletingApp(t *testing.T) {
 		requireDeployRefused(t, run, want, testAppsPath+"/"+testAppID)
 	})
 }
+
+func TestValidateExtraIndexURL(t *testing.T) {
+	if err := validateExtraIndexURL("https://download.pytorch.org/whl/cu124"); err != nil {
+		t.Fatal(err)
+	}
+	err := validateExtraIndexURL("https://user:s3cret@example.com/simple")
+	if err == nil || strings.Contains(err.Error(), "s3cret") || !strings.Contains(err.Error(), "credentials") {
+		t.Fatalf("got %v", err)
+	}
+	if err := validateExtraIndexURL("ftp://example.com/simple"); err == nil {
+		t.Fatal("expected a non-http URL to be refused")
+	}
+}

@@ -3,6 +3,7 @@ package serverless
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ var codeOnlyDeployFlags = []string{
 	"src-dir",
 	"base-image",
 	"requirement",
+	"extra-index-url",
 }
 
 // fromOnlyConflictFlags name a local source, which --from already supplies.
@@ -157,6 +159,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		baseImage           string
 		gpuType             string
 		requirements        []string
+		extraIndexURLs      []string
 		minWorkers          int32
 		gpusPerWorker       int32
 		fallbackGPUType     string
@@ -404,6 +407,13 @@ paths and an invoke example once the application is active.`,
 				name = id
 			}
 
+			for _, raw := range extraIndexURLs {
+				if err := validateExtraIndexURL(raw); err != nil {
+					return err
+				}
+				requirements = append(requirements, "--extra-index-url "+raw)
+			}
+
 			archive, source, err := buildDeployArchive(srcDir, containerDir, baseImage, requirements, args)
 			if err != nil {
 				return err
@@ -563,6 +573,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.12-slim", "Builder base image (code deploys only; needs Python 3.12 or newer)")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
+	cmd.Flags().StringArrayVar(&extraIndexURLs, "extra-index-url", nil, "Package index for those requirements, as an http or https URL with no credentials (repeatable; code deploys only)")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
 	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker ("+gpusPerWorkerValuesText()+")")
 	cmd.Flags().StringVar(&fallbackGPUType, "fallback-gpu-type", "", "Secondary GPU type if the preferred type is unavailable")
@@ -669,6 +680,14 @@ func validateGPUsPerWorkerFlag(cmd *cobra.Command, n int32) error {
 		return nil
 	}
 	return validateGPUsPerWorker(n)
+}
+
+func validateExtraIndexURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || !httpScheme(parsed.Scheme) || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("--extra-index-url needs an http or https URL with no credentials")
+	}
+	return nil
 }
 
 func validateAvailableWorkersPct(n int32) error {
