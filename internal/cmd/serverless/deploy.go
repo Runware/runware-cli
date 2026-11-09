@@ -32,9 +32,11 @@ var fromOnlyConflictFlags = []string{
 // createOnlyDeployFlags apply to CreateApp only. On an existing app they are
 // rejected so a leftover create invocation cannot wipe environment variables
 // or silently no-op.
+const appNameFlag = "name"
+
 var createOnlyDeployFlags = []string{
 	"gpu-type",
-	"name",
+	appNameFlag,
 	"max-workers",
 	"idle-ttl",
 	"scaling-delay",
@@ -358,7 +360,7 @@ paths and an invoke example once the application is active.`,
 
 				args, srcDir, containerDir = manifest.localSource(dir)
 				id = manifestString(cmd, "id", id, manifest.ID)
-				name = manifestString(cmd, "name", name, manifest.Name)
+				name = manifestString(cmd, appNameFlag, name, manifest.Name)
 				baseImage = manifestString(cmd, "base-image", baseImage, manifest.Build.BaseImage)
 				gpuType = manifestString(cmd, "gpu-type", gpuType, manifest.Compute.GpuType)
 				maxWorkers = manifestInt32(cmd, "max-workers", maxWorkers, manifest.Compute.MaxWorkers)
@@ -395,7 +397,7 @@ paths and an invoke example once the application is active.`,
 					return err
 				}
 			}
-			if cmd.Flags().Changed("name") {
+			if cmd.Flags().Changed(appNameFlag) {
 				if err := validateAppName(name); err != nil {
 					return err
 				}
@@ -556,7 +558,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
-	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
+	cmd.Flags().StringVar(&name, appNameFlag, "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")
 	cmd.Flags().Int32Var(&idleTTL, "idle-ttl", 60, "Idle TTL in seconds before scaling down")
 	cmd.Flags().Int32Var(&scalingDelay, "scaling-delay", 10, "Scaling delay in seconds")
@@ -595,7 +597,7 @@ func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, g
 				id,
 			)
 		}
-		return true, validateUpdateDeployFlags(cmd)
+		return true, validateUpdateDeployFlags(cmd, app)
 	}
 	if err := requireEnvironment(cmd.Context(), client, commandEnvironment(cmd)); err != nil {
 		return false, err
@@ -678,13 +680,190 @@ func validateAvailableWorkersPct(n int32) error {
 	return nil
 }
 
-func validateUpdateDeployFlags(cmd *cobra.Command) error {
+func validateUpdateDeployFlags(cmd *cobra.Command, app *serverlessapi.App) error {
+	var names []string
+	var hints []string
+	seen := map[string]struct{}{}
+	envChecked := false
+	envSame := false
+	var envErr error
 	for _, name := range createOnlyDeployFlags {
-		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name, commandEnvironment(cmd), defaultEnvironment(cmd)))
+		if !cmd.Flags().Changed(name) {
+			continue
+		}
+		var (
+			same bool
+			err  error
+		)
+		if name == envVarFlag || name == "env-file" {
+			if !envChecked {
+				envSame, envErr = envFlagsMatchApp(cmd, app)
+				envChecked = true
+			}
+			if envErr != nil {
+				return envErr
+			}
+			same = envSame
+		} else {
+			same, err = createOnlyFlagMatches(cmd, app, name)
+			if err != nil {
+				return err
+			}
+		}
+		if same {
+			continue
+		}
+		names = append(names, "--"+name)
+		hint := createOnlyDeployHint(name, commandEnvironment(cmd), defaultEnvironment(cmd))
+		if _, ok := seen[hint]; !ok {
+			seen[hint] = struct{}{}
+			hints = append(hints, hint)
 		}
 	}
-	return nil
+	if len(names) == 0 {
+		return nil
+	}
+	verb := "applies"
+	if len(names) != 1 {
+		verb = "apply"
+	}
+	return fmt.Errorf("%s %s to create only; %s", strings.Join(names, ", "), verb, strings.Join(hints, "; "))
+}
+
+func createOnlyFlagMatches(cmd *cobra.Command, app *serverlessapi.App, name string) (bool, error) {
+	cfg := app.Configuration
+	switch name {
+	case "gpu-type":
+		got, err := cmd.Flags().GetString(name)
+		return err == nil && sameOptionalString(got, cfg.GpuType), err
+	case "fallback-gpu-type":
+		got, err := cmd.Flags().GetString(name)
+		return err == nil && sameOptionalString(got, cfg.FallbackGpuType), err
+	case appNameFlag:
+		got, err := cmd.Flags().GetString(name)
+		return err == nil && got == app.AppName, err
+	case "max-workers":
+		return sameInt32Flag(cmd, name, cfg.MaxWorkers)
+	case "idle-ttl":
+		return sameInt32Flag(cmd, name, cfg.IdleTtlSecs)
+	case "scaling-delay":
+		return sameInt32Flag(cmd, name, cfg.ScalingDelaySecs)
+	case "min-workers":
+		return sameInt32Flag(cmd, name, cfg.MinWorkers)
+	case "gpus-per-worker":
+		return sameInt32Flag(cmd, name, cfg.GpusPerWorker)
+	case "min-available-workers":
+		return sameOptionalInt32Flag(cmd, name, cfg.MinAvailableWorkers)
+	case "available-workers-pct":
+		return sameOptionalInt32Flag(cmd, name, cfg.AvailableWorkersPct)
+	case "volume":
+		return false, nil
+	case "secret":
+		return secretsMatchApp(cmd, app)
+	default:
+		return false, nil
+	}
+}
+
+func sameOptionalString[T ~string](got string, stored *T) bool {
+	if stored == nil {
+		return got == ""
+	}
+	return got == string(*stored)
+}
+
+func sameInt32Flag(cmd *cobra.Command, name string, stored int32) (bool, error) {
+	got, err := cmd.Flags().GetInt32(name)
+	if err != nil {
+		return false, err
+	}
+	return got == stored, nil
+}
+
+func sameOptionalInt32Flag(cmd *cobra.Command, name string, stored *int32) (bool, error) {
+	got, err := cmd.Flags().GetInt32(name)
+	if err != nil {
+		return false, err
+	}
+	if stored == nil {
+		return got == 0, nil
+	}
+	return got == *stored, nil
+}
+
+func secretsMatchApp(cmd *cobra.Command, app *serverlessapi.App) (bool, error) {
+	values, err := cmd.Flags().GetStringArray("secret")
+	if err != nil {
+		return false, err
+	}
+	parsed, err := parseSecretAttaches(values)
+	if err != nil {
+		return false, err
+	}
+	want := map[string]struct{}{}
+	if parsed != nil {
+		for _, item := range *parsed {
+			env := ""
+			if item.EnvVarName != nil {
+				env = *item.EnvVarName
+			}
+			want[item.SecretName+"\x00"+env] = struct{}{}
+		}
+	}
+	have := map[string]struct{}{}
+	for _, item := range app.Secrets {
+		env := ""
+		if item.EnvVarName != nil {
+			env = *item.EnvVarName
+		}
+		have[item.Name+"\x00"+env] = struct{}{}
+	}
+	if len(want) != len(have) {
+		return false, nil
+	}
+	for key := range want {
+		if _, ok := have[key]; !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func envFlagsMatchApp(cmd *cobra.Command, app *serverlessapi.App) (bool, error) {
+	var files, pairs []string
+	var err error
+	if cmd.Flags().Changed("env-file") {
+		files, err = cmd.Flags().GetStringArray("env-file")
+		if err != nil {
+			return false, err
+		}
+	}
+	if cmd.Flags().Changed(envVarFlag) {
+		pairs, err = cmd.Flags().GetStringArray(envVarFlag)
+		if err != nil {
+			return false, err
+		}
+	}
+	built, err := buildEnvironmentVariables(files, pairs, nil)
+	if err != nil {
+		return false, err
+	}
+	stored := make(map[string]string, len(app.EnvironmentVariables))
+	for _, item := range app.EnvironmentVariables {
+		stored[item.Key] = item.Value
+	}
+	if built == nil {
+		return len(stored) == 0, nil
+	}
+	if len(*built) != len(stored) {
+		return false, nil
+	}
+	for key, value := range *built {
+		if stored[key] != value {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // createOnlyDeployHint says how to change a create-only setting on the copy
@@ -699,7 +878,7 @@ func createOnlyDeployHint(name, environment, defaultEnvironment string) string {
 		return "use '" + serverlessCommand(environment, defaultEnvironment, "secrets", "attach") + "' to attach a secret"
 	case "volume":
 		return "volumes are immutable after create"
-	case "name":
+	case appNameFlag:
 		return "use '" + serverlessCommand(environment, defaultEnvironment, "apps", "rename") + "' to change the display name"
 	default:
 		return "omit it when updating an existing application"

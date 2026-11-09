@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func TestValidateDeployArgs(t *testing.T) {
 		},
 		{
 			name:  "from with a flag that overrides the manifest",
-			flags: []string{testFromFlag, testArchiveURL, "--gpu-type", testFallbackGPU},
+			flags: []string{testFromFlag, testArchiveURL, testGPUTypeFlag, testFallbackGPU},
 		},
 		{
 			name:    "container with src-dir",
@@ -471,7 +472,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags: %v", err)
 	}
-	if err := validateUpdateDeployFlags(cmd); err != nil {
+	if err := validateUpdateDeployFlags(cmd, &serverlessapi.App{}); err != nil {
 		t.Fatalf("no create flags: %v", err)
 	}
 
@@ -480,7 +481,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		flags   []string
 		wantErr string
 	}{
-		{flags: []string{testGPUTypeFlag, "h100"}, wantErr: scaleHint},
+		{flags: []string{testGPUTypeFlag, testGPUType}, wantErr: scaleHint},
 		{flags: []string{"--max-workers", "2"}, wantErr: scaleHint},
 		{flags: []string{"--env-var", "FOO=bar"}, wantErr: "apps env-vars"},
 		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env-vars"},
@@ -497,11 +498,21 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.flags, " "), func(t *testing.T) {
+			flags := append([]string(nil), tc.flags...)
+			for i, flag := range flags {
+				if flag == envDotfile {
+					path := t.TempDir() + "/env"
+					if err := os.WriteFile(path, []byte("FOO=bar\n"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					flags[i] = path
+				}
+			}
 			cmd := newDeployCmd(nil)
-			if err := cmd.ParseFlags(tc.flags); err != nil {
+			if err := cmd.ParseFlags(flags); err != nil {
 				t.Fatalf("ParseFlags: %v", err)
 			}
-			err := validateUpdateDeployFlags(cmd)
+			err := validateUpdateDeployFlags(cmd, &serverlessapi.App{})
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -512,6 +523,35 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 				t.Fatalf("got %v, want substring %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateUpdateDeployFlagsNamesEveryFlag(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	secretFlag := "--secret"
+	if err := cmd.ParseFlags([]string{testGPUTypeFlag, testGPUType, "--volume", "/weights", secretFlag, "DEPLOY_TOKEN"}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	err := validateUpdateDeployFlags(cmd, &serverlessapi.App{})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, name := range []string{testGPUTypeFlag, "--volume", secretFlag} {
+		if !strings.Contains(err.Error(), name) {
+			t.Fatalf("missing %s in %v", name, err)
+		}
+	}
+}
+
+func TestValidateUpdateDeployFlagsAllowsAnUnchangedGPUType(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	if err := cmd.ParseFlags([]string{testGPUTypeFlag, testGPUType}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	gpu := testGPUType
+	app := &serverlessapi.App{Configuration: serverlessapi.WorkerConfig{GpuType: &gpu}}
+	if err := validateUpdateDeployFlags(cmd, app); err != nil {
+		t.Fatal(err)
 	}
 }
 
