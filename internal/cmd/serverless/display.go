@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/output"
+	"golang.org/x/term"
 )
 
 const (
@@ -689,6 +691,15 @@ func printPage[T any](format output.Format, page serverlessapi.Page[T], table ou
 	default:
 		if err := output.Print(format, table); err != nil {
 			return err
+		}
+		if errOut != os.Stdout {
+			if err := printNextCursor(os.Stdout, page.NextCursor, extraCursorFlags); err != nil {
+				return err
+			}
+		}
+		// Stdout and stderr are the same screen on a terminal, so the hint is not repeated.
+		if errFile, ok := errOut.(*os.File); ok && errFile == os.Stderr && term.IsTerminal(int(os.Stdout.Fd())) {
+			return nil
 		}
 		return printNextCursor(errOut, page.NextCursor, extraCursorFlags)
 	}
