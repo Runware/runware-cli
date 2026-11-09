@@ -88,7 +88,15 @@ instead of starting a second run.`,
 			shouldWait := sync || wait
 			if shouldWait && task.Status == serverlessapi.TaskStatusPending {
 				waitedID := task.Id
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Task %s accepted; waiting...\n", waitedID)
+				depth := ""
+				if app, appErr := client.GetApp(cmd.Context(), appID); appErr == nil && app.Runtime.QueueDepth != nil {
+					depth = fmt.Sprintf(" Queue depth: %d.", *app.Runtime.QueueDepth)
+				}
+				_, _ = fmt.Fprintf(
+					cmd.ErrOrStderr(),
+					"Task %s accepted and still running; polling it.%s Re-run with --task-id %s to wait again without starting another.\n",
+					waitedID, depth, waitedID,
+				)
 				spin.SetMessage(fmt.Sprintf("Waiting for task %s...", waitedID))
 				task, err = client.WaitTask(waitCtx, appID, waitedID, pollInterval)
 				if err != nil {
