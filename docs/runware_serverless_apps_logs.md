@@ -57,6 +57,7 @@ runware serverless apps logs <appId> [flags]
 
 ```
       --cursor string   Pagination cursor (nextCursor or prevCursor)
+      --errors          Show only error lines from the fetched page: level error, a traceback, or an exception message
   -f, --follow          Stream new log entries until interrupted
   -h, --help            help for logs
       --limit int       Maximum number of entries on the recent page (1-100, default 20)
