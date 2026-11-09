@@ -23,7 +23,8 @@ const (
 	colHealthReason   = "Health reason"
 	colHealthSince    = "Health since"
 	colHealthObserved = "Health observed"
-	colActiveVersion  = "Active version ID"
+	colActiveVersion  = "Rollout target"
+	colServingVersion = "Serving version"
 	colVersion        = "Version"
 	colCreated        = "Created"
 	colUpdated        = "Updated"
@@ -118,6 +119,25 @@ func (r appResult) Rows() [][]any {
 		)
 	}
 	return rows
+}
+
+// appShowResult is one app plus the version its ready workers are running.
+// JSON and YAML stay the app: the serving version is a table row.
+type appShowResult struct {
+	appResult
+	serving string `json:"-" yaml:"-"`
+}
+
+func (r appShowResult) Rows() [][]any {
+	rows := r.appResult.Rows()
+	out := make([][]any, 0, len(rows)+1)
+	for _, row := range rows {
+		out = append(out, row)
+		if len(row) > 0 && row[0] == colActiveVersion {
+			out = append(out, []any{colServingVersion, r.serving})
+		}
+	}
+	return out
 }
 
 // MarshalJSON redacts plaintext environment variable values. The table already omits

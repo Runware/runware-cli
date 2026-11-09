@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -147,9 +148,54 @@ JSON and YAML include environment variable names with each value replaced by
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+			return output.Print(cmdutil.FormatFor(cmd), appShowResult{
+				appResult: appResult(*app),
+				serving:   servingVersion(cmd.Context(), client, id),
+			})
 		},
 	}
+}
+
+func servingVersion(ctx context.Context, client *serverlessapi.Client, id string) string {
+	all := "all"
+	status := serverlessapi.WorkerStatus("ready")
+	var cursor string
+	seen := map[string]struct{}{}
+	// A show must not walk an unbounded fleet. Five pages is 500 ready workers.
+	for range 5 {
+		limit, pageCursor := listPageParams(100, cursor)
+		page, err := client.ListWorkers(ctx, id, serverlessapi.ListWorkersParams{
+			Limit:     limit,
+			Cursor:    pageCursor,
+			VersionId: &all,
+			Status:    &status,
+		})
+		if err != nil {
+			if len(seen) == 0 {
+				return "unavailable"
+			}
+			break
+		}
+		for i := range page.Data {
+			seen[page.Data[i].VersionId.String()] = struct{}{}
+		}
+		if len(seen) > 1 {
+			return "mixed"
+		}
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			break
+		}
+		cursor = *page.NextCursor
+	}
+	if len(seen) == 1 {
+		for version := range seen {
+			return version
+		}
+	}
+	if len(seen) == 0 {
+		return "-"
+	}
+	return "mixed"
 }
 
 func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {
