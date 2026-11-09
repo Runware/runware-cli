@@ -164,6 +164,7 @@ runware serverless deploy [file] [flags]
   -e, --env name                      Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
       --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
+      --extra-index-url stringArray   Package index for those requirements, as an http or https URL with no credentials (repeatable; code deploys only)
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
       --from string                   URL of a packaged source to fetch and deploy as a new application, reading its runware.yaml
       --gpu-type string               GPU type ID (see 'serverless gpus'; required when creating)
