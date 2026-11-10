@@ -3,6 +3,7 @@ package serverless
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -276,6 +277,10 @@ func parseUsageDimensions(values []string) ([]serverlessapi.UsageDimension, erro
 		}
 		if dim == nil {
 			return nil, fmt.Errorf("invalid --group-by %q (want %s)", value, usageDimensions)
+		}
+		if !slices.Contains(usageDimensionOrder, *dim) {
+			// The API accepts it (hour), but the table has no column for it.
+			return nil, fmt.Errorf("--group-by %q is not supported yet (want %s)", value, usageDimensions)
 		}
 		if _, dup := seen[*dim]; dup {
 			return nil, fmt.Errorf("--group-by %q given more than once", value)

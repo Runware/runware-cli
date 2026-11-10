@@ -65,6 +65,8 @@ func addEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Lo
 	flags.VarP(value, environmentFlag, environmentShorthand, help)
 	// --environment sets the same value, for a user who writes the long name.
 	flags.Var(value, environmentFlagAlias, "Alias for --"+environmentFlag)
+	// Both write one value, so the last would win silently: refuse the pair.
+	cmd.MarkFlagsMutuallyExclusive(environmentFlag, environmentFlagAlias)
 	for _, name := range []string{environmentFlag, environmentFlagAlias} {
 		if err := cmd.RegisterFlagCompletionFunc(name, environmentCompletion(logger, completionTimeout)); err != nil {
 			panic(err)

@@ -11,6 +11,8 @@ import (
 )
 
 const (
+	groupByFlag         = "--group-by"
+	app                 = "app"
 	wipFlag             = "--workload-identity-provider"
 	roleARNFlag         = "--role-arn"
 	testAudience        = "runware:org-1"
@@ -434,7 +436,7 @@ func TestAppsConnectorsDetach(t *testing.T) {
 // connector in both machine formats and checks the fields a script reads.
 func TestConnectorCommandsPrintJSONAndYAML(t *testing.T) {
 	responses := map[string]stubResponse{
-		"GET " + testConnectorsPath:                             {status: http.StatusOK, body: `{"data":[` + testAWSConnector + `]}`},
+		"GET " + testConnectorsPath:                             {status: http.StatusOK, body: `{"data":[` + testAWSConnector + `],"nextCursor":"abc"}`},
 		"GET " + testConnectorPath:                              {status: http.StatusOK, body: testAWSConnector},
 		"POST " + testConnectorsPath:                            {status: http.StatusCreated, body: testAWSConnector},
 		"PUT " + testConnectorPath:                              {status: http.StatusOK, body: testAWSConnector},
@@ -471,8 +473,11 @@ func TestConnectorCommandsPrintJSONAndYAML(t *testing.T) {
 					if err := json.Unmarshal([]byte(run.stdout), &doc); err != nil {
 						t.Fatalf("stdout is not JSON: %v\n%s", err, run.stdout)
 					}
-				} else if err := yaml.Unmarshal([]byte(run.stdout), &doc); err != nil {
-					t.Fatalf("stdout is not YAML: %v\n%s", err, run.stdout)
+				} else {
+					if err := yaml.Unmarshal([]byte(run.stdout), &doc); err != nil {
+						t.Fatalf("stdout is not YAML: %v\n%s", err, run.stdout)
+					}
+					assertCamelCaseYAML(t, tc.name, run.stdout)
 				}
 				if tc.name == "delete" || tc.name == "apps detach" {
 					return
@@ -590,5 +595,103 @@ func TestConnectorsRefuseWhatWouldChangeNothingOrFailInTheAPI(t *testing.T) {
 				t.Fatalf("requests = %v, want none", run.requests)
 			}
 		})
+	}
+}
+
+func TestEnvFlagAndAliasTogetherAreRefused(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "destructive app command", args: []string{testAppsGroup, testDeleteCommand, testAppID, "--env", testEnvironment, "--environment", "production", "--yes"}},
+		{name: "connector command", args: []string{testAppsGroup, testConnectorsGroup, connectorsListUse, testAppID, "-e", testEnvironment, "--environment", "production"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			run := runServerless(t, tc.args...)
+
+			if run.err == nil || !strings.Contains(run.err.Error(), "none of the others can be") {
+				t.Fatalf("err = %v, want a mutually exclusive refusal", run.err)
+			}
+			if len(run.requests) != 0 {
+				t.Fatalf("requests = %v, want none", run.requests)
+			}
+		})
+	}
+}
+
+func TestUsageRefusesHourGrouping(t *testing.T) {
+	cases := [][]string{
+		{testUsageCommand, groupByFlag, "hour"},
+		{testUsageCommand, groupByFlag, app + ",hour"},
+		{testAppsGroup, testUsageCommand, testAppID, groupByFlag, "hour"},
+		{testAppsGroup, testUsageCommand, testAppID, groupByFlag, app + ",hour"},
+	}
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			run := runServerless(t, args...)
+
+			if run.err == nil || !strings.Contains(run.err.Error(), `--group-by "hour" is not supported yet`) {
+				t.Fatalf("err = %v, want the hour refusal", run.err)
+			}
+			if len(run.requests) != 0 {
+				t.Fatalf("requests = %v, want none", run.requests)
+			}
+		})
+	}
+	for _, dim := range []string{app, "gpuType", "day", "coverage"} {
+		t.Run("still accepts "+dim, func(t *testing.T) {
+			run := runServerless(t, testUsageCommand, groupByFlag, dim)
+
+			if len(run.requests) != 1 {
+				t.Fatalf("err = %v, requests = %v, want the dimension to reach the API", run.err, run.requests)
+			}
+		})
+	}
+}
+
+func TestConnectorsRefuseForeignAndEmptyProviderFlags(t *testing.T) {
+	const email = "--service-account-email"
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"create aws with a service account", []string{createCommand, "x", kindFlag, kindAws, roleARNFlag, testRoleARN, email, testServiceAccount}, email + " do not apply to a aws connector"},
+		{"create gcp with a role", []string{createCommand, "x", kindFlag, kindGcp, wipFlag, testWIP, roleARNFlag, testRoleARN}, roleARNFlag + " do not apply to a gcp connector"},
+		{"create generic with a provider", []string{createCommand, "x", kindFlag, kindGeneric, audienceFlag, "a", wipFlag, testWIP}, wipFlag + " do not apply to a generic connector"},
+		{"create with an empty provider", []string{createCommand, "x", kindFlag, kindGcp, wipFlag, ""}, wipFlag + " must not be empty"},
+		{"create with an empty service account", []string{createCommand, "x", kindFlag, kindGcp, wipFlag, testWIP, email, ""}, email + " must not be empty"},
+		{"update with an empty provider", []string{testUpdateCommand, testConnectorName, wipFlag, ""}, wipFlag + " must not be empty"},
+		{"update with an empty service account", []string{testUpdateCommand, testConnectorName, email, ""}, email + " must not be empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			run := runServerless(t, append([]string{testConnectorsGroup}, tc.args...)...)
+
+			if run.err == nil || !strings.Contains(run.err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", run.err, tc.want)
+			}
+			if len(run.requests) != 0 {
+				t.Fatalf("requests = %v, want none", run.requests)
+			}
+		})
+	}
+}
+
+// assertCamelCaseYAML checks the keys a script reads keep their API names in
+// YAML: the API types carry json tags only, which a YAML encoder lowercases.
+func assertCamelCaseYAML(t *testing.T, command, out string) {
+	t.Helper()
+	switch command {
+	case testDeleteCommand, "apps detach":
+		return
+	case connectorsListUse:
+		if !strings.Contains(out, "nextCursor:") {
+			t.Errorf("yaml has no nextCursor key:\n%s", out)
+		}
+	}
+	if !strings.Contains(out, "createdAt:") {
+		t.Errorf("yaml has no createdAt key:\n%s", out)
 	}
 }
