@@ -19,6 +19,8 @@ import (
 const (
 	environmentFlag      = "env"
 	environmentShorthand = "e"
+	// environmentFlagAlias is a second name for --env.
+	environmentFlagAlias = "environment"
 	environmentFlagHelp  = "Environment the app runs in " + environmentFlagDefault
 	// environmentFlagDefault is the --env help's account of a command without
 	// the flag.
@@ -59,9 +61,14 @@ func (v *environmentValue) Type() string {
 // addEnvironmentFlag registers --env on one of cmd's flag sets with the given
 // help.
 func addEnvironmentFlag(cmd *cobra.Command, flags *pflag.FlagSet, logger *log.Logger, help string) {
-	flags.VarP(new(environmentValue), environmentFlag, environmentShorthand, help)
-	if err := cmd.RegisterFlagCompletionFunc(environmentFlag, environmentCompletion(logger, completionTimeout)); err != nil {
-		panic(err)
+	value := new(environmentValue)
+	flags.VarP(value, environmentFlag, environmentShorthand, help)
+	// --environment sets the same value, for a user who writes the long name.
+	flags.Var(value, environmentFlagAlias, "Alias for --"+environmentFlag)
+	for _, name := range []string{environmentFlag, environmentFlagAlias} {
+		if err := cmd.RegisterFlagCompletionFunc(name, environmentCompletion(logger, completionTimeout)); err != nil {
+			panic(err)
+		}
 	}
 }
 

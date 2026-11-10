@@ -25,6 +25,7 @@ func newAppsCmd(logger *log.Logger) *cobra.Command {
 		newAppsInvokeCmd(logger),
 		newAppsTasksCmd(logger),
 		newAppsEnvVarsCmd(logger),
+		newAppsConnectorsCmd(logger),
 		newDeprecatedAppsEnvCmd(logger),
 		newAppsVersionsCmd(logger),
 		newAppsBuildsCmd(logger),

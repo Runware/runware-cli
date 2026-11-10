@@ -58,6 +58,8 @@ tags:
     description: Running worker instances (read-only runtime state)
   - name: Secrets
     description: Encrypted secrets, each in one environment; the `/v1/secrets` routes address the one named by `environment`, `production` when omitted
+  - name: OidcConnectors
+    description: Organization-scoped OIDC connectors for workload identity federation
   - name: Environments
     description: >
       Named deployment contexts inside an organization, and the organization defaults they inherit.
@@ -66,14 +68,411 @@ tags:
       on a deploy that rolls out, and on resume, against what the
       environment's apps hold: each the larger of its live workers and its keep-warm floor. A request past
       one is refused with `environment-cap-reached`. They do not bound autoscaling. Budget alerts are emailed
-      from each environment's settled spend once the organization is charged. Pause at budget and unauthenticated access are stored
-      and reported here; the platform does not enforce them yet.
+      from each environment's settled spend once the organization is charged. With pause at budget on, an environment whose spend this UTC month
+      has reached its budget is paused: its apps are stopped, invocation returns `429` and the requests the caps
+      are checked on return `409`, both typed `environment-paused`. Raising the budget past the spend, or the
+      month turning, ends the pause, and resume brings an app back. Settled spend trails usage, so spend can pass
+      the budget before the pause begins. Unauthenticated access is stored and reported here; the platform does
+      not enforce it yet.
   - name: EnvironmentVariables
     description: Plain-text environment variables scoped to an app
   - name: Observability
     description: Usage, metrics, events, and logs
+  - name: Volumes
+    x-internal: true
+    description: Shared Volume access for the authenticated organization.
 
 paths:
+  /v1/volumes-settings:
+    get:
+      tags: [Volumes]
+      x-internal: true
+      summary: Read Shared Volume access and limits
+      description: >
+        Returns effective access and limits for the authenticated organization.
+        The two are read separately, so a change made while the request runs can show access and limits that never held together.
+        This setting does not indicate whether Shared Volume operations are deployed.
+      operationId: getVolumeSettings
+      responses:
+        '200':
+          description: Current effective access
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/volumes:
+    get:
+      tags: [Volumes]
+      x-internal: true
+      x-runware-volumes-required: true
+      summary: List Volumes
+      description: >
+        Returns a page of the organization's live Volumes in one environment, `production` unless
+        `environment` names another, newest first.
+        A Volume being deleted or deleted is not listed.
+        A `cursor` is valid only for the `environment` it was issued under.
+      operationId: listVolumes
+      parameters:
+        - $ref: '#/components/parameters/VolumeEnvironment'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of Volumes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/VolumeNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/VolumeNotImplemented'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [Volumes]
+      x-internal: true
+      x-runware-volumes-required: true
+      summary: Create a Volume
+      description: >
+        Creates an empty Volume in the environment `environment` names, `production` by default.
+        The name is unique among the environment's live Volumes and the deleted ones whose logical deletion
+        has not yet committed, and it never changes.
+        A taken name returns `409`.
+        A new Volume has no files: fill it with an upload session.
+      operationId: createVolume
+      parameters:
+        - $ref: '#/components/parameters/VolumeEnvironment'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VolumeCreate'
+            examples:
+              default-environment:
+                summary: A Volume in `production`, the default environment
+                value:
+                  name: model-weights
+                  description: SDXL base and refiner weights
+      responses:
+        '201':
+          description: Volume created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Volume'
+              examples:
+                default-environment:
+                  summary: A new Volume in `production`
+                  value:
+                    id: 6a1f0d6e-5c1b-4f69-9a39-0f4c1c8b2d11
+                    name: model-weights
+                    environment: production
+                    description: SDXL base and refiner weights
+                    status: live
+                    logicalBytes: 0
+                    fileCount: 0
+                    createdAt: '2026-11-02T10:00:00Z'
+                    updatedAt: '2026-11-02T10:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/VolumeNotFound'
+        '409':
+          $ref: '#/components/responses/VolumeNameConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/VolumeNotImplemented'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/volumes/{volumeName}:
+    get:
+      tags: [Volumes]
+      x-internal: true
+      x-runware-volumes-required: true
+      summary: Get a Volume
+      description: >
+        Returns a live Volume of the named environment.
+        An unknown Volume and one being deleted or deleted both return `404`.
+      operationId: getVolume
+      parameters:
+        - $ref: '#/components/parameters/VolumeName'
+        - $ref: '#/components/parameters/VolumeEnvironment'
+      responses:
+        '200':
+          description: The Volume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Volume'
+              examples:
+                explicit-environment:
+                  summary: A `development` Volume with files (`?environment=development`)
+                  value:
+                    id: 0b7e4c2a-9d3f-4e51-8c6a-2f1d0e9b7a44
+                    name: reference-data
+                    environment: development
+                    status: live
+                    logicalBytes: 268435456000
+                    fileCount: 1204
+                    manifestSha256: 9f2c4e1a7b3d5f8e0c6a2b4d1e3f5a7c9b0d2e4f6a8c1b3d5e7f9a0c2e4b6d8f
+                    createdAt: '2026-11-01T09:00:00Z'
+                    updatedAt: '2026-11-02T12:30:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/VolumeNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/VolumeNotImplemented'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      tags: [Volumes]
+      x-internal: true
+      x-runware-volumes-required: true
+      summary: Update a Volume's description
+      description: >
+        Changes the description, the only mutable field.
+        A null description clears it.
+        The name and the environment never change.
+      operationId: updateVolume
+      parameters:
+        - $ref: '#/components/parameters/VolumeName'
+        - $ref: '#/components/parameters/VolumeEnvironment'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VolumeUpdate'
+            examples:
+              set-description:
+                summary: Replace the description
+                value:
+                  description: SDXL base and refiner weights, fp16
+      responses:
+        '200':
+          description: The updated Volume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Volume'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/VolumeNotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/VolumeNotImplemented'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Volumes]
+      x-internal: true
+      x-runware-volumes-required: true
+      summary: Delete a Volume
+      description: >
+        Logically deletes the whole Volume: its latest files and every upload session still open on it.
+        Individual files cannot be deleted.
+
+
+        A delete returns `409` typed `volume-in-use` while a current app version, a deploy in progress or a
+        running worker uses it.
+        When only older app versions use it, the delete returns `409` typed
+        `volume-rollback-confirmation-required` unless `confirmRollbackLoss=true`, and with it those app
+        versions lose their rollback.
+        Both conflicts carry a plain `detail`; `GET /v1/volumes/{volumeName}/references` lists the uses.
+        Reading the references does not authorize the delete: the delete is checked again against
+        concurrent mounts and deploys when it commits, so a use that succeeds in that race keeps its files.
+
+
+        The delete records a durable deletion marker before it answers.
+        From then on the Volume is excluded from listings, and new mounts, preparations and checkpoint restores
+        that select it are refused, even where its bytes are still cached on a machine.
+        Deletion does not promise immediate erasure: encrypted objects may be retained and reclaimed later,
+        and content another Volume's latest files or an open upload session still reference stays usable.
+        The name is reserved until the logical deletion and its invalidation fences commit, not until
+        physical reclamation.
+        A new Volume with the same name gets a new id and never satisfies a mount of the old one.
+        Organization purge is a separate operation.
+        Deleting an app never deletes its Volumes.
+      operationId: deleteVolume
+      parameters:
+        - $ref: '#/components/parameters/VolumeName'
+        - $ref: '#/components/parameters/VolumeEnvironment'
+        - $ref: '#/components/parameters/VolumeConfirmRollbackLoss'
+      responses:
+        '204':
+          description: Logically deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/VolumeNotFound'
+        '409':
+          $ref: '#/components/responses/VolumeDeleteConflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/VolumeNotImplemented'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/volumes/{volumeName}/references:
+    get:
+      tags: [Volumes]
+      x-internal: true
+      x-runware-volumes-required: true
+      summary: List what uses a Volume
+      description: >
+        Lists the uses that would block or be affected by deleting the Volume: current app versions, deploys
+        in progress and running workers, which block a delete, and older app versions, which lose their
+        rollback.
+        Only apps in the Volume's own environment mount it, so every use is in that environment.
+        The console and the CLI read this route; a delete conflict carries only a plain `detail`.
+        The answer is a snapshot and does not authorize a later delete.
+      operationId: getVolumeReferences
+      parameters:
+        - $ref: '#/components/parameters/VolumeName'
+        - $ref: '#/components/parameters/VolumeEnvironment'
+      responses:
+        '200':
+          description: The uses of the Volume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeReferences'
+              examples:
+                in-use:
+                  summary: One blocking use and one rollback target
+                  value:
+                    blocking:
+                      - appId: img-gen
+                        appVersionNumber: 7
+                        kind: current-app-version
+                    rollbackTargets:
+                      - appId: img-gen
+                        appVersionNumber: 3
+                        kind: rollback-target
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/VolumeNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/VolumeNotImplemented'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/volumes/{volumeName}/files:
+    get:
+      tags: [Volumes]
+      x-internal: true
+      x-runware-volumes-required: true
+      summary: List a Volume's latest files
+      description: >
+        Returns a page of the Volume's latest files, ordered by path, read from its latest manifest.
+        The API reads file metadata only and never decrypts file contents; there is no download route.
+        File paths never appear in a query parameter, so this route has no path filter.
+
+
+        Each page names the `manifestSha256` it was read from.
+        An upload that completes between two pages changes the latest files, and the next page comes from
+        the new file list: a `manifestSha256` that differs from the first page's tells the client to start
+        again for a consistent listing.
+        A Volume with no files yet answers an empty page without `manifestSha256`.
+      operationId: listVolumeFiles
+      parameters:
+        - $ref: '#/components/parameters/VolumeName'
+        - $ref: '#/components/parameters/VolumeEnvironment'
+        - $ref: '#/components/parameters/VolumeFileLimit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the latest files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeFilePage'
+              examples:
+                first-page:
+                  summary: The first page of the latest files
+                  value:
+                    manifestSha256: 9f2c4e1a7b3d5f8e0c6a2b4d1e3f5a7c9b0d2e4f6a8c1b3d5e7f9a0c2e4b6d8f
+                    data:
+                      - path: unet/diffusion_pytorch_model.safetensors
+                        mode: 292
+                        size: 10270000000
+                        sha256: 5a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b
+                      - path: vae/diffusion_pytorch_model.safetensors
+                        mode: 292
+                        size: 334643268
+                        sha256: 0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d
+                    nextCursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/VolumeNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/VolumeNotImplemented'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   # ---------------------------------------------------------------------------
   # Compute (GPU catalog)
   # ---------------------------------------------------------------------------
@@ -154,7 +553,12 @@ paths:
         `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an
         `active` app the platform has observed to have no workload able to serve returns `503 Service
         Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`.
+        When the task service cannot be reached, the response is `502 Bad Gateway`. The request may
+        already have been accepted, so retry with the same `taskId`: an id already claimed returns its task.
+        An internal failure's `detail` names the task service instead of repeating the title.
         `stopped`, `deleting`, and `failed` return `409 Conflict`.
+        An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`,
+        whatever its status.
         Unknown or deleted apps return `404 Not Found`.
         An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403
         Forbidden`, distinguishing that from an app that does not exist.
@@ -189,8 +593,12 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/EnvironmentPaused'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/InvocationUnavailable'
 
@@ -214,7 +622,12 @@ paths:
         `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an
         `active` app the platform has observed to have no workload able to serve returns `503 Service
         Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`.
+        When the task service cannot be reached, the response is `502 Bad Gateway`. The request may
+        already have been accepted, so retry with the same `taskId`: an id already claimed returns its task.
+        An internal failure's `detail` names the task service instead of repeating the title.
         `stopped`, `deleting`, and `failed` return `409 Conflict`.
+        An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`,
+        whatever its status.
         Unknown or deleted apps return `404 Not Found`.
         An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403
         Forbidden`, distinguishing that from an app that does not exist.
@@ -251,8 +664,12 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/EnvironmentPaused'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/InvocationUnavailable'
 
@@ -269,6 +686,9 @@ paths:
         An app with more than one endpoint that marks none of them as its default returns `404` with
         no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that
         does not name a missing default.
+        When the task service cannot be reached, the response is `502 Bad Gateway`. The request may
+        already have been accepted, so retry with the same `taskId`: an id already claimed returns its task.
+        An internal failure's `detail` names the task service instead of repeating the title.
       operationId: startDefaultAsyncTask
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -294,8 +714,12 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/EnvironmentPaused'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/InvocationUnavailable'
 
@@ -312,6 +736,9 @@ paths:
         An app with more than one endpoint that marks none of them as its default returns `404` with
         no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that
         does not name a missing default.
+        When the task service cannot be reached, the response is `502 Bad Gateway`. The request may
+        already have been accepted, so retry with the same `taskId`: an id already claimed returns its task.
+        An internal failure's `detail` names the task service instead of repeating the title.
       operationId: startDefaultSyncTask
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -339,8 +766,12 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/EnvironmentPaused'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/InvocationUnavailable'
 
@@ -361,6 +792,8 @@ paths:
         return `404`.
         Retry it within the normal polling window.
         Unknown or deleted apps also return `404 Not Found`.
+        When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried.
+        When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
       operationId: getTask
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -409,6 +842,7 @@ paths:
         A task id names one task, so resubmitting one does not add a second entry here.
         If the app is `stopped`, `deleting`, or `failed`, recovery stays available.
         Unknown or deleted apps return `404 Not Found`.
+        When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
       operationId: listTasks
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -499,6 +933,13 @@ paths:
             An unknown code returns `422`.
           schema:
             $ref: '#/components/schemas/GpuTypeId'
+        - name: favorite
+          in: query
+          required: false
+          description: >
+            `true` returns only the apps the organization has favorited, and `false` only the ones it has not.
+          schema:
+            type: boolean
         - name: sort
           in: query
           required: false
@@ -506,18 +947,22 @@ paths:
             $ref: '#/components/schemas/AppSort'
       responses:
         '200':
-          description: A page of apps
+          description: A page of apps, plus a collection summary that is independent of the page.
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/Page'
                   - type: object
+                    required:
+                      - summary
                     properties:
                       data:
                         type: array
                         items:
                           $ref: '#/components/schemas/App'
+                      summary:
+                        $ref: '#/components/schemas/ListSummary'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -542,7 +987,7 @@ paths:
         Create never updates: an `appId` that already runs in the named environment returns `409`, and
         `PATCH /v1/apps/{appId}` with the same `environment` updates that copy.
         A create that would take the environment past its worker or GPU cap returns `409` typed
-        `environment-cap-reached`.
+        `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
         The app starts in `initializing`, and what happens next depends on the app source type:
 
 
@@ -567,10 +1012,15 @@ paths:
         It is the app's initial attachment set, so the first rollout carries their values into the worker.
         This route does not create a secret.
         Use `POST /v1/secrets` first.
-        A name that is unknown to the environment, or that is not `active`, returns `404`.
-        A name that collides with a key in `environmentVariables`, a repeated name and a set that goes past
-        the binding limit each return `422`.
+        A name that is unknown to the environment, or that is not `active`, returns `422` typed
+        `secret-not-found`. `errors[]` points at each such `/secrets/{index}/secretName`.
+        A name that collides with a key in `environmentVariables`, a repeated name, a set that goes past
+        the binding limit, and a `registry` secret (`secret-not-attachable`) each return `422`.
         The whole set is checked before any build capacity is spent.
+        A code `baseImage`, and a Dockerfile `FROM`, on a port other than 443 or with no linux/amd64 image is
+        refused with 422, and a registry that does not answer is refused with 503.
+        An exact `python:3.12-slim` is not looked up when its platform base image is already published, so a
+        registry outage does not refuse that request.
       operationId: createApp
       parameters:
         - $ref: '#/components/parameters/AppEnvironment'
@@ -607,6 +1057,8 @@ paths:
           $ref: '#/components/responses/AppSourceValidationError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/AppMountsNotImplemented'
         '503':
           $ref: '#/components/responses/AppUnavailable'
 
@@ -656,11 +1108,15 @@ paths:
         another environment is a separate build.
 
         A configuration or `environmentVariables` change records a new version with the same image.
+        The configuration and environment variables on that version are the stored values, which a successful
+        deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied
+        from the version `activeVersionId` names, or from the latest version when it is null.
         If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the
         app is `active` or `initializing`.
         A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`.
         If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged.
         If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving.
+        The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`.
         A name-only change records a version and does not pin.
         A `stopped` or `stopping` app pins the version and rolls it on `resume`.
         A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is
@@ -668,13 +1124,14 @@ paths:
         failed rollout are still stopping.
         A name-only or `secrets`-only change does not.
         A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap
-        returns `409` typed `environment-cap-reached`.
+        returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an
+        `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 
         `appSource` starts a build and records version N+1 with a new image tag.
-        A `code` source whose build inputs equal those of the app's newest build — the same archive
+        A `code` source can carry the same build inputs as the app's newest build: the same archive
         bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and
-        platform build — records version N+1 on that build's image instead, with its `buildId`, and
-        starts no build. Unpinned requirements are therefore not re-resolved by such an update; change
+        platform build. Such a source records version N+1 on that build's image instead, with its
+        `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change
         any input to build again.
         The deploy queue carries the build-then-deploy tail.
         `activeVersionId` moves only when that rollout completes.
@@ -699,7 +1156,8 @@ paths:
         Injected names must not collide with a plain environment variable on the app.
         The combined set of plain variables and attachments is capped at 100, and each individual secret can
         be attached to at most 25 deployments total.
-        An entry that would push a secret past that returns `422`.
+        An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each
+        return `422`.
         The attachment set is stored on the app, not on the version snapshot.
         A rollout reads it fresh and the worker unseals each value into its process environment under the
         resolved env-var name (`envVarName`, or `secretName` when omitted).
@@ -710,6 +1168,10 @@ paths:
 
         Endpoints are not a field of this contract: the set belongs to the app source, so it changes only when
         a new version with a new source builds and deploys.
+        A code `baseImage`, and a Dockerfile `FROM`, on a port other than 443 or with no linux/amd64 image is
+        refused with 422, and a registry that does not answer is refused with 503.
+        An exact `python:3.12-slim` is not looked up when its platform base image is already published, so a
+        registry outage does not refuse that request.
       operationId: updateApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -747,6 +1209,8 @@ paths:
           $ref: '#/components/responses/AppSourceValidationError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/AppMountsNotImplemented'
         '503':
           $ref: '#/components/responses/AppUnavailable'
     delete:
@@ -1026,8 +1490,10 @@ paths:
       description: >
         Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent
         is persisted.
-        Worker rollout, routing switch, and canceling in-progress builds (`superseded`) are performed
-        asynchronously by the deployer/Scaler.
+        Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the
+        deployer/Scaler.
+        The `202` records the pin. It does not mean a worker of the version is answering tasks.
+        `version N deployed; app is active` is activation, defined on `AppEvent`.
         Permitted in any addressable status, including `initializing` and `failed`.
 
         To roll back, supply an older `versionNumber`.
@@ -1035,20 +1501,34 @@ paths:
         No new version is created and no rebuild happens: the version's existing image is re-applied.
         Re-deploying the currently active version is permitted and re-applies it.
 
+        A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`.
+        They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have.
+        The next configuration or environment-variable change records a new version whose configuration and
+        environment variables come from those stored values, and carries forward the image, endpoints, and
+        volumes of the version `activeVersionId` names.
+        So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot,
+        unless the request replaces them.
+        `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment
+        set when `environmentVariables` is present.
+        One environment-variable write changes only that key.
+        Secrets stay on the app.
+        `changes` diffs the new version against the previous version number, not against the version that was deployed.
+
         A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no
         workers are running: the `202` does not imply a rollout there.
         The recorded version is the one applied when the app resumes.
 
         If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so
-        the field keeps naming the running image.
+        the field keeps naming the running image, and `configuration` and `environmentVariables` are put back
+        to that version's snapshot.
+        A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's
+        100 environment bindings, is left out.
+        The next configuration or environment-variable change builds on that restored set.
 
-        **Rollout** (deployer/Scaler): the platform starts workers on the target version, waits for at least
-        one to become healthy, switches task routing to the new version, then drains old-version workers
-        gracefully.
-        Old workers are given a fixed, platform-managed grace period to finish in-flight tasks before being
-        force-terminated.
-        If new workers fail to become healthy, old workers are not drained and the app continues on the
-        previous version.
+        **Rollout** (deployer/Scaler): the platform starts workers on the target version.
+        Old and new workers share the app's task queue until the old ones stop.
+        A task in flight on a stopping worker is requeued.
+        If new workers fail to become healthy, the app continues on the previous version.
 
         **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its
         workers can serve.
@@ -1064,12 +1544,15 @@ paths:
         Errors:
         - Deploy to a `deleting` app returns `409 Conflict`
         - `versionNumber` not found or not `ready` returns `409 Conflict`
+        - A version whose environment variables include a name an attached OIDC connector sets returns
+          `409 Conflict`; detach the connector or deploy a version without the variable.
         - A deploy while a rollout of this app is still in flight returns `409 Conflict`.
           One app rolls to one version at a time. Retry once it completes.
         - A deploy to a `failed` app while the workers of its failed rollout are still
           stopping returns `409 Conflict`. Retry once they have stopped.
         - A deploy that would take the environment past its worker or GPU cap returns `409 Conflict`
-          typed `environment-cap-reached`.
+          typed `environment-cap-reached`, and one that rolls out in an environment its budget pauses
+          `409 Conflict` typed `environment-paused`.
         - Deploy to a non-existent or `deleted` app returns `404 Not Found`
       operationId: deployVersion
       parameters:
@@ -1165,7 +1648,7 @@ paths:
         Precondition:
         `status = stopped`.
         A resume that would take the environment past its worker or GPU cap returns `409` typed
-        `environment-cap-reached`.
+        `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
       operationId: resumeApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1658,6 +2141,9 @@ paths:
         purged).
         Omitted `versionId` scopes the page to the app's `activeVersionId`.
         An app with no active version therefore answers an empty default page, not that it has no workers, only that none are pinned.
+        Workers of any other version stay out of that default page, including one that is still answering
+        while a rollout drains it.
+        `AppEvent` says how to read `versionId=all` for that.
         Optional `state`, `status` and `q` narrow the page further.
         A cursor must be replayed under the same filters it was issued with.
       operationId: listWorkers
@@ -1817,8 +2303,8 @@ paths:
       summary: Create a secret
       description: >
         Creates a secret in the environment named by `environment`, `production` when omitted.
-        A secret of the same name in another environment is a different secret, so copying one is a create
-        in the destination with the value: the API never returns a value to copy from.
+        A secret of the same name in another environment is a different secret.
+        To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`.
         Returns `409` if the name is already in use in the environment, including when a secret of that
         name is `pending_destroy`.
         List only shows active secrets, so a name can appear free while create still conflicts for as long as
@@ -1879,6 +2365,7 @@ paths:
         A secret of the same name in another environment is not changed.
         Rolls every live deployment that attaches this secret in place so a running worker picks up the new
         value.
+        `activeVersionId` does not move. See `AppEvent`.
         If a rollout is already in progress when this commits, this change is not guaranteed to land on it.
         It reaches the worker on a later redeploy instead.
         A deployment that is not live picks it up on its next deploy for another reason.
@@ -1964,6 +2451,68 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /v1/secrets/{secretName}/copy:
+    post:
+      tags:
+        - Secrets
+      summary: Copy a secret to other environments
+      description: >
+        Creates a secret in each of `targetEnvironments` with the name, type, metadata and value of this secret.
+        The value is copied inside the platform and never returned.
+        Each copy is a separate secret: changing or deleting one leaves this secret and the other copies
+        unchanged.
+        The copy is one write: every target gets the secret, or none does.
+        Returns `404` when the environment named by `environment` holds no active secret of this name, or when
+        any of the environments does not exist.
+        Returns `409` when the name is already in use in a target environment, including when a secret of that
+        name is `pending_destroy`, and `errors[]` names each conflicting entry of `targetEnvironments`.
+        Returns `422` when `targetEnvironments` includes the secret's own environment.
+        This route does not attach a copy to an app.
+        Attach each one with `POST /v1/apps/{appId}/secrets`.
+        Like every secret write, it needs an active serverless tenancy: an organization whose tenancy is revoked,
+        or has no tenancy receipt at all, returns `403 Forbidden`.
+        An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead.
+        That state is retryable, not a revocation, and clears once provisioning finishes.
+      operationId: copySecret
+      parameters:
+        - $ref: '#/components/parameters/SecretName'
+        - $ref: '#/components/parameters/SecretEnvironment'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretCopy'
+      responses:
+        '201':
+          description: >
+            The new secrets, one per target environment in the order `targetEnvironments` lists them.
+            Encrypted values are never returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretCopies'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /v1/secret-batches:
     post:
       tags:
@@ -1971,15 +2520,19 @@ paths:
       summary: Create secrets
       description: >
         Creates secrets in the environment named by `environment`, `production` when omitted.
+        An item that names its own `environments` is created once in each of them instead, and then every
+        item must name them and `environment` must be omitted (`422` otherwise).
+        A name may appear in several items as long as no environment receives it twice.
         The batch is one write: every secret is created, or none are.
-        Returns `409` when any name is already in use in the environment, including when a secret of that
-        name is `pending_destroy`, and `errors[]` names each conflicting item.
+        Returns `409` when any name is already in use in an environment it is sent to, including when a
+        secret of that name is `pending_destroy`, and `errors[]` names each conflicting item: its `name`, or
+        the entry of its `environments` when the item names them.
         List only shows active secrets, so a name can appear free while create still conflicts for as long as
         that row remains.
         A `pending_destroy` row is removed, and its name released, by a background sweep once no running
         worker can still hold the value.
         There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs.
-        Duplicate names in the batch are `422`.
+        A name sent twice to one environment is `422`.
         This route does not attach a secret to an app.
         Attach each one with `POST /v1/apps/{appId}/secrets`.
         An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is
@@ -1997,7 +2550,10 @@ paths:
               $ref: '#/components/schemas/SecretBatchCreate'
       responses:
         '201':
-          description: Secrets created, in request order. Encrypted values are never returned.
+          description: >
+            Secrets created, in request order, an item that names several environments once per environment in
+            the order it names them.
+            Encrypted values are never returned.
           content:
             application/json:
               schema:
@@ -2016,6 +2572,350 @@ paths:
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # ---------------------------------------------------------------------------
+  # OIDC connectors
+  # ---------------------------------------------------------------------------
+  /v1/oidc-connectors:
+    get:
+      tags:
+        - OidcConnectors
+      summary: List OIDC connectors
+      operationId: listOidcConnectors
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the authenticated organization's OIDC connectors
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/OidcConnector'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags:
+        - OidcConnectors
+      summary: Create an OIDC connector
+      description: >
+        Creates an organization-scoped OIDC connector: the external provider an app's workers authenticate
+        to with a short-lived token the platform signs, instead of a stored credential.
+        A connector holds no secret.
+        Attach it to an app with `POST /v1/apps/{appId}/oidc-connectors`.
+        An app holds at most one connector of each kind.
+
+        `kind` is fixed once created.
+        `aws` takes the IAM role to assume, and the worker gets `AWS_ROLE_ARN` and
+        `AWS_WEB_IDENTITY_TOKEN_FILE`, which the AWS SDKs read unchanged.
+        `gcp` takes the Workload Identity Federation provider, and optionally a service account to
+        impersonate, and the worker gets `GOOGLE_APPLICATION_CREDENTIALS` naming an `external_account`
+        configuration, which `google-auth` reads unchanged.
+        `generic` takes only an audience, and the worker gets the token file and `RUNWARE_OIDC_TOKEN_FILE`.
+
+        The token's `iss` is `issuer` on the response, its `aud` is `audience`, and its `sub` is
+        `worker:org:<organization uuid>:env:<environment uuid>:app:<app id>`, for example
+        `worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:app:my-app`.
+        The environment is the one the app runs in, by its immutable id, so a copy of the app in another
+        environment has another subject.
+        An AWS trust policy `StringEquals` on the attached connector's `subject` matches that app in that
+        environment only; an app id deleted and created again in the same environment matches the same
+        policy.
+        A trust rule must check `sub`, or `org_id` where the verifier reads claims: `aud` does not
+        separate organizations.
+        The token also carries `org_id`, `environment_id`, `app_id`, `deployment_id`, `worker` and
+        `connector` claims, which a GCP attribute condition or a generic verifier can pin further.
+        It lives at most an hour; do not depend on an exact lifetime.
+
+        Returns `409` if the name is already in use.
+      operationId: createOidcConnector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OidcConnectorCreate'
+      responses:
+        '201':
+          description: OIDC connector created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcConnector'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/OidcConnectorsUnavailable'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/oidc-connectors/{connectorName}:
+    get:
+      tags:
+        - OidcConnectors
+      summary: Get an OIDC connector
+      operationId: getOidcConnector
+      parameters:
+        - $ref: '#/components/parameters/OidcConnectorName'
+      responses:
+        '200':
+          description: The OIDC connector
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcConnector'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags:
+        - OidcConnectors
+      summary: Update an OIDC connector
+      description: >
+        Replaces the connector's audience and provider fields; the name and `kind` stay.
+        Rolls every live deployment that attaches it in place, so its workers get the new configuration.
+        Running workers keep the old configuration until they roll.
+        `activeVersionId` does not move. See `AppEvent`.
+        No rollout starts for a deployment that is not live or already has a rollout in progress; it picks
+        up the change on its next rollout.
+      operationId: updateOidcConnector
+      parameters:
+        - $ref: '#/components/parameters/OidcConnectorName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OidcConnectorUpdate'
+      responses:
+        '200':
+          description: Updated OIDC connector
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcConnector'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/OidcConnectorsUnavailable'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags:
+        - OidcConnectors
+      summary: Delete an OIDC connector
+      description: >
+        Deletes the connector.
+        Returns `409` while any app still attaches it: detach it from each app first.
+      operationId: deleteOidcConnector
+      parameters:
+        - $ref: '#/components/parameters/OidcConnectorName'
+      responses:
+        '204':
+          description: OIDC connector deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/apps/{appId}/oidc-connectors:
+    get:
+      tags:
+        - OidcConnectors
+      summary: List OIDC connectors attached to an app
+      operationId: listAppOidcConnectors
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/AppEnvironment'
+      responses:
+        '200':
+          description: Every OIDC connector attached to the app, at most one of each kind
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    maxItems: 3
+                    items:
+                      $ref: '#/components/schemas/AppOidcConnector'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags:
+        - OidcConnectors
+      summary: Attach an OIDC connector to an app
+      description: >
+        Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so
+        its workers start getting a token.
+        `activeVersionId` does not move. See `AppEvent`.
+        No rollout starts when the deployment is not live or already has a rollout in progress; the
+        workers pick up the connector on its next rollout.
+        An app holds at most one connector of each kind; a second of the same kind, or the same one twice,
+        returns `409`.
+
+        A connector reserves the env names it sets on the worker for as long as it is attached:
+        `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`.
+        Attaching to an app that already has a plain environment variable or an attached secret under one of
+        them returns `422`, and setting one on an app that has a connector of that kind returns `422` too.
+        Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the
+        connector's value.
+        An app with no connector of that kind may use those names.
+        `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`,
+        which every connector sets, are reserved on every app, connector or not, and always return `422`.
+      operationId: attachAppOidcConnector
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/AppEnvironment'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OidcConnectorAttach'
+      responses:
+        '201':
+          description: >
+            OIDC connector attached. The body is the connector as `GET /v1/apps/{appId}/oidc-connectors`
+            lists it, with the `subject` its tokens carry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppOidcConnector'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/OidcConnectorsUnavailable'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/apps/{appId}/oidc-connectors/{connectorName}:
+    delete:
+      tags:
+        - OidcConnectors
+      summary: Detach an OIDC connector from an app
+      description: >
+        Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a
+        token. Running workers keep the connector until they roll, and a token a worker already holds stays
+        valid until it expires, at most an hour.
+        `activeVersionId` does not move. See `AppEvent`.
+        No rollout starts when the deployment is not live or already has a rollout in progress; the
+        workers lose the connector on its next rollout.
+      operationId: detachAppOidcConnector
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/AppEnvironment'
+        - $ref: '#/components/parameters/OidcConnectorName'
+      responses:
+        '204':
+          description: OIDC connector detached
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
         '500':
@@ -2071,6 +2971,7 @@ paths:
         Records that a secret of the app's environment is attached to the app under a resolved env-var name,
         and rolls the app's live deployment in place so a running worker picks up the value without waiting for
         an unrelated deploy.
+        `activeVersionId` does not move. See `AppEvent`.
         If a rollout is already in progress when this commits, this attach is not guaranteed to land on it.
         It reaches the worker on a later redeploy instead.
         A deployment that is not live records the attachment only.
@@ -2091,6 +2992,7 @@ paths:
         Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost
         rather than the app side of the binding.
         Attaching past it returns `422`.
+        A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
       operationId: attachAppSecret
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2119,7 +3021,7 @@ paths:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/SecretAttachValidationError'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
@@ -2133,6 +3035,7 @@ paths:
       description: >
         Removes the attachment and rolls the app's live deployment in place so a running worker stops
         receiving the value.
+        `activeVersionId` does not move. See `AppEvent`.
         If a rollout is already in progress when this commits, this detach is not guaranteed to land on it.
         The worker stops receiving the value on a later redeploy instead.
         A deployment that is not live has the removal recorded only.
@@ -2209,21 +3112,25 @@ paths:
         Names the platform sets in the worker's environment are rejected with `422`, as they are on create.
 
 
-        A write that changes the stored value records a new version carrying the live environment set and the
+        A write that changes the stored value records a new version carrying the stored environment set and the
         same image.
+        That stored set is what a successful deploy leaves in place, which can still hold values a rollback
+        did not revert.
         If that image is deployable, the write pins it as `activeVersionId` and rolls the workload when the
         app can take one (`active`, `initializing`, or `failed` which becomes `initializing`).
+        The pin is the rollout target. A worker of the new version answering tasks is a later fact. See `AppEvent`.
         A `stopped` or `stopping` app pins the version and rolls it on `resume`.
         A write that leaves the stored value unchanged records no version and does not roll.
 
 
         A write while a rollout of this app is still in flight, or to a `failed` app while the workers of its
         failed rollout are still stopping, returns `409 Conflict` and does not store the value.
-        Each changing write is serialised behind that rollout, so setting several variables one at a time is
+        Each changing write is serialized behind that rollout, so setting several variables one at a time is
         that many sequential rolls with `409`s between them.
         Replace the whole set in one request with `PATCH /v1/apps/{appId}` `environmentVariables`.
         A write to a `failed` app past the environment's worker or GPU cap returns `409` typed
-        `environment-cap-reached` and does not store the value, as that `PATCH` does.
+        `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`;
+        neither stores the value, as that `PATCH` does.
 
 
         An app holds at most 100 environment bindings in total, plain variables plus attached secrets, the
@@ -2287,16 +3194,20 @@ paths:
       summary: Delete an app environment variable
       description: >-
         Removes one environment variable.
-        A successful delete records a new version carrying the remaining environment set and the same image.
+        A successful delete records a new version carrying the remaining stored environment set and the same image.
+        That stored set is what a successful deploy leaves in place, which can still hold values a rollback
+        did not revert.
         If that image is deployable, the delete pins it as `activeVersionId` and rolls the workload when the
         app can take one (`active`, `initializing`, or `failed` which becomes `initializing`).
+        The pin is the rollout target. A worker of the new version answering tasks is a later fact. See `AppEvent`.
         A `stopped` or `stopping` app pins the version and rolls it on `resume`.
         A delete of a key that is present while a rollout of this app is still in flight, or while the workers
         of a `failed` app's failed rollout are still stopping, returns `409 Conflict` and does not remove the
         value.
         A name that is not present returns `404` even during that window.
         A delete on a `failed` app past the environment's worker or GPU cap returns `409` typed
-        `environment-cap-reached` and does not remove the value.
+        `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`;
+        neither removes the value.
       operationId: deleteAppEnvironmentVariable
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2332,6 +3243,9 @@ paths:
       tags:
         - Observability
       summary: List app events
+      description: >
+        Returns a newest-first page of the app's events.
+        What a `deploy` message means for which worker is answering is on `AppEvent`.
       operationId: listAppEvents
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2581,9 +3495,9 @@ paths:
         - Environments
       summary: Delete an environment
       description: >
-        Deletes an environment that has no live app and no secret.
-        An environment that still has either answers `409`, and so does `production`, which every organization
-        keeps.
+        Deletes an environment that has no live app, no secret and no Volume it owns that is not deleted.
+        An environment that still has any of them answers `409`, and so does `production`, which every
+        organization keeps.
         The name becomes available to a new environment; a deleted app's history still names the environment
         it ran in.
         An organization whose deletion is pending returns `403`.
@@ -2760,8 +3674,9 @@ paths:
         `paygSpend` is provisional pay-as-you-go accrual, not a settled charge.
         It excludes whole-second finalization rounding and ledger adjustments.
         `paygEquivalentValue` prices the same time at the catalog rate whatever covered it, so the difference
-        between them is what a capacity commitment saved.
-        Time covered by a capacity commitment settles at zero, so only pay-as-you-go is drawn from credit.
+        between them is what a capacity commitment, or the platform, paid for.
+        Time covered by a capacity commitment or by the platform settles at zero, so only pay-as-you-go is
+        drawn from credit.
       operationId: getUsageSummary
       parameters:
         - name: from
@@ -2770,7 +3685,8 @@ paths:
           description: >
             Inclusive lower bound on billable time (RFC 3339).
             Defaults to 24 hours before `to`.
-            The maximum window is 31 days.
+            The maximum elapsed window is 48 hours when `groupBy` includes `hour`, otherwise 31 days.
+            Timezone selection does not change this instant.
             An explicit zero timestamp (`0001-01-01T00:00:00Z`) returns `422` rather than selecting the
             default.
           schema:
@@ -2811,17 +3727,35 @@ paths:
           required: false
           description: >
             Dimensions to group by.
-            An empty list returns one bucket for the whole window.
+            An empty list returns one bucket for the whole window when there is billable time.
+            Usage with no billable milliseconds produces no bucket, for any grouping.
             Each dimension appears on the bucket it was requested with and is absent otherwise.
             Grouped by `app`, each environment's copy of an app is its own bucket.
+            Grouped by `hour`, the resolved window must not exceed 48 elapsed hours, including when other
+            dimensions are requested. The limit applies after defaults and future-end clamping.
           style: form
           explode: false
           schema:
             type: array
-            maxItems: 4
+            maxItems: 5
             uniqueItems: true
             items:
               $ref: '#/components/schemas/UsageDimension'
+        - name: timezone
+          in: query
+          required: false
+          description: >
+            IANA timezone name for calendar-day and clock-hour grouping, for example `Europe/London`.
+            Defaults to UTC when omitted. Empty, invalid and server-local (`Local`) names return `422`.
+            The RFC 3339 `from` and `to` values remain exact instants, not local clock values.
+            Day buckets follow local calendar dates. Repeated hours are separate occurrences; nonexistent
+            hours produce no bucket. Offset transitions can create partial hours. Missing midnight starts
+            its date at the first existing instant, and repeated midnight belongs to one date bucket.
+            Empty buckets are not filled.
+          schema:
+            type: string
+            maxLength: 255
+            default: UTC
       responses:
         '200':
           description: Usage for the window
@@ -3166,8 +4100,12 @@ paths:
         A cursor is only valid for the `sort` it was issued under.
         Reusing one under the other ordering returns `400`.
         Query ids and their supported selectors are listed by the insights catalog.
-        `environment` selects the copy `deployment` names; without `deployment` the page spans the whole
-        organization, every environment included.
+        `environment` selects the copy `deployment` names; without `deployment` the page spans every app in
+        that environment, including apps deleted within the window.
+        One gap: when creating an app in another environment fails after its build has started, the lines
+        that build already logged can appear in `production`'s page for the window.
+        Without `deployment`, a `422` asks for one when scoping the read would name more than 100 app copies,
+        counting deleted ones: when both this environment's copies and the other environments' pass 100.
       operationId: getLogEntries
       parameters:
         - $ref: '#/components/parameters/QueryId'
@@ -3270,6 +4208,50 @@ components:
         The CLI and SDK use ApiKeyAuth.
 
   parameters:
+    VolumeEnvironment:
+      x-internal: true
+      name: environment
+      in: query
+      required: false
+      description: >
+        The environment the request addresses.
+        A Volume name is unique within one environment, so `volumeName` together with `environment` selects
+        the Volume.
+        Omitted means `production`.
+        Only apps in the Volume's own environment mount it.
+      schema:
+        $ref: '#/components/schemas/EnvironmentName'
+    VolumeName:
+      x-internal: true
+      name: volumeName
+      in: path
+      required: true
+      description: Volume name, unique among the environment's live Volumes.
+      schema:
+        $ref: '#/components/schemas/VolumeName'
+    VolumeConfirmRollbackLoss:
+      x-internal: true
+      name: confirmRollbackLoss
+      in: query
+      required: false
+      description: >
+        Confirms a delete that only older app versions block, accepting that they lose their rollback.
+        It never overrides a current app version, a deploy in progress or a running worker.
+      schema:
+        type: boolean
+        default: false
+    VolumeFileLimit:
+      x-internal: true
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of files to return.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 1000
+        default: 100
     EnvironmentName:
       name: environmentName
       in: path
@@ -3296,8 +4278,8 @@ components:
         `appId` together with `environment` selects the copy.
         The app list and the app summary are limited to the environment, and an app, build, endpoint, worker,
         event, usage or attached-secret cursor is valid only in the environment it came from.
-        A metric or log query that names no app covers the whole organization; one expanded by app returns
-        only the apps live in this environment.
+        A metric query that names no app covers the whole organization, and a log query covers this environment;
+        a metric query expanded by app returns only the apps live in this environment.
         Omitted means `production`.
         A name the organization has no live environment under returns `404`.
       schema:
@@ -3368,6 +4350,13 @@ components:
         is rejected with `422`.
       schema:
         $ref: '#/components/schemas/EndpointPath'
+    OidcConnectorName:
+      name: connectorName
+      in: path
+      required: true
+      description: OIDC connector name, unique within the authenticated organization.
+      schema:
+        $ref: '#/components/schemas/OidcConnectorName'
     SecretName:
       name: secretName
       in: path
@@ -3582,6 +4571,127 @@ components:
             $ref: '#/components/schemas/TaskInvocation'
 
   responses:
+    VolumeNotFound:
+      x-internal: true
+      description: >
+        No such Volume in the named environment.
+        An organization without Shared Volume beta access receives this same answer, the one the router gives
+        a path no route serves, on every Volume route except `GET /v1/volumes-settings`.
+        It is decided with the credential, before parameters or the body are read.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            volume-not-found:
+              summary: The Volume does not exist in this environment
+              value:
+                type: https://docs.runware.ai/serverless/errors#not-found
+                title: Not Found
+                status: 404
+                detail: volume not found
+            not-enabled:
+              summary: The organization has no Shared Volume beta access
+              value:
+                type: https://docs.runware.ai/serverless/errors#not-found
+                title: Not Found
+                status: 404
+                detail: no route matches the request path
+    VolumeNotImplemented:
+      x-internal: true
+      description: >
+        The operation is part of the Shared Volume contract but is not implemented yet.
+        Only an authenticated organization with beta access, addressing a live environment, gets this answer.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            not-implemented:
+              summary: Not implemented yet
+              value:
+                type: https://docs.runware.ai/serverless/errors#not-implemented
+                title: Not Implemented
+                status: 501
+                detail: Not Implemented
+    VolumeNameConflict:
+      x-internal: true
+      description: >
+        The name is held by a live Volume of the environment, or by a deleted one whose logical
+        deletion has not committed.
+        Clients switch on `type`; `detail` is plain text.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            volume-name-taken:
+              summary: The name is held by a live Volume or one whose deletion has not committed
+              value:
+                type: https://docs.runware.ai/serverless/errors#volume-name-taken
+                title: Conflict
+                status: 409
+                detail: a Volume named 'model-weights' already exists in this environment
+    VolumeDeleteConflict:
+      x-internal: true
+      description: >
+        Something still uses the Volume.
+        Clients switch on `type`; `detail` is plain text and carries no list of uses.
+        `GET /v1/volumes/{volumeName}/references` lists them.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            volume-in-use:
+              summary: A current app version, deploy or running worker uses it
+              value:
+                type: https://docs.runware.ai/serverless/errors#volume-in-use
+                title: Conflict
+                status: 409
+                detail: the Volume is in use; list its references to see where
+            volume-rollback-confirmation-required:
+              summary: Only older app versions use it; confirm they lose their rollback
+              value:
+                type: https://docs.runware.ai/serverless/errors#volume-rollback-confirmation-required
+                title: Conflict
+                status: 409
+                detail: older app versions would lose their rollback; retry with confirmRollbackLoss=true
+    AppMountsNotImplemented:
+      x-internal: true
+      description: >
+        The request carries Shared Volume `mounts`, which are not implemented yet.
+        Only an organization with Shared Volume beta access gets this answer.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            not-implemented:
+              summary: Mounts are not implemented yet
+              value:
+                type: https://docs.runware.ai/serverless/errors#not-implemented
+                title: Not Implemented
+                status: 501
+                detail: Not Implemented
+    VolumeLimitExceeded:
+      x-internal: true
+      description: A Shared Volume operation exceeds an effective limit.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            volumeLimitExceeded:
+              value:
+                type: https://docs.runware.ai/serverless/errors#volume-limit-exceeded
+                title: Conflict
+                status: 409
+                limit: maxFileBytes
+                cap: 10
+                requested: 11
+                requestedIsIncrement: false
+
     Task:
       description: The task
       content:
@@ -3678,6 +4788,8 @@ components:
     AppUnavailable:
       description: >
         A required service is temporarily unavailable.
+        For a build, this includes a base image registry that did not answer, and a failed name lookup of
+        the base image's registry or of the platform's own registry. The `detail` does not say which host failed.
         `Retry-After` is present when the client should wait before sending the
         same request again, and absent when the server cannot estimate one.
       headers:
@@ -3744,6 +4856,23 @@ components:
                 title: Service Unavailable
                 status: 503
                 detail: task store is unavailable
+    OidcConnectorsUnavailable:
+      description: >
+        OIDC connectors are not available in this environment: it has no OIDC issuer. Creating,
+        updating and attaching a connector answer this before they read or write anything; listing,
+        reading, deleting and detaching keep working, so a connector can always be removed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            not-implemented:
+              summary: This environment has no OIDC issuer
+              value:
+                type: https://docs.runware.ai/serverless/errors#not-implemented
+                title: Not Implemented
+                status: 501
+                detail: OIDC connectors are not available in this environment
     Forbidden:
       description: Authenticated but not permitted to access this resource
       content:
@@ -3795,6 +4924,9 @@ components:
         this request starts (at least one, or its keep-warm floor when higher) and their GPUs.
         Nothing is changed. After a cap is lowered this can refuse deploys until workers fall or the cap is
         raised. Stop or scale down another app, or raise the cap, then retry.
+        `environment-paused` means the environment's spend this UTC month has reached its monthly budget with
+        `pauseAtBudget` on. Nothing is changed. Raise the budget past the spend, or wait for the month to turn,
+        then retry.
       content:
         application/problem+json:
           schema:
@@ -3814,6 +4946,30 @@ components:
                 title: Conflict
                 status: 409
                 detail: "the environment's worker cap is 4; it holds 3 and this request adds 2"
+            environment-paused:
+              summary: The environment's budget pauses it
+              value:
+                type: https://docs.runware.ai/serverless/errors#environment-paused
+                title: Conflict
+                status: 409
+                detail: "the environment is paused: its spend this UTC month has reached its monthly budget; raise the budget or wait for the month to turn"
+    EnvironmentPaused:
+      description: >
+        `environment-paused` means the app's environment is paused: its spend this UTC month has reached its
+        monthly budget with `pauseAtBudget` on. No task is started. The pause holds until the budget is raised
+        past the spend or the month turns, so there is no `Retry-After`; resume the app once it ends.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            environment-paused:
+              summary: The environment's budget pauses it
+              value:
+                type: https://docs.runware.ai/serverless/errors#environment-paused
+                title: Too Many Requests
+                status: 429
+                detail: "the environment is paused: its spend this UTC month has reached its monthly budget; raise the budget or wait for the month to turn"
     PayloadTooLarge:
       description: >
         The request body exceeds its size limit: 10 MiB on `invoke-sync` and `invoke-async`, whose body
@@ -3850,6 +5006,37 @@ components:
                 title: Unsupported Media Type
                 status: 415
                 detail: Content-Type "text/plain" is not supported
+    SecretAttachValidationError:
+      description: >
+        The request was well-formed but invalid.
+        A field that broke a rule is `unprocessable-entity`.
+        Attaching a `registry` secret is `secret-not-attachable`.
+        A request that could not be parsed returns `400`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            unprocessable-entity:
+              summary: A field broke a rule
+              value:
+                type: https://docs.runware.ai/serverless/errors#unprocessable-entity
+                title: Unprocessable Entity
+                status: 422
+                detail: '/secretName: injected env var name collides with a plain environment variable on this app'
+                errors:
+                  - detail: injected env var name collides with a plain environment variable on this app
+                    pointer: /secretName
+            secret-not-attachable:
+              summary: A registry secret cannot be attached
+              value:
+                type: https://docs.runware.ai/serverless/errors#secret-not-attachable
+                title: Unprocessable Entity
+                status: 422
+                detail: '/secretName: a registry secret cannot be attached to an app'
+                errors:
+                  - detail: a registry secret cannot be attached to an app
+                    pointer: /secretName
     ValidationError:
       description: >
         The request was well-formed but semantically invalid (e.g. a missing or out-of-range field).
@@ -3998,16 +5185,44 @@ components:
         A field of the request body that broke the schema or a rule is `unprocessable-entity`.
         A container source whose archive or `container.yaml` broke a contract rule carries the rule's own type
         and `errors[]`.
+        A source whose base image the registry would not serve, or which names the platform's own image
+        registry, is `base-image-unreadable`.
+        The detail names the registry host and the image reference.
+        For a code source, one `errors[]` entry points at `baseImage`.
         An entry about a field of `container.yaml` has a `configPointer` to that field and a `pointer` to the
         archive in the request body.
         An entry about the archive has neither.
         A code source's archive rejection is `unprocessable-entity`.
+        A secret attachment that names a secret the environment does not hold as active is `secret-not-found`,
+        with one `errors[]` entry per attachment pointing at `secretName`.
         A request that could not be parsed returns `400`.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
           examples:
+            mount-read-write:
+              x-internal: true
+              summary: A Shared Volume mount asked for write access
+              value:
+                type: https://docs.runware.ai/serverless/errors#unprocessable-entity
+                title: Unprocessable Entity
+                status: 422
+                detail: '/mounts/0/readOnly: value is not one of the allowed values [true]'
+                errors:
+                  - detail: value is not one of the allowed values [true]
+                    pointer: /mounts/0/readOnly
+            mount-volume-empty:
+              x-internal: true
+              summary: A Shared Volume mount names a Volume with no files yet
+              value:
+                type: https://docs.runware.ai/serverless/errors#unprocessable-entity
+                title: Unprocessable Entity
+                status: 422
+                detail: "/mounts/0/name: Volume 'model-weights' has no files yet; upload files before mounting it"
+                errors:
+                  - detail: "Volume 'model-weights' has no files yet; upload files before mounting it"
+                    pointer: /mounts/0/name
             unprocessable-entity:
               summary: A field broke the schema
               value:
@@ -4018,6 +5233,16 @@ components:
                 errors:
                   - detail: number must be at least 1
                     pointer: /configuration/maxWorkers
+            secret-not-found:
+              summary: An attachment names a secret the environment does not hold as active
+              value:
+                type: https://docs.runware.ai/serverless/errors#secret-not-found
+                title: Unprocessable Entity
+                status: 422
+                detail: '/secrets/0/secretName: no active secret with this name in this environment'
+                errors:
+                  - detail: no active secret with this name in this environment
+                    pointer: /secrets/0/secretName
             container-zip-invalid:
               summary: The container archive broke an artifact rule
               value:
@@ -4027,6 +5252,13 @@ components:
                 detail: 'container-zip-invalid: the archive must contain "Dockerfile" at its root (exact name, case sensitive)'
                 errors:
                   - detail: the archive must contain "Dockerfile" at its root (exact name, case sensitive)
+            base-image-unreadable:
+              summary: The registry would not serve the base image
+              value:
+                type: https://docs.runware.ai/serverless/errors#base-image-unreadable
+                title: Unprocessable Entity
+                status: 422
+                detail: 'base-image-unreadable: ghcr.io: ghcr.io/acme/private:1 could not be pulled. Private base images are not supported in this version'
             container-config-unknown-version:
               summary: container.yaml names an unknown configVersion
               value:
@@ -4091,6 +5323,16 @@ components:
                   - detail: port is reserved by the platform
                     pointer: /appSource/source/sourceId
                     configPointer: /port
+            secret-not-attachable:
+              summary: A registry secret cannot be attached
+              value:
+                type: https://docs.runware.ai/serverless/errors#secret-not-attachable
+                title: Unprocessable Entity
+                status: 422
+                detail: '/secrets/0/secretName: a registry secret cannot be attached to an app'
+                errors:
+                  - detail: a registry secret cannot be attached to an app
+                    pointer: /secrets/0/secretName
     SourceUploadReplayConflict:
       description: >
         The idempotency key was already used.
@@ -4227,6 +5469,374 @@ components:
                 errors:
                   - detail: archive entry escapes the archive root
   schemas:
+    VolumeSettings:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      required: [available, limits]
+      properties:
+        available:
+          type: boolean
+          description: Effective access including the saved beta switch, tenancy and organization lifecycle.
+        limits:
+          $ref: '#/components/schemas/VolumeLimits'
+
+    VolumeLimits:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      required: [maxStoredBytes, maxFileBytes, maxFilesPerVolume, maxMountedBytesPerAppVersion, uploadSessionTtlSeconds]
+      properties:
+        maxStoredBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1099511627776
+          description: Organization stored quota in bytes; defaults to and cannot exceed 1 TiB.
+        maxFileBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1099511627776
+          description: >
+            Largest file in bytes; defaults to 250 GiB, the same as `maxMountedBytesPerAppVersion`, so any uploaded
+            file can be mounted. An organization override raises both together, up to 1 TiB.
+        maxFilesPerVolume:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Most files one Volume holds; a Volume has a single current file set and no versions.
+        maxMountedBytesPerAppVersion:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1099511627776
+          description: >
+            Logical bytes of the Volumes one app version mounts, checked at deploy; defaults to 250 GiB, and an
+            organization override raises it up to 1 TiB.
+            Also checked at upload completion, which is refused when it would grow a Volume past the cap of
+            any current app version mounting it.
+            Never checked at worker start, so scale-out and crash replacement never fail on it.
+        uploadSessionTtlSeconds:
+          type: integer
+          format: int64
+          minimum: 2
+          maximum: 2147483647
+          description: >
+            Fixed upload-session lifetime in seconds, counted from creation, the same for every organization
+            (24 hours by default); activity and part-URL renewal never extend it. No presigned part URL outlives
+            the session deadline.
+
+    VolumeName:
+      type: string
+      x-internal: true
+      minLength: 1
+      maxLength: 63
+      pattern: '^[a-z0-9][a-z0-9._-]{0,62}$'
+      description: >
+        Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 63 characters.
+      example: model-weights
+
+    VolumeDescription:
+      type: string
+      x-internal: true
+      maxLength: 1024
+      pattern: '^[^\x00\x09-\x0D\x20\u0085\u1680\u2000-\u2006\u2008-\u200A\u2028\u2029\u205F\u3000]([^\x00]*[^\x00\x09-\x0D\x20\u0085\u1680\u2000-\u2006\u2008-\u200A\u2028\u2029\u205F\u3000])?$'
+      description: >
+        Free text, at most 1024 characters, that neither starts nor ends with whitespace: ASCII
+        whitespace, U+0085, U+1680, U+2000 to U+200A except U+2007, U+2028, U+2029, U+205F or U+3000.
+        Line breaks inside are kept. NUL is refused anywhere.
+
+    VolumeId:
+      type: string
+      x-internal: true
+      format: uuid
+      description: >
+        Immutable identity of one Volume.
+        A Volume created later under a reused name gets a new id.
+
+    VolumeCreate:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          $ref: '#/components/schemas/VolumeName'
+        description:
+          $ref: '#/components/schemas/VolumeDescription'
+
+    VolumeUpdate:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      description: >
+        Every field is optional. An omitted field is left unchanged. A nullable field sent as
+        `null` is cleared.
+      properties:
+        description:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/VolumeDescription'
+          nullable: true
+          x-go-type: nullable.Nullable[VolumeDescription]
+          x-go-type-import:
+            path: github.com/oapi-codegen/nullable
+          x-go-type-skip-optional-pointer: true
+          description: The new description; null clears it, omitted leaves it unchanged.
+
+    VolumeStatus:
+      type: string
+      x-internal: true
+      enum: [live]
+      description: >
+        A Volume a route returns is always `live`: one being deleted or deleted is not returned.
+        The enum is open for later states.
+
+    Volume:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      description: >
+        A Volume has one latest file set and no versions.
+        Each worker that mounts it gets the latest files when it starts.
+      required:
+        - id
+        - name
+        - environment
+        - status
+        - logicalBytes
+        - fileCount
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/VolumeId'
+        name:
+          $ref: '#/components/schemas/VolumeName'
+        environment:
+          allOf:
+            - $ref: '#/components/schemas/EnvironmentName'
+          description: The Volume's environment, the only one whose apps mount it.
+        description:
+          $ref: '#/components/schemas/VolumeDescription'
+        status:
+          $ref: '#/components/schemas/VolumeStatus'
+        logicalBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Logical size of the latest files, zero before the first upload.
+            Not the organization's deduplicated stored bytes, which count shared content once.
+        fileCount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of latest files, zero before the first upload.
+        manifestSha256:
+          allOf:
+            - $ref: '#/components/schemas/VolumeSha256'
+          description: >
+            Digest of the latest file list, the SHA-256 of the latest manifest.
+            It changes exactly when the latest files change, so a client compares it to see whether they did.
+            It is not an identifier: no route or mount accepts it.
+            Absent before the first upload that adds files.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    VolumePage:
+      allOf:
+        - $ref: '#/components/schemas/Page'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Volume'
+      x-internal: true
+
+    VolumeFile:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      required: [path, mode, size, sha256]
+      properties:
+        path:
+          $ref: '#/components/schemas/VolumeFilePath'
+        mode:
+          $ref: '#/components/schemas/VolumeFileMode'
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+        sha256:
+          $ref: '#/components/schemas/VolumeSha256'
+
+    VolumeFilePage:
+      allOf:
+        - $ref: '#/components/schemas/Page'
+        - type: object
+          required: [data]
+          properties:
+            manifestSha256:
+              allOf:
+                - $ref: '#/components/schemas/VolumeSha256'
+              description: >
+                Digest of the file list this page was read from.
+                Absent when the Volume has no files yet.
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/VolumeFile'
+      x-internal: true
+
+    VolumeFilePath:
+      type: string
+      x-internal: true
+      minLength: 1
+      maxLength: 4096
+      pattern: '^(?:[^/.\x00-\x1f\x7f-\u009F\u2028\u2029][^/\x00-\x1f\x7f-\u009F\u2028\u2029]*|\.[^/.\x00-\x1f\x7f-\u009F\u2028\u2029][^/\x00-\x1f\x7f-\u009F\u2028\u2029]*|\.\.[^/\x00-\x1f\x7f-\u009F\u2028\u2029]+)(?:/(?:[^/.\x00-\x1f\x7f-\u009F\u2028\u2029][^/\x00-\x1f\x7f-\u009F\u2028\u2029]*|\.[^/.\x00-\x1f\x7f-\u009F\u2028\u2029][^/\x00-\x1f\x7f-\u009F\u2028\u2029]*|\.\.[^/\x00-\x1f\x7f-\u009F\u2028\u2029]+))*$'
+      description: >
+        Path of a regular file relative to the Volume root, at most 4096 bytes of UTF-8; `maxLength`
+        bounds characters, and the server refuses a longer encoding with `422`.
+        It is normalized: no leading or trailing `/`, no empty, `.` or `..` component and no control
+        character: C0, DEL, C1 (U+0080 to U+009F), U+2028 or U+2029.
+        A Volume holds regular files only, so there are no symlinks, devices or empty directories.
+        Paths travel only in request and response bodies, never in a URL.
+      example: unet/diffusion_pytorch_model.safetensors
+
+    VolumeFileMode:
+      type: integer
+      x-internal: true
+      format: int32
+      minimum: 0
+      maximum: 365
+      description: >
+        Permission bits as a decimal integer, keeping only read and execute (a subset of `0o555`, which is
+        365); the platform sets the owner.
+        The schema bounds the value only; the server checks the bits after validation and refuses a mode with
+        any write or special bit with `422`.
+        Changing only a file's mode is a change to the Volume's files.
+      example: 292
+
+    VolumeSha256:
+      type: string
+      x-internal: true
+      pattern: '^[0-9a-f]{64}$'
+      description: SHA-256 digest as 64 lowercase hexadecimal characters.
+
+    VolumeReference:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      description: One use of the Volume by an app of its environment.
+      required: [appId, appVersionNumber, kind]
+      properties:
+        appId:
+          $ref: '#/components/schemas/AppId'
+        appVersionNumber:
+          type: integer
+          format: int32
+          description: >
+            The `versionNumber` of the app version that mounts the Volume, as in
+            `/v1/apps/{appId}/versions/{versionNumber}`.
+        kind:
+          type: string
+          enum: [current-app-version, deploy-in-progress, running-worker, rollback-target]
+          description: >
+            `rollback-target` is an older app version that would lose its rollback; the other kinds block
+            a delete.
+
+    VolumeReferences:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      required: [blocking, rollbackTargets]
+      properties:
+        blocking:
+          type: array
+          description: Uses that make a delete answer `409` typed `volume-in-use`.
+          items:
+            $ref: '#/components/schemas/VolumeReference'
+        rollbackTargets:
+          type: array
+          description: >
+            Older app versions that lose their rollback if the delete goes ahead with
+            `confirmRollbackLoss=true`.
+          items:
+            $ref: '#/components/schemas/VolumeReference'
+
+    VolumeWorkerMount:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      readOnly: true
+      description: One Shared Volume as a worker mounts it.
+      required: [name, mountPath]
+      properties:
+        name:
+          $ref: '#/components/schemas/VolumeName'
+        mountPath:
+          type: string
+          description: Where the Volume is mounted inside the sandboxed application.
+        manifestSha256:
+          allOf:
+            - $ref: '#/components/schemas/VolumeSha256'
+          description: >
+            Digest of the file list the worker prepared when it started, the `manifestSha256` the Volume
+            had then.
+            Absent only while the worker is still preparing.
+
+    VolumeMount:
+      type: object
+      x-internal: true
+      additionalProperties: false
+      description: >
+        A Shared Volume of the app's own environment, mounted read-only into every worker of the app version.
+        The app version saves the Volume id, not its files: each worker mounts the Volume's latest files when
+        it starts, so workers that start after an upload get the new files while running workers keep theirs
+        until they stop.
+        A rollback restores the app version's image and settings, not earlier Volume files.
+        A missing or deleted Volume, or one with no files yet, refuses the create, update, deploy or rollback
+        with `422`, and a worker never starts with an empty folder.
+        A Volume that has files never becomes empty again: no route deletes a file.
+        Each app version's mounted Volumes, at their sizes when it is created or deployed, must fit
+        `maxMountedBytesPerAppVersion`.
+        A checkpoint records each mounted Volume's `manifestSha256`, mount path and mode, and a worker
+        restores it only when all of them match its own mounts; otherwise the worker cold-starts, so a
+        restore never pairs weights held in memory with different files.
+        Once mounts are implemented, they will share the app's 30-entry limit and its path rules with
+        node-local `volumes`, and a mount path will not be allowed to equal or overlap a node-local one.
+        Until then each list is checked on its own.
+      required: [kind, name, mountPath]
+      properties:
+        kind:
+          type: string
+          enum: [volume]
+        name:
+          $ref: '#/components/schemas/VolumeName'
+        mountPath:
+          type: string
+          minLength: 2
+          maxLength: 2048
+          pattern: '^/(?:[A-Za-z0-9_+@-][A-Za-z0-9._+@-]*|\.[A-Za-z0-9_+@-][A-Za-z0-9._+@-]*|\.\.[A-Za-z0-9._+@-]+)(?:/(?:[A-Za-z0-9_+@-][A-Za-z0-9._+@-]*|\.[A-Za-z0-9_+@-][A-Za-z0-9._+@-]*|\.\.[A-Za-z0-9._+@-]+))*$'
+          description: >
+            Absolute path inside the sandboxed application.
+            It is normalized: segments of `A-Z`, `a-z`, `0-9`, `.`, `_`, `+`, `@` and `-` separated by single
+            `/`, with no empty, `.` or `..` segment and no trailing `/`.
+            The reserved paths and the per-segment limit of `AppVolume.mountPath` apply as well.
+        readOnly:
+          type: boolean
+          default: true
+          enum: [true]
+          description: Always true in v1; false is refused with `422`.
+
     AppId:
       type: string
       description: >
@@ -4537,10 +6147,11 @@ components:
         than that floor.
         `demand_unserved` means the app scales to zero, so it has no floor to be short of, and work is waiting
         on its queue with nothing running it.
-        `placement_refused` is that same wait once the platform has refused to place a worker for lack of
-        GPU capacity, and that refusal has stood for the scale-up grace.
-        A refusal because credit does not cover the worker, or because the worker does not match its
-        placement policy, is not this reason.
+        `placement_refused` is that same wait once the platform could not place a worker of this GPU type
+        because no capacity is recorded for it or no complete capacity block is free, and that refusal has
+        stood for the scale-up grace.
+        A refusal because credit does not cover the worker, because the worker does not match its placement
+        policy, or because placement hit contention, a scan limit or an unknown failure, is not this reason.
         A refused create is not stored, so the workers list stays empty.
 
 
@@ -4615,6 +6226,95 @@ components:
             It is rewritten on every observation, so it reports the freshness of the verdict and not the age
             of the condition.
             A value far in the past means nothing has observed the app recently.
+        explanations:
+          type: array
+          maxItems: 2
+          description: >
+            Why a worker the app asked for is waiting to be placed, and which worker limit currently holds
+            the app, each with a next step.
+            At most one of each.
+            Omitted when nothing is waiting and no limit applies, and also when the platform has not observed
+            the app in the last ten minutes, because an old explanation is not shown as current.
+          items:
+            $ref: '#/components/schemas/AppHealthExplanation'
+    AppHealthExplanationType:
+      type: string
+      description: >
+        The fact an explanation reports.
+
+
+        `waiting_for_placement`, `capacity_refused`, `credit_refused` and `create_refused` are placement
+        waits.
+        `waiting_for_placement` means a worker exists and the cluster has not found a node for it; the
+        platform does not know why, and does not guess.
+        `capacity_refused` means the platform refused to start a worker because the capacity it has
+        recorded cannot place a worker of that GPU type and count, and is retrying.
+        It does not say whether the GPUs are in use, not yet recorded, or offered in no group of that size.
+        A refusal for any other placement reason, such as contention, is `create_refused`.
+        `credit_refused` means the platform refused to start a worker because the organization's credit or
+        billing does not allow it.
+        `create_refused` means a worker could not be created for a reason the platform does not report.
+
+
+        `at_max_workers`, `credit_max_workers` and `at_min_workers` are worker limits.
+        `at_max_workers` means the app's worker target is at its applied maximum while calls are waiting
+        in its queue.
+        `credit_max_workers` means a credit hold is in place on the app; `workers` is its applied maximum,
+        which may also be the app's own configured value.
+        `at_min_workers` means the app's worker target is at its keep-warm minimum, which it does not scale
+        below while idle; it does not say those workers are running. It is omitted while the autoscaler reports a fault.
+      enum:
+        - waiting_for_placement
+        - capacity_refused
+        - credit_refused
+        - create_refused
+        - at_max_workers
+        - credit_max_workers
+        - at_min_workers
+      x-enum-varnames:
+        - AppHealthExplanationTypeWaitingForPlacement
+        - AppHealthExplanationTypeCapacityRefused
+        - AppHealthExplanationTypeCreditRefused
+        - AppHealthExplanationTypeCreateRefused
+        - AppHealthExplanationTypeAtMaxWorkers
+        - AppHealthExplanationTypeCreditMaxWorkers
+        - AppHealthExplanationTypeAtMinWorkers
+    AppHealthExplanation:
+      type: object
+      description: >
+        One fact the platform observed about the app's workers, in fixed wording that names no node, pool,
+        host or other organization.
+      required:
+        - type
+        - message
+        - nextStep
+        - since
+      properties:
+        type:
+          $ref: '#/components/schemas/AppHealthExplanationType'
+        message:
+          type: string
+          maxLength: 300
+          description: What the platform observed.
+        nextStep:
+          type: string
+          maxLength: 300
+          description: What can be done about it, or that nothing needs doing.
+        workers:
+          type: integer
+          format: int32
+          minimum: 0
+          description: >
+            The applied worker count a limit names.
+            Absent for a placement wait.
+        since:
+          type: string
+          format: date-time
+          description: >
+            When the platform first observed this wait or limit.
+            A placement wait keeps its time while any wait continues, whatever its type, and a limit keeps its
+            time while the same limit holds at the same worker count.
+            Both restart after ten minutes in which the platform did not observe the app.
     AppSort:
       type: string
       description: >
@@ -4709,12 +6409,23 @@ components:
       type: string
       description: >
         Kind of secret.
-        Only `generic` is supported, and an attached secret of that kind is unsealed into the worker's process
-        environment.
-        Image-pull (`registry`) credentials are consumed by the kubelet before any container starts, so they
-        cannot use that unseal path and await their own decision.
+        `generic` is unsealed into the worker's process environment when the secret is attached to an app.
+        `registry` is a Docker `config.json` whose only top-level key is `auths`.
+        Each entry has `auth`, or `username` and `password`, or `identitytoken`.
+        A value is `422` when it names `credHelpers` or `credsStore`, any other top-level key, an entry key other
+        than `auth`, `username`, `password` or `identitytoken`, a key that is not a registry host (a host has a
+        dot or a port, or is `localhost`), two keys that normalize to the same host, or a key that appears twice.
+        The platform stores the ciphertext the same way as `generic` and keeps the normalized registry hosts
+        beside it.
+        A `registry` secret cannot be attached to an app (`422` `secret-not-attachable`).
       enum:
         - generic
+        - registry
+      # "registry" is also an org-purge owner. A shared value makes oapi-codegen
+      # prefix every constant of both enums, which would rename Generic.
+      x-enum-varnames:
+        - Generic
+        - SecretTypeRegistry
     AppEventType:
       type: string
       enum:
@@ -5189,7 +6900,9 @@ components:
     Environment:
       type: object
       required:
+        - id
         - name
+        - oidcSubjectPrefix
         - isDefault
         - budgetAlertPercents
         - pauseAtBudget
@@ -5197,8 +6910,25 @@ components:
         - createdAt
         - updatedAt
       properties:
+        id:
+          type: string
+          format: uuid
+          description: >
+            The environment's immutable identifier, the `<environment uuid>` in an OIDC subject.
+            It belongs to the environment, not to its name: an environment deleted and created again
+            under the same name gets a new `id`, and so a new `oidcSubjectPrefix`.
+          example: "0190a6a8-0000-7000-8000-0000000000e1"
         name:
           $ref: '#/components/schemas/EnvironmentName'
+        oidcSubjectPrefix:
+          type: string
+          description: >
+            What the `sub` of every worker token in this environment starts with:
+            `worker:org:<organization uuid>:env:<environment uuid>:`. It is the start of `subject` on every
+            connector attached in the environment, so a trust rule can trust the environment before any app
+            or connector exists. The value has no trailing `*`: for an AWS `StringLike` condition append `*`,
+            and for a GCP attribute condition use it as is, with `assertion.sub.startsWith(...)`.
+          example: "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:"
         isDefault:
           type: boolean
           description: >
@@ -5239,7 +6969,10 @@ components:
             the first spend above zero. Empty sends no alert.
         pauseAtBudget:
           type: boolean
-          description: Whether the environment's workers are scaled to zero once the budget is reached.
+          description: >
+            Whether the environment is paused once its spend this UTC month reaches the budget: its apps are
+            stopped, and invocation and requests that add capacity are refused until the budget is raised past
+            the spend or the month turns. A budget of zero pauses at the first spend.
         unauthenticatedAccess:
           type: string
           allOf:
@@ -5312,7 +7045,8 @@ components:
         pauseAtBudget:
           type: boolean
           description: >
-            Scale the environment's workers to zero once the budget is reached.
+            Pause the environment once its spend this UTC month reaches the budget: stop its apps, and refuse
+            invocation and requests that add capacity until the budget is raised past the spend or the month turns.
             Omit for `false`.
         unauthenticatedAccess:
           type: string
@@ -5377,7 +7111,9 @@ components:
             Stored ascending with duplicates removed; an empty array sends no alert.
         pauseAtBudget:
           type: boolean
-          description: Scale the environment's workers to zero once the budget is reached.
+          description: >
+            Pause the environment once its spend this UTC month reaches the budget: stop its apps, and refuse
+            invocation and requests that add capacity until the budget is raised past the spend or the month turns.
         unauthenticatedAccess:
           type: string
           allOf:
@@ -5448,7 +7184,12 @@ components:
         configuration:
           allOf:
             - $ref: '#/components/schemas/WorkerConfig'
-          description: Live worker configuration. Updated via `PATCH /apps/{appId}`.
+          description: >
+            Worker configuration the next version is recorded from.
+            Updated via `PATCH /v1/apps/{appId}`.
+            A successful deploy, including a rollback, does not change it, so it can differ from the deployed snapshot.
+            `activeVersionId` names the version that was deployed.
+            `effectiveMaxWorkers` is the ceiling that was applied.
         health:
           allOf:
             - $ref: '#/components/schemas/AppHealth'
@@ -5473,7 +7214,7 @@ components:
             The app is in a lifecycle state whose verdict is not published, such as `stopped`, `failed`, or
             one that is draining.
             The verdict could not be read on this request,
-            or the stored verdict carries a value this version of the API does not recognise.
+            or the stored verdict carries a value this version of the API does not recognize.
             The four are not distinguished, so **absence is never a claim that the app is healthy**.
             The first two are stable, the third clears by itself, and the last persists until the API is
             upgraded.
@@ -5514,7 +7255,8 @@ components:
         environmentVariables:
           type: array
           description: >
-            Plain-text environment variables for this app.
+            The stored plain-text environment variables, which the next version is recorded from.
+            A successful deploy, including a rollback, does not change them, so they can differ from the deployed snapshot.
             Populated on single-app responses (get, update, stop, resume, delete, deploy, favorite).
             List of apps returns an empty array to avoid an N+1 per page row.
             Use the `/environment-variables` endpoints to page the set.
@@ -5532,7 +7274,16 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Current deployed version. Null until the first version is successfully deployed.
+          description: >
+            The version pinned as the rollout target.
+            A create leaves it null until that rollout completes.
+            An environment-variable or configuration change moves it when that request is accepted and the
+            image is deployable.
+            `POST /v1/apps/{appId}/deploy` moves it when that request is accepted.
+            Workers of the pinned version are not necessarily answering yet.
+            An `appSource` update moves it only when that rollout completes.
+            If the roll of a live app fails, it is restored to the version that kept serving.
+            It does not mean a worker of this version is answering tasks. See `AppEvent`.
         createdAt:
           type: string
           format: date-time
@@ -5557,7 +7308,7 @@ components:
             directory.
             Root, duplicate, and overlapping paths are rejected.
             Each path component (the text between `/` separators) is at most 255 bytes, the filesystem NAME_MAX the mirrored node directory must satisfy.
-            `/data/liquid-components` and `/data/liquid-large-data` are reserved by the platform: a path on one, under one (`/data/liquid-components/models`) or over one (`/data`) is rejected with `422`.
+            `/data/liquid-components`, `/data/liquid-large-data` and `/var/run/secrets/runware/oidc` are reserved by the platform: a path on one, under one (`/data/liquid-components/models`) or over one (`/data`) is rejected with `422`.
             A path that only shares a string prefix with one, such as `/data/liquid-components-x`, is accepted.
 
     AppCreate:
@@ -5603,7 +7354,10 @@ components:
             per entry.
             This is the app's initial attachment set, so the first rollout carries the values into the worker.
             The secret must already exist and be `active`.
-            This route does not create one, and an unknown or inactive name returns `404`.
+            This route does not create one.
+            An unknown or inactive name returns `422` typed `secret-not-found`, and `errors[]` points at
+            that entry's `secretName`.
+            A `registry` secret returns `422` `secret-not-attachable`.
             Shape matches `POST /apps/{appId}/secrets` so create and attach share one contract.
             Each injected name must not collide with a key in `environmentVariables`.
             See `SecretAttach`.
@@ -5646,6 +7400,28 @@ components:
             filesystem.
             Paths must be unique and non-overlapping.
             The set is frozen into each immutable app version.
+        mounts:
+          type: array
+          x-internal: true
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+          description: >
+            Shared Volumes of the app's environment, mounted read-only into the app's workers.
+            Each worker mounts a Volume's latest files when it starts.
+            Node-local `volumes` are unchanged; once mounts are implemented, the two will share the
+            30-entry limit and path rules.
+            Without Shared Volume beta access, refused with the `422` for an unknown property: pointer
+            `/`, detail `property "mounts" is unsupported`. With access, refused with `501` until mounts
+            are implemented.
+            A mount with `readOnly: false` is refused with `422` pointing at `/mounts/<n>/readOnly`, and a
+            mount of a Volume with no files yet with `422` pointing at `/mounts/<n>/name`.
+            A checkpoint is restored only on the same mounted files, paths and modes; otherwise the worker
+            cold-starts.
+          example:
+            - kind: volume
+              name: model-weights
+              mountPath: /mnt/models
 
     AppUpdate:
       type: object
@@ -5657,18 +7433,23 @@ components:
 
         A successful configuration or `environmentVariables` update records a new version carrying the updated
         values and the same image.
+        Those values are the stored configuration and environment variables, which a successful deploy does not
+        replace with the deployed snapshot.
+        The image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the
+        latest version when it is null.
         If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the
         app can take one (`active`, `initializing`, or `failed` which becomes `initializing`).
         If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged.
         A name-only update records a version and does not pin.
         If the roll of a live app fails, `activeVersionId` is restored so the field keeps naming the running
         configuration.
+        The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`.
 
         `appSource` starts a build and records version N+1 with a new image.
-        A `code` source whose build inputs equal those of the app's newest build — the same archive
+        A `code` source can carry the same build inputs as the app's newest build: the same archive
         bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and
-        platform build — records version N+1 on that build's image instead, with its `buildId`, and
-        starts no build. Unpinned requirements are therefore not re-resolved by such an update; change
+        platform build. Such a source records version N+1 on that build's image instead, with its
+        `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change
         any input to build again.
         The deploy queue rolls that version once the build is ready.
         `activeVersionId` moves only then.
@@ -5720,6 +7501,9 @@ components:
           description: >
             Replaces the app's secret attachments.
             Same `SecretAttach` shape as create and `POST /apps/{appId}/secrets`.
+            An unknown or inactive name returns `422` typed `secret-not-found`, and `errors[]` points at
+            that entry's `secretName`.
+            A `registry` secret returns `422` `secret-not-attachable`.
             An attachment absent from the array is detached.
             Injected names must not collide with a plain environment variable on the app.
             The attachment set is stored on the app, not on the version snapshot.
@@ -5746,12 +7530,24 @@ components:
             A null value omits that key from the new set.
             Write values literally: do not use `$(NAME)` or `$$` in a value, as the platform does not guarantee
             how it treats either sequence.
-            The resolved map is snapshotted onto the version this update records, so a deploy applies it.
+            The resolved map is snapshotted onto the version this update records.
             When the copied image is deployable the update pins and rolls, the same as a configuration change.
           additionalProperties:
             type: string
             nullable: true
           maxProperties: 100
+        mounts:
+          type: array
+          x-internal: true
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/VolumeMount'
+          description: >
+            Replaces the app's Shared Volume mounts in the version this update records.
+            An empty array removes them; omitted leaves them unchanged.
+            Without Shared Volume beta access, refused with the `422` for an unknown property: pointer
+            `/`, detail `property "mounts" is unsupported`. With access, refused with `501` until mounts
+            are implemented.
 
     WorkerConfig:
       type: object
@@ -5794,7 +7590,7 @@ components:
             A kubernetes preferred pool that names a substitute is admitted by the coordinator webhook, which fails closed, so those pods are not created while the coordinator is down.
             A worker placed on it reports that type as `Worker.gpuType`.
             Workers of one app can be on either type.
-            The substitute is charged at its own catalogue rate, including when that rate is higher than `gpuType`.
+            The substitute is charged at its own catalog rate, including when that rate is higher than `gpuType`.
             A commitment covers only its own GPU type, so this placement does not borrow one bought for `gpuType`.
         gpusPerWorker:
           type: integer
@@ -5840,11 +7636,24 @@ components:
         idleTtlSecs:
           type: integer
           format: int32
-          description: Seconds a worker can sit idle before the Scaler removes it.
+          description: >
+            Seconds an app at `minWorkers` 0 waits after its last task before it scales to zero, removing every
+            worker still running. `scalingDelaySecs` can remove workers above one sooner.
+            It has no effect while `minWorkers` is above 0: `scalingDelaySecs` alone decides when workers above
+            `minWorkers` are removed.
         scalingDelaySecs:
           type: integer
           format: int32
-          description: Cooldown between consecutive scaling decisions.
+          description: >
+            Seconds demand must stay below the running worker count before workers are removed.
+            Delays scale-down only; scale-up does not wait for it.
+            Values below 90 act as 90, so workers are not removed on one low reading while work is still queued.
+            Scale-up waits until demand has stayed above the running workers for 60 seconds.
+            At `minWorkers` 0, demand with no worker serving and no task taken in the last 5 seconds is one worker,
+            so an app woken from zero runs one worker until that worker serves its first task.
+            Otherwise, while the workers take fewer than two tasks from the queue in 5 seconds, as with long tasks
+            on few workers, demand is one worker per queued task, up to `maxWorkers`.
+            Raise `minWorkers` to serve a burst without the 60-second wait: `minAvailableWorkers` adds workers only while work is queued.
         requestTimeoutSecs:
           type: integer
           format: int32
@@ -5914,7 +7723,7 @@ components:
             It must differ from `gpuType` and resolve to admitted capacity in the same cluster and runtime class.
             It must grant `gpusPerWorker`, and declare memory, ephemeral-storage, and CPU limits that can hold the preferred pool's requests.
             A kubernetes preferred pool cannot name a coordinator substitute.
-            Charged at the substitute's catalogue rate, including when that rate is higher than `gpuType`.
+            Charged at the substitute's catalog rate, including when that rate is higher than `gpuType`.
             A commitment covers only its own GPU type.
             Omit, send JSON null, or send an empty string for no substitute.
             Forms bind an unselected dropdown as `""`, which is not a `GpuTypeId`.
@@ -5973,10 +7782,25 @@ components:
           type: integer
           format: int32
           minimum: 1
+          description: >
+            Seconds an app at `minWorkers` 0 waits after its last task before it scales to zero, removing every
+            worker still running. `scalingDelaySecs` can remove workers above one sooner.
+            It has no effect while `minWorkers` is above 0: `scalingDelaySecs` alone decides when workers above
+            `minWorkers` are removed.
         scalingDelaySecs:
           type: integer
           format: int32
           minimum: 1
+          description: >
+            Seconds demand must stay below the running worker count before workers are removed.
+            Delays scale-down only; scale-up does not wait for it.
+            Values below 90 act as 90, so workers are not removed on one low reading while work is still queued.
+            Scale-up waits until demand has stayed above the running workers for 60 seconds.
+            At `minWorkers` 0, demand with no worker serving and no task taken in the last 5 seconds is one worker,
+            so an app woken from zero runs one worker until that worker serves its first task.
+            Otherwise, while the workers take fewer than two tasks from the queue in 5 seconds, as with long tasks
+            on few workers, demand is one worker per queued task, up to `maxWorkers`.
+            Raise `minWorkers` to serve a burst without the 60-second wait: `minAvailableWorkers` adds workers only while work is queued.
         requestTimeoutSecs:
           type: integer
           format: int32
@@ -6041,7 +7865,7 @@ components:
             It must grant `gpusPerWorker`, and declare memory, ephemeral-storage, and CPU limits that can hold the preferred pool's requests.
             A kubernetes preferred pool cannot name a coordinator substitute.
             A kubernetes preferred pool that names a substitute is admitted by the coordinator webhook, which fails closed, so those pods are not created while the coordinator is down.
-            Charged at the substitute's catalogue rate, including when that rate is higher than `gpuType`.
+            Charged at the substitute's catalog rate, including when that rate is higher than `gpuType`.
             A commitment covers only its own GPU type.
         gpusPerWorker:
           type: integer
@@ -6091,10 +7915,26 @@ components:
           type: integer
           format: int32
           minimum: 1
+          description: >
+            Seconds an app at `minWorkers` 0 waits after its last task before it scales to zero, removing every
+            worker still running. `scalingDelaySecs` can remove workers above one sooner.
+            It has no effect while `minWorkers` is above 0: `scalingDelaySecs` alone decides when workers above
+            `minWorkers` are removed.
+            Omit to leave unchanged.
         scalingDelaySecs:
           type: integer
           format: int32
           minimum: 1
+          description: >
+            Seconds demand must stay below the running worker count before workers are removed.
+            Delays scale-down only; scale-up does not wait for it.
+            Values below 90 act as 90, so workers are not removed on one low reading while work is still queued.
+            Scale-up waits until demand has stayed above the running workers for 60 seconds.
+            At `minWorkers` 0, demand with no worker serving and no task taken in the last 5 seconds is one worker,
+            so an app woken from zero runs one worker until that worker serves its first task.
+            Otherwise, while the workers take fewer than two tasks from the queue in 5 seconds, as with long tasks
+            on few workers, demand is one worker per queued task, up to `maxWorkers`.
+            Raise `minWorkers` to serve a burst without the 60-second wait: `minAvailableWorkers` adds workers only while work is queued.
         requestTimeoutSecs:
           type: integer
           format: int32
@@ -6185,7 +8025,7 @@ components:
             - $ref: '#/components/schemas/VersionChanges'
           nullable: true
           description: >
-            Structured diff against the previous version.
+            Structured diff against the previous version number, not the version `activeVersionId` names.
             Null on version 1.
         createdAt:
           type: string
@@ -6195,7 +8035,7 @@ components:
       type: object
       additionalProperties: false
       description: >
-        How this version differs from the previous one.
+        How this version differs from the previous version number, not from the version `activeVersionId` names.
         Environment-variable *values* never appear, only keys, so a secret-bearing env var cannot leak through
         the versions list.
         Numeric worker-config fields are rendered as decimal-free integer strings (the same spelling the event
@@ -6271,7 +8111,7 @@ components:
       type: object
       description: >
         One observed step of a build, in execution order.
-        The phase list is open: which phases a build reports depends on its kind and on how it ran, so clients
+        The phase list is open: which phases a build reports depends on `source.type` and on how it ran, so clients
         must not assume a fixed set of names or a fixed count.
       required:
         - name
@@ -6284,7 +8124,7 @@ components:
             Phase identifier, e.g.
             `prepare`, `build`, `index`.
             Deliberately not an enum.
-            New build kinds report new phases without a contract change.
+            A new source type reports new phases without a contract change.
         startedAt:
           type: string
           format: date-time
@@ -6304,9 +8144,9 @@ components:
       type: object
       description: >
         Details of a build.
-        Both source types build, and `kind` says which pipeline ran: a `code` submission or a customer's own
+        Both source types build, and `source.type` says which pipeline ran: a `code` submission or a customer's own
         wrapper Dockerfile.
-        Phase lists differ by kind, so never assume a fixed one.
+        Phase lists differ by `source.type`, so never assume a fixed one.
         `listBuilds` and `getBuild` return this same shape.
 
 
@@ -6315,6 +8155,10 @@ components:
         - `error` is null while the build is running (`queued`, `building`), on success
           (`ready`), and on `superseded` (a newer version took over: the `status` conveys
           that, and it is not a failure). It is present only on `failed`.
+
+        - `failureSlug` is null in every status except a `failed` build the platform
+          classified. A failure it did not classify leaves `error` as the fixed reason
+          and `failureSlug` null.
 
         - `completedAt` and `durationMs` are null while the build is running and set once it
           reaches a terminal status (`ready`/`failed`/`superseded`). They are also null for
@@ -6374,6 +8218,15 @@ components:
           type: string
           nullable: true
           description: Error message or failure reason. Null when the build is still running or succeeded.
+        failureSlug:
+          type: string
+          nullable: true
+          maxLength: 64
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          description: >
+            Class of a failed build, when the platform classified it.
+            Null while the build is running, on success, on `superseded`, and on a
+            failure that was not classified. `error` stays the failure reason either way.
         exitCode:
           type: integer
           format: int32
@@ -6393,7 +8246,11 @@ components:
             requirements, and the output of the steps that install the declared requirements or, for a
             container source, run the Dockerfile.
             Output of the platform's own build steps is never included, on successful and failed builds alike.
-            A failed build's tail always says why. When the platform ended the build, it ends with one line
+            A failed build's tail always says why. When the build failed in a step that runs your code
+            and its log could not be read in time, it keeps the output shown while the build ran and ends
+            with one line saying that the build failed and its log could not be read in time. A build that succeeded
+            while its log could not be read in time keeps the output shown while it ran, so its last
+            lines may be missing. When the platform ended the build, it ends with one line
             stating the cause: out of memory, an eviction for memory or disk, preemption, a build machine that
             was drained or became unavailable, its time limit, or a kill the machine gave no reason for; when
             the build was taken off its machine and nothing is left to say how, the line says that the platform
@@ -6414,6 +8271,20 @@ components:
             While the build runs it is the output so far under the same rules, refreshed as the build proceeds, and it
             carries no line about a failure.
             Null until the build has written output of that kind.
+        sourceImages:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/SourceImage'
+          description: >
+            Registry images this build was pinned to, in the order the Dockerfile
+            or the code baseImage named them.
+            A tag is recorded as the linux/amd64 image digest. A reference the
+            customer already pinned is recorded as written, which may be a
+            multi-platform index digest. A bind `RUN --mount` `from` and an `ADD --from` are pinned the
+            same way. A cache, secret, ssh or tmpfs mount names no registry image.
+            Null when nothing was pinned: a code base the anonymous resolver could
+            not read, or a build recorded before pins were stored.
         durationMs:
           type: integer
           format: int64
@@ -6441,6 +8312,23 @@ components:
             When the build reached a terminal status (`ready`/`failed`/`superseded`).
             Null while running or for terminal builds recorded before this was tracked.
 
+    SourceImage:
+      type: object
+      description: One registry image a build was pinned to.
+      required:
+        - reference
+        - digest
+      properties:
+        reference:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: The image reference the customer wrote.
+        digest:
+          type: string
+          pattern: '^sha256:[a-f0-9]{64}$'
+          description: Digest the build pulls for `reference`.
+
     BuildSource:
       type: object
       description: >
@@ -6454,9 +8342,9 @@ components:
         type:
           type: string
           description: >
-            The kind of source that produced this build: `code` or `container`, straight from the build record.
-            Build phases differ by kind, so clients must not assume a fixed phase list.
-            Not modeled as an enum so adding a kind later does not churn the existing source-type constants
+            Which pipeline produced this build: `code` or `container`, straight from the build record.
+            Build phases differ by this value, so clients must not assume a fixed phase list.
+            Not modeled as an enum so adding a source type later does not churn the existing source-type constants
             this API shares.
 
     TriggeredBy:
@@ -6562,15 +8450,22 @@ components:
       properties:
         baseImage:
           type: string
+          maxLength: 512
+          pattern: '^(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*:[0-9]+|[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+(:[0-9]+)?|\[(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:(:[0-9a-fA-F]{1,4}){1,6}|:((:[0-9a-fA-F]{1,4}){1,7}|:))\](:[0-9]+)?)/)?[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(\/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?(@sha256:[a-f0-9]{64})?$'
           description: >
-            Base image of the served image, e.g.
-            `python:3.12-slim`.
+            Base image of the served image, as an image reference
+            `[host[:port]/]name[:tag][@sha256:digest]`, e.g. `python:3.12-slim`.
+            The repository name must be 2 to 255 characters, excluding the host, tag and digest.
             It must provide `python` 3.12 or newer on its PATH, and the build fails if it does not.
             The build imports the model file under Python 3.12.
             If the `.python-version` or the `requires-python` of `pyproject.toml` in the codebase excludes
             3.12, the build uses a version that it permits.
             The Python of the base image must then also be one that they permit, and a `.python-version` sets
             the oldest one.
+            A port other than 443, or an image with no linux/amd64 child, is refused with 422, and a registry
+            that does not answer is refused with 503.
+            An exact `python:3.12-slim` is not looked up when its platform base image is already published, so
+            a registry outage does not refuse that request.
         requirements:
           type: array
           items:
@@ -6768,7 +8663,7 @@ components:
             - $ref: '#/components/schemas/GpuTypeId'
           nullable: true
           description: >
-            GPU catalogue code of the type the pod was observed on.
+            GPU catalog code of the type the pod was observed on.
             It differs from `configuration.gpuType` when the worker was placed on `fallbackGpuType`, and also when the worker still runs an earlier configuration.
             Omitted until a GPU snapshot exists (the worker is still unscheduled, or the observation could not read a type).
             Not a CPU-worker marker. CPU workloads are not supported.
@@ -6799,6 +8694,25 @@ components:
         updatedAt:
           type: string
           format: date-time
+        mounts:
+          type: array
+          x-internal: true
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/VolumeWorkerMount'
+          description: >
+            The Shared Volumes this worker mounts, each with the digest of the files it prepared when it
+            started.
+            A running worker keeps the files it started with until it stops, so after an upload the workers
+            of one app can show different digests: those started before it the old one, those started after
+            it the new one.
+            A checkpoint is restored only on the same digests, mount paths and modes; otherwise the worker
+            cold-starts.
+            Omitted when the worker mounts no Shared Volume.
+          example:
+            - name: model-weights
+              mountPath: /mnt/models
+              manifestSha256: 9f2c4e1a7b3d5f8e0c6a2b4d1e3f5a7c9b0d2e4f6a8c1b3d5e7f9a0c2e4b6d8f
 
     Secret:
       type: object
@@ -6863,6 +8777,7 @@ components:
         Both reach the app as environment variables.
         Only one value can reach the app under a name.
         Reserved platform names are rejected as on `SecretName`.
+        A `registry` secret is refused with `422` `secret-not-attachable`.
       required:
         - secretName
       properties:
@@ -6879,6 +8794,178 @@ components:
             The server resolves and stores the final name.
             Same reserved-name rules as `SecretName` (`422` if reserved).
             The resolved name must also not collide with a plain environment variable key on this app (`422`).
+
+    OidcConnectorName:
+      type: string
+      description: OIDC connector name, unique within the organization. `site-store` is reserved for a platform connector.
+      minLength: 2
+      maxLength: 63
+      pattern: '^[a-z][a-z0-9-]{0,61}[a-z0-9]$'
+
+    OidcConnectorKind:
+      type: string
+      description: The provider an OIDC connector authenticates to. Fixed once created.
+      enum:
+        - aws
+        - gcp
+        - generic
+      # Prefixed so the Go constants do not collide with SecretType's "generic".
+      x-enum-varnames:
+        - OidcConnectorKindAws
+        - OidcConnectorKindGcp
+        - OidcConnectorKindGeneric
+
+    OidcConnectorAudience:
+      type: string
+      description: >
+        The token's `aud`.
+        Defaults to `runware:<organization uuid>` for `aws`, one value per organization, which the IAM
+        OIDC provider must list as a client ID.
+        An audience that starts with `runware:` is reserved: only the organization's own
+        `runware:<organization uuid>` is accepted, and any other returns `422`.
+        Always `//iam.googleapis.com/<workloadIdentityProvider>` for `gcp`, the audience Google's STS
+        expects; any other value returns `422`.
+        Required for `generic`.
+      minLength: 1
+      maxLength: 256
+      pattern: '^\S+$'
+
+    OidcConnectorAws:
+      type: object
+      additionalProperties: false
+      required:
+        - roleArn
+      properties:
+        roleArn:
+          type: string
+          maxLength: 2048
+          pattern: '^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,512}$'
+          description: >
+            The IAM role the worker assumes through `AssumeRoleWithWebIdentity`.
+            Its trust policy names this platform's issuer as a federated principal.
+
+    OidcConnectorGcp:
+      type: object
+      additionalProperties: false
+      required:
+        - workloadIdentityProvider
+      properties:
+        workloadIdentityProvider:
+          type: string
+          maxLength: 512
+          pattern: '^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]{4,32}/providers/[a-z0-9-]{4,32}$'
+          description: The Workload Identity Federation provider's full resource name.
+        serviceAccountEmail:
+          type: string
+          maxLength: 256
+          pattern: '^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\.iam\.gserviceaccount\.com$'
+          description: >
+            A service account to impersonate after the exchange.
+            Omitted, the federated principal is granted access directly.
+
+    OidcConnectorCreate:
+      type: object
+      additionalProperties: false
+      description: >
+        A new OIDC connector.
+        `aws` is required for, and only allowed on, `kind: aws`; `gcp` likewise for `kind: gcp`.
+      required:
+        - name
+        - kind
+      properties:
+        name:
+          $ref: '#/components/schemas/OidcConnectorName'
+        kind:
+          $ref: '#/components/schemas/OidcConnectorKind'
+        audience:
+          $ref: '#/components/schemas/OidcConnectorAudience'
+        aws:
+          $ref: '#/components/schemas/OidcConnectorAws'
+        gcp:
+          $ref: '#/components/schemas/OidcConnectorGcp'
+
+    OidcConnectorUpdate:
+      type: object
+      additionalProperties: false
+      description: >
+        The connector's new configuration, replacing the old one.
+        The name and `kind` cannot change; the provider block must match the kind.
+      properties:
+        audience:
+          $ref: '#/components/schemas/OidcConnectorAudience'
+        aws:
+          $ref: '#/components/schemas/OidcConnectorAws'
+        gcp:
+          $ref: '#/components/schemas/OidcConnectorGcp'
+
+    OidcConnector:
+      type: object
+      description: An OIDC connector. It holds no secret.
+      required:
+        - id
+        - name
+        - kind
+        - audience
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          $ref: '#/components/schemas/OidcConnectorName'
+        kind:
+          $ref: '#/components/schemas/OidcConnectorKind'
+        audience:
+          $ref: '#/components/schemas/OidcConnectorAudience'
+        aws:
+          $ref: '#/components/schemas/OidcConnectorAws'
+        gcp:
+          $ref: '#/components/schemas/OidcConnectorGcp'
+        issuer:
+          type: string
+          description: >
+            The token's `iss`: the URL a provider fetches the issuer's discovery document and keys from.
+            Register it as the OIDC identity provider (AWS) or the provider's issuer (GCP).
+            Absent where this environment has no OIDC issuer.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AppOidcConnector:
+      description: An OIDC connector attached to an app, with the subject its workers' tokens carry.
+      allOf:
+        - $ref: '#/components/schemas/OidcConnector'
+        - type: object
+          required:
+            - subject
+            - subjectPattern
+          properties:
+            subject:
+              type: string
+              description: >
+                The exact `sub` of this app's tokens in the environment addressed, for a `StringEquals`
+                trust condition: `worker:org:<organization uuid>:env:<environment uuid>:app:<app id>`.
+                An app id deleted and created again in the same environment has the same one.
+              example: "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:app:my-app"
+            subjectPattern:
+              type: string
+              description: >
+                A `StringLike` condition that matches every app of the organization in this environment and
+                nothing in another environment, `worker:org:<organization uuid>:env:<environment uuid>:*`.
+              example: "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:*"
+
+    OidcConnectorAttach:
+      type: object
+      additionalProperties: false
+      required:
+        - connectorName
+      properties:
+        connectorName:
+          $ref: '#/components/schemas/OidcConnectorName'
 
     SecretCreate:
       type: object
@@ -6904,10 +8991,24 @@ components:
             Cloud KMS measures UTF-8 bytes, so the server also rejects a value whose UTF-8 encoding exceeds
             65536 bytes with `422`, a rule this schema cannot express alone (multi-byte characters can pass `maxLength` and still
             overrun the KMS limit).
+            A `registry` value is a Docker `config.json`; what that document may contain, and what `422` refuses, is on `SecretType`.
         metadata:
           type: object
           additionalProperties: true
           nullable: true
+        environments:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/EnvironmentName'
+          description: >
+            The environments to create this secret in, one secret per environment, all with this value.
+            Only on a `POST /v1/secret-batches` item, and only when the request does not name `environment`;
+            then every item names its own.
+            `POST /v1/secrets` returns `422` when it is set.
+            An environment the organization does not have returns `404`, and nothing is created.
 
     SecretUpdate:
       type: object
@@ -6932,7 +9033,7 @@ components:
       type: object
       additionalProperties: false
       description: >
-        One request that creates many secrets in one environment.
+        One request that creates many secrets, in one environment or in the environments each item names.
         The batch is atomic.
       required:
         - secrets
@@ -6943,12 +9044,41 @@ components:
           maxItems: 100
           description: >
             Secrets to create.
-            The response lists them in this order.
-            At most 100.
+            The response lists them in this order, an item once per environment it names.
+            At most 100, and at most 200 secrets written in all (`422` beyond that).
             The request body is still capped at 1 MiB, which is what limits how many large values fit.
             Each item has the same fields and the same 64 KiB value ceiling as `SecretCreate`.
           items:
             $ref: '#/components/schemas/SecretCreate'
+
+    SecretCopy:
+      type: object
+      additionalProperties: false
+      required:
+        - targetEnvironments
+      properties:
+        targetEnvironments:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/EnvironmentName'
+          description: The environments to create a copy in, one secret in each.
+
+    SecretCopies:
+      type: object
+      additionalProperties: false
+      description: >
+        Secrets created by one copy, in the order `targetEnvironments` lists them.
+        Encrypted values are never returned.
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Secret'
 
     SecretBatch:
       type: object
@@ -7091,7 +9221,7 @@ components:
       type: string
       description: >
         One grouping a usage summary can be aggregated by.
-      enum: [app, gpuType, day, coverage]
+      enum: [app, gpuType, day, hour, coverage]
 
     UsageCoverage:
       type: string
@@ -7099,7 +9229,10 @@ components:
         Which commercial capacity paid for a span of GPU time.
         `commitment` is covered by reserved capacity and collects nothing from pay-as-you-go.
         `payg` is concurrency above the commitment, or usage with no commitment behind it.
-      enum: [commitment, payg]
+        `platform` is paid for by Runware: time of the workers a platform runtime update started, beyond
+        the replicas the app asks for, while the update still replaced the app's older workers.
+        It collects nothing.
+      enum: [commitment, payg, platform]
 
     UsageRegion:
       type: string
@@ -7136,9 +9269,16 @@ components:
           type: string
           format: date
           description: >
-            UTC calendar day.
+            Calendar date in the requested timezone, UTC by default.
             Present when grouped by `day`.
-            A span crossing midnight is divided between the two days it ran on.
+            A span crossing local midnight is divided between the dates it ran on.
+        hour:
+          type: string
+          format: date-time
+          description: >
+            Actual start of the local clock-hour occurrence, serialized in UTC.
+            Present when grouped by `hour`. It can precede `from` for a partial first bucket.
+            Repeated hours have distinct starts, and an offset transition can start a partial hour.
         coverage:
           allOf:
             - $ref: '#/components/schemas/UsageCoverage'
@@ -7152,7 +9292,7 @@ components:
             A worker holding four GPUs for one second contributes four thousand.
             Under billing policy `serverless-billing-v3` every span is counted in whole milliseconds rounded
             up, so a span shorter than a millisecond counts as one; usage recorded under an earlier policy keeps
-            the count it was recorded under. A span that crosses midnight is divided so that its days sum to
+            the count it was recorded under. A span crossing calendar boundaries is divided so its buckets sum to
             the span's own count.
         paygSpend:
           allOf:
@@ -7160,13 +9300,13 @@ components:
           description: >
             Provisional pay-as-you-go accrual for this time, excluding finalization rounding and ledger
             adjustments.
-            Zero for time a commitment covered.
+            Zero for time a commitment or the platform covered.
         paygEquivalentValue:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
           description: >
             The same time priced at the catalog rate, whatever covered it.
-            The difference from `paygSpend` is what reserved capacity saved.
+            The difference from `paygSpend` is what reserved capacity saved and what the platform paid for.
 
     UsageSummary:
       type: object
@@ -7248,6 +9388,10 @@ components:
         allocation between them and neither can claim it alone.
 
 
+        GPUs and time that the platform paid for during a runtime update are in neither the covered nor the
+        pay-as-you-go figures; the usage summary reports them under `platform`.
+
+
         The fixed commitment charge is not reported here.
         Serverless meters usage.
         The commerce system invoices that charge from the contract schedule.
@@ -7316,7 +9460,9 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: GPU time in this scope over the period that the reservation did not cover.
+          description: >
+            GPU time in this scope over the period that the reservation did not cover and pay-as-you-go
+            charged for.
         paygSpend:
           allOf:
             - $ref: '#/components/schemas/MoneyAmount'
@@ -7397,6 +9543,58 @@ components:
 
     AppEvent:
       type: object
+      description: >
+        A recorded fact about an app.
+        A `deploy` message says where a rollout is. It does not say which worker is answering a task.
+        The sentences below are the ones a client polls for. The list is not exhaustive.
+
+
+        `deploy accepted: rolling to version N` means the rollout was accepted.
+        `activeVersionId` already names version N.
+        A secret change records `secret change accepted: rolling to pick up the updated secret configuration`
+        instead, and an OIDC connector change records
+        `OIDC connector change accepted: rolling to pick up the updated connector configuration`.
+        Neither moves `activeVersionId`: the roll reapplies the version already pinned.
+        That roll ends with the same `version N applied; waiting for M keep-warm worker(s) to be able to serve`
+        and `version N deployed; app is active` messages, for the already-pinned N.
+
+
+        `version N recorded while stopped; rolls out on resume` means the pin moved and nothing is rolling.
+        `stopped` means no workers are running. The same sentence with `stopping` means workers are still
+        draining. Resume applies that version either way.
+
+
+        `version N applied; waiting for M keep-warm worker(s) to be able to serve` means the workload is
+        applied and activation is waiting for that keep-warm floor.
+        It is written only when the floor is above 0.
+
+
+        `version N deployed; app is active` means the rollout activated.
+        When the keep-warm floor is 0 it is written when the apply is accepted.
+        A worker that is already running is replaced then: the rolling update starts the new worker at once,
+        and the old one keeps answering until the new one is ready.
+        With no worker running there is no old process for a task to reach, and the first task is what starts
+        one.
+        When the floor is above 0 it is written once that many workers of version N can serve.
+        Old and new workers share the app's task queue until the old ones stop.
+        A task in flight on a stopping worker is requeued.
+
+
+        A failed roll records `deploy of version N failed (…); the previous version keeps serving` or
+        `deploy of version N failed (…); app marked failed`.
+        After the first, `activeVersionId` names the version that kept serving.
+        A platform re-render records `Platform runtime updated; version unchanged.` or
+        `Platform runtime update did not become ready; version unchanged.`
+
+
+        Which process can answer is on `GET /v1/apps/{appId}/workers?versionId=all`.
+        The default workers page follows `activeVersionId` and hides an older version that is still running.
+        A new version is serving once a worker of that version is `ready` or `busy` and the previous version's
+        workers are `draining`, `stopping` or `stopped`.
+        A secret or connector change does not change the version.
+        `createdAt` on a worker is when its row was recorded. It is not proof the new secret or connector is
+        serving: the accept event precedes the template apply, so a worker created after it can still be on
+        the previous configuration.
       required:
         - id
         - appId
@@ -7489,11 +9687,34 @@ components:
           description: >
             Extension member.
             Present when the rejection names the fields it refused: on a `422`, on a `400` for a parameter
-            or a `container.yaml` that could not be parsed, and on a `409` from `POST /v1/secret-batches`
-            when one or more names are already taken.
+            or a `container.yaml` that could not be parsed, and on a `409` from `POST /v1/secret-batches` or
+            `POST /v1/secrets/{secretName}/copy` when one or more names are already taken.
             One entry per field.
           items:
             $ref: '#/components/schemas/ProblemError'
+        limit:
+          type: string
+          x-internal: true
+          description: The violated Shared Volume limit on a volume-limit-exceeded conflict.
+        cap:
+          type: integer
+          format: int64
+          x-internal: true
+          description: The organization's effective cap for the named limit.
+        current:
+          type: integer
+          format: int64
+          x-internal: true
+          description: The current value considered by Shared Volume admission.
+        requested:
+          type: integer
+          format: int64
+          x-internal: true
+          description: The requested value or increase, as identified by requestedIsIncrement.
+        requestedIsIncrement:
+          type: boolean
+          x-internal: true
+          description: Whether requested is an increase to current rather than an absolute value.
         shortfall:
           # allOf so the description is not a sibling of $ref (ignored in OAS 3.0).
           allOf:
@@ -7529,6 +9750,7 @@ components:
             in the request body itself: a container source's `container.yaml`.
             On such a rejection `pointer` names where the archive sat in the request body and this member
             names the field inside the document.
+            A Dockerfile line uses the same member, as `/Dockerfile/line/{n}` with n 1-based.
             A rejection about the archive rather than the document carries no `configPointer`, because nothing
             was parsed.
           example: /endpoints/0/path

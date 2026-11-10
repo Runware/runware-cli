@@ -159,6 +159,8 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
 
 	cmd := NewCmd(log.New(io.Discard))
+	// The root command owns --format; stand in for it so a test can pass it.
+	cmd.PersistentFlags().String("format", "", "")
 	var cobraOutput bytes.Buffer
 	cmd.SetOut(&cobraOutput)
 	cmd.SetErr(&cobraOutput)
