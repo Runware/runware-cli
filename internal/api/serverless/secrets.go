@@ -28,7 +28,9 @@ type SecretUpdate = gen.SecretUpdate
 // SecretType is the kind of secret.
 type SecretType = gen.SecretType
 
-// SecretTypeGeneric is the only supported secret type (environment-variable secrets).
+// SecretTypeGeneric is an environment-variable secret, unsealed into the
+// worker's environment when attached to an app. The API also has registry
+// secrets (Docker credentials), which cannot be attached to an app.
 const SecretTypeGeneric SecretType = gen.Generic
 
 // ListSecretsParams are optional filters for ListSecrets.

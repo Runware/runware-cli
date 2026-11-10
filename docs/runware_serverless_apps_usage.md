@@ -24,6 +24,10 @@ is four seconds. PAYG spend is provisional and not a settled charge; the
 PAYG-equivalent value prices the same time at the catalog rate whatever
 covered it, so the difference is what reserved capacity saved.
 
+Coverage is commitment (reserved capacity), payg, or platform: time Runware
+pays for while a platform runtime update replaces an app's workers, which
+collects nothing.
+
 Grouping by day splits a span at UTC midnight. The table ends with a Total row
 and prints the resolved window to stderr; json and yaml output the API payload.
 

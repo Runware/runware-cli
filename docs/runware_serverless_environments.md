@@ -11,9 +11,10 @@ A command without --env addresses RUNWARE_ENV, else the config's environment,
 else production.
 
 An environment can cap the workers and GPUs it holds, set a monthly budget with
-alert thresholds, and pause its workers once the budget is reached. A cap it
-does not set is inherited from the organization defaults (see
-'environments defaults').
+alert thresholds, and pause once the budget is reached: a paused environment
+stops its apps and refuses invocations until the budget is raised past the
+spend or the UTC month turns. A cap it does not set is inherited from the
+organization defaults (see 'environments defaults').
 
 ```
 runware serverless environments [flags]
