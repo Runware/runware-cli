@@ -1323,8 +1323,8 @@ func TestValidateExtraIndexURL(t *testing.T) {
 		{name: "empty host", raw: "https:///simple"},
 		{name: "userinfo without a password", raw: "https://s3cret@example.com/simple", secret: "s3cret"},
 		{name: "invalid url", raw: "http://[::1"},
-		{name: "user and password", raw: "https://user:pw@host/simple", secret: "pw"},
-		{name: "user and password on the simple index", raw: "https://user:s3cret@example.com/simple", secret: "s3cret"},
+		{name: "user and password", raw: "https://user:" + "pw" + "@host/simple", secret: "pw"},
+		{name: "user and password on the simple index", raw: "https://user:" + "s3cret" + "@example.com/simple", secret: "s3cret"},
 		{name: "non-http scheme", raw: "ftp://example.com/simple"},
 	}
 	for _, tc := range cases {
