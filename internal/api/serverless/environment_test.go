@@ -472,13 +472,24 @@ func TestWithEnvironmentLeavesTheOriginalClientUnscoped(t *testing.T) {
 // unwrappedOperations take an environment in the spec but have no client
 // wrapper, so no command can send them.
 var unwrappedOperations = []string{
+	"AttachAppOidcConnector",
+	"CopySecret",
 	"CreateSecretBatch",
+	"CreateVolume",
+	"DeleteVolume",
+	"DetachAppOidcConnector",
 	"FavoriteApp",
 	"GetAppSummary",
 	"GetMetricSeries",
+	"GetVolume",
+	"GetVolumeReferences",
+	"ListAppOidcConnectors",
+	"ListVolumeFiles",
+	"ListVolumes",
 	"StartDefaultAsyncTask",
 	"StartDefaultSyncTask",
 	"UnfavoriteApp",
+	"UpdateVolume",
 }
 
 // environmentOperations are the generated operations whose params carry an

@@ -37,7 +37,7 @@ runware serverless environments create <name> [flags]
   -h, --help                  help for create
       --max-gpus int32        Cap on the GPUs the environment holds
       --max-workers int32     Cap on the workers the environment holds
-      --pause-at-budget       Scale the environment's workers to zero once the budget is reached
+      --pause-at-budget       Pause the environment once its monthly spend reaches the budget: stop its apps and refuse invocations until the budget is raised or the UTC month turns
 ```
 
 ### Options inherited from parent commands
