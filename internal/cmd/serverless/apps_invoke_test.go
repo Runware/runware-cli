@@ -70,6 +70,40 @@ func TestReadTaskPayload_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestInvokeWaitMessage(t *testing.T) {
+	depth := int64(4)
+	zero := int64(0)
+	const taskID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+	again := "To wait on it again, run the same command with --sync or --wait and --task-id " + taskID + "."
+	cases := []struct {
+		name  string
+		depth *int64
+		want  string
+	}{
+		{
+			name: "unknown depth",
+			want: "Task " + taskID + " is pending (queued or running). Polling it. " + again,
+		},
+		{
+			name:  "known depth",
+			depth: &depth,
+			want:  "Task " + taskID + " is pending (queued or running). Polling it. App queue depth: 4. " + again,
+		},
+		{
+			name:  "empty queue",
+			depth: &zero,
+			want:  "Task " + taskID + " is pending (queued or running). Polling it. App queue depth: 0. " + again,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := invokeWaitMessage(taskID, tc.depth); got != tc.want {
+				t.Fatalf("invokeWaitMessage() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTaskFailedErr(t *testing.T) {
 	if err := taskFailedErr(&serverlessapi.Task{Status: serverlessapi.TaskStatusCompleted}); err != nil {
 		t.Fatalf("completed: %v", err)
