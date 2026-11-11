@@ -150,6 +150,14 @@ func runServerlessAnswering(t *testing.T, stdin string, args ...string) serverle
 
 func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, args ...string) serverlessRun {
 	t.Helper()
+	return runServerlessFormatted(t, handler, stdin, "", args...)
+}
+
+// runServerlessFormatted runs `serverless <args>` as runServerlessWith does,
+// with the root --format flag set to format when it is not empty. A formatted
+// run silences Cobra's own error and usage output, as the real root does.
+func runServerlessFormatted(t *testing.T, handler http.HandlerFunc, stdin io.Reader, format output.Format, args ...string) serverlessRun {
+	t.Helper()
 	rec := &requestRecorder{
 		handler: handler,
 	}
@@ -159,6 +167,13 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
 
 	cmd := NewCmd(log.New(io.Discard))
+	if format != "" {
+		cmd.PersistentFlags().String("format", string(format), "")
+		// Silenced as the real root is, so cobraOutput holds only what the
+		// command wrote beside the error the CLI prints.
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+	}
 	var cobraOutput bytes.Buffer
 	cmd.SetOut(&cobraOutput)
 	cmd.SetErr(&cobraOutput)

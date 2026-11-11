@@ -24,9 +24,10 @@ generate one. Resubmitting the same id returns the task it already names
 instead of starting a second run.
 
 When no response arrives (a dropped connection, a body that cannot be read,
-or a server error from a proxy such as Cloudflare), the command prints the
-task id it sent and how to read it. With --sync or --wait it polls that id
-instead, so a run the worker finished is neither lost nor run again.
+or a server error from a proxy such as Cloudflare), the command fails with
+code responseLost, the task id it sent in taskUUID, and how to read that
+task. With --sync or --wait it polls that id first, so a run the worker
+finished is neither lost nor run again.
 
 ```
 runware serverless apps invoke <appId> <endpointPath> [flags]

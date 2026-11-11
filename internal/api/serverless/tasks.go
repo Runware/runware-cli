@@ -206,15 +206,10 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 }
 
 // responseLost wraps err, an invocation failure that leaves unknown whether
-// the API accepted the task, with the task id the request carried. The id is
-// also set on a wrapped API error so structured error output carries it.
+// the API accepted the task, with the task id the request carried.
 func responseLost(taskID uuid.UUID, err error) error {
-	id := taskID.String()
-	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
-		re.TaskUUID = id
-	}
 	return &ResponseLostError{
-		TaskID: id,
+		TaskID: taskID.String(),
 		Err:    err,
 	}
 }

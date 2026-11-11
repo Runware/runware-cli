@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -47,9 +48,10 @@ generate one. Resubmitting the same id returns the task it already names
 instead of starting a second run.
 
 When no response arrives (a dropped connection, a body that cannot be read,
-or a server error from a proxy such as Cloudflare), the command prints the
-task id it sent and how to read it. With --sync or --wait it polls that id
-instead, so a run the worker finished is neither lost nor run again.`,
+or a server error from a proxy such as Cloudflare), the command fails with
+code responseLost, the task id it sent in taskUUID, and how to read that
+task. With --sync or --wait it polls that id first, so a run the worker
+finished is neither lost nor run again.`,
 		Example: `  # list endpoint paths, then invoke asynchronously
   runware serverless apps endpoints my-app
   runware serverless apps invoke my-app infer -f payload.json
@@ -87,19 +89,22 @@ instead, so a run the worker finished is neither lost nor run again.`,
 				task, err = client.InvokeAsync(cmd.Context(), appID, endpointPath, taskID, payload)
 			}
 			if lost, ok := errors.AsType[*serverlessapi.ResponseLostError](err); ok {
-				polling := (sync || wait) && waitCtx.Err() == nil
-				if !polling {
-					spin.Stop()
-				}
 				showCmd := taskShowCommand(cmd, appID, lost.TaskID)
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), lostResponseMessage(lost.TaskID, showCmd, polling))
-				if polling {
-					spin.SetMessage(fmt.Sprintf("Waiting for task %s...", lost.TaskID))
-					task, err = client.WaitTask(waitCtx, appID, lost.TaskID, pollInterval)
-					if err != nil {
-						spin.Stop()
-						return waitTimeoutErr(waitCtx, err, "task "+lost.TaskID, timeout)
-					}
+				cause := waitTimeoutErr(waitCtx, lost.Err, "sync invocation", timeout)
+				if polling := (sync || wait) && waitCtx.Err() == nil; !polling {
+					spin.Stop()
+					return newLostInvokeError(lost.TaskID, showCmd, cause, nil)
+				}
+				// A JSON or YAML error is the whole of stderr, so only table
+				// output gets a note ahead of it.
+				if cmdutil.FormatFor(cmd) == output.FormatTable {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Task %s may have started, but no response confirmed it. Polling it...\n", lost.TaskID)
+				}
+				spin.SetMessage(fmt.Sprintf("Waiting for task %s...", lost.TaskID))
+				task, err = client.WaitTask(waitCtx, appID, lost.TaskID, pollInterval)
+				if err != nil {
+					spin.Stop()
+					return newLostInvokeError(lost.TaskID, showCmd, cause, waitTimeoutErr(waitCtx, err, "task "+lost.TaskID, timeout))
 				}
 			}
 			if err != nil {
@@ -194,19 +199,52 @@ func taskShowCommand(cmd *cobra.Command, appID, taskID string) string {
 	return serverlessCommand(choice.name, choice.defaultEnvironment, "apps", "tasks", "show", appID, taskID)
 }
 
-// lostResponseMessage is printed when no response said whether an invoke
-// started. It names the task id the request carried and the two ways to reach
-// that task without starting a second run. polling says the command is about
-// to poll the task itself.
-func lostResponseMessage(taskID, showCmd string, polling bool) string {
-	status := ""
-	if polling {
-		status = " Polling it."
+// lostResponseCode is the error code of an invoke no response confirmed.
+// Scripts read the task id beside it in taskUUID.
+const lostResponseCode = "responseLost"
+
+// lostInvokeError is how an invoke fails when no response confirmed its task
+// and polling did not recover it. Its *transport.RunwareError gives JSON and
+// YAML output the code and task id as fields, and it unwraps to its causes
+// too, so an interrupt still reads as one.
+type lostInvokeError struct {
+	api    *transport.RunwareError
+	causes []error
+}
+
+func (e *lostInvokeError) Error() string { return e.api.Message }
+
+func (e *lostInvokeError) Unwrap() []error {
+	return append([]error{e.api}, e.causes...)
+}
+
+// newLostInvokeError reports that task taskID may have started. cause is why
+// no response confirmed it, and pollErr, when not nil, why polling it failed.
+// The message ends with how to reach the task without a second run; an API
+// error in cause lends its status and problem type.
+func newLostInvokeError(taskID, showCmd string, cause, pollErr error) error {
+	msg := fmt.Sprintf("task %s may have started, but no response confirmed it: %v", taskID, cause)
+	causes := []error{cause}
+	if pollErr != nil {
+		msg += fmt.Sprintf("\npolling it failed: %v", pollErr)
+		causes = append(causes, pollErr)
 	}
-	return fmt.Sprintf(
-		"No response arrived for task %s, so it may have started.%s\nRead it with: %s\nOr run the same invoke with --task-id %s: it returns that task instead of starting a second run.",
-		taskID, status, showCmd, taskID,
-	)
+	msg += fmt.Sprintf("\nRead it with: %s\nOr run the same invoke with --task-id %s: it returns that task instead of starting a second run.", showCmd, taskID)
+
+	details := transport.RunwareErrorDetails{
+		TaskUUID: taskID,
+	}
+	var problemType string
+	if re, ok := errors.AsType[*transport.RunwareError](cause); ok {
+		details.StatusCode = re.StatusCode
+		problemType = re.ProblemType
+	}
+	api := transport.CreateRunwareError(lostResponseCode, msg, details)
+	api.ProblemType = problemType
+	return &lostInvokeError{
+		api:    api,
+		causes: causes,
+	}
 }
 
 func taskFailedErr(task *serverlessapi.Task) error {

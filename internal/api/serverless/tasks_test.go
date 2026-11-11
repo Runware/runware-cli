@@ -447,17 +447,27 @@ func TestInvoke_LostResponseNamesAGeneratedTaskID(t *testing.T) {
 	}
 }
 
-func TestInvoke_LostResponseCarriesTheTaskOnTheAPIError(t *testing.T) {
-	err := invokeAgainst(t, invokeMethods[0], answerProblem(http.StatusBadGateway, "https://docs.runware.ai/serverless/errors#bad-gateway"), testTaskID)
+func TestInvoke_LostResponseKeepsTheAPIProblem(t *testing.T) {
+	const badGateway = "https://docs.runware.ai/serverless/errors#bad-gateway"
+	err := invokeAgainst(t, invokeMethods[0], answerProblem(http.StatusBadGateway, badGateway), testTaskID)
+	if _, ok := errors.AsType[*ResponseLostError](err); !ok {
+		t.Fatalf("err = %v, want a *ResponseLostError", err)
+	}
 	re, ok := errors.AsType[*transport.RunwareError](err)
 	if !ok {
-		t.Fatalf("err = %v, want a *transport.RunwareError inside", err)
+		t.Fatalf("err = %v, want the API problem inside", err)
 	}
-	if re.TaskUUID != testTaskID || re.StatusCode != http.StatusBadGateway {
-		t.Fatalf("TaskUUID = %q, status = %d; want %q, 502", re.TaskUUID, re.StatusCode, testTaskID)
+	if re.StatusCode != http.StatusBadGateway || re.ProblemType != badGateway {
+		t.Fatalf("status = %d, problem type = %q; want 502, %q", re.StatusCode, re.ProblemType, badGateway)
 	}
-	if got := re.APIFields()["taskUUID"]; got != testTaskID {
-		t.Fatalf("APIFields taskUUID = %v, want %q", got, testTaskID)
+}
+
+func TestProblemToError_NamesAStatusWithoutText(t *testing.T) {
+	if got := problemToError(nil, 520).Error(); got != "HTTP 520" {
+		t.Fatalf("message = %q, want %q", got, "HTTP 520")
+	}
+	if got := problemToError(nil, http.StatusBadGateway).Error(); got != "HTTP 502: Bad Gateway" {
+		t.Fatalf("message = %q, want %q", got, "HTTP 502: Bad Gateway")
 	}
 }
 
