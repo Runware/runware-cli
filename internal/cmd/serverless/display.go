@@ -121,8 +121,8 @@ func (r appResult) Rows() [][]any {
 	return rows
 }
 
-// appShowResult is one app plus the version its ready workers are running.
-// JSON and YAML stay the app: the serving version is a table row.
+// appShowResult is one app plus the version its ready and busy workers are
+// running. JSON and YAML stay the app: the serving version is a table row.
 type appShowResult struct {
 	appResult
 	serving string `json:"-" yaml:"-"`
@@ -191,7 +191,7 @@ func (r appsResult) Rows() [][]any {
 // can omit health, so keep that uncertainty visible in table output.
 func formatAppHealth(health *serverlessapi.AppHealth) string {
 	if health == nil {
-		return "unknown"
+		return servingVersionUnknown
 	}
 	return string(health.State)
 }
