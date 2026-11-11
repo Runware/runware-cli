@@ -39,8 +39,8 @@ application is active or failed, and --timeout to bound that wait. A successful
 wait is not a live worker:
 minWorkers=0 stays scaled to zero until the first invoke.
 
---container cannot be combined with an entry file, --src-dir, --base-image, or
---requirement.
+--container cannot be combined with an entry file, --src-dir, --base-image,
+--requirement, or --extra-index-url.
 
 --from takes the URL of a packaged source: a zip whose root holds the app's
 files and a runware.yaml recording the deploy options. The CLI fetches it,
@@ -49,7 +49,8 @@ in one command instead of a clone and a command. Flags still win over the
 file, so the same archive goes to another GPU type or another --id without
 being edited first. An --env-var or --env-file sets one key over the
 manifest's and leaves the rest, while --volume, --requirement and --secret
-replace the manifest's whole list. The archive supplies the source directory,
+replace the manifest's whole list, and --extra-index-url adds to the manifest
+requirements. The archive supplies the source directory,
 so --from cannot be combined with an entry file, --container, or --src-dir.
 
 --from only creates. A manifest names an id, and deploying it over an
@@ -164,6 +165,7 @@ runware serverless deploy [file] [flags]
   -e, --env name                      Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
       --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
+      --extra-index-url stringArray   Extra package index for a code deploy, as an http or https URL with no credentials (repeatable). uv reads the index; its first-index strategy takes a package this index also publishes from this index only, not pip's best match across indexes
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
       --from string                   URL of a packaged source to fetch and deploy as a new application, reading its runware.yaml
       --gpu-type string               GPU type ID (see 'serverless gpus'; required when creating)

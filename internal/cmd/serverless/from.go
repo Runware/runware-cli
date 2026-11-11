@@ -75,6 +75,10 @@ var archiveClient = &http.Client{
 	},
 }
 
+func httpScheme(scheme string) bool {
+	return scheme == "http" || scheme == "https"
+}
+
 // downloadArchive reads the URL into memory, refusing anything larger than the
 // platform would accept as a source upload anyway.
 func downloadArchive(ctx context.Context, rawURL string) ([]byte, error) {
@@ -82,7 +86,7 @@ func downloadArchive(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("--from %q is not a URL: %w", rawURL, err)
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+	if !httpScheme(parsed.Scheme) {
 		return nil, fmt.Errorf("--from takes an http or https URL, not %q", rawURL)
 	}
 

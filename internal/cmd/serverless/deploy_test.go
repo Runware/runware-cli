@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,7 @@ const (
 	testBaseImageFlag = "--base-image"
 	testBaseImage     = "python:3.12-slim"
 	testRequirement   = "--requirement"
+	testExtraIndexURL = "--extra-index-url"
 	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
 	testIDFlag        = "--id"
 	testVolumePath    = "/weights"
@@ -100,6 +102,11 @@ func TestValidateDeployArgs(t *testing.T) {
 			name:    "container with requirement",
 			flags:   []string{testContainerFlag, testWrapperDir, testRequirement, testPipPackage},
 			wantErr: testRequirement,
+		},
+		{
+			name:    "container with extra-index-url",
+			flags:   []string{testContainerFlag, testWrapperDir, testExtraIndexURL, "https://example.com/simple"},
+			wantErr: testExtraIndexURL,
 		},
 		{
 			name:  "code with src-dir",
@@ -433,6 +440,179 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 	}
 }
 
+func TestDeployCreate_SendsExtraIndexURLs(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	const (
+		indexA = "https://download.pytorch.org/whl/cu124"
+		indexB = "https://example.com/simple"
+	)
+	want := []string{
+		testExtraIndexURL + " " + indexA,
+		testExtraIndexURL + " " + indexB,
+	}
+
+	var created serverlessapi.AppCreate
+	var creates int
+	serveSourceUpload := newSourceUploadStub(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Errorf("decode create: %v", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		testModelFile,
+		testSrcDirFlag, dir,
+		testIDFlag, testAppID,
+		testGPUTypeFlag, testGPUType,
+		testExtraIndexURL, indexA,
+		testExtraIndexURL, indexB,
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	if creates != 1 {
+		t.Fatalf("creates = %d, want 1", creates)
+	}
+	code, err := created.AppSource.Source.AsCodeSourceUpsert()
+	if err != nil {
+		t.Fatalf("code source: %v", err)
+	}
+	if code.Requirements == nil || !slices.Equal(*code.Requirements, want) {
+		t.Fatalf("requirements = %#v, want %#v", code.Requirements, want)
+	}
+}
+
+func TestDeploy_RejectsCredentialExtraIndexURLBeforeUpload(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	const secret = "s3cret"
+	err := deployRefusedBeforeUpload(t, dir, []string{
+		testExtraIndexURL, "https://user:" + secret + "@example.com/simple",
+	})
+	requireIndexURLRefused(t, err, secret)
+}
+
+func TestDeploy_RejectsCredentialRequirementIndexBeforeUpload(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	const secret = "s3cret"
+	cases := []struct {
+		name   string
+		line   string
+		secret string
+	}{
+		{
+			name:   "extra-index-url",
+			line:   testExtraIndexURL + " https://user:" + secret + "@example.com/simple",
+			secret: secret,
+		},
+		{
+			name:   "index-url",
+			line:   "--index-url https://user:" + secret + "@example.com/simple",
+			secret: secret,
+		},
+		{
+			name: "extra-index-url without a url",
+			line: testExtraIndexURL,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := deployRefusedBeforeUpload(t, dir, []string{testRequirement, tc.line})
+			requireIndexURLRefused(t, err, tc.secret)
+		})
+	}
+}
+
+// deployRefusedBeforeUpload runs deploy with extra args. A source upload or an
+// AppCreate fails the test: the refusal has to land before either write.
+func deployRefusedBeforeUpload(t *testing.T, dir string, extra []string) error {
+	t.Helper()
+
+	var uploads, creates int
+	serveSourceUpload := newSourceUploadStub(t)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			uploads++
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(append([]string{
+		testModelFile,
+		testSrcDirFlag, dir,
+		testIDFlag, testAppID,
+		testGPUTypeFlag, testGPUType,
+	}, extra...))
+	err := cmd.Execute()
+	if uploads != 0 || creates != 0 {
+		t.Fatalf("source uploads = %d, creates = %d, want none; err = %v", uploads, creates, err)
+	}
+	return err
+}
+
+func requireIndexURLRefused(t *testing.T, err error, secret string) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "no credentials") {
+		t.Fatalf("err = %v, want the index URL rule", err)
+	}
+	if secret != "" && strings.Contains(err.Error(), secret) {
+		t.Fatalf("err = %v contains %q", err, secret)
+	}
+}
+
 func TestValidateCreateDeployGPU(t *testing.T) {
 	if err := validateCreateDeployGPU(""); err == nil || !strings.Contains(err.Error(), testGPUTypeFlag) {
 		t.Fatalf("empty: %v", err)
@@ -756,6 +936,11 @@ func TestRefuseCodeOnlyFlags(t *testing.T) {
 			name:    "requirement",
 			flags:   []string{testFromFlag, testArchiveURL, testRequirement, testPipPackage},
 			wantErr: testRequirement,
+		},
+		{
+			name:    "extra-index-url",
+			flags:   []string{testFromFlag, testArchiveURL, testExtraIndexURL, "https://example.com/simple"},
+			wantErr: testExtraIndexURL,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1124,4 +1309,45 @@ func TestDeployRefusesADeletingApp(t *testing.T) {
 		run := runServerlessAgainst(t, handler, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID)
 		requireDeployRefused(t, run, want, testAppsPath+"/"+testAppID)
 	})
+}
+
+func TestValidateExtraIndexURL(t *testing.T) {
+	cases := []struct {
+		name   string
+		raw    string
+		ok     bool
+		secret string
+	}{
+		{name: "https with a path", raw: "https://download.pytorch.org/whl/cu124", ok: true},
+		{name: "http allowed", raw: "http://pypi.internal/simple", ok: true},
+		{name: "empty host", raw: "https:///simple"},
+		{name: "userinfo without a password", raw: "https://s3cret@example.com/simple", secret: "s3cret"},
+		{name: "invalid url", raw: "http://[::1"},
+		{name: "user and password", raw: "https://user:" + "pw" + "@host/simple", secret: "pw"},
+		{name: "user and password on the simple index", raw: "https://user:" + "s3cret" + "@example.com/simple", secret: "s3cret"},
+		{name: "non-http scheme", raw: "ftp://example.com/simple"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateExtraIndexURL(tc.raw)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("validateExtraIndexURL(%q) = %v", tc.raw, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("validateExtraIndexURL(%q) succeeded", tc.raw)
+			}
+			if !strings.Contains(err.Error(), "credentials") {
+				t.Fatalf("err = %v, want the index URL rule", err)
+			}
+			if strings.Contains(err.Error(), tc.raw) {
+				t.Fatalf("err = %v echoes the URL", err)
+			}
+			if tc.secret != "" && strings.Contains(err.Error(), tc.secret) {
+				t.Fatalf("err = %v contains %q", err, tc.secret)
+			}
+		})
+	}
 }
