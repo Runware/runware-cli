@@ -93,9 +93,10 @@ A command without --env addresses RUNWARE_ENV, else the config's environment,
 else production.
 
 An environment can cap the workers and GPUs it holds, set a monthly budget with
-alert thresholds, and pause its workers once the budget is reached. A cap it
-does not set is inherited from the organization defaults (see
-'environments defaults').`
+alert thresholds, and pause once the budget is reached: a paused environment
+stops its apps and refuses invocations until the budget is raised past the
+spend or the UTC month turns. A cap it does not set is inherited from the
+organization defaults (see 'environments defaults').`
 	cmd.AddCommand(
 		newEnvironmentsListCmd(logger),
 		newEnvironmentsShowCmd(logger),
@@ -401,7 +402,7 @@ func addEnvironmentSettingFlags(flags *pflag.FlagSet, s *environmentSettings) {
 	flags.Int32Var(&s.maxGPUs, maxGPUsField, 0, "Cap on the GPUs the environment holds")
 	flags.StringVar(&s.budget, budgetField, "", "Monthly budget in USD, e.g. 50 or 49.99")
 	flags.IntSliceVar(&s.alertPercents, alertPercentsField, nil, "Percentages of the budget that send an alert email, e.g. 50,80,100")
-	flags.BoolVar(&s.pauseAtBudget, pauseAtBudgetFlag, false, "Scale the environment's workers to zero once the budget is reached")
+	flags.BoolVar(&s.pauseAtBudget, pauseAtBudgetFlag, false, "Pause the environment once its monthly spend reaches the budget: stop its apps and refuse invocations until the budget is raised or the UTC month turns")
 }
 
 // addClearFlag registers --clear, completing the fields it takes.

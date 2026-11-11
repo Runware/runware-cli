@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -145,11 +146,86 @@ JSON and YAML include environment variable names with each value replaced by
 				spin.Stop()
 				return err
 			}
+			// JSON and YAML print the app itself. The serving version is a table
+			// row, so only the table walks the worker list, and the spinner stays
+			// up while those pages load.
+			var serving string
+			if cmdutil.FormatFor(cmd) == output.FormatTable {
+				serving, err = servingVersion(cmd.Context(), client, id)
+				if err != nil {
+					spin.Stop()
+					return err
+				}
+			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), appResult(*app))
+			return output.Print(cmdutil.FormatFor(cmd), appShowResult{
+				appResult: appResult(*app),
+				serving:   serving,
+			})
 		},
 	}
+}
+
+// servingVersionMixed is more than one version among the workers that are
+// answering requests. servingVersionUnknown is a walk that did not finish, or
+// a worker list that could not be read. It is the same word formatAppHealth
+// uses for a missing verdict, and not the app health state "unavailable".
+const (
+	servingVersionMixed   = "mixed"
+	servingVersionUnknown = "unknown"
+)
+
+func servingVersion(ctx context.Context, client *serverlessapi.Client, id string) (string, error) {
+	all := "all"
+	state := serverlessapi.WorkerStateFilterLive
+	var cursor string
+	seen := map[string]struct{}{}
+	// A show must not walk an unbounded fleet. Five pages is 500 workers.
+	// Stopping early must not report the one version seen so far: an unfinished
+	// walk can hide a second version still answering requests.
+	finished := false
+	for range 5 {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		limit, pageCursor := listPageParams(100, cursor)
+		page, err := client.ListWorkers(ctx, id, serverlessapi.ListWorkersParams{
+			Limit:     limit,
+			Cursor:    pageCursor,
+			VersionId: &all,
+			State:     &state,
+		})
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return "", ctxErr
+			}
+			return servingVersionUnknown, nil
+		}
+		for i := range page.Data {
+			switch page.Data[i].Status {
+			case serverlessapi.WorkerStatus("ready"), serverlessapi.WorkerStatus("busy"):
+				seen[page.Data[i].VersionId.String()] = struct{}{}
+			}
+		}
+		if len(seen) > 1 {
+			return servingVersionMixed, nil
+		}
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			finished = true
+			break
+		}
+		cursor = *page.NextCursor
+	}
+	if !finished {
+		return servingVersionUnknown, nil
+	}
+	if len(seen) == 1 {
+		for version := range seen {
+			return version, nil
+		}
+	}
+	return noValue, nil
 }
 
 func newAppsEndpointsCmd(logger *log.Logger) *cobra.Command {

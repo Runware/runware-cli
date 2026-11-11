@@ -12,18 +12,20 @@ prints it oldest first, so a plain apps logs shows the latest entries as a
 readable timeline. --sort newest lists newest first, so nextCursor walks
 older. --sort oldest lists the oldest page of the window first, so nextCursor
 walks newer. prevCursor walks the other way. Replay either cursor with the
-same --env, --sort, --window, and --limit.
+same --env, --sort, --window, --limit, and --errors.
 
 With --follow the command prints the recent page, then streams new entries
 until interrupted; the stream reconnects when the server ends it, and waits
 for the stream to open when a gateway answers first, which is what an
 application that has written nothing does. The live stream has no window, so
 --window, --limit, --sort and --cursor apply to the recent page only, and
---cursor cannot be combined with --follow. Entries written between the recent
-page and the start of the stream, or while the stream reconnects, can be
-missed or repeated.
+--cursor cannot be combined with --follow. --errors filters that page and,
+with --follow, the live stream. Entries written between the recent page and
+the start of the stream, or while the stream reconnects, can be missed or
+repeated.
 
-In table format each entry is one line: time, level and message. In json or
+In table format each entry is one line: time, level, and message. An
+exception message is appended when it is not already in the body. In json or
 yaml format the recent page is printed as one document; with --follow every
 entry is printed as one JSON object per line.
 
@@ -43,6 +45,9 @@ runware serverless apps logs <appId> [flags]
   # follow new log entries until Ctrl-C
   runware serverless apps logs my-app --follow
 
+  # show only error lines; with --follow this filters the stream too
+  runware serverless apps logs my-app --errors
+
   # page through the recent window
   runware serverless apps logs my-app --limit 50 --cursor <nextCursor>
 
@@ -57,6 +62,7 @@ runware serverless apps logs <appId> [flags]
 
 ```
       --cursor string   Pagination cursor (nextCursor or prevCursor)
+      --errors          Show only error lines from the fetched page, and from the live stream with --follow: level error or fatal, a traceback, or an exception message
   -f, --follow          Stream new log entries until interrupted
   -h, --help            help for logs
       --limit int       Maximum number of entries on the recent page (1-100, default 20)

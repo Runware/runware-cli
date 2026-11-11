@@ -3,6 +3,7 @@ package serverless
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -414,6 +415,8 @@ func TestAppResult_RedactsEnvironmentVariableValues(t *testing.T) {
 	}
 }
 
+// The errOut buffer is not an *os.File, so the stdout write is unconditional
+// and the hint is still copied into the buffer.
 func TestPrintPage_TableWritesNextCursorToErrOut(t *testing.T) {
 	next := "page-2"
 	page := serverlessapi.Page[serverlessapi.App]{
@@ -430,6 +433,8 @@ func TestPrintPage_TableWritesNextCursorToErrOut(t *testing.T) {
 	}
 }
 
+// The errOut buffer is not an *os.File, so the stdout write is unconditional
+// and the hint, including the extra flags, is still copied into the buffer.
 func TestPrintPage_TableIncludesExtraCursorFlags(t *testing.T) {
 	next := "page-2"
 	page := serverlessapi.Page[serverlessapi.SecretAttachment]{
@@ -444,6 +449,117 @@ func TestPrintPage_TableIncludesExtraCursorFlags(t *testing.T) {
 	if !strings.Contains(errOut.String(), "--status ready --cursor page-2") {
 		t.Fatalf("errOut missing extra flags in next-page hint: %q", errOut.String())
 	}
+}
+
+// TestWriteNextPageHint_SameFileOnce checks the hint is written once when the
+// two writers are descriptors of one file, and once to each when they are not.
+// O_APPEND makes a second write visible; independent offsets would overwrite.
+func TestWriteNextPageHint_SameFileOnce(t *testing.T) {
+	next := "page-2"
+	want := "\nNext page: --cursor page-2\n"
+
+	t.Run("same file", func(t *testing.T) {
+		path := createTemp(t)
+		stdout := openAppend(t, path)
+		errOut := openAppend(t, path)
+		if err := writeNextPageHint(stdout, errOut, &next, ""); err != nil {
+			t.Fatal(err)
+		}
+		if got := readTemp(t, path); got != want {
+			t.Fatalf("hint = %q, want one copy %q", got, want)
+		}
+	})
+
+	t.Run("different files", func(t *testing.T) {
+		outPath := createTemp(t)
+		errPath := createTemp(t)
+		stdout := openAppend(t, outPath)
+		errOut := openAppend(t, errPath)
+		if err := writeNextPageHint(stdout, errOut, &next, ""); err != nil {
+			t.Fatal(err)
+		}
+		if got := readTemp(t, outPath); got != want {
+			t.Fatalf("stdout hint = %q, want %q", got, want)
+		}
+		if got := readTemp(t, errPath); got != want {
+			t.Fatalf("errOut hint = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("same writer", func(t *testing.T) {
+		path := createTemp(t)
+		stdout := openAppend(t, path)
+		if err := writeNextPageHint(stdout, stdout, &next, ""); err != nil {
+			t.Fatal(err)
+		}
+		if got := readTemp(t, path); got != want {
+			t.Fatalf("hint = %q, want one copy %q", got, want)
+		}
+	})
+
+	t.Run("buffer", func(t *testing.T) {
+		path := createTemp(t)
+		stdout := openAppend(t, path)
+		var errOut bytes.Buffer
+		if err := writeNextPageHint(stdout, &errOut, &next, ""); err != nil {
+			t.Fatal(err)
+		}
+		if errOut.String() != want {
+			t.Fatalf("buffer = %q, want %q", errOut.String(), want)
+		}
+	})
+
+	t.Run("stat error", func(t *testing.T) {
+		closed, err := os.CreateTemp(t.TempDir(), "closed")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := closed.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if !sameWriter(closed, closed) {
+			t.Fatal("Stat error did not fall back to pointer equality")
+		}
+		stdout := openAppend(t, createTemp(t))
+		if sameWriter(stdout, closed) {
+			t.Fatal("a closed file compared equal to a different file")
+		}
+		if err := writeNextPageHint(stdout, closed, &next, ""); err == nil {
+			t.Fatal("expected the closed errOut write to fail")
+		}
+	})
+}
+
+func createTemp(t *testing.T) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "hint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return name
+}
+
+func openAppend(t *testing.T, name string) *os.File {
+	t.Helper()
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	return f
+}
+
+func readTemp(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 func TestSecretsResult_NoValueColumn(t *testing.T) {

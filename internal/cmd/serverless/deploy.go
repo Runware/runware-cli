@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ var codeOnlyDeployFlags = []string{
 	"src-dir",
 	"base-image",
 	"requirement",
+	"extra-index-url",
 }
 
 // fromOnlyConflictFlags name a local source, which --from already supplies.
@@ -161,6 +163,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		baseImage           string
 		gpuType             string
 		requirements        []string
+		extraIndexURLs      []string
 		minWorkers          int32
 		gpusPerWorker       int32
 		fallbackGPUType     string
@@ -225,8 +228,8 @@ application is active or failed, and --timeout to bound that wait. A successful
 wait is not a live worker:
 minWorkers=0 stays scaled to zero until the first invoke.
 
---container cannot be combined with an entry file, --src-dir, --base-image, or
---requirement.
+--container cannot be combined with an entry file, --src-dir, --base-image,
+--requirement, or --extra-index-url.
 
 --from takes the URL of a packaged source: a zip whose root holds the app's
 files and a runware.yaml recording the deploy options. The CLI fetches it,
@@ -235,7 +238,8 @@ in one command instead of a clone and a command. Flags still win over the
 file, so the same archive goes to another GPU type or another --id without
 being edited first. An --env-var or --env-file sets one key over the
 manifest's and leaves the rest, while --volume, --requirement and --secret
-replace the manifest's whole list. The archive supplies the source directory,
+replace the manifest's whole list, and --extra-index-url adds to the manifest
+requirements. The archive supplies the source directory,
 so --from cannot be combined with an entry file, --container, or --src-dir.
 
 --from only creates. A manifest names an id, and deploying it over an
@@ -417,6 +421,19 @@ paths and an invoke example once the application is active.`,
 				name = id
 			}
 
+			for _, raw := range extraIndexURLs {
+				if err := validateExtraIndexURL(raw); err != nil {
+					return err
+				}
+				requirements = append(requirements, "--extra-index-url "+raw)
+			}
+			// Manifest entries, --requirement, and the lines just appended are
+			// one slice now. An index URL in any of them is stored with the
+			// source, so a credential has to be refused before the archive exists.
+			if err := validateRequirementIndexURLs(requirements); err != nil {
+				return err
+			}
+
 			archive, source, err := buildDeployArchive(srcDir, containerDir, baseImage, requirements, args)
 			if err != nil {
 				return err
@@ -576,6 +593,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.12-slim", "Builder base image (code deploys only; needs Python 3.12 or newer)")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
+	cmd.Flags().StringArrayVar(&extraIndexURLs, "extra-index-url", nil, "Extra package index for a code deploy, as an http or https URL with no credentials (repeatable). uv reads the index; its first-index strategy takes a package this index also publishes from this index only, not pip's best match across indexes")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
 	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker ("+gpusPerWorkerValuesText()+")")
 	cmd.Flags().StringVar(&fallbackGPUType, "fallback-gpu-type", "", "Secondary GPU type if the preferred type is unavailable")
@@ -682,6 +700,38 @@ func validateGPUsPerWorkerFlag(cmd *cobra.Command, n int32) error {
 		return nil
 	}
 	return validateGPUsPerWorker(n)
+}
+
+// validateRequirementIndexURLs rejects an index option on any requirement
+// line, whether it came from the manifest, a --requirement flag, or a line
+// appended for --extra-index-url. A line with no URL token fails the same
+// check. The error is that rule and not the line, which can hold a credential.
+func validateRequirementIndexURLs(requirements []string) error {
+	for _, line := range requirements {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if fields[0] != "--extra-index-url" && fields[0] != "--index-url" {
+			continue
+		}
+		raw := ""
+		if len(fields) > 1 {
+			raw = fields[1]
+		}
+		if err := validateExtraIndexURL(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateExtraIndexURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || !httpScheme(parsed.Scheme) || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("--extra-index-url needs an http or https URL with no credentials")
+	}
+	return nil
 }
 
 func validateAvailableWorkersPct(n int32) error {
