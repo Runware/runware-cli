@@ -63,6 +63,11 @@ func TestAppsHealthFromAPI(t *testing.T) {
 						if command == appHealthShowCommand {
 							path += "/" + testAppID
 						}
+						if r.Method == http.MethodGet && r.URL.Path == path+"/workers" {
+							w.Header().Set("Content-Type", "application/json")
+							_, _ = io.WriteString(w, `{"data":[]}`)
+							return
+						}
 						if r.Method != http.MethodGet || r.URL.Path != path {
 							t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 							w.WriteHeader(http.StatusNotFound)
