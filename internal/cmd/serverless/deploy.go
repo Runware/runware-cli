@@ -3,6 +3,7 @@ package serverless
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -29,11 +30,12 @@ var fromOnlyConflictFlags = []string{
 	"container",
 }
 
-// createOnlyDeployFlags apply to CreateApp only. On an existing app they are
-// rejected so a leftover create invocation cannot wipe environment variables
-// or silently no-op.
 const appNameFlag = "name"
 
+// createOnlyDeployFlags apply to CreateApp only. On an existing app a flag is
+// accepted when its value matches the app, and a changed value is rejected, so
+// a leftover create invocation cannot wipe environment variables or silently
+// no-op. --volume never matches: the app read does not return volumes.
 var createOnlyDeployFlags = []string{
 	"gpu-type",
 	appNameFlag,
@@ -188,12 +190,21 @@ config's) or production.
 
 A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,
-and rolls it when the build is ready. Create-only flags (--gpu-type, worker
-settings, --volume, --secret, --env-var, --env-file, --name) apply only to
-create; passing them when that copy already exists is an error. Change
-workers with 'apps scale', attach a secret later with 'secrets attach', change
-environment variables with 'apps env-vars', and the display name with
-'apps rename'. A source update on a stopped application is 409.
+and rolls it when the build is ready. A source update on a stopped application
+is 409.
+
+Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
+--scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
+--min-available-workers, --available-workers-pct, --volume, --secret,
+--env-var and --env-file.
+
+On an existing copy, a create-only flag is accepted when its value matches the
+app, and a changed value is rejected; one error names every changed flag.
+Change workers with 'apps scale', attach a secret later with 'secrets attach',
+change environment variables with 'apps env-vars', and the display name with
+'apps rename'. --volume is still always rejected on an existing app, because
+the app read does not return volumes, so a repeated path cannot be told from a
+changed one.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -803,30 +814,28 @@ func secretsMatchApp(cmd *cobra.Command, app *serverlessapi.App) (bool, error) {
 	want := map[string]struct{}{}
 	if parsed != nil {
 		for _, item := range *parsed {
-			env := ""
-			if item.EnvVarName != nil {
-				env = *item.EnvVarName
-			}
-			want[item.SecretName+"\x00"+env] = struct{}{}
+			want[secretMatchKey(item.SecretName, item.EnvVarName)] = struct{}{}
 		}
 	}
 	have := map[string]struct{}{}
 	for _, item := range app.Secrets {
-		env := ""
-		if item.EnvVarName != nil {
-			env = *item.EnvVarName
-		}
-		have[item.Name+"\x00"+env] = struct{}{}
+		have[secretMatchKey(item.Name, item.EnvVarName)] = struct{}{}
 	}
-	if len(want) != len(have) {
-		return false, nil
+	return maps.Equal(want, have), nil
+}
+
+// secretMatchKey identifies one attachment. The API omits envVarName when it
+// equals the secret name, and --secret NAME=NAME is that same attachment, so
+// both sides treat that env name as empty.
+func secretMatchKey(name string, env *string) string {
+	got := ""
+	if env != nil {
+		got = *env
 	}
-	for key := range want {
-		if _, ok := have[key]; !ok {
-			return false, nil
-		}
+	if got == name {
+		got = ""
 	}
-	return true, nil
+	return name + "\x00" + got
 }
 
 func envFlagsMatchApp(cmd *cobra.Command, app *serverlessapi.App) (bool, error) {
@@ -852,18 +861,14 @@ func envFlagsMatchApp(cmd *cobra.Command, app *serverlessapi.App) (bool, error) 
 	for _, item := range app.EnvironmentVariables {
 		stored[item.Key] = item.Value
 	}
-	if built == nil {
-		return len(stored) == 0, nil
+	// A missing key is not the empty string. maps.Equal rejects an app that
+	// holds only OLD=x against --env-var NEW=, which a lookup of the missing
+	// key would accept.
+	var got map[string]string
+	if built != nil {
+		got = *built
 	}
-	if len(*built) != len(stored) {
-		return false, nil
-	}
-	for key, value := range *built {
-		if stored[key] != value {
-			return false, nil
-		}
-	}
-	return true, nil
+	return maps.Equal(got, stored), nil
 }
 
 // createOnlyDeployHint says how to change a create-only setting on the copy

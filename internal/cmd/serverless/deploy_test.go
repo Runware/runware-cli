@@ -434,6 +434,105 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 	}
 }
 
+// storedDeployAppBody is a getApp response whose create-only settings differ
+// from both a zero App and the flag defaults. A redeploy that compared a
+// stand-in app, or skipped the comparison, cannot accept these same flags.
+func storedDeployAppBody() string {
+	return `{
+		"appId":"` + testAppID + `","appName":"My App","status":"active",
+		"configuration":{"maxWorkers":1,"idleTtlSecs":61,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"computeType":"gpu","gpuType":"` + testGPUType + `"},
+		"environmentVariables":[{"key":"FOO","value":"bar"}],
+		"secrets":[{"id":"` + testUUID + `","name":"ORG_TOKEN","type":"generic","environment":"production"}],
+		"createdAt":"2026-07-30T12:00:00Z","updatedAt":"2026-07-30T12:00:00Z"
+	}`
+}
+
+// runDeployAgainstExistingApp runs deploy against a getApp that returns body,
+// and reports how many creates and updates the stub saw.
+func runDeployAgainstExistingApp(t *testing.T, body string, args ...string) (int, int, error) {
+	t.Helper()
+	var updates, creates int
+	serveSourceUpload := newSourceUploadStub(t)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, testAppsPath+"/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, body)
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, testAppsPath+"/"):
+			updates++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, body)
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, body)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(api.Close)
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(args)
+	return updates, creates, cmd.Execute()
+}
+
+// TestDeployUpdate_AcceptsMatchingCreateOnlyFlags locks the path from
+// resolveDeployTarget to validateUpdateDeployFlags(cmd, app): the stub app is
+// the one compared. The same gpu type, idle ttl, environment variable and
+// secret reach UpdateApp. --volume still fails, and the error names it alone,
+// because that read does not return volumes.
+func TestDeployUpdate_AcceptsMatchingCreateOnlyFlags(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+	body := storedDeployAppBody()
+	matching := []string{
+		testModelFile,
+		testSrcDirFlag, dir,
+		testIDFlag, testAppID,
+		testGPUTypeFlag, testGPUType,
+		"--idle-ttl", "61",
+		"--" + envVarFlag, "FOO=bar",
+		"--secret", "ORG_TOKEN=ORG_TOKEN",
+	}
+
+	t.Run("matching flags update", func(t *testing.T) {
+		updates, creates, err := runDeployAgainstExistingApp(t, body, matching...)
+		if err != nil {
+			t.Fatalf("deploy: %v", err)
+		}
+		if updates != 1 || creates != 0 {
+			t.Fatalf("updates = %d, creates = %d, want an update and no create", updates, creates)
+		}
+	})
+
+	t.Run("volume is rejected when the other flags match", func(t *testing.T) {
+		args := append(append([]string{}, matching...), "--volume", testVolumePath)
+		updates, creates, err := runDeployAgainstExistingApp(t, body, args...)
+		if err == nil || !strings.Contains(err.Error(), "--volume") {
+			t.Fatalf("err = %v, want it to name --volume", err)
+		}
+		for _, name := range []string{testGPUTypeFlag, "--idle-ttl", "--" + envVarFlag, "--secret"} {
+			if strings.Contains(err.Error(), name) {
+				t.Fatalf("err = %v, want only --volume named", err)
+			}
+		}
+		if updates != 0 || creates != 0 {
+			t.Fatalf("updates = %d, creates = %d, want no write", updates, creates)
+		}
+	})
+}
+
 func TestValidateCreateDeployGPU(t *testing.T) {
 	if err := validateCreateDeployGPU(""); err == nil || !strings.Contains(err.Error(), testGPUTypeFlag) {
 		t.Fatalf("empty: %v", err)
@@ -552,6 +651,113 @@ func TestValidateUpdateDeployFlagsAllowsAnUnchangedGPUType(t *testing.T) {
 	app := &serverlessapi.App{Configuration: serverlessapi.WorkerConfig{GpuType: &gpu}}
 	if err := validateUpdateDeployFlags(cmd, app); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestValidateUpdateDeployFlagsAcceptsAStoredValue: each create-only flag is
+// accepted when the app already holds that value, and a different value names
+// the flag. The stored numbers, variable and secret differ from a zero App, so
+// a comparison that ignores the app or treats a missing key as "" fails.
+func TestValidateUpdateDeployFlagsAcceptsAStoredValue(t *testing.T) {
+	gpu := testGPUType
+	fallback := testFallbackGPU
+	minAvailable := int32(2)
+	availablePct := int32(15)
+	stored := &serverlessapi.App{
+		AppName: "My App",
+		Configuration: serverlessapi.WorkerConfig{
+			GpuType:             &gpu,
+			FallbackGpuType:     &fallback,
+			MaxWorkers:          3,
+			IdleTtlSecs:         61,
+			ScalingDelaySecs:    11,
+			MinWorkers:          2,
+			GpusPerWorker:       2,
+			MinAvailableWorkers: &minAvailable,
+			AvailableWorkersPct: &availablePct,
+		},
+		EnvironmentVariables: []serverlessapi.EnvironmentVariable{{Key: "FOO", Value: "bar"}},
+		Secrets:              []serverlessapi.SecretAttachment{{Name: "ORG_TOKEN"}},
+	}
+	onlyOld := &serverlessapi.App{
+		EnvironmentVariables: []serverlessapi.EnvironmentVariable{{Key: "OLD", Value: "x"}},
+	}
+
+	cases := []struct {
+		name    string
+		flags   []string
+		envFile string
+		app     *serverlessapi.App
+		wantErr string
+	}{
+		{name: "gpu type matches", flags: []string{testGPUTypeFlag, testGPUType}},
+		{name: "gpu type differs", flags: []string{testGPUTypeFlag, testFallbackGPU}, wantErr: testGPUTypeFlag},
+		{name: "name matches", flags: []string{"--name", "My App"}},
+		{name: "name differs", flags: []string{"--name", "Other"}, wantErr: "--name"},
+		{name: "max workers matches", flags: []string{testMaxWorkersFlag, "3"}},
+		{name: "max workers differs", flags: []string{testMaxWorkersFlag, "4"}, wantErr: testMaxWorkersFlag},
+		{name: "idle ttl matches", flags: []string{"--idle-ttl", "61"}},
+		{name: "idle ttl differs", flags: []string{"--idle-ttl", "62"}, wantErr: "--idle-ttl"},
+		{name: "scaling delay matches", flags: []string{"--scaling-delay", "11"}},
+		{name: "scaling delay differs", flags: []string{"--scaling-delay", "12"}, wantErr: "--scaling-delay"},
+		{name: "min workers matches", flags: []string{"--min-workers", "2"}},
+		{name: "min workers differs", flags: []string{"--min-workers", "3"}, wantErr: "--min-workers"},
+		{name: "gpus per worker matches", flags: []string{"--gpus-per-worker", "2"}},
+		{name: "gpus per worker differs", flags: []string{"--gpus-per-worker", "4"}, wantErr: "--gpus-per-worker"},
+		{name: "fallback gpu matches", flags: []string{"--fallback-gpu-type", testFallbackGPU}},
+		{name: "fallback gpu differs", flags: []string{"--fallback-gpu-type", testGPUType}, wantErr: "--fallback-gpu-type"},
+		{name: "min available workers matches", flags: []string{"--min-available-workers", "2"}},
+		{name: "min available workers differs", flags: []string{"--min-available-workers", "3"}, wantErr: "--min-available-workers"},
+		{name: "available workers pct matches", flags: []string{"--available-workers-pct", "15"}},
+		{name: "available workers pct differs", flags: []string{"--available-workers-pct", "20"}, wantErr: "--available-workers-pct"},
+		{name: "secret name matches", flags: []string{"--secret", "ORG_TOKEN"}},
+		{name: "secret env equal to its name matches", flags: []string{"--secret", "ORG_TOKEN=ORG_TOKEN"}},
+		{name: "secret env override differs", flags: []string{"--secret", "ORG_TOKEN=OTHER"}, wantErr: "--secret"},
+		{name: "env var matches", flags: []string{"--" + envVarFlag, "FOO=bar"}},
+		{name: "env var differs", flags: []string{"--" + envVarFlag, "FOO=baz"}, wantErr: "--" + envVarFlag},
+		{
+			name:    "empty env value is a different key",
+			flags:   []string{"--" + envVarFlag, "NEW="},
+			app:     onlyOld,
+			wantErr: "--" + envVarFlag,
+		},
+		{name: "env file matches", flags: []string{"--env-file", envDotfile}, envFile: "FOO=bar\n"},
+		{name: "env file differs", flags: []string{"--env-file", envDotfile}, envFile: "FOO=baz\n", wantErr: "--env-file"},
+		{name: "volume is always rejected", flags: []string{"--volume", testVolumePath}, wantErr: "--volume"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := tc.app
+			if app == nil {
+				app = stored
+			}
+			flags := append([]string(nil), tc.flags...)
+			if tc.envFile != "" {
+				path := t.TempDir() + "/env"
+				if err := os.WriteFile(path, []byte(tc.envFile), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				for i, flag := range flags {
+					if flag == envDotfile {
+						flags[i] = path
+					}
+				}
+			}
+			cmd := newDeployCmd(nil)
+			if err := cmd.ParseFlags(flags); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			err := validateUpdateDeployFlags(cmd, app)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want it to name %s", err, tc.wantErr)
+			}
+		})
 	}
 }
 

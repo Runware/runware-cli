@@ -13,12 +13,21 @@ config's) or production.
 
 A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,
-and rolls it when the build is ready. Create-only flags (--gpu-type, worker
-settings, --volume, --secret, --env-var, --env-file, --name) apply only to
-create; passing them when that copy already exists is an error. Change
-workers with 'apps scale', attach a secret later with 'secrets attach', change
-environment variables with 'apps env-vars', and the display name with
-'apps rename'. A source update on a stopped application is 409.
+and rolls it when the build is ready. A source update on a stopped application
+is 409.
+
+Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
+--scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
+--min-available-workers, --available-workers-pct, --volume, --secret,
+--env-var and --env-file.
+
+On an existing copy, a create-only flag is accepted when its value matches the
+app, and a changed value is rejected; one error names every changed flag.
+Change workers with 'apps scale', attach a secret later with 'secrets attach',
+change environment variables with 'apps env-vars', and the display name with
+'apps rename'. --volume is still always rejected on an existing app, because
+the app read does not return volumes, so a repeated path cannot be told from a
+changed one.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
