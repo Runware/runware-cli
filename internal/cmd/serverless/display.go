@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/output"
-	"golang.org/x/term"
 )
 
 const (
@@ -682,8 +681,8 @@ func (r envUnsetResult) Rows() [][]any {
 }
 
 // printPage prints a cursor-paginated list. JSON/YAML use the API page shape
-// (data + nextCursor). Table format renders rows, then hints at --cursor on errOut
-// (typically cmd.ErrOrStderr()).
+// (data + nextCursor). Table format renders rows, then writes the next-page
+// hint to stdout, and to errOut only when that writer is not the same file.
 func printPage[T any](format output.Format, page serverlessapi.Page[T], table output.Tabular, errOut io.Writer, extraCursorFlags string) error {
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
@@ -692,24 +691,48 @@ func printPage[T any](format output.Format, page serverlessapi.Page[T], table ou
 		if err := output.Print(format, table); err != nil {
 			return err
 		}
-		if errOut != os.Stdout {
-			if err := printNextCursor(os.Stdout, page.NextCursor, extraCursorFlags); err != nil {
-				return err
-			}
-		}
-		// Stdout and stderr are the same screen on a terminal, so the hint is not repeated.
-		if errFile, ok := errOut.(*os.File); ok && errFile == os.Stderr && term.IsTerminal(int(os.Stdout.Fd())) {
-			return nil
-		}
-		return printNextCursor(errOut, page.NextCursor, extraCursorFlags)
+		return writeNextPageHint(os.Stdout, errOut, page.NextCursor, extraCursorFlags)
 	}
 }
 
-func printNextCursor(errOut io.Writer, next *string, extraFlags string) error {
-	return printNamedCursor(errOut, "Next page", next, extraFlags)
+// writeNextPageHint writes the next-page hint to stdout so a redirected or
+// piped stdout captures it. It also writes the hint to errOut when errOut is
+// a different file, or is not an *os.File (a test buffer). When errOut is an
+// *os.File for the same file as stdout, the hint is written once.
+func writeNextPageHint(stdout, errOut io.Writer, next *string, extraFlags string) error {
+	if errOut != stdout {
+		if err := printNextCursor(stdout, next, extraFlags); err != nil {
+			return err
+		}
+		if sameWriter(stdout, errOut) {
+			return nil
+		}
+	}
+	return printNextCursor(errOut, next, extraFlags)
 }
 
-func printNamedCursor(errOut io.Writer, label string, cursor *string, extraFlags string) error {
+// sameWriter reports whether a and b are the same open file. A writer that is
+// not an *os.File is not that file. When Stat fails, *os.File values fall back
+// to pointer equality.
+func sameWriter(a, b io.Writer) bool {
+	fa, aFile := a.(*os.File)
+	fb, bFile := b.(*os.File)
+	if !aFile || !bFile {
+		return false
+	}
+	aInfo, aErr := fa.Stat()
+	bInfo, bErr := fb.Stat()
+	if aErr != nil || bErr != nil {
+		return fa == fb
+	}
+	return os.SameFile(aInfo, bInfo)
+}
+
+func printNextCursor(w io.Writer, next *string, extraFlags string) error {
+	return printNamedCursor(w, "Next page", next, extraFlags)
+}
+
+func printNamedCursor(w io.Writer, label string, cursor *string, extraFlags string) error {
 	if cursor == nil || *cursor == "" {
 		return nil
 	}
@@ -717,7 +740,7 @@ func printNamedCursor(errOut io.Writer, label string, cursor *string, extraFlags
 	if extraFlags != "" {
 		hint = extraFlags + " " + hint
 	}
-	_, err := fmt.Fprintf(errOut, "\n%s: %s\n", label, hint)
+	_, err := fmt.Fprintf(w, "\n%s: %s\n", label, hint)
 	return err
 }
 
