@@ -248,7 +248,7 @@ func mergeCmd(t *testing.T, passed ...string) *cobra.Command {
 // A flag the person passed wins over the manifest, which is what lets one
 // archive deploy on another GPU type without being edited.
 func TestManifestMergePrefersPassedFlags(t *testing.T) {
-	cmd := mergeCmd(t, "--gpu-type", testFallbackGPU, "--min-workers", "2")
+	cmd := mergeCmd(t, "--gpu-type", testFallbackGPU, testMinWorkersFlag, "2")
 
 	if got := manifestString(cmd, "gpu-type", testFallbackGPU, "rtx-pro-6000"); got != testFallbackGPU {
 		t.Errorf("gpu-type = %q, want the passed l40s", got)
