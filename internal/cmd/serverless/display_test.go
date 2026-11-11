@@ -318,7 +318,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 	r := appResult{
 		AppId:           testAppID,
 		Environment:     testEnvironment,
-		AppName:         "My App",
+		AppName:         testDisplayName,
 		Status:          "active",
 		ActiveVersionId: &activeVersion,
 		CreatedAt:       created,
@@ -341,7 +341,7 @@ func TestAppResult_IncludesConfiguration(t *testing.T) {
 	want := map[string]any{
 		colID:                  testAppID,
 		colEnvironment:         testEnvironment,
-		colName:                "My App",
+		colName:                testDisplayName,
 		colStatus:              "active",
 		colHealth:              "unknown",
 		colActiveVersion:       activeVersion.String(),

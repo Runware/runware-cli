@@ -1205,7 +1205,7 @@ func TestCommandsInAPausedEnvironmentReportThePause(t *testing.T) {
 		},
 		{
 			name:   testScaleCommand,
-			args:   []string{testAppsGroup, testScaleCommand, testAppID, "--min-workers", "1", testEnvFlag, testEnvironment},
+			args:   []string{testAppsGroup, testScaleCommand, testAppID, testMinWorkersFlag, "1", testEnvFlag, testEnvironment},
 			status: http.StatusConflict,
 		},
 	}

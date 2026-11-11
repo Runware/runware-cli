@@ -17,14 +17,14 @@ func TestWorkerConfigPatchFromFlags_EachFlag(t *testing.T) {
 		want any
 	}{
 		{[]string{"--max-workers", "2"}, "maxWorkers", float64(2)},
-		{[]string{"--min-workers", "0"}, "minWorkers", float64(0)},
-		{[]string{"--idle-ttl", "120"}, "idleTtlSecs", float64(120)},
-		{[]string{"--scaling-delay", "15"}, "scalingDelaySecs", float64(15)},
+		{[]string{testMinWorkersFlag, "0"}, "minWorkers", float64(0)},
+		{[]string{testIdleTTLFlag, "120"}, "idleTtlSecs", float64(120)},
+		{[]string{testScalingDelayFlag, "15"}, "scalingDelaySecs", float64(15)},
 		{[]string{testGPUTypeFlag, testGPUType}, "gpuType", testGPUType},
-		{[]string{"--gpus-per-worker", "2"}, "gpusPerWorker", float64(2)},
-		{[]string{"--fallback-gpu-type", testGPUType}, "fallbackGpuType", testGPUType},
-		{[]string{"--min-available-workers", "1"}, "minAvailableWorkers", float64(1)},
-		{[]string{"--available-workers-pct", "50"}, "availableWorkersPct", float64(50)},
+		{[]string{testGPUsPerWorkerFlag, "2"}, "gpusPerWorker", float64(2)},
+		{[]string{testFallbackGPUTypeFlag, testGPUType}, "fallbackGpuType", testGPUType},
+		{[]string{testMinAvailableWorkersFlag, "1"}, "minAvailableWorkers", float64(1)},
+		{[]string{testAvailableWorkersPctFlag, "50"}, "availableWorkersPct", float64(50)},
 	}
 
 	registered, _ := newScaleFlagCmd()
@@ -88,7 +88,7 @@ func TestWorkerConfigPatchFromFlags_EachFlag(t *testing.T) {
 
 func TestWorkerConfigPatchFromFlags_RejectsGPUsPerWorker(t *testing.T) {
 	cmd, flags := newScaleFlagCmd()
-	if err := cmd.ParseFlags([]string{"--gpus-per-worker", "3"}); err != nil {
+	if err := cmd.ParseFlags([]string{testGPUsPerWorkerFlag, "3"}); err != nil {
 		t.Fatalf("ParseFlags: %v", err)
 	}
 	_, err := workerConfigPatchFromFlags(cmd, *flags)

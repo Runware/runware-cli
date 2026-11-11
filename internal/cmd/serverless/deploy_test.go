@@ -21,21 +21,34 @@ import (
 )
 
 const (
-	testContainerFlag = "--container"
-	testWrapperDir    = "./wrapper"
-	testPipPackage    = "torch"
-	testSourceID      = "019c7654-8b21-7abc-9123-abcdef123456"
-	testSrcDirFlag    = "--src-dir"
-	testFromFlag      = "--from"
-	testFallbackGPU   = "l40s"
-	testBaseImageFlag = "--base-image"
-	testBaseImage     = "python:3.12-slim"
-	testRequirement   = "--requirement"
-	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
-	testIDFlag        = "--id"
-	testVolumePath    = "/weights"
-	testWaitFlag      = "--wait"
-	testTimeoutFlag   = "--timeout"
+	testContainerFlag           = "--container"
+	testWrapperDir              = "./wrapper"
+	testPipPackage              = "torch"
+	testSourceID                = "019c7654-8b21-7abc-9123-abcdef123456"
+	testSrcDirFlag              = "--src-dir"
+	testFromFlag                = "--from"
+	testFallbackGPU             = "l40s"
+	testBaseImageFlag           = "--base-image"
+	testBaseImage               = "python:3.12-slim"
+	testRequirement             = "--requirement"
+	testArchiveURL              = "https://runware.ai/docs/serverless/examples/echo.zip"
+	testIDFlag                  = "--id"
+	testVolumePath              = "/weights"
+	testWaitFlag                = "--wait"
+	testTimeoutFlag             = "--timeout"
+	testMinWorkersFlag          = "--min-workers"
+	testIdleTTLFlag             = "--idle-ttl"
+	testScalingDelayFlag        = "--scaling-delay"
+	testGPUsPerWorkerFlag       = "--gpus-per-worker"
+	testFallbackGPUTypeFlag     = "--fallback-gpu-type"
+	testMinAvailableWorkersFlag = "--min-available-workers"
+	testAvailableWorkersPctFlag = "--available-workers-pct"
+	testNameFlag                = "--name"
+	testSecretFlag              = "--secret"
+	testEnvFileFlag             = "--env-file"
+	testVolumeFlag              = "--volume"
+	testOrgToken                = "ORG_TOKEN"
+	testDisplayName             = "My App"
 )
 
 func TestValidateDeployArgs(t *testing.T) {
@@ -326,7 +339,7 @@ func TestDeploy_RejectsPaddedNameBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--name", " padded"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, testNameFlag, " padded"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "non-whitespace") {
 		t.Fatalf("err = %v", err)
@@ -337,7 +350,7 @@ func TestDeploy_RejectsInvalidGPUsPerWorkerBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--gpus-per-worker", "3"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, testGPUsPerWorkerFlag, "3"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), gpusPerWorkerValuesText()) {
 		t.Fatalf("err = %v", err)
@@ -362,7 +375,7 @@ func TestDeployCreate_RejectsAvailableWorkersPctBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--available-workers-pct", "101"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, testAvailableWorkersPctFlag, "101"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "0 and 100") {
 		t.Fatalf("err = %v", err)
@@ -413,8 +426,8 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 		"--src-dir", dir,
 		testIDFlag, testAppID,
 		testGPUTypeFlag, testGPUType,
-		"--secret", "API_KEY=INFERENCE_KEY",
-		"--min-available-workers", "1",
+		testSecretFlag, "API_KEY=INFERENCE_KEY",
+		testMinAvailableWorkersFlag, "1",
 	})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("deploy: %v", err)
@@ -501,9 +514,9 @@ func TestDeployUpdate_AcceptsMatchingCreateOnlyFlags(t *testing.T) {
 		testSrcDirFlag, dir,
 		testIDFlag, testAppID,
 		testGPUTypeFlag, testGPUType,
-		"--idle-ttl", "61",
+		testIdleTTLFlag, "61",
 		"--" + envVarFlag, "FOO=bar",
-		"--secret", "ORG_TOKEN=ORG_TOKEN",
+		testSecretFlag, "ORG_TOKEN=ORG_TOKEN",
 	}
 
 	t.Run("matching flags update", func(t *testing.T) {
@@ -517,12 +530,12 @@ func TestDeployUpdate_AcceptsMatchingCreateOnlyFlags(t *testing.T) {
 	})
 
 	t.Run("volume is rejected when the other flags match", func(t *testing.T) {
-		args := append(append([]string{}, matching...), "--volume", testVolumePath)
+		args := append(append([]string{}, matching...), testVolumeFlag, testVolumePath)
 		updates, creates, err := runDeployAgainstExistingApp(t, body, args...)
-		if err == nil || !strings.Contains(err.Error(), "--volume") {
+		if err == nil || !strings.Contains(err.Error(), testVolumeFlag) {
 			t.Fatalf("err = %v, want it to name --volume", err)
 		}
-		for _, name := range []string{testGPUTypeFlag, "--idle-ttl", "--" + envVarFlag, "--secret"} {
+		for _, name := range []string{testGPUTypeFlag, testIdleTTLFlag, "--" + envVarFlag, testSecretFlag} {
 			if strings.Contains(err.Error(), name) {
 				t.Fatalf("err = %v, want only --volume named", err)
 			}
@@ -548,11 +561,11 @@ func TestParseSecretAttaches(t *testing.T) {
 		t.Fatalf("empty: got=%v err=%v", got, err)
 	}
 
-	got, err = parseSecretAttaches([]string{"ORG_TOKEN", "API_KEY=INFERENCE_KEY"})
+	got, err = parseSecretAttaches([]string{testOrgToken, "API_KEY=INFERENCE_KEY"})
 	if err != nil || got == nil || len(*got) != 2 {
 		t.Fatalf("attaches: got=%v err=%v", got, err)
 	}
-	if (*got)[0].SecretName != "ORG_TOKEN" || (*got)[0].EnvVarName != nil {
+	if (*got)[0].SecretName != testOrgToken || (*got)[0].EnvVarName != nil {
 		t.Fatalf("name only: %#v", (*got)[0])
 	}
 	if (*got)[1].SecretName != "API_KEY" || (*got)[1].EnvVarName == nil || *(*got)[1].EnvVarName != "INFERENCE_KEY" {
@@ -583,13 +596,13 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		{flags: []string{testGPUTypeFlag, testGPUType}, wantErr: scaleHint},
 		{flags: []string{"--max-workers", "2"}, wantErr: scaleHint},
 		{flags: []string{"--env-var", "FOO=bar"}, wantErr: "apps env-vars"},
-		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env-vars"},
-		{flags: []string{"--volume", "/data"}, wantErr: "immutable"},
-		{flags: []string{"--secret", "ORG_TOKEN"}, wantErr: "secrets attach"},
-		{flags: []string{"--fallback-gpu-type", testFallbackGPU}, wantErr: scaleHint},
-		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
-		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
-		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
+		{flags: []string{testEnvFileFlag, envDotfile}, wantErr: "apps env-vars"},
+		{flags: []string{testVolumeFlag, "/data"}, wantErr: "immutable"},
+		{flags: []string{testSecretFlag, testOrgToken}, wantErr: "secrets attach"},
+		{flags: []string{testFallbackGPUTypeFlag, testFallbackGPU}, wantErr: scaleHint},
+		{flags: []string{testMinAvailableWorkersFlag, "1"}, wantErr: scaleHint},
+		{flags: []string{testAvailableWorkersPctFlag, "10"}, wantErr: scaleHint},
+		{flags: []string{testNameFlag, testDisplayName}, wantErr: "apps rename"},
 		{flags: []string{testRequirement, testPipPackage}},
 		{flags: []string{testBaseImageFlag, testBaseImage}},
 		{flags: []string{testSrcDirFlag, "."}},
@@ -627,15 +640,14 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 
 func TestValidateUpdateDeployFlagsNamesEveryFlag(t *testing.T) {
 	cmd := newDeployCmd(nil)
-	secretFlag := "--secret"
-	if err := cmd.ParseFlags([]string{testGPUTypeFlag, testGPUType, "--volume", "/weights", secretFlag, "DEPLOY_TOKEN"}); err != nil {
+	if err := cmd.ParseFlags([]string{testGPUTypeFlag, testGPUType, testVolumeFlag, testVolumePath, testSecretFlag, "DEPLOY_TOKEN"}); err != nil {
 		t.Fatalf("ParseFlags: %v", err)
 	}
 	err := validateUpdateDeployFlags(cmd, &serverlessapi.App{})
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, name := range []string{testGPUTypeFlag, "--volume", secretFlag} {
+	for _, name := range []string{testGPUTypeFlag, testVolumeFlag, testSecretFlag} {
 		if !strings.Contains(err.Error(), name) {
 			t.Fatalf("missing %s in %v", name, err)
 		}
@@ -664,7 +676,7 @@ func TestValidateUpdateDeployFlagsAcceptsAStoredValue(t *testing.T) {
 	minAvailable := int32(2)
 	availablePct := int32(15)
 	stored := &serverlessapi.App{
-		AppName: "My App",
+		AppName: testDisplayName,
 		Configuration: serverlessapi.WorkerConfig{
 			GpuType:             &gpu,
 			FallbackGpuType:     &fallback,
@@ -677,7 +689,7 @@ func TestValidateUpdateDeployFlagsAcceptsAStoredValue(t *testing.T) {
 			AvailableWorkersPct: &availablePct,
 		},
 		EnvironmentVariables: []serverlessapi.EnvironmentVariable{{Key: "FOO", Value: "bar"}},
-		Secrets:              []serverlessapi.SecretAttachment{{Name: "ORG_TOKEN"}},
+		Secrets:              []serverlessapi.SecretAttachment{{Name: testOrgToken}},
 	}
 	onlyOld := &serverlessapi.App{
 		EnvironmentVariables: []serverlessapi.EnvironmentVariable{{Key: "OLD", Value: "x"}},
@@ -692,27 +704,27 @@ func TestValidateUpdateDeployFlagsAcceptsAStoredValue(t *testing.T) {
 	}{
 		{name: "gpu type matches", flags: []string{testGPUTypeFlag, testGPUType}},
 		{name: "gpu type differs", flags: []string{testGPUTypeFlag, testFallbackGPU}, wantErr: testGPUTypeFlag},
-		{name: "name matches", flags: []string{"--name", "My App"}},
-		{name: "name differs", flags: []string{"--name", "Other"}, wantErr: "--name"},
+		{name: "name matches", flags: []string{testNameFlag, testDisplayName}},
+		{name: "name differs", flags: []string{testNameFlag, "Other"}, wantErr: testNameFlag},
 		{name: "max workers matches", flags: []string{testMaxWorkersFlag, "3"}},
 		{name: "max workers differs", flags: []string{testMaxWorkersFlag, "4"}, wantErr: testMaxWorkersFlag},
-		{name: "idle ttl matches", flags: []string{"--idle-ttl", "61"}},
-		{name: "idle ttl differs", flags: []string{"--idle-ttl", "62"}, wantErr: "--idle-ttl"},
-		{name: "scaling delay matches", flags: []string{"--scaling-delay", "11"}},
-		{name: "scaling delay differs", flags: []string{"--scaling-delay", "12"}, wantErr: "--scaling-delay"},
-		{name: "min workers matches", flags: []string{"--min-workers", "2"}},
-		{name: "min workers differs", flags: []string{"--min-workers", "3"}, wantErr: "--min-workers"},
-		{name: "gpus per worker matches", flags: []string{"--gpus-per-worker", "2"}},
-		{name: "gpus per worker differs", flags: []string{"--gpus-per-worker", "4"}, wantErr: "--gpus-per-worker"},
-		{name: "fallback gpu matches", flags: []string{"--fallback-gpu-type", testFallbackGPU}},
-		{name: "fallback gpu differs", flags: []string{"--fallback-gpu-type", testGPUType}, wantErr: "--fallback-gpu-type"},
-		{name: "min available workers matches", flags: []string{"--min-available-workers", "2"}},
-		{name: "min available workers differs", flags: []string{"--min-available-workers", "3"}, wantErr: "--min-available-workers"},
-		{name: "available workers pct matches", flags: []string{"--available-workers-pct", "15"}},
-		{name: "available workers pct differs", flags: []string{"--available-workers-pct", "20"}, wantErr: "--available-workers-pct"},
-		{name: "secret name matches", flags: []string{"--secret", "ORG_TOKEN"}},
-		{name: "secret env equal to its name matches", flags: []string{"--secret", "ORG_TOKEN=ORG_TOKEN"}},
-		{name: "secret env override differs", flags: []string{"--secret", "ORG_TOKEN=OTHER"}, wantErr: "--secret"},
+		{name: "idle ttl matches", flags: []string{testIdleTTLFlag, "61"}},
+		{name: "idle ttl differs", flags: []string{testIdleTTLFlag, "62"}, wantErr: testIdleTTLFlag},
+		{name: "scaling delay matches", flags: []string{testScalingDelayFlag, "11"}},
+		{name: "scaling delay differs", flags: []string{testScalingDelayFlag, "12"}, wantErr: testScalingDelayFlag},
+		{name: "min workers matches", flags: []string{testMinWorkersFlag, "2"}},
+		{name: "min workers differs", flags: []string{testMinWorkersFlag, "3"}, wantErr: testMinWorkersFlag},
+		{name: "gpus per worker matches", flags: []string{testGPUsPerWorkerFlag, "2"}},
+		{name: "gpus per worker differs", flags: []string{testGPUsPerWorkerFlag, "4"}, wantErr: testGPUsPerWorkerFlag},
+		{name: "fallback gpu matches", flags: []string{testFallbackGPUTypeFlag, testFallbackGPU}},
+		{name: "fallback gpu differs", flags: []string{testFallbackGPUTypeFlag, testGPUType}, wantErr: testFallbackGPUTypeFlag},
+		{name: "min available workers matches", flags: []string{testMinAvailableWorkersFlag, "2"}},
+		{name: "min available workers differs", flags: []string{testMinAvailableWorkersFlag, "3"}, wantErr: testMinAvailableWorkersFlag},
+		{name: "available workers pct matches", flags: []string{testAvailableWorkersPctFlag, "15"}},
+		{name: "available workers pct differs", flags: []string{testAvailableWorkersPctFlag, "20"}, wantErr: testAvailableWorkersPctFlag},
+		{name: "secret name matches", flags: []string{testSecretFlag, testOrgToken}},
+		{name: "secret env equal to its name matches", flags: []string{testSecretFlag, "ORG_TOKEN=ORG_TOKEN"}},
+		{name: "secret env override differs", flags: []string{testSecretFlag, "ORG_TOKEN=OTHER"}, wantErr: testSecretFlag},
 		{name: "env var matches", flags: []string{"--" + envVarFlag, "FOO=bar"}},
 		{name: "env var differs", flags: []string{"--" + envVarFlag, "FOO=baz"}, wantErr: "--" + envVarFlag},
 		{
@@ -721,9 +733,9 @@ func TestValidateUpdateDeployFlagsAcceptsAStoredValue(t *testing.T) {
 			app:     onlyOld,
 			wantErr: "--" + envVarFlag,
 		},
-		{name: "env file matches", flags: []string{"--env-file", envDotfile}, envFile: "FOO=bar\n"},
-		{name: "env file differs", flags: []string{"--env-file", envDotfile}, envFile: "FOO=baz\n", wantErr: "--env-file"},
-		{name: "volume is always rejected", flags: []string{"--volume", testVolumePath}, wantErr: "--volume"},
+		{name: "env file matches", flags: []string{testEnvFileFlag, envDotfile}, envFile: "FOO=bar\n"},
+		{name: "env file differs", flags: []string{testEnvFileFlag, envDotfile}, envFile: "FOO=baz\n", wantErr: testEnvFileFlag},
+		{name: "volume is always rejected", flags: []string{testVolumeFlag, testVolumePath}, wantErr: testVolumeFlag},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
