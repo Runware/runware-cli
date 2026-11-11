@@ -38,6 +38,8 @@ To continue, see [Serverless quick start](#serverless-quick-start).
 
 ### Homebrew (macOS)
 
+The cask needs Homebrew 5.1.14 or newer. To update Homebrew, run `brew update`.
+
 ```shell
 brew install --cask runware/tap/runware
 ```
