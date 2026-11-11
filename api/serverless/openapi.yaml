@@ -4104,7 +4104,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/QueryId'
         - $ref: '#/components/parameters/MetricWindow'
-        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/LogLimit'
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/LogSort'
         - $ref: '#/components/parameters/AppEnvironment'
@@ -4368,6 +4368,21 @@ components:
         format: int32
         minimum: 1
         maximum: 100
+        default: 20
+    LogLimit:
+      name: limit
+      in: query
+      required: false
+      description: >
+        Maximum number of log entries to return in one page.
+        A worker that is still loading writes hundreds of lines before the one
+        that says why it failed, so a log page may be larger than other lists.
+        The ceiling is the one the log store accepts.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 1000
         default: 20
     Cursor:
       name: cursor

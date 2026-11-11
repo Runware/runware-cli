@@ -65,7 +65,7 @@ runware serverless apps logs <appId> [flags]
       --errors          Show only error lines from the fetched page, and from the live stream with --follow: level error or fatal, a traceback, or an exception message
   -f, --follow          Stream new log entries until interrupted
   -h, --help            help for logs
-      --limit int       Maximum number of entries on the recent page (1-100, default 20)
+      --limit int       Maximum number of entries on the recent page (1-1000, default 20)
       --sort string     Order of the recent page (oldest or newest; default: latest page, oldest first)
       --window string   Time window for the recent page (1h, 6h, 24h, 7d, or 30d) (default "1h")
 ```

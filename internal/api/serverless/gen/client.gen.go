@@ -2824,6 +2824,9 @@ type Cursor = string
 // Limit defines model for Limit.
 type Limit = int32
 
+// LogLimit defines model for LogLimit.
+type LogLimit = int32
+
 // MetricWindow defines model for MetricWindow.
 type MetricWindow string
 
@@ -3321,8 +3324,8 @@ type GetLogEntriesParams struct {
 	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalog can be asked of it.
 	Window GetLogEntriesParamsWindow `form:"window" json:"window"`
 
-	// Limit Maximum number of items to return.
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	// Limit Maximum number of log entries to return in one page. A worker that is still loading writes hundreds of lines before the one that says why it failed, so a log page may be larger than other lists. The ceiling is the one the log store accepts.
+	Limit *LogLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
