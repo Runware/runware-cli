@@ -35,7 +35,10 @@ jobs:
 
       - uses: goreleaser/goreleaser-action@v6
         with:
-          version: "~> v2"
+          # v2.19 is the first version with homebrew_casks hooks install_steps.
+          # The action reads "~> v2.19" as 2.19.x only, so use "^v2.19" (>=2.19.0 <3.0.0).
+          # Keep in step with the GoReleaser config check in ci.yml.
+          version: "^v2.19"
           args: release --clean --release-notes=CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GO_RELEASER_PAT }}
