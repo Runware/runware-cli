@@ -11,6 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Check GoReleaser config
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          # Keep in step with the GoReleaser version in release.yml.
+          version: "^v2.19"
+          args: check
+
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
