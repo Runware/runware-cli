@@ -17,10 +17,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	testEnvironment = "staging"
-	testVolume      = "model-weights"
-)
+const testEnvironment = "staging"
 
 // environmentCall is one client call, named by the generated operation it sends.
 type environmentCall struct {
@@ -31,56 +28,6 @@ type environmentCall struct {
 func environmentScopedCalls() []environmentCall {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	return []environmentCall{
-		{
-			operation: "ListVolumes",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.ListVolumes(ctx, ListVolumesParams{})
-				return err
-			},
-		},
-		{
-			operation: "CreateVolume",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.CreateVolume(ctx, VolumeCreate{
-					Name: testVolume,
-				})
-				return err
-			},
-		},
-		{
-			operation: "GetVolume",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.GetVolume(ctx, testVolume)
-				return err
-			},
-		},
-		{
-			operation: "UpdateVolume",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.UpdateVolume(ctx, testVolume, VolumeUpdate{})
-				return err
-			},
-		},
-		{
-			operation: "DeleteVolume",
-			call: func(ctx context.Context, c *Client) error {
-				return c.DeleteVolume(ctx, testVolume, false)
-			},
-		},
-		{
-			operation: "GetVolumeReferences",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.GetVolumeReferences(ctx, testVolume)
-				return err
-			},
-		},
-		{
-			operation: "ListVolumeFiles",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.ListVolumeFiles(ctx, testVolume, ListVolumeFilesParams{})
-				return err
-			},
-		},
 		{
 			operation: "CreateApp",
 			call: func(ctx context.Context, c *Client) error {
@@ -367,13 +314,6 @@ func environmentScopedCalls() []environmentCall {
 
 func orgScopedCalls() []environmentCall {
 	return []environmentCall{
-		{
-			operation: "GetVolumeSettings",
-			call: func(ctx context.Context, c *Client) error {
-				_, err := c.GetVolumeSettings(ctx)
-				return err
-			},
-		},
 		{
 			operation: "ListGpuTypes",
 			call: func(ctx context.Context, c *Client) error {

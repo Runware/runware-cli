@@ -26,7 +26,6 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		newSecretsCmd(logger),
 		newAppsCmd(logger),
 		newEnvironmentsCmd(logger),
-		newVolumesCmd(logger),
 	)
 	return cmd
 }
