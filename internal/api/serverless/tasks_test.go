@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -225,6 +227,237 @@ func TestInvokeSync_WaitExpiry202(t *testing.T) {
 	}
 	if task.Id != testTaskID || task.Status != TaskStatusPending {
 		t.Fatalf("unexpected task: %+v", task)
+	}
+}
+
+// invokeMethod is one of the two invoke operations under test. okStatus is the
+// status its success answers with.
+type invokeMethod struct {
+	name     string
+	invoke   func(c *Client, ctx context.Context, appID, endpointPath, taskID string, body TaskPayload) (*Task, error)
+	okStatus int
+}
+
+var invokeMethods = []invokeMethod{
+	{
+		name:     "sync",
+		invoke:   (*Client).InvokeSync,
+		okStatus: http.StatusOK,
+	},
+	{
+		name:     "async",
+		invoke:   (*Client).InvokeAsync,
+		okStatus: http.StatusAccepted,
+	},
+}
+
+// invokeAnswer is how the stub API answers an invocation. okStatus is the
+// status a success carries for the method under test.
+type invokeAnswer func(w http.ResponseWriter, okStatus int)
+
+type invokeAnswerCase struct {
+	name   string
+	answer invokeAnswer
+}
+
+// answerHTML answers status with an HTML page, as a proxy in front of the API does.
+func answerHTML(status int) invokeAnswer {
+	return func(w http.ResponseWriter, _ int) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(status)
+		_, _ = fmt.Fprintf(w, "<html>error code: %d</html>", status)
+	}
+}
+
+// answerProblem answers status with the API's own problem document.
+func answerProblem(status int, problemType string) invokeAnswer {
+	return func(w http.ResponseWriter, _ int) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(status)
+		_, _ = fmt.Fprintf(w, `{"type":%q,"title":%q,"status":%d}`, problemType, http.StatusText(status), status)
+	}
+}
+
+// answerDropped closes the connection before any response is written.
+func answerDropped(w http.ResponseWriter, _ int) {
+	conn, _, err := w.(http.Hijacker).Hijack()
+	if err != nil {
+		panic(err)
+	}
+	_ = conn.Close()
+}
+
+// answerCutShort starts a success and aborts it mid-body, so reading the
+// body fails as it does when the connection drops during the transfer.
+func answerCutShort(w http.ResponseWriter, okStatus int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(testTaskDone)))
+	w.WriteHeader(okStatus)
+	_, _ = w.Write([]byte(testTaskDone[:len(testTaskDone)/2]))
+	w.(http.Flusher).Flush()
+	panic(http.ErrAbortHandler)
+}
+
+// answerMalformed answers a success whose JSON body does not parse.
+func answerMalformed(w http.ResponseWriter, okStatus int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(okStatus)
+	_, _ = w.Write([]byte(`{"id":`))
+}
+
+// answerNotJSON answers a success that carries no JSON body.
+func answerNotJSON(w http.ResponseWriter, okStatus int) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(okStatus)
+	_, _ = w.Write([]byte("ok"))
+}
+
+// lostAnswers leave unknown whether the API accepted the task.
+var lostAnswers = []invokeAnswerCase{
+	{
+		name:   "proxy 520",
+		answer: answerHTML(520),
+	},
+	{
+		name:   "proxy 524",
+		answer: answerHTML(524),
+	},
+	{
+		name:   "proxy 503",
+		answer: answerHTML(http.StatusServiceUnavailable),
+	},
+	{
+		name:   "api 500",
+		answer: answerProblem(http.StatusInternalServerError, "https://docs.runware.ai/serverless/errors#internal-server-error"),
+	},
+	{
+		name:   "api 502",
+		answer: answerProblem(http.StatusBadGateway, "https://docs.runware.ai/serverless/errors#bad-gateway"),
+	},
+	{
+		name:   "connection dropped",
+		answer: answerDropped,
+	},
+	{
+		name:   "body cut short",
+		answer: answerCutShort,
+	},
+	{
+		name:   "body malformed",
+		answer: answerMalformed,
+	},
+	{
+		name:   "body not JSON",
+		answer: answerNotJSON,
+	},
+}
+
+// refusedAnswers say the API did not accept the task.
+var refusedAnswers = []invokeAnswerCase{
+	{
+		name:   "capacity unavailable",
+		answer: answerProblem(http.StatusServiceUnavailable, "https://docs.runware.ai/serverless/errors#capacity-unavailable"),
+	},
+	{
+		name:   "bad request",
+		answer: answerProblem(http.StatusBadRequest, "https://docs.runware.ai/serverless/errors#bad-request"),
+	},
+	{
+		name:   "not found",
+		answer: answerProblem(http.StatusNotFound, "https://docs.runware.ai/serverless/errors#not-found"),
+	},
+	{
+		name:   "conflict",
+		answer: answerProblem(http.StatusConflict, "https://docs.runware.ai/serverless/errors#conflict"),
+	},
+	{
+		name:   "environment paused",
+		answer: answerProblem(http.StatusTooManyRequests, "https://docs.runware.ai/serverless/errors#environment-paused"),
+	},
+}
+
+func invokeAgainst(t *testing.T, m invokeMethod, answer invokeAnswer, taskID string) error {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		answer(w, m.okStatus)
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := m.invoke(c, context.Background(), testAppID, testEndpoint, taskID, nil)
+	return err
+}
+
+func TestInvoke_LostResponseNamesTheTaskSent(t *testing.T) {
+	for _, m := range invokeMethods {
+		for _, tc := range lostAnswers {
+			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
+				err := invokeAgainst(t, m, tc.answer, testTaskID)
+				lost, ok := errors.AsType[*ResponseLostError](err)
+				if !ok {
+					t.Fatalf("err = %v, want a *ResponseLostError", err)
+				}
+				if lost.TaskID != testTaskID {
+					t.Fatalf("TaskID = %q, want %q", lost.TaskID, testTaskID)
+				}
+				if !strings.Contains(err.Error(), testTaskID) {
+					t.Fatalf("err = %q, want it to name the task", err)
+				}
+			})
+		}
+	}
+}
+
+func TestInvoke_RefusalIsNotALostResponse(t *testing.T) {
+	for _, m := range invokeMethods {
+		for _, tc := range refusedAnswers {
+			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
+				err := invokeAgainst(t, m, tc.answer, testTaskID)
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				if _, ok := errors.AsType[*ResponseLostError](err); ok {
+					t.Fatalf("err = %v, want a refusal, not a lost response", err)
+				}
+			})
+		}
+	}
+}
+
+func TestInvoke_LostResponseNamesAGeneratedTaskID(t *testing.T) {
+	var sent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var invocation map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&invocation); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		sent, _ = invocation["taskId"].(string)
+		answerHTML(520)(w, http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
+	_, err := c.InvokeSync(context.Background(), testAppID, testEndpoint, "", nil)
+	lost, ok := errors.AsType[*ResponseLostError](err)
+	if !ok {
+		t.Fatalf("err = %v, want a *ResponseLostError", err)
+	}
+	if sent == "" || lost.TaskID != sent {
+		t.Fatalf("TaskID = %q, want the id sent, %q", lost.TaskID, sent)
+	}
+}
+
+func TestInvoke_LostResponseCarriesTheTaskOnTheAPIError(t *testing.T) {
+	err := invokeAgainst(t, invokeMethods[0], answerProblem(http.StatusBadGateway, "https://docs.runware.ai/serverless/errors#bad-gateway"), testTaskID)
+	re, ok := errors.AsType[*transport.RunwareError](err)
+	if !ok {
+		t.Fatalf("err = %v, want a *transport.RunwareError inside", err)
+	}
+	if re.TaskUUID != testTaskID || re.StatusCode != http.StatusBadGateway {
+		t.Fatalf("TaskUUID = %q, status = %d; want %q, 502", re.TaskUUID, re.StatusCode, testTaskID)
+	}
+	if got := re.APIFields()["taskUUID"]; got != testTaskID {
+		t.Fatalf("APIFields taskUUID = %v, want %q", got, testTaskID)
 	}
 }
 

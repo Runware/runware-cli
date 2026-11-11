@@ -51,6 +51,22 @@ func endpointPathEditor(endpointPath string) gen.RequestEditorFn {
 	}
 }
 
+// ResponseLostError reports an invocation the API may have accepted although
+// no response said so: the connection dropped or timed out, the body could not
+// be read, or a proxy or the API answered with a server error rather than a
+// refusal. TaskID is the id the request carried, so the caller can read that
+// task, or send the invocation again under the same id, without a second run.
+type ResponseLostError struct {
+	TaskID string
+	Err    error
+}
+
+func (e *ResponseLostError) Error() string {
+	return fmt.Sprintf("%v (task %s)", e.Err, e.TaskID)
+}
+
+func (e *ResponseLostError) Unwrap() error { return e.Err }
+
 // taskNotFoundRetry is how long WaitTask retries getTask 404s. A freshly
 // accepted id can temporarily miss the result store.
 const taskNotFoundRetry = 30 * time.Second
@@ -99,7 +115,7 @@ func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath, taskID st
 		Environment: c.environmentParam(),
 	}, invocation, endpointPathEditor(endpointPath))
 	if err != nil {
-		return nil, fmt.Errorf("invoke async: %w", err)
+		return nil, responseLost(invocation.TaskId, fmt.Errorf("invoke async: %w", err))
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -107,7 +123,7 @@ func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath, taskID st
 	switch resp.StatusCode() {
 	case http.StatusAccepted:
 		if resp.JSON202 == nil {
-			return nil, fmt.Errorf("invoke async: empty 202 response")
+			return nil, responseLost(invocation.TaskId, fmt.Errorf("invoke async: empty 202 response"))
 		}
 		return resp.JSON202, nil
 	case http.StatusBadRequest:
@@ -123,15 +139,17 @@ func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath, taskID st
 	case http.StatusUnprocessableEntity:
 		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	case http.StatusServiceUnavailable:
-		return nil, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
+		return nil, invokeUnavailableError(invocation.TaskId, resp.ApplicationproblemJSON503, resp.Body)
 	default:
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
+		return nil, invokeStatusError(invocation.TaskId, resp.Body, resp.StatusCode())
 	}
 }
 
 // InvokeSync starts a task and waits up to the platform wait window.
 // A wait-window expiry is not a failure: the accepted task is returned so
-// the caller can poll. Never resubmit.
+// the caller can poll. Never resubmit. A response that never arrives, or
+// arrives unreadable, returns a *ResponseLostError naming the task id sent,
+// which the caller polls in the same way.
 func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID string, body TaskPayload) (*Task, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
@@ -148,7 +166,7 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 		Environment: c.environmentParam(),
 	}, invocation, endpointPathEditor(endpointPath))
 	if err != nil {
-		return nil, fmt.Errorf("invoke sync: %w", err)
+		return nil, responseLost(invocation.TaskId, fmt.Errorf("invoke sync: %w", err))
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -156,7 +174,7 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 	switch resp.StatusCode() {
 	case http.StatusOK:
 		if resp.JSON200 == nil {
-			return nil, fmt.Errorf("invoke sync: empty 200 response")
+			return nil, responseLost(invocation.TaskId, fmt.Errorf("invoke sync: empty 200 response"))
 		}
 		return resp.JSON200, nil
 	case http.StatusAccepted:
@@ -165,7 +183,7 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 		}
 		task, err := taskFromBody(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("invoke sync: wait window expired without a task id")
+			return nil, responseLost(invocation.TaskId, fmt.Errorf("invoke sync: wait window expired with an unreadable 202 response"))
 		}
 		return task, nil
 	case http.StatusBadRequest:
@@ -181,10 +199,47 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 	case http.StatusUnprocessableEntity:
 		return nil, problemToError(resp.ApplicationproblemJSON422, http.StatusUnprocessableEntity)
 	case http.StatusServiceUnavailable:
-		return nil, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
+		return nil, invokeUnavailableError(invocation.TaskId, resp.ApplicationproblemJSON503, resp.Body)
 	default:
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
+		return nil, invokeStatusError(invocation.TaskId, resp.Body, resp.StatusCode())
 	}
+}
+
+// responseLost wraps err, an invocation failure that leaves unknown whether
+// the API accepted the task, with the task id the request carried. The id is
+// also set on a wrapped API error so structured error output carries it.
+func responseLost(taskID uuid.UUID, err error) error {
+	id := taskID.String()
+	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
+		re.TaskUUID = id
+	}
+	return &ResponseLostError{
+		TaskID: id,
+		Err:    err,
+	}
+}
+
+// invokeUnavailableError is the error for a 503 to an invocation. The API's
+// own 503 carries a problem document and mints no task, so it is a refusal.
+// A 503 without one came from a proxy in front of the API, which says
+// nothing about whether the task was accepted.
+func invokeUnavailableError(taskID uuid.UUID, problem *gen.ProblemDetails, body []byte) error {
+	if problem != nil {
+		return problemToError(problem, http.StatusServiceUnavailable)
+	}
+	return responseLost(taskID, problemFromBody(body, http.StatusServiceUnavailable))
+}
+
+// invokeStatusError is the error for an invocation status the operation does
+// not bind. A server error may follow an accepted task: the API answers 502
+// when its task service is unreachable after accepting, and a proxy answers
+// 520 or 524 when the connection to the API drops mid-response.
+func invokeStatusError(taskID uuid.UUID, body []byte, statusCode int) error {
+	err := problemFromBody(body, statusCode)
+	if statusCode >= http.StatusInternalServerError {
+		return responseLost(taskID, err)
+	}
+	return err
 }
 
 // GetTask returns a task by id.

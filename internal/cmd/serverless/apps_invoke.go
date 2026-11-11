@@ -2,6 +2,7 @@ package serverless
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -43,7 +44,12 @@ together, and requires --wait or --sync.
 
 A client-generated task id is sent with every invoke. Omit --task-id to
 generate one. Resubmitting the same id returns the task it already names
-instead of starting a second run.`,
+instead of starting a second run.
+
+When no response arrives (a dropped connection, a body that cannot be read,
+or a server error from a proxy such as Cloudflare), the command prints the
+task id it sent and how to read it. With --sync or --wait it polls that id
+instead, so a run the worker finished is neither lost nor run again.`,
 		Example: `  # list endpoint paths, then invoke asynchronously
   runware serverless apps endpoints my-app
   runware serverless apps invoke my-app infer -f payload.json
@@ -79,6 +85,22 @@ instead of starting a second run.`,
 				task, err = client.InvokeSync(waitCtx, appID, endpointPath, taskID, payload)
 			} else {
 				task, err = client.InvokeAsync(cmd.Context(), appID, endpointPath, taskID, payload)
+			}
+			if lost, ok := errors.AsType[*serverlessapi.ResponseLostError](err); ok {
+				polling := (sync || wait) && waitCtx.Err() == nil
+				if !polling {
+					spin.Stop()
+				}
+				showCmd := taskShowCommand(cmd, appID, lost.TaskID)
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), lostResponseMessage(lost.TaskID, showCmd, polling))
+				if polling {
+					spin.SetMessage(fmt.Sprintf("Waiting for task %s...", lost.TaskID))
+					task, err = client.WaitTask(waitCtx, appID, lost.TaskID, pollInterval)
+					if err != nil {
+						spin.Stop()
+						return waitTimeoutErr(waitCtx, err, "task "+lost.TaskID, timeout)
+					}
+				}
 			}
 			if err != nil {
 				spin.Stop()
@@ -162,6 +184,28 @@ func invokeWaitMessage(taskID string, depth *int64) string {
 	return fmt.Sprintf(
 		"Task %s is pending (queued or running). Polling it.%s To wait on it again, run the same command with --sync or --wait and --task-id %s.",
 		taskID, depthText, taskID,
+	)
+}
+
+// taskShowCommand is the command line that reads taskID on appID in the
+// environment cmd addresses.
+func taskShowCommand(cmd *cobra.Command, appID, taskID string) string {
+	choice := environmentFor(cmd)
+	return serverlessCommand(choice.name, choice.defaultEnvironment, "apps", "tasks", "show", appID, taskID)
+}
+
+// lostResponseMessage is printed when no response said whether an invoke
+// started. It names the task id the request carried and the two ways to reach
+// that task without starting a second run. polling says the command is about
+// to poll the task itself.
+func lostResponseMessage(taskID, showCmd string, polling bool) string {
+	status := ""
+	if polling {
+		status = " Polling it."
+	}
+	return fmt.Sprintf(
+		"No response arrived for task %s, so it may have started.%s\nRead it with: %s\nOr run the same invoke with --task-id %s: it returns that task instead of starting a second run.",
+		taskID, status, showCmd, taskID,
 	)
 }
 
