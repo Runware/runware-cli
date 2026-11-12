@@ -57,6 +57,7 @@ const (
 	colBudgetAlerts   = "Budget alerts"
 	colPauseAtBudget  = "Pause at budget"
 
+	colKind                     = "Kind"
 	colAudience                 = "Audience"
 	colProvider                 = "Provider"
 	colRoleARN                  = "Role ARN"

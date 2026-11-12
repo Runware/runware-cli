@@ -12,6 +12,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The release app credentials live in this environment, which only allows
+    # v* tags. A workflow on a branch cannot read them.
+    environment: release
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +36,23 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.0
 
+      # GoReleaser writes to the Homebrew tap and the Scoop bucket as well as this
+      # repo. The built-in GITHUB_TOKEN cannot write to other repos, so mint a
+      # short-lived GitHub App installation token scoped to these three repos.
+      # Mint it last, just before GoReleaser, because the token expires after one hour.
+      - name: Generate release token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: Runware
+          repositories: |
+            runware-cli
+            homebrew-tap
+            scoop-bucket
+          permission-contents: write
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           # v2.19 is the first version with homebrew_casks hooks install_steps.
@@ -41,4 +61,4 @@ jobs:
           version: "^v2.19"
           args: release --clean --release-notes=CHANGELOG.md
         env:
-          GITHUB_TOKEN: ${{ secrets.GO_RELEASER_PAT }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
