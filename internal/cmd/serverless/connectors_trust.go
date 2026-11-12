@@ -2,10 +2,10 @@ package serverless
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -30,7 +30,7 @@ const (
 	// shell command or a heredoc. The identifiers a trust rule is built from
 	// (uuids, app ids, resource names, ARNs) all fit; anything else is refused
 	// rather than escaped, so no value can end a quote or start an expansion.
-	shellSafe = `^[A-Za-z0-9:_./@=+,-]+$`
+	shellSafe = `^[A-Za-z0-9:_./@+,-][A-Za-z0-9:_./@=+,-]*$`
 )
 
 var (
@@ -49,29 +49,28 @@ var trustScopes = []string{trustScopeApp, trustScopeEnvironment}
 
 // trustInput is what the trust commands are built from.
 type trustInput struct {
-	connector serverlessapi.OidcConnector
+	// connector is the attachment, which carries the subject and subjectPattern
+	// the API reports for the application's tokens.
+	connector serverlessapi.AppOidcConnector
 	// app, environment and scope describe the request, for the header comment.
 	app         string
 	environment string
 	scope       string
-	// subject and subjectPattern are the attachment's, as the API reports them.
-	subject        string
-	subjectPattern string
 }
 
 // subjectPrefix returns the environment's subject prefix, which the attachment's
 // subject and subjectPattern both start with.
 func (in trustInput) subjectPrefix() (prefix, envID string, err error) {
-	prefix, ok := strings.CutSuffix(in.subjectPattern, "*")
+	prefix, ok := strings.CutSuffix(in.connector.SubjectPattern, "*")
 	if !ok {
-		return "", "", fmt.Errorf("subjectPattern %q does not end in *", in.subjectPattern)
+		return "", "", fmt.Errorf("subjectPattern %q does not end in *", in.connector.SubjectPattern)
 	}
 	m := subjectPrefixPattern.FindStringSubmatch(prefix)
 	if m == nil {
-		return "", "", fmt.Errorf("subjectPattern %q is not worker:org:<organization>:env:<environment>:*", in.subjectPattern)
+		return "", "", fmt.Errorf("subjectPattern %q is not worker:org:<organization>:env:<environment>:*", in.connector.SubjectPattern)
 	}
-	if !strings.HasPrefix(in.subject, prefix) {
-		return "", "", fmt.Errorf("subject %q is outside subjectPattern %q", in.subject, in.subjectPattern)
+	if !strings.HasPrefix(in.connector.Subject, prefix) {
+		return "", "", fmt.Errorf("subject %q is outside subjectPattern %q", in.connector.Subject, in.connector.SubjectPattern)
 	}
 	return prefix, m[2], nil
 }
@@ -89,21 +88,24 @@ func renderTrust(in trustInput) (string, error) {
 		return "", errors.New("the connector has no issuer: this environment has no OIDC issuer")
 	}
 	issuer := *in.connector.Issuer
-	checked := []string{in.subject, in.subjectPattern, issuer}
+	// The subject pattern is already held to subjectPrefixPattern plus one *.
+	// Everything else printed unquoted must be shell safe, and no value may
+	// carry a * (a glob).
+	checked := []string{in.connector.Subject, issuer}
 	if in.connector.Kind == serverlessapi.OidcConnectorKindAws {
 		// Only an aws audience is printed unquoted; a generic one is quoted.
 		checked = append(checked, in.connector.Audience)
 	}
 	for _, v := range checked {
-		if !shellSafePattern.MatchString(strings.ReplaceAll(v, "*", "")) {
+		if !shellSafePattern.MatchString(v) {
 			return "", fmt.Errorf("value %q has characters that cannot be printed safely in a shell command", v)
 		}
 	}
 
 	var b strings.Builder
-	trusted := in.subject
+	trusted := in.connector.Subject
 	if in.scope == trustScopeEnvironment {
-		trusted = in.subjectPattern
+		trusted = in.connector.SubjectPattern
 	}
 	fmt.Fprintf(&b, "# Trust for connector %s (%s) in environment %s.\n", in.connector.Name, in.connector.Kind, in.environment)
 	if in.scope == trustScopeEnvironment {
@@ -153,6 +155,11 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 	if m == nil || !shellSafePattern.MatchString(in.connector.Aws.RoleArn) {
 		return fmt.Errorf("roleArn %q is not an IAM role ARN", in.connector.Aws.RoleArn)
 	}
+	// The audience is a --client-id-list item: a comma would split it in two and a
+	// leading dash would read as a flag.
+	if strings.Contains(in.connector.Audience, ",") || strings.HasPrefix(in.connector.Audience, "-") {
+		return fmt.Errorf("audience %q cannot be printed as an --client-id-list value", in.connector.Audience)
+	}
 	partition, account, rolePath := m[1], m[2], m[3]
 	roleName := rolePath
 	path := "/"
@@ -166,27 +173,35 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 		return fmt.Errorf("issuer %q does not start with https://", issuer)
 	}
 
-	subjectOperator, trusted := "StringEquals", in.subject
+	subjectOperator, trusted := "StringEquals", in.connector.Subject
 	if in.scope == trustScopeEnvironment {
-		subjectOperator, trusted = "StringLike", in.subjectPattern
+		subjectOperator, trusted = "StringLike", in.connector.SubjectPattern
 	}
 	// Two operators cannot share one key, so aud and sub sit in separate blocks.
 	condition := map[string]map[string]string{
-		"StringEquals": {host + ":aud": in.connector.Audience},
+		"StringEquals": {
+			host + ":aud": in.connector.Audience,
+		},
 	}
 	if subjectOperator == "StringEquals" {
 		condition["StringEquals"][host+":sub"] = trusted
 	} else {
-		condition[subjectOperator] = map[string]string{host + ":sub": trusted}
+		condition[subjectOperator] = map[string]string{
+			host + ":sub": trusted,
+		}
 	}
 	policy := awsTrustPolicy{
 		Version: "2012-10-17",
-		Statement: []awsTrustStatement{{
-			Effect:    "Allow",
-			Principal: awsTrustPrincipal{Federated: fmt.Sprintf("arn:%s:iam::%s:oidc-provider/%s", partition, account, host)},
-			Action:    "sts:AssumeRoleWithWebIdentity",
-			Condition: condition,
-		}},
+		Statement: []awsTrustStatement{
+			{
+				Effect: "Allow",
+				Principal: awsTrustPrincipal{
+					Federated: fmt.Sprintf("arn:%s:iam::%s:oidc-provider/%s", partition, account, host),
+				},
+				Action:    "sts:AssumeRoleWithWebIdentity",
+				Condition: condition,
+			},
+		},
 	}
 	var doc bytes.Buffer
 	enc := json.NewEncoder(&doc)
@@ -212,6 +227,10 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 		fmt.Fprintf(b, " --path %s", path)
 	}
 	b.WriteString(" --assume-role-policy-document file://trust-policy.json\n")
+	b.WriteString("#    If the role already exists, create-role fails. This command sets the role's trust policy to\n")
+	b.WriteString("#    trust-policy.json: it REPLACES the existing trust policy and does not merge. If other principals\n")
+	b.WriteString("#    rely on the role, add the statement above to its existing trust policy document instead.\n")
+	fmt.Fprintf(b, "#    aws iam update-assume-role-policy --role-name %s --policy-document file://trust-policy.json\n", roleName)
 	return nil
 }
 
@@ -230,15 +249,17 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 	if in.scope == trustScopeEnvironment {
 		member = "principalSet://iam.googleapis.com/" + pool + "/attribute.environment_id/" + envID
 	} else {
-		member = "principal://iam.googleapis.com/" + pool + "/subject/" + in.subject
-	}
-	if !shellSafePattern.MatchString(member) || !shellSafePattern.MatchString(provider) {
-		return errors.New("a workload identity value cannot be printed safely in a shell command")
+		member = "principal://iam.googleapis.com/" + pool + "/subject/" + in.connector.Subject
 	}
 
 	b.WriteString("\n# 1. Create the workload identity pool and the provider the connector names.\n")
-	b.WriteString("#    The provider admits every token of this organization and environment; the grant in step 2\n")
-	b.WriteString("#    narrows it. Re-running fails with ALREADY_EXISTS once they exist, which is harmless.\n")
+	b.WriteString("#    The provider admits the tokens of this organization and environment only; the grant in step 2\n")
+	b.WriteString("#    narrows it. If the provider already exists (ALREADY_EXISTS), for example from another environment,\n")
+	b.WriteString("#    it still rejects this environment until its attribute condition admits it too. This command cannot\n")
+	b.WriteString("#    read the existing condition; show it with:\n")
+	fmt.Fprintf(b, "#      gcloud iam workload-identity-pools providers describe %s --format='value(attributeCondition)'\n", provider)
+	b.WriteString("#    then set it to that condition OR-ed with this one:\n")
+	fmt.Fprintf(b, "#      gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('%s')\"\n", provider, prefix)
 	fmt.Fprintf(b, "gcloud iam workload-identity-pools create %s --display-name='Runware Serverless'\n", pool)
 	fmt.Fprintf(b, "gcloud iam workload-identity-pools providers create-oidc %s \\\n", provider)
 	fmt.Fprintf(b, "  --issuer-uri=%s \\\n", issuer)
@@ -276,11 +297,11 @@ func renderGeneric(b *strings.Builder, in trustInput, issuer, prefix string) {
 	if in.scope == trustScopeEnvironment {
 		b.WriteString("# sub must start with this prefix; it matches every application of the organization in this environment.\n")
 		fmt.Fprintf(b, "OIDC_SUB_PREFIX=%s\n", prefix)
-		fmt.Fprintf(b, "OIDC_SUB_PATTERN=%s\n", shellQuote(in.subjectPattern))
+		fmt.Fprintf(b, "OIDC_SUB_PATTERN=%s\n", shellQuote(in.connector.SubjectPattern))
 		return
 	}
 	b.WriteString("# sub must equal this value; it matches this application in this environment only.\n")
-	fmt.Fprintf(b, "OIDC_SUB=%s\n", in.subject)
+	fmt.Fprintf(b, "OIDC_SUB=%s\n", in.connector.Subject)
 }
 
 // shellQuote single-quotes s for a POSIX shell.
@@ -327,46 +348,33 @@ another environment are never trusted by either.`,
 				return fmt.Errorf("invalid --%s %q: must be one of: %s", flagScope, scope, strings.Join(trustScopes, ", "))
 			}
 
-			client := newServerlessClient(cmd, logger)
-			spin := cmdutil.NewSpinner(fmt.Sprintf("Reading connector %s on %s...", name, app))
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Reading the connectors attached to %s...", app))
 			spin.Start()
-			connector, err := client.GetOidcConnector(cmd.Context(), name)
-			var attached []serverlessapi.AppOidcConnector
-			if err == nil {
-				attached, err = client.ListAppOidcConnectors(cmd.Context(), app)
-			}
+			attached, err := newServerlessClient(cmd, logger).ListAppOidcConnectors(cmd.Context(), app)
 			spin.Stop()
 			if err != nil {
 				return err
 			}
 
-			environment := commandEnvironment(cmd)
-			if environment == "" {
-				environment = serverlessapi.ProductionEnvironment
-			}
-			var found *serverlessapi.AppOidcConnector
-			for i := range attached {
-				if attached[i].Name == name {
-					found = &attached[i]
-				}
-			}
-			if found == nil {
-				return fmt.Errorf("connector %s is not attached to %s in environment %s: attach it first with 'runware serverless apps connectors attach %s %s'",
-					name, app, environment, app, name)
+			// The attachment carries the connector's kind, audience, provider block and
+			// issuer as well as the subject, so the connector itself is not read.
+			i := slices.IndexFunc(attached, func(c serverlessapi.AppOidcConnector) bool { return c.Name == name })
+			if i < 0 {
+				attach := serverlessCommand(commandEnvironment(cmd), defaultEnvironment(cmd), "apps", "connectors", "attach", app, name)
+				return fmt.Errorf("connector %s is not attached to %s (or does not exist): attach it first with '%s'",
+					name, deleteSubject(cmd, app), attach)
 			}
 
 			script, err := renderTrust(trustInput{
-				connector:      *connector,
-				app:            app,
-				environment:    environment,
-				scope:          scope,
-				subject:        found.Subject,
-				subjectPattern: found.SubjectPattern,
+				connector:   attached[i],
+				app:         app,
+				environment: cmp.Or(commandEnvironment(cmd), serverlessapi.ProductionEnvironment),
+				scope:       scope,
 			})
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprint(os.Stdout, script)
+			_, err = fmt.Fprint(cmd.OutOrStdout(), script)
 			return err
 		},
 	}
