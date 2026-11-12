@@ -111,11 +111,19 @@ func (c *Client) InvokeAsync(ctx context.Context, appID, endpointPath, taskID st
 		return nil, err
 	}
 
-	resp, err := c.inner.StartAsyncTaskWithResponse(ctx, appID, endpointPath, &gen.StartAsyncTaskParams{
+	// Send and parse in two steps: a parse failure drops the response, and
+	// its status still decides whether the task may have been accepted.
+	rsp, err := c.inner.StartAsyncTask(ctx, appID, endpointPath, &gen.StartAsyncTaskParams{
 		Environment: c.environmentParam(),
 	}, invocation, endpointPathEditor(endpointPath))
 	if err != nil {
 		return nil, responseLost(invocation.TaskId, fmt.Errorf("invoke async: %w", err))
+	}
+	defer func() { _ = rsp.Body.Close() }()
+	resp, err := gen.ParseStartAsyncTaskResponse(rsp)
+	if err != nil {
+		c.logResponse(ctx, rsp, nil)
+		return nil, unreadableInvokeError(invocation.TaskId, "invoke async", rsp.StatusCode, err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -162,11 +170,18 @@ func (c *Client) InvokeSync(ctx context.Context, appID, endpointPath, taskID str
 		return nil, err
 	}
 
-	resp, err := c.innerWithMinTimeout(invokeSyncTimeout).StartSyncTaskWithResponse(ctx, appID, endpointPath, &gen.StartSyncTaskParams{
+	// Send and parse in two steps, as InvokeAsync does.
+	rsp, err := c.innerWithMinTimeout(invokeSyncTimeout).StartSyncTask(ctx, appID, endpointPath, &gen.StartSyncTaskParams{
 		Environment: c.environmentParam(),
 	}, invocation, endpointPathEditor(endpointPath))
 	if err != nil {
 		return nil, responseLost(invocation.TaskId, fmt.Errorf("invoke sync: %w", err))
+	}
+	defer func() { _ = rsp.Body.Close() }()
+	resp, err := gen.ParseStartSyncTaskResponse(rsp)
+	if err != nil {
+		c.logResponse(ctx, rsp, nil)
+		return nil, unreadableInvokeError(invocation.TaskId, "invoke sync", rsp.StatusCode, err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
@@ -216,13 +231,29 @@ func responseLost(taskID uuid.UUID, err error) error {
 
 // invokeUnavailableError is the error for a 503 to an invocation. The API's
 // own 503 carries a problem document and mints no task, so it is a refusal.
-// A 503 without one came from a proxy in front of the API, which says
-// nothing about whether the task was accepted.
+// A 503 without one, whether it carries a page or JSON of another shape,
+// came from a proxy in front of the API, which says nothing about whether
+// the task was accepted.
 func invokeUnavailableError(taskID uuid.UUID, problem *gen.ProblemDetails, body []byte) error {
-	if problem != nil {
+	if problem != nil && isProblemDetails(*problem) {
 		return problemToError(problem, http.StatusServiceUnavailable)
 	}
 	return responseLost(taskID, problemFromBody(body, http.StatusServiceUnavailable))
+}
+
+// unreadableInvokeError is the error for an invocation response whose body
+// could not be read or decoded. Its status still arrived and decides: a
+// client error is the API's refusal whatever the body holds, while a success
+// or a server error leaves unknown whether the task was accepted. A server
+// error keeps its status, as invokeStatusError's does.
+func unreadableInvokeError(taskID uuid.UUID, op string, statusCode int, err error) error {
+	if statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError {
+		return problemToError(nil, statusCode)
+	}
+	if statusCode >= http.StatusInternalServerError {
+		err = fmt.Errorf("%w: %w", problemToError(nil, statusCode), err)
+	}
+	return responseLost(taskID, fmt.Errorf("%s: unreadable response: %w", op, err))
 }
 
 // invokeStatusError is the error for an invocation status the operation does

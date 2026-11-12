@@ -312,6 +312,29 @@ func answerNotJSON(w http.ResponseWriter, okStatus int) {
 	_, _ = w.Write([]byte("ok"))
 }
 
+// answerBody answers status with body under contentType.
+func answerBody(status int, contentType, body string) invokeAnswer {
+	return func(w http.ResponseWriter, _ int) {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}
+}
+
+// answerProblemCutShort starts a problem document for status and aborts it
+// mid-body, so reading the body fails.
+func answerProblemCutShort(status int) invokeAnswer {
+	return func(w http.ResponseWriter, _ int) {
+		body := fmt.Sprintf(`{"type":"about:blank","title":%q,"status":%d}`, http.StatusText(status), status)
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body[:len(body)/2]))
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler)
+	}
+}
+
 // lostAnswers leave unknown whether the API accepted the task.
 var lostAnswers = []invokeAnswerCase{
 	{
@@ -325,6 +348,18 @@ var lostAnswers = []invokeAnswerCase{
 	{
 		name:   "proxy 503",
 		answer: answerHTML(http.StatusServiceUnavailable),
+	},
+	{
+		name:   "proxy JSON 503",
+		answer: answerBody(http.StatusServiceUnavailable, "application/json", `{"error":"upstream unavailable"}`),
+	},
+	{
+		name:   "api 502 body malformed",
+		answer: answerBody(http.StatusBadGateway, "application/problem+json", `{"type":`),
+	},
+	{
+		name:   "api 502 body cut short",
+		answer: answerProblemCutShort(http.StatusBadGateway),
 	},
 	{
 		name:   "api 500",
@@ -374,9 +409,18 @@ var refusedAnswers = []invokeAnswerCase{
 		name:   "environment paused",
 		answer: answerProblem(http.StatusTooManyRequests, "https://docs.runware.ai/serverless/errors#environment-paused"),
 	},
+	{
+		name:   "bad request body malformed",
+		answer: answerBody(http.StatusBadRequest, "application/problem+json", `{"type":`),
+	},
+	{
+		name:   "unauthorized body cut short",
+		answer: answerProblemCutShort(http.StatusUnauthorized),
+	},
 }
 
-func invokeAgainst(t *testing.T, m invokeMethod, answer invokeAnswer, taskID string) error {
+// invokeAgainst invokes testTaskID with m against a stub API that answers with answer.
+func invokeAgainst(t *testing.T, m invokeMethod, answer invokeAnswer) error {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		answer(w, m.okStatus)
@@ -384,7 +428,7 @@ func invokeAgainst(t *testing.T, m invokeMethod, answer invokeAnswer, taskID str
 	defer srv.Close()
 
 	c := newClient("test-key", srv.URL, slog.Default(), srv.Client())
-	_, err := m.invoke(c, context.Background(), testAppID, testEndpoint, taskID, nil)
+	_, err := m.invoke(c, context.Background(), testAppID, testEndpoint, testTaskID, nil)
 	return err
 }
 
@@ -392,7 +436,7 @@ func TestInvoke_LostResponseNamesTheTaskSent(t *testing.T) {
 	for _, m := range invokeMethods {
 		for _, tc := range lostAnswers {
 			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
-				err := invokeAgainst(t, m, tc.answer, testTaskID)
+				err := invokeAgainst(t, m, tc.answer)
 				lost, ok := errors.AsType[*ResponseLostError](err)
 				if !ok {
 					t.Fatalf("err = %v, want a *ResponseLostError", err)
@@ -412,7 +456,7 @@ func TestInvoke_RefusalIsNotALostResponse(t *testing.T) {
 	for _, m := range invokeMethods {
 		for _, tc := range refusedAnswers {
 			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
-				err := invokeAgainst(t, m, tc.answer, testTaskID)
+				err := invokeAgainst(t, m, tc.answer)
 				if err == nil {
 					t.Fatal("expected an error")
 				}
@@ -449,7 +493,7 @@ func TestInvoke_LostResponseNamesAGeneratedTaskID(t *testing.T) {
 
 func TestInvoke_LostResponseKeepsTheAPIProblem(t *testing.T) {
 	const badGateway = "https://docs.runware.ai/serverless/errors#bad-gateway"
-	err := invokeAgainst(t, invokeMethods[0], answerProblem(http.StatusBadGateway, badGateway), testTaskID)
+	err := invokeAgainst(t, invokeMethods[0], answerProblem(http.StatusBadGateway, badGateway))
 	if _, ok := errors.AsType[*ResponseLostError](err); !ok {
 		t.Fatalf("err = %v, want a *ResponseLostError", err)
 	}
@@ -459,6 +503,47 @@ func TestInvoke_LostResponseKeepsTheAPIProblem(t *testing.T) {
 	}
 	if re.StatusCode != http.StatusBadGateway || re.ProblemType != badGateway {
 		t.Fatalf("status = %d, problem type = %q; want 502, %q", re.StatusCode, re.ProblemType, badGateway)
+	}
+}
+
+// unreadableStatusCase is a status answered with a body that does not parse,
+// and whether the invocation it answers is lost rather than refused.
+type unreadableStatusCase struct {
+	status int
+	lost   bool
+}
+
+func TestInvoke_UnreadableResponseKeepsItsStatus(t *testing.T) {
+	cases := []unreadableStatusCase{
+		{
+			status: http.StatusBadRequest,
+			lost:   false,
+		},
+		{
+			status: http.StatusUnauthorized,
+			lost:   false,
+		},
+		{
+			status: http.StatusBadGateway,
+			lost:   true,
+		},
+	}
+	for _, m := range invokeMethods {
+		for _, tc := range cases {
+			t.Run(fmt.Sprintf("%s/%d", m.name, tc.status), func(t *testing.T) {
+				err := invokeAgainst(t, m, answerBody(tc.status, "application/problem+json", `{"type":`))
+				if _, lost := errors.AsType[*ResponseLostError](err); lost != tc.lost {
+					t.Fatalf("err = %v, lost = %t; want lost = %t", err, lost, tc.lost)
+				}
+				re, ok := errors.AsType[*transport.RunwareError](err)
+				if !ok {
+					t.Fatalf("err = %v, want a *transport.RunwareError", err)
+				}
+				if re.StatusCode != tc.status {
+					t.Fatalf("status = %d, want %d", re.StatusCode, tc.status)
+				}
+			})
+		}
 	}
 }
 
