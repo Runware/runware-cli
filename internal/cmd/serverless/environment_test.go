@@ -638,6 +638,9 @@ type nextPageHintCase struct {
 	args     []string
 	body     string
 	wantHint string
+	// stderrOnly marks commands that still print the next-page hint on stderr
+	// and not on stdout. apps logs and apps errors are that follow-up.
+	stderrOnly bool
 }
 
 func TestNextPageHintRepeatsTheEnvironment(t *testing.T) {
@@ -693,16 +696,18 @@ func TestNextPageHintRepeatsTheEnvironment(t *testing.T) {
 			wantHint: testStagingHint,
 		},
 		{
-			name:     "apps errors",
-			args:     []string{testAppsGroup, "errors", testAppID},
-			body:     listBody,
-			wantHint: testStagingHint + " --window 24h",
+			name:       "apps errors",
+			args:       []string{testAppsGroup, "errors", testAppID},
+			body:       listBody,
+			wantHint:   testStagingHint + " --window 24h",
+			stderrOnly: true,
 		},
 		{
-			name:     "apps logs",
-			args:     []string{testAppsGroup, "logs", testAppID},
-			body:     logBody,
-			wantHint: testStagingHint + " --window 1h",
+			name:       "apps logs",
+			args:       []string{testAppsGroup, "logs", testAppID},
+			body:       logBody,
+			wantHint:   testStagingHint + " --window 1h",
+			stderrOnly: true,
 		},
 		{
 			name:     "secrets attachments",
@@ -735,8 +740,12 @@ func TestNextPageHintRepeatsTheEnvironment(t *testing.T) {
 			if run.err != nil {
 				t.Fatalf("err = %v", run.err)
 			}
-			if want := "Next page: " + tc.wantHint + " --cursor " + testNextCursor; !strings.Contains(run.cobraOutput, want) {
+			want := "Next page: " + tc.wantHint + " --cursor " + testNextCursor
+			if !strings.Contains(run.cobraOutput, want) {
 				t.Fatalf("output = %q, want it to contain %q", run.cobraOutput, want)
+			}
+			if !tc.stderrOnly && !strings.Contains(run.stdout, want) {
+				t.Fatalf("stdout = %q, want it to contain %q", run.stdout, want)
 			}
 		})
 	}
@@ -1207,7 +1216,7 @@ func TestCommandsInAPausedEnvironmentReportThePause(t *testing.T) {
 		},
 		{
 			name:   testScaleCommand,
-			args:   []string{testAppsGroup, testScaleCommand, testAppID, "--min-workers", "1", testEnvFlag, testEnvironment},
+			args:   []string{testAppsGroup, testScaleCommand, testAppID, testMinWorkersFlag, "1", testEnvFlag, testEnvironment},
 			status: http.StatusConflict,
 		},
 	}

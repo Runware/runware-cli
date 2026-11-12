@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -40,6 +41,7 @@ type logsFlags struct {
 	cursor string
 	sort   string
 	follow bool
+	errors bool
 }
 
 func newAppsLogsCmd(logger *log.Logger) *cobra.Command {
@@ -56,18 +58,20 @@ prints it oldest first, so a plain apps logs shows the latest entries as a
 readable timeline. --sort newest lists newest first, so nextCursor walks
 older. --sort oldest lists the oldest page of the window first, so nextCursor
 walks newer. prevCursor walks the other way. Replay either cursor with the
-same --env, --sort, --window, and --limit.
+same --env, --sort, --window, --limit, and --errors.
 
 With --follow the command prints the recent page, then streams new entries
 until interrupted; the stream reconnects when the server ends it, and waits
 for the stream to open when a gateway answers first, which is what an
 application that has written nothing does. The live stream has no window, so
 --window, --limit, --sort and --cursor apply to the recent page only, and
---cursor cannot be combined with --follow. Entries written between the recent
-page and the start of the stream, or while the stream reconnects, can be
-missed or repeated.
+--cursor cannot be combined with --follow. --errors filters that page and,
+with --follow, the live stream. Entries written between the recent page and
+the start of the stream, or while the stream reconnects, can be missed or
+repeated.
 
-In table format each entry is one line: time, level and message. In json or
+In table format each entry is one line: time, level, and message. An
+exception message is appended when it is not already in the body. In json or
 yaml format the recent page is printed as one document; with --follow every
 entry is printed as one JSON object per line.`,
 		Example: `  # show the last hour of logs
@@ -78,6 +82,9 @@ entry is printed as one JSON object per line.`,
 
   # follow new log entries until Ctrl-C
   runware serverless apps logs my-app --follow
+
+  # show only error lines; with --follow this filters the stream too
+  runware serverless apps logs my-app --errors
 
   # page through the recent window
   runware serverless apps logs my-app --limit 50 --cursor <nextCursor>
@@ -115,11 +122,27 @@ entry is printed as one JSON object per line.`,
 			}
 
 			page.Entries = chronologicalLogEntries(page.Entries, flags.sort)
+			if flags.errors {
+				fetched := len(page.Entries)
+				page.Entries = errorLogEntries(page.Entries)
+				if err := noteEmptyErrorPage(errOut, fetched, len(page.Entries)); err != nil {
+					return err
+				}
+			}
 			if !flags.follow {
 				return printLogPage(format, page, out, errOut, cursorFlags(cmd, extraLogsCursorFlags(flags)))
 			}
 
 			emit := logEmitter(format, out)
+			if flags.errors {
+				next := emit
+				emit = func(entry serverlessapi.LogEntry) error {
+					if !isErrorLog(entry) {
+						return nil
+					}
+					return next(entry)
+				}
+			}
 			for _, entry := range page.Entries {
 				if err := emit(entry); err != nil {
 					return err
@@ -137,6 +160,7 @@ entry is printed as one JSON object per line.`,
 	cmd.Flags().StringVar(&flags.sort, "sort", "", "Order of the recent page ("+logSorts+"; default: latest page, oldest first)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor (nextCursor or prevCursor)")
 	cmd.Flags().BoolVarP(&flags.follow, "follow", "f", false, "Stream new log entries until interrupted")
+	cmd.Flags().BoolVar(&flags.errors, "errors", false, "Show only error lines from the fetched page, and from the live stream with --follow: level error or fatal, a traceback, or an exception message")
 	return cmd
 }
 
@@ -192,6 +216,9 @@ func extraLogsCursorFlags(flags logsFlags) string {
 	}
 	if flags.sort != "" {
 		parts = appendFlag(parts, "--sort", flags.sort)
+	}
+	if flags.errors {
+		parts = append(parts, "--errors")
 	}
 	return strings.Join(parts, " ")
 }
@@ -287,6 +314,12 @@ func writeLogLine(out io.Writer, entry serverlessapi.LogEntry) error {
 	return err
 }
 
+var ansiEscape = regexp.MustCompile("\x1b\\[[\\x30-\\x3f]*[\\x20-\\x2f]*[\\x40-\\x7e]")
+
+// exceptionMessageField is the structured-log field the store keeps an
+// exception message under. The API does not send the bare key.
+const exceptionMessageField = "log.exception.message"
+
 func formatLogLine(entry serverlessapi.LogEntry) string {
 	ts := "-"
 	if entry.Time != 0 {
@@ -296,7 +329,61 @@ func formatLogLine(entry serverlessapi.LogEntry) string {
 	if l := entryLevel(entry); l != "" {
 		level = strings.ToUpper(l)
 	}
-	return fmt.Sprintf("%-20s %-5s %s", ts, level, entry.Body)
+	body := stripANSI(entry.Body)
+	if msg := stripANSI(logField(entry, exceptionMessageField)); msg != "" && !strings.Contains(body, msg) {
+		body += ": " + msg
+	}
+	return fmt.Sprintf("%-20s %-5s %s", ts, level, body)
+}
+
+func stripANSI(text string) string {
+	return ansiEscape.ReplaceAllString(text, "")
+}
+
+func logField(entry serverlessapi.LogEntry, key string) string {
+	if entry.Fields == nil {
+		return ""
+	}
+	return (*entry.Fields)[key]
+}
+
+// errorLevels are the severity texts --errors keeps. The lookup is
+// case-insensitive. runware_logging maps Python CRITICAL onto severity_text
+// FATAL, and LevelOf passes that through on entry.Level.
+var errorLevels = map[string]struct{}{
+	"ERROR": {},
+	"FATAL": {},
+}
+
+func isErrorLog(entry serverlessapi.LogEntry) bool {
+	if _, ok := errorLevels[strings.ToUpper(entryLevel(entry))]; ok {
+		return true
+	}
+	if logField(entry, exceptionMessageField) != "" {
+		return true
+	}
+	return strings.Contains(entry.Body, "Traceback (most recent call last)")
+}
+
+// noteEmptyErrorPage reports when --errors kept nothing from a page that
+// had entries. An empty fetch, and a page that kept a line, stay quiet.
+// The command still succeeds.
+func noteEmptyErrorPage(errOut io.Writer, fetched, kept int) error {
+	if fetched == 0 || kept > 0 {
+		return nil
+	}
+	_, err := fmt.Fprintf(errOut, "no error lines in the %d fetched entries\n", fetched)
+	return err
+}
+
+func errorLogEntries(entries []serverlessapi.LogEntry) []serverlessapi.LogEntry {
+	kept := make([]serverlessapi.LogEntry, 0, len(entries))
+	for _, entry := range entries {
+		if isErrorLog(entry) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // severityField is the structured-log field the store keeps the level under

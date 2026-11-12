@@ -32,6 +32,10 @@ is four seconds. PAYG spend is provisional and not a settled charge; the
 PAYG-equivalent value prices the same time at the catalog rate whatever
 covered it, so the difference is what reserved capacity saved.
 
+Coverage is commitment (reserved capacity), payg, or platform: time Runware
+pays for while a platform runtime update replaces an app's workers, which
+collects nothing.
+
 Grouping by day splits a span at UTC midnight. The table ends with a Total row
 and prints the resolved window to stderr; json and yaml output the API payload.`
 
@@ -266,27 +270,23 @@ func parseUsageTime(flag, value string) (*time.Time, error) {
 }
 
 // parseUsageDimensions validates --group-by values in the order given and
-// rejects repeats, which the API refuses as 422.
+// rejects repeats, which the API refuses as 422. It accepts only the
+// dimensions the table has a column for (usageDimensionOrder), not every value
+// the API enum holds: the API accepts hour, but a table without an hour column
+// would print hourly rows that show only the day.
 func parseUsageDimensions(values []string) ([]serverlessapi.UsageDimension, error) {
 	dims := make([]serverlessapi.UsageDimension, 0, len(values))
 	seen := make(map[serverlessapi.UsageDimension]struct{}, len(values))
 	for _, value := range values {
-		dim, err := parseValidFlag[serverlessapi.UsageDimension]("--group-by", value, usageDimensions)
-		if err != nil {
-			return nil, err
-		}
-		if dim == nil {
+		dim := serverlessapi.UsageDimension(value)
+		if !slices.Contains(usageDimensionOrder, dim) {
 			return nil, fmt.Errorf("invalid --group-by %q (want %s)", value, usageDimensions)
 		}
-		if !slices.Contains(usageDimensionOrder, *dim) {
-			// The API accepts it (hour), but the table has no column for it.
-			return nil, fmt.Errorf("--group-by %q is not supported yet (want %s)", value, usageDimensions)
-		}
-		if _, dup := seen[*dim]; dup {
+		if _, dup := seen[dim]; dup {
 			return nil, fmt.Errorf("--group-by %q given more than once", value)
 		}
-		seen[*dim] = struct{}{}
-		dims = append(dims, *dim)
+		seen[dim] = struct{}{}
+		dims = append(dims, dim)
 	}
 	return dims, nil
 }
@@ -316,7 +316,7 @@ func usageWindowLine(summary *serverlessapi.UsageSummary) string {
 }
 
 // usageDimensionOrder fixes the dimension column order whatever order
-// --group-by named them in.
+// --group-by named them in, and is the set of dimensions --group-by accepts.
 var usageDimensionOrder = []serverlessapi.UsageDimension{
 	serverlessapi.UsageDimensionApp,
 	serverlessapi.UsageDimensionGpuType,

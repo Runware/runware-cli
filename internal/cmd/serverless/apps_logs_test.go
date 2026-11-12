@@ -4,14 +4,23 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/output"
+)
+
+const (
+	logsEntriesPath = "/v1/logs/queries/runtime/entries"
+	logsTailPath    = "/v1/logs/queries/runtime_tail/tail"
 )
 
 const (
@@ -105,6 +114,78 @@ func TestFormatLogLine(t *testing.T) {
 	if got != "-                    -     no time, no level" {
 		t.Errorf("line = %q", got)
 	}
+
+	level = "error"
+	exception := map[string]string{"log.exception.message": "\x1b[31mdisk full\x1b[0m"}
+	t.Run("ansi body", func(t *testing.T) {
+		got := formatLogLine(serverlessapi.LogEntry{Body: "\x1b[31mready\x1b[0m"})
+		if got != "-                    -     ready" {
+			t.Fatalf("line = %q", got)
+		}
+	})
+	t.Run("appends log.exception.message", func(t *testing.T) {
+		got := formatLogLine(serverlessapi.LogEntry{
+			Time:   1750000000,
+			Level:  &level,
+			Body:   "worker failed",
+			Fields: &exception,
+		})
+		if got != "2025-06-15T15:06:40Z ERROR worker failed: disk full" {
+			t.Fatalf("line = %q", got)
+		}
+	})
+	t.Run("exception already in the body", func(t *testing.T) {
+		got := formatLogLine(serverlessapi.LogEntry{
+			Time:   1750000000,
+			Level:  &level,
+			Body:   "worker failed: \x1b[31mdisk full\x1b[0m",
+			Fields: &exception,
+		})
+		if got != "2025-06-15T15:06:40Z ERROR worker failed: disk full" {
+			t.Fatalf("line = %q", got)
+		}
+	})
+	t.Run("ignores exception.message", func(t *testing.T) {
+		bare := map[string]string{"exception.message": "disk full"}
+		got := formatLogLine(serverlessapi.LogEntry{
+			Time:   1750000000,
+			Level:  &level,
+			Body:   "worker failed",
+			Fields: &bare,
+		})
+		if got != "2025-06-15T15:06:40Z ERROR worker failed" {
+			t.Fatalf("line = %q", got)
+		}
+	})
+}
+
+func TestIsErrorLog(t *testing.T) {
+	level := func(s string) *string { return &s }
+	fields := func(key, value string) *map[string]string {
+		m := map[string]string{key: value}
+		return &m
+	}
+	cases := []struct {
+		name  string
+		entry serverlessapi.LogEntry
+		keep  bool
+	}{
+		{name: "level error", entry: serverlessapi.LogEntry{Level: level("error")}, keep: true},
+		{name: "level fatal", entry: serverlessapi.LogEntry{Level: level("fatal")}, keep: true},
+		{name: "severity ERROR", entry: serverlessapi.LogEntry{Fields: fields(severityField, "ERROR")}, keep: true},
+		{name: "severity FATAL", entry: serverlessapi.LogEntry{Fields: fields(severityField, "FATAL")}, keep: true},
+		{name: "exception message", entry: serverlessapi.LogEntry{Fields: fields("log.exception.message", "disk full")}, keep: true},
+		{name: "traceback", entry: serverlessapi.LogEntry{Body: "Traceback (most recent call last):\n  File \"app.py\""}, keep: true},
+		{name: "warn", entry: serverlessapi.LogEntry{Level: level("warn"), Body: "careful"}, keep: false},
+		{name: "bare exception.message", entry: serverlessapi.LogEntry{Fields: fields("exception.message", "disk full")}, keep: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isErrorLog(tc.entry); got != tc.keep {
+				t.Fatalf("isErrorLog() = %v, want %v", got, tc.keep)
+			}
+		})
+	}
 }
 
 func TestPrintLogPage_TablePrintsAPIOrderAndCursorHints(t *testing.T) {
@@ -141,6 +222,32 @@ func TestPrintLogPage_TablePrintsAPIOrderAndCursorHints(t *testing.T) {
 	wantPrev := "Previous page: --window 6h --limit 50 --sort newest --cursor " + prev
 	if !strings.Contains(errOut.String(), wantNext) || !strings.Contains(errOut.String(), wantPrev) {
 		t.Fatalf("stderr = %q, want %q and %q", errOut.String(), wantNext, wantPrev)
+	}
+}
+
+func TestPrintLogPage_ErrorsCursorHint(t *testing.T) {
+	next := testLogCursor
+	page := serverlessapi.LogEntryPage{
+		Entries:    []serverlessapi.LogEntry{{Body: "boom"}},
+		NextCursor: &next,
+	}
+	var out, errOut bytes.Buffer
+	flags := logsFlags{
+		window: testLogWindow6h,
+		limit:  50,
+		sort:   "newest",
+		errors: true,
+	}
+	extra := extraLogsCursorFlags(flags)
+	if !strings.Contains(extra, "--errors") {
+		t.Fatalf("extra flags = %q", extra)
+	}
+	if err := printLogPage(output.FormatTable, page, &out, &errOut, extra); err != nil {
+		t.Fatalf("printLogPage: %v", err)
+	}
+	want := "Next page: --window 6h --limit 50 --sort newest --errors --cursor " + testLogCursor
+	if !strings.Contains(errOut.String(), want) {
+		t.Fatalf("stderr = %q, want %q", errOut.String(), want)
 	}
 }
 
@@ -398,4 +505,179 @@ func TestPrintLogPage_LeavesTheCallerPageUntouched(t *testing.T) {
 	if page.Entries[0].Body != testLogBodySlow {
 		t.Fatalf("caller page was reordered: %#v", page.Entries)
 	}
+}
+
+// executeLogs runs apps logs against baseURL. Silence keeps a stub failure
+// off stderr so the test can read the command's own notes.
+func executeLogs(t *testing.T, baseURL string, args ...string) (string, string, error) {
+	t.Helper()
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", baseURL)
+
+	var out, errOut bytes.Buffer
+	cmd := newAppsLogsCmd(log.New(io.Discard))
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs(append([]string{testAppID}, args...))
+	err := cmd.Execute()
+	return out.String(), errOut.String(), err
+}
+
+func TestAppsLogs_ErrorsFiltersThePage(t *testing.T) {
+	// page-info is printed when the page filter is removed. This path does
+	// not use the follow wrapper.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != logsEntriesPath {
+			t.Errorf("path = %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"entries":[`+
+			`{"time":1750000000,"level":"info","body":"page-info"},`+
+			`{"time":1750000001,"level":"error","body":"page-error"},`+
+			`{"time":1750000002,"level":"fatal","body":"page-fatal"},`+
+			`{"time":1750000003,"level":"warn","body":"page-warn"}`+
+			`],"nextCursor":"`+testLogCursor+`"}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := executeLogs(t, srv.URL, "--errors")
+	if err != nil {
+		t.Fatalf("apps logs --errors: %v", err)
+	}
+	for _, want := range []string{"page-error", "page-fatal"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout = %q, missing %q", stdout, want)
+		}
+	}
+	for _, drop := range []string{"page-info", "page-warn"} {
+		if strings.Contains(stdout, drop) {
+			t.Errorf("stdout = %q, kept %q", stdout, drop)
+		}
+	}
+	wantHint := "Next page: --window 1h --errors --cursor " + testLogCursor
+	if !strings.Contains(stderr, wantHint) {
+		t.Fatalf("stderr = %q, want %q", stderr, wantHint)
+	}
+	if strings.Contains(stderr, "no error lines") {
+		t.Fatalf("stderr = %q", stderr)
+	}
+}
+
+func TestAppsLogs_ErrorsFiltersTheFollowStream(t *testing.T) {
+	// live-info is printed when the follow wrapper is removed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case logsEntriesPath:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"entries":[{"time":1,"level":"info","body":"page-info"},{"time":2,"level":"error","body":"page-error"}]}`)
+		case logsTailPath:
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, "data: {\"time\":3,\"level\":\"info\",\"body\":\"live-info\"}\n\n")
+			_, _ = io.WriteString(w, "data: {\"time\":4,\"level\":\"error\",\"body\":\"live-error\"}\n\n")
+			_, _ = io.WriteString(w, "data: {\n\n")
+		default:
+			t.Errorf("path = %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	stdout, stderr, err := executeLogs(t, srv.URL, "--errors", "--follow")
+	if err == nil || !strings.Contains(err.Error(), "decode entry") {
+		t.Fatalf("err = %v, stdout = %q", err, stdout)
+	}
+	for _, want := range []string{"page-error", "live-error"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout = %q, missing %q", stdout, want)
+		}
+	}
+	for _, drop := range []string{"page-info", "live-info"} {
+		if strings.Contains(stdout, drop) {
+			t.Errorf("stdout = %q, kept %q", stdout, drop)
+		}
+	}
+	if strings.Contains(stderr, "no error lines") {
+		t.Fatalf("stderr = %q", stderr)
+	}
+}
+
+func TestAppsLogs_ErrorsNotesWhenThePageHasNone(t *testing.T) {
+	const infoPage = `{"entries":[{"time":1,"level":"info","body":"one"},{"time":2,"level":"warn","body":"two"}]}`
+	want := "no error lines in the 2 fetched entries\n"
+
+	t.Run("page", func(t *testing.T) {
+		srv := serveLogEntries(t, infoPage)
+		stdout, stderr, err := executeLogs(t, srv.URL, "--errors")
+		if err != nil {
+			t.Fatalf("apps logs --errors: %v", err)
+		}
+		if stdout != "" {
+			t.Fatalf("stdout = %q", stdout)
+		}
+		if stderr != want {
+			t.Fatalf("stderr = %q, want %q", stderr, want)
+		}
+	})
+
+	t.Run("empty page", func(t *testing.T) {
+		srv := serveLogEntries(t, `{"entries":[]}`)
+		_, stderr, err := executeLogs(t, srv.URL, "--errors")
+		if err != nil {
+			t.Fatalf("apps logs --errors: %v", err)
+		}
+		if stderr != "" {
+			t.Fatalf("stderr = %q", stderr)
+		}
+	})
+
+	t.Run("follow", func(t *testing.T) {
+		var tailed atomic.Bool
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case logsEntriesPath:
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, infoPage)
+			case logsTailPath:
+				tailed.Store(true)
+				http.Error(w, "stop", http.StatusBadRequest)
+			default:
+				t.Errorf("path = %s", r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(srv.Close)
+
+		stdout, stderr, err := executeLogs(t, srv.URL, "--errors", "--follow")
+		if err == nil {
+			t.Fatal("expected the tail request to end the command")
+		}
+		if !tailed.Load() {
+			t.Fatal("follow did not open the stream")
+		}
+		if strings.Count(stderr, want) != 1 {
+			t.Fatalf("stderr = %q, want one %q", stderr, want)
+		}
+		if stdout != "" {
+			t.Fatalf("stdout = %q", stdout)
+		}
+	})
+}
+
+func serveLogEntries(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != logsEntriesPath {
+			t.Errorf("path = %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }

@@ -3,6 +3,8 @@ package serverless
 import (
 	"context"
 	"fmt"
+	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -21,6 +23,7 @@ var codeOnlyDeployFlags = []string{
 	"src-dir",
 	"base-image",
 	"requirement",
+	"extra-index-url",
 }
 
 // fromOnlyConflictFlags name a local source, which --from already supplies.
@@ -29,12 +32,15 @@ var fromOnlyConflictFlags = []string{
 	"container",
 }
 
-// createOnlyDeployFlags apply to CreateApp only. On an existing app they are
-// rejected so a leftover create invocation cannot wipe environment variables
-// or silently no-op.
+const appNameFlag = "name"
+
+// createOnlyDeployFlags apply to CreateApp only. On an existing app a flag is
+// accepted when its value matches the app, and a changed value is rejected, so
+// a leftover create invocation cannot wipe environment variables or silently
+// no-op. --volume never matches: the app read does not return volumes.
 var createOnlyDeployFlags = []string{
 	"gpu-type",
-	"name",
+	appNameFlag,
 	"max-workers",
 	"idle-ttl",
 	"scaling-delay",
@@ -157,6 +163,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		baseImage           string
 		gpuType             string
 		requirements        []string
+		extraIndexURLs      []string
 		minWorkers          int32
 		gpusPerWorker       int32
 		fallbackGPUType     string
@@ -186,12 +193,21 @@ config's) or production.
 
 A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,
-and rolls it when the build is ready. Create-only flags (--gpu-type, worker
-settings, --volume, --secret, --env-var, --env-file, --name) apply only to
-create; passing them when that copy already exists is an error. Change
-workers with 'apps scale', attach a secret later with 'secrets attach', change
-environment variables with 'apps env-vars', and the display name with
-'apps rename'. A source update on a stopped application is 409.
+and rolls it when the build is ready. A source update on a stopped application
+is 409.
+
+Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
+--scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
+--min-available-workers, --available-workers-pct, --volume, --secret,
+--env-var and --env-file.
+
+On an existing copy, a create-only flag is accepted when its value matches the
+app, and a changed value is rejected; one error names every changed flag.
+Change workers with 'apps scale', attach a secret later with 'secrets attach',
+change environment variables with 'apps env-vars', and the display name with
+'apps rename'. --volume is still always rejected on an existing app, because
+the app read does not return volumes, so a repeated path cannot be told from a
+changed one.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -212,8 +228,8 @@ application is active or failed, and --timeout to bound that wait. A successful
 wait is not a live worker:
 minWorkers=0 stays scaled to zero until the first invoke.
 
---container cannot be combined with an entry file, --src-dir, --base-image, or
---requirement.
+--container cannot be combined with an entry file, --src-dir, --base-image,
+--requirement, or --extra-index-url.
 
 --from takes the URL of a packaged source: a zip whose root holds the app's
 files and a runware.yaml recording the deploy options. The CLI fetches it,
@@ -222,7 +238,8 @@ in one command instead of a clone and a command. Flags still win over the
 file, so the same archive goes to another GPU type or another --id without
 being edited first. An --env-var or --env-file sets one key over the
 manifest's and leaves the rest, while --volume, --requirement and --secret
-replace the manifest's whole list. The archive supplies the source directory,
+replace the manifest's whole list, and --extra-index-url adds to the manifest
+requirements. The archive supplies the source directory,
 so --from cannot be combined with an entry file, --container, or --src-dir.
 
 --from only creates. A manifest names an id, and deploying it over an
@@ -358,7 +375,7 @@ paths and an invoke example once the application is active.`,
 
 				args, srcDir, containerDir = manifest.localSource(dir)
 				id = manifestString(cmd, "id", id, manifest.ID)
-				name = manifestString(cmd, "name", name, manifest.Name)
+				name = manifestString(cmd, appNameFlag, name, manifest.Name)
 				baseImage = manifestString(cmd, "base-image", baseImage, manifest.Build.BaseImage)
 				gpuType = manifestString(cmd, "gpu-type", gpuType, manifest.Compute.GpuType)
 				maxWorkers = manifestInt32(cmd, "max-workers", maxWorkers, manifest.Compute.MaxWorkers)
@@ -395,13 +412,26 @@ paths and an invoke example once the application is active.`,
 					return err
 				}
 			}
-			if cmd.Flags().Changed("name") {
+			if cmd.Flags().Changed(appNameFlag) {
 				if err := validateAppName(name); err != nil {
 					return err
 				}
 			}
 			if name == "" {
 				name = id
+			}
+
+			for _, raw := range extraIndexURLs {
+				if err := validateExtraIndexURL(raw); err != nil {
+					return err
+				}
+				requirements = append(requirements, "--extra-index-url "+raw)
+			}
+			// Manifest entries, --requirement, and the lines just appended are
+			// one slice now. An index URL in any of them is stored with the
+			// source, so a credential has to be refused before the archive exists.
+			if err := validateRequirementIndexURLs(requirements); err != nil {
+				return err
 			}
 
 			archive, source, err := buildDeployArchive(srcDir, containerDir, baseImage, requirements, args)
@@ -556,13 +586,14 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
 	cmd.Flags().StringVar(&id, "id", "", "Application ID (immutable, lowercase slug)")
-	cmd.Flags().StringVar(&name, "name", "", "Display name (defaults to --id)")
+	cmd.Flags().StringVar(&name, appNameFlag, "", "Display name (defaults to --id)")
 	cmd.Flags().Int32Var(&maxWorkers, "max-workers", 1, "Maximum number of workers")
 	cmd.Flags().Int32Var(&idleTTL, "idle-ttl", 60, "Idle TTL in seconds before scaling down")
 	cmd.Flags().Int32Var(&scalingDelay, "scaling-delay", 10, "Scaling delay in seconds")
 	cmd.Flags().StringVar(&baseImage, "base-image", "python:3.12-slim", "Builder base image (code deploys only; needs Python 3.12 or newer)")
 	cmd.Flags().StringVar(&gpuType, "gpu-type", "", "GPU type ID (see 'serverless gpus'; required when creating)")
 	cmd.Flags().StringArrayVar(&requirements, "requirement", nil, "Additional pip package to install (repeatable; code deploys only)")
+	cmd.Flags().StringArrayVar(&extraIndexURLs, "extra-index-url", nil, "Extra package index for a code deploy, as an http or https URL with no credentials (repeatable). uv reads the index; its first-index strategy takes a package this index also publishes from this index only, not pip's best match across indexes")
 	cmd.Flags().Int32Var(&minWorkers, "min-workers", 0, "Minimum number of workers")
 	cmd.Flags().Int32Var(&gpusPerWorker, "gpus-per-worker", 1, "GPUs allocated per worker ("+gpusPerWorkerValuesText()+")")
 	cmd.Flags().StringVar(&fallbackGPUType, "fallback-gpu-type", "", "Secondary GPU type if the preferred type is unavailable")
@@ -595,7 +626,7 @@ func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, g
 				id,
 			)
 		}
-		return true, validateUpdateDeployFlags(cmd)
+		return true, validateUpdateDeployFlags(cmd, app)
 	}
 	if err := requireEnvironment(cmd.Context(), client, commandEnvironment(cmd)); err != nil {
 		return false, err
@@ -671,6 +702,38 @@ func validateGPUsPerWorkerFlag(cmd *cobra.Command, n int32) error {
 	return validateGPUsPerWorker(n)
 }
 
+// validateRequirementIndexURLs rejects an index option on any requirement
+// line, whether it came from the manifest, a --requirement flag, or a line
+// appended for --extra-index-url. A line with no URL token fails the same
+// check. The error is that rule and not the line, which can hold a credential.
+func validateRequirementIndexURLs(requirements []string) error {
+	for _, line := range requirements {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if fields[0] != "--extra-index-url" && fields[0] != "--index-url" {
+			continue
+		}
+		raw := ""
+		if len(fields) > 1 {
+			raw = fields[1]
+		}
+		if err := validateExtraIndexURL(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateExtraIndexURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || !httpScheme(parsed.Scheme) || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("--extra-index-url needs an http or https URL with no credentials")
+	}
+	return nil
+}
+
 func validateAvailableWorkersPct(n int32) error {
 	if n < 0 || n > 100 {
 		return fmt.Errorf("--available-workers-pct must be between 0 and 100")
@@ -678,13 +741,184 @@ func validateAvailableWorkersPct(n int32) error {
 	return nil
 }
 
-func validateUpdateDeployFlags(cmd *cobra.Command) error {
+func validateUpdateDeployFlags(cmd *cobra.Command, app *serverlessapi.App) error {
+	var names []string
+	var hints []string
+	seen := map[string]struct{}{}
+	envChecked := false
+	envSame := false
+	var envErr error
 	for _, name := range createOnlyDeployFlags {
-		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s applies to create only; %s", name, createOnlyDeployHint(name, commandEnvironment(cmd), defaultEnvironment(cmd)))
+		if !cmd.Flags().Changed(name) {
+			continue
+		}
+		var (
+			same bool
+			err  error
+		)
+		if name == envVarFlag || name == "env-file" {
+			if !envChecked {
+				envSame, envErr = envFlagsMatchApp(cmd, app)
+				envChecked = true
+			}
+			if envErr != nil {
+				return envErr
+			}
+			same = envSame
+		} else {
+			same, err = createOnlyFlagMatches(cmd, app, name)
+			if err != nil {
+				return err
+			}
+		}
+		if same {
+			continue
+		}
+		names = append(names, "--"+name)
+		hint := createOnlyDeployHint(name, commandEnvironment(cmd), defaultEnvironment(cmd))
+		if _, ok := seen[hint]; !ok {
+			seen[hint] = struct{}{}
+			hints = append(hints, hint)
 		}
 	}
-	return nil
+	if len(names) == 0 {
+		return nil
+	}
+	verb := "applies"
+	if len(names) != 1 {
+		verb = "apply"
+	}
+	return fmt.Errorf("%s %s to create only; %s", strings.Join(names, ", "), verb, strings.Join(hints, "; "))
+}
+
+func createOnlyFlagMatches(cmd *cobra.Command, app *serverlessapi.App, name string) (bool, error) {
+	cfg := app.Configuration
+	switch name {
+	case "gpu-type":
+		got, err := cmd.Flags().GetString(name)
+		return err == nil && sameOptionalString(got, cfg.GpuType), err
+	case "fallback-gpu-type":
+		got, err := cmd.Flags().GetString(name)
+		return err == nil && sameOptionalString(got, cfg.FallbackGpuType), err
+	case appNameFlag:
+		got, err := cmd.Flags().GetString(name)
+		return err == nil && got == app.AppName, err
+	case "max-workers":
+		return sameInt32Flag(cmd, name, cfg.MaxWorkers)
+	case "idle-ttl":
+		return sameInt32Flag(cmd, name, cfg.IdleTtlSecs)
+	case "scaling-delay":
+		return sameInt32Flag(cmd, name, cfg.ScalingDelaySecs)
+	case "min-workers":
+		return sameInt32Flag(cmd, name, cfg.MinWorkers)
+	case "gpus-per-worker":
+		return sameInt32Flag(cmd, name, cfg.GpusPerWorker)
+	case "min-available-workers":
+		return sameOptionalInt32Flag(cmd, name, cfg.MinAvailableWorkers)
+	case "available-workers-pct":
+		return sameOptionalInt32Flag(cmd, name, cfg.AvailableWorkersPct)
+	case "volume":
+		return false, nil
+	case "secret":
+		return secretsMatchApp(cmd, app)
+	default:
+		return false, nil
+	}
+}
+
+func sameOptionalString[T ~string](got string, stored *T) bool {
+	if stored == nil {
+		return got == ""
+	}
+	return got == string(*stored)
+}
+
+func sameInt32Flag(cmd *cobra.Command, name string, stored int32) (bool, error) {
+	got, err := cmd.Flags().GetInt32(name)
+	if err != nil {
+		return false, err
+	}
+	return got == stored, nil
+}
+
+func sameOptionalInt32Flag(cmd *cobra.Command, name string, stored *int32) (bool, error) {
+	got, err := cmd.Flags().GetInt32(name)
+	if err != nil {
+		return false, err
+	}
+	if stored == nil {
+		return got == 0, nil
+	}
+	return got == *stored, nil
+}
+
+func secretsMatchApp(cmd *cobra.Command, app *serverlessapi.App) (bool, error) {
+	values, err := cmd.Flags().GetStringArray("secret")
+	if err != nil {
+		return false, err
+	}
+	parsed, err := parseSecretAttaches(values)
+	if err != nil {
+		return false, err
+	}
+	want := map[string]struct{}{}
+	if parsed != nil {
+		for _, item := range *parsed {
+			want[secretMatchKey(item.SecretName, item.EnvVarName)] = struct{}{}
+		}
+	}
+	have := map[string]struct{}{}
+	for _, item := range app.Secrets {
+		have[secretMatchKey(item.Name, item.EnvVarName)] = struct{}{}
+	}
+	return maps.Equal(want, have), nil
+}
+
+// secretMatchKey identifies one attachment. The API omits envVarName when it
+// equals the secret name, and --secret NAME=NAME is that same attachment, so
+// both sides treat that env name as empty.
+func secretMatchKey(name string, env *string) string {
+	got := ""
+	if env != nil {
+		got = *env
+	}
+	if got == name {
+		got = ""
+	}
+	return name + "\x00" + got
+}
+
+func envFlagsMatchApp(cmd *cobra.Command, app *serverlessapi.App) (bool, error) {
+	var files, pairs []string
+	var err error
+	if cmd.Flags().Changed("env-file") {
+		files, err = cmd.Flags().GetStringArray("env-file")
+		if err != nil {
+			return false, err
+		}
+	}
+	if cmd.Flags().Changed(envVarFlag) {
+		pairs, err = cmd.Flags().GetStringArray(envVarFlag)
+		if err != nil {
+			return false, err
+		}
+	}
+	built, err := buildEnvironmentVariables(files, pairs, nil)
+	if err != nil {
+		return false, err
+	}
+	stored := make(map[string]string, len(app.EnvironmentVariables))
+	for _, item := range app.EnvironmentVariables {
+		stored[item.Key] = item.Value
+	}
+	// A missing key is not the empty string. maps.Equal rejects an app that
+	// holds only OLD=x against --env-var NEW=, which a lookup of the missing
+	// key would accept.
+	var got map[string]string
+	if built != nil {
+		got = *built
+	}
+	return maps.Equal(got, stored), nil
 }
 
 // createOnlyDeployHint says how to change a create-only setting on the copy
@@ -699,7 +933,7 @@ func createOnlyDeployHint(name, environment, defaultEnvironment string) string {
 		return "use '" + serverlessCommand(environment, defaultEnvironment, "secrets", "attach") + "' to attach a secret"
 	case "volume":
 		return "volumes are immutable after create"
-	case "name":
+	case appNameFlag:
 		return "use '" + serverlessCommand(environment, defaultEnvironment, "apps", "rename") + "' to change the display name"
 	default:
 		return "omit it when updating an existing application"

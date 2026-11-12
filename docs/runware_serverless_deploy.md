@@ -13,12 +13,21 @@ config's) or production.
 
 A first deploy of an --id in an environment creates that copy. A later deploy
 with the same --id and environment uploads a new source, records version N+1,
-and rolls it when the build is ready. Create-only flags (--gpu-type, worker
-settings, --volume, --secret, --env-var, --env-file, --name) apply only to
-create; passing them when that copy already exists is an error. Change
-workers with 'apps scale', attach a secret later with 'secrets attach', change
-environment variables with 'apps env-vars', and the display name with
-'apps rename'. A source update on a stopped application is 409.
+and rolls it when the build is ready. A source update on a stopped application
+is 409.
+
+Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
+--scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
+--min-available-workers, --available-workers-pct, --volume, --secret,
+--env-var and --env-file.
+
+On an existing copy, a create-only flag is accepted when its value matches the
+app, and a changed value is rejected; one error names every changed flag.
+Change workers with 'apps scale', attach a secret later with 'secrets attach',
+change environment variables with 'apps env-vars', and the display name with
+'apps rename'. --volume is still always rejected on an existing app, because
+the app read does not return volumes, so a repeated path cannot be told from a
+changed one.
 
 A code deploy takes a Python entry file. The whole source directory is zipped
 and submitted as the application source, so the entry file can import its own
@@ -39,8 +48,8 @@ application is active or failed, and --timeout to bound that wait. A successful
 wait is not a live worker:
 minWorkers=0 stays scaled to zero until the first invoke.
 
---container cannot be combined with an entry file, --src-dir, --base-image, or
---requirement.
+--container cannot be combined with an entry file, --src-dir, --base-image,
+--requirement, or --extra-index-url.
 
 --from takes the URL of a packaged source: a zip whose root holds the app's
 files and a runware.yaml recording the deploy options. The CLI fetches it,
@@ -49,7 +58,8 @@ in one command instead of a clone and a command. Flags still win over the
 file, so the same archive goes to another GPU type or another --id without
 being edited first. An --env-var or --env-file sets one key over the
 manifest's and leaves the rest, while --volume, --requirement and --secret
-replace the manifest's whole list. The archive supplies the source directory,
+replace the manifest's whole list, and --extra-index-url adds to the manifest
+requirements. The archive supplies the source directory,
 so --from cannot be combined with an entry file, --container, or --src-dir.
 
 --from only creates. A manifest names an id, and deploying it over an
@@ -165,6 +175,7 @@ runware serverless deploy [file] [flags]
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
       --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
       --environment name              Alias for --env
+      --extra-index-url stringArray   Extra package index for a code deploy, as an http or https URL with no credentials (repeatable). uv reads the index; its first-index strategy takes a package this index also publishes from this index only, not pip's best match across indexes
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
       --from string                   URL of a packaged source to fetch and deploy as a new application, reading its runware.yaml
       --gpu-type string               GPU type ID (see 'serverless gpus'; required when creating)

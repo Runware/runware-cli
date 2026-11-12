@@ -134,6 +134,7 @@ func TestUsageParamsFromFlags_Errors(t *testing.T) {
 		{"from equals to", usageFlags{from: testUsageDate, to: testUsageDate}, "--from must be before --to"},
 		{"unknown dimension", usageFlags{groupBy: []string{"region"}}, `invalid --group-by "region"`},
 		{"trailing comma in dimensions", usageFlags{groupBy: []string{"app", ""}}, `invalid --group-by ""`},
+		{"hour has no table column", usageFlags{groupBy: []string{"day", "hour"}}, `invalid --group-by "hour"`},
 		{"repeated dimension", usageFlags{groupBy: []string{"app", "day", "app"}}, `--group-by "app" given more than once`},
 	}
 	for _, tc := range cases {

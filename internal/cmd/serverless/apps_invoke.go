@@ -88,7 +88,11 @@ instead of starting a second run.`,
 			shouldWait := sync || wait
 			if shouldWait && task.Status == serverlessapi.TaskStatusPending {
 				waitedID := task.Id
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Task %s accepted; waiting...\n", waitedID)
+				var depth *int64
+				if app, appErr := client.GetApp(waitCtx, appID); appErr == nil {
+					depth = app.Runtime.QueueDepth
+				}
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), invokeWaitMessage(waitedID, depth))
 				spin.SetMessage(fmt.Sprintf("Waiting for task %s...", waitedID))
 				task, err = client.WaitTask(waitCtx, appID, waitedID, pollInterval)
 				if err != nil {
@@ -144,6 +148,21 @@ func readTaskPayload(path string, stdin io.Reader) (serverlessapi.TaskPayload, e
 		return serverlessapi.TaskPayload{}, nil
 	}
 	return payload, nil
+}
+
+// invokeWaitMessage is the line printed when a waited invoke is still pending.
+// depth is the app's queue depth when that read succeeded, and nil when it is
+// unknown. This command polls only when --sync or --wait is set, so the hint
+// names one of those flags together with --task-id.
+func invokeWaitMessage(taskID string, depth *int64) string {
+	depthText := ""
+	if depth != nil {
+		depthText = fmt.Sprintf(" App queue depth: %d.", *depth)
+	}
+	return fmt.Sprintf(
+		"Task %s is pending (queued or running). Polling it.%s To wait on it again, run the same command with --sync or --wait and --task-id %s.",
+		taskID, depthText, taskID,
+	)
 }
 
 func taskFailedErr(task *serverlessapi.Task) error {

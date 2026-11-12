@@ -9,6 +9,8 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,21 +22,35 @@ import (
 )
 
 const (
-	testContainerFlag = "--container"
-	testWrapperDir    = "./wrapper"
-	testPipPackage    = "torch"
-	testSourceID      = "019c7654-8b21-7abc-9123-abcdef123456"
-	testSrcDirFlag    = "--src-dir"
-	testFromFlag      = "--from"
-	testFallbackGPU   = "l40s"
-	testBaseImageFlag = "--base-image"
-	testBaseImage     = "python:3.12-slim"
-	testRequirement   = "--requirement"
-	testArchiveURL    = "https://runware.ai/docs/serverless/examples/echo.zip"
-	testIDFlag        = "--id"
-	testVolumePath    = "/weights"
-	testWaitFlag      = "--wait"
-	testTimeoutFlag   = "--timeout"
+	testContainerFlag           = "--container"
+	testWrapperDir              = "./wrapper"
+	testPipPackage              = "torch"
+	testSourceID                = "019c7654-8b21-7abc-9123-abcdef123456"
+	testSrcDirFlag              = "--src-dir"
+	testFromFlag                = "--from"
+	testFallbackGPU             = "l40s"
+	testBaseImageFlag           = "--base-image"
+	testBaseImage               = "python:3.12-slim"
+	testRequirement             = "--requirement"
+	testExtraIndexURL           = "--extra-index-url"
+	testArchiveURL              = "https://runware.ai/docs/serverless/examples/echo.zip"
+	testIDFlag                  = "--id"
+	testVolumePath              = "/weights"
+	testWaitFlag                = "--wait"
+	testTimeoutFlag             = "--timeout"
+	testMinWorkersFlag          = "--min-workers"
+	testIdleTTLFlag             = "--idle-ttl"
+	testScalingDelayFlag        = "--scaling-delay"
+	testGPUsPerWorkerFlag       = "--gpus-per-worker"
+	testFallbackGPUTypeFlag     = "--fallback-gpu-type"
+	testMinAvailableWorkersFlag = "--min-available-workers"
+	testAvailableWorkersPctFlag = "--available-workers-pct"
+	testNameFlag                = "--name"
+	testSecretFlag              = "--secret"
+	testEnvFileFlag             = "--env-file"
+	testVolumeFlag              = "--volume"
+	testOrgToken                = "ORG_TOKEN"
+	testDisplayName             = "My App"
 )
 
 func TestValidateDeployArgs(t *testing.T) {
@@ -84,7 +100,7 @@ func TestValidateDeployArgs(t *testing.T) {
 		},
 		{
 			name:  "from with a flag that overrides the manifest",
-			flags: []string{testFromFlag, testArchiveURL, "--gpu-type", testFallbackGPU},
+			flags: []string{testFromFlag, testArchiveURL, testGPUTypeFlag, testFallbackGPU},
 		},
 		{
 			name:    "container with src-dir",
@@ -100,6 +116,11 @@ func TestValidateDeployArgs(t *testing.T) {
 			name:    "container with requirement",
 			flags:   []string{testContainerFlag, testWrapperDir, testRequirement, testPipPackage},
 			wantErr: testRequirement,
+		},
+		{
+			name:    "container with extra-index-url",
+			flags:   []string{testContainerFlag, testWrapperDir, testExtraIndexURL, "https://example.com/simple"},
+			wantErr: testExtraIndexURL,
 		},
 		{
 			name:  "code with src-dir",
@@ -325,7 +346,7 @@ func TestDeploy_RejectsPaddedNameBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--name", " padded"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, testNameFlag, " padded"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "non-whitespace") {
 		t.Fatalf("err = %v", err)
@@ -336,7 +357,7 @@ func TestDeploy_RejectsInvalidGPUsPerWorkerBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--gpus-per-worker", "3"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, testGPUsPerWorkerFlag, "3"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), gpusPerWorkerValuesText()) {
 		t.Fatalf("err = %v", err)
@@ -361,7 +382,7 @@ func TestDeployCreate_RejectsAvailableWorkersPctBeforeUpload(t *testing.T) {
 	cmd := newDeployCmd(nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, "--available-workers-pct", "101"})
+	cmd.SetArgs([]string{testModelFile, testIDFlag, testAppID, testAvailableWorkersPctFlag, "101"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "0 and 100") {
 		t.Fatalf("err = %v", err)
@@ -412,8 +433,8 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 		"--src-dir", dir,
 		testIDFlag, testAppID,
 		testGPUTypeFlag, testGPUType,
-		"--secret", "API_KEY=INFERENCE_KEY",
-		"--min-available-workers", "1",
+		testSecretFlag, "API_KEY=INFERENCE_KEY",
+		testMinAvailableWorkersFlag, "1",
 	})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("deploy: %v", err)
@@ -433,6 +454,278 @@ func TestDeployCreate_SendsSecretsAndMinAvailableWorkers(t *testing.T) {
 	}
 }
 
+// storedDeployAppBody is a getApp response whose create-only settings differ
+// from both a zero App and the flag defaults. A redeploy that compared a
+// stand-in app, or skipped the comparison, cannot accept these same flags.
+func storedDeployAppBody() string {
+	return `{
+		"appId":"` + testAppID + `","appName":"My App","status":"active",
+		"configuration":{"maxWorkers":1,"idleTtlSecs":61,"scalingDelaySecs":10,"minWorkers":0,"gpusPerWorker":1,"computeType":"gpu","gpuType":"` + testGPUType + `"},
+		"environmentVariables":[{"key":"FOO","value":"bar"}],
+		"secrets":[{"id":"` + testUUID + `","name":"ORG_TOKEN","type":"generic","environment":"production"}],
+		"createdAt":"2026-07-30T12:00:00Z","updatedAt":"2026-07-30T12:00:00Z"
+	}`
+}
+
+// runDeployAgainstExistingApp runs deploy against a getApp that returns body,
+// and reports how many creates and updates the stub saw.
+func runDeployAgainstExistingApp(t *testing.T, body string, args ...string) (int, int, error) {
+	t.Helper()
+	var updates, creates int
+	serveSourceUpload := newSourceUploadStub(t)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, testAppsPath+"/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, body)
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, testAppsPath+"/"):
+			updates++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, body)
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, body)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(api.Close)
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(args)
+	return updates, creates, cmd.Execute()
+}
+
+// TestDeployUpdate_AcceptsMatchingCreateOnlyFlags locks the path from
+// resolveDeployTarget to validateUpdateDeployFlags(cmd, app): the stub app is
+// the one compared. The same gpu type, idle ttl, environment variable and
+// secret reach UpdateApp. --volume still fails, and the error names it alone,
+// because that read does not return volumes.
+func TestDeployUpdate_AcceptsMatchingCreateOnlyFlags(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+	body := storedDeployAppBody()
+	matching := []string{
+		testModelFile,
+		testSrcDirFlag, dir,
+		testIDFlag, testAppID,
+		testGPUTypeFlag, testGPUType,
+		testIdleTTLFlag, "61",
+		"--" + envVarFlag, "FOO=bar",
+		testSecretFlag, "ORG_TOKEN=ORG_TOKEN",
+	}
+
+	t.Run("matching flags update", func(t *testing.T) {
+		updates, creates, err := runDeployAgainstExistingApp(t, body, matching...)
+		if err != nil {
+			t.Fatalf("deploy: %v", err)
+		}
+		if updates != 1 || creates != 0 {
+			t.Fatalf("updates = %d, creates = %d, want an update and no create", updates, creates)
+		}
+	})
+
+	t.Run("volume is rejected when the other flags match", func(t *testing.T) {
+		args := append(append([]string{}, matching...), testVolumeFlag, testVolumePath)
+		updates, creates, err := runDeployAgainstExistingApp(t, body, args...)
+		if err == nil || !strings.Contains(err.Error(), testVolumeFlag) {
+			t.Fatalf("err = %v, want it to name --volume", err)
+		}
+		for _, name := range []string{testGPUTypeFlag, testIdleTTLFlag, "--" + envVarFlag, testSecretFlag} {
+			if strings.Contains(err.Error(), name) {
+				t.Fatalf("err = %v, want only --volume named", err)
+			}
+		}
+		if updates != 0 || creates != 0 {
+			t.Fatalf("updates = %d, creates = %d, want no write", updates, creates)
+		}
+	})
+}
+
+func TestDeployCreate_SendsExtraIndexURLs(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	const (
+		indexA = "https://download.pytorch.org/whl/cu124"
+		indexB = "https://example.com/simple"
+	)
+	want := []string{
+		testExtraIndexURL + " " + indexA,
+		testExtraIndexURL + " " + indexB,
+	}
+
+	var created serverlessapi.AppCreate
+	var creates int
+	serveSourceUpload := newSourceUploadStub(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Errorf("decode create: %v", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{
+		testModelFile,
+		testSrcDirFlag, dir,
+		testIDFlag, testAppID,
+		testGPUTypeFlag, testGPUType,
+		testExtraIndexURL, indexA,
+		testExtraIndexURL, indexB,
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	if creates != 1 {
+		t.Fatalf("creates = %d, want 1", creates)
+	}
+	code, err := created.AppSource.Source.AsCodeSourceUpsert()
+	if err != nil {
+		t.Fatalf("code source: %v", err)
+	}
+	if code.Requirements == nil || !slices.Equal(*code.Requirements, want) {
+		t.Fatalf("requirements = %#v, want %#v", code.Requirements, want)
+	}
+}
+
+func TestDeploy_RejectsCredentialExtraIndexURLBeforeUpload(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	const secret = "s3cret"
+	err := deployRefusedBeforeUpload(t, dir, []string{
+		testExtraIndexURL, "https://user:" + secret + "@example.com/simple",
+	})
+	requireIndexURLRefused(t, err, secret)
+}
+
+func TestDeploy_RejectsCredentialRequirementIndexBeforeUpload(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{testModelFile: testPySource})
+
+	const secret = "s3cret"
+	cases := []struct {
+		name   string
+		line   string
+		secret string
+	}{
+		{
+			name:   "extra-index-url",
+			line:   testExtraIndexURL + " https://user:" + secret + "@example.com/simple",
+			secret: secret,
+		},
+		{
+			name:   "index-url",
+			line:   "--index-url https://user:" + secret + "@example.com/simple",
+			secret: secret,
+		},
+		{
+			name: "extra-index-url without a url",
+			line: testExtraIndexURL,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := deployRefusedBeforeUpload(t, dir, []string{testRequirement, tc.line})
+			requireIndexURLRefused(t, err, tc.secret)
+		})
+	}
+}
+
+// deployRefusedBeforeUpload runs deploy with extra args. A source upload or an
+// AppCreate fails the test: the refusal has to land before either write.
+func deployRefusedBeforeUpload(t *testing.T, dir string, extra []string) error {
+	t.Helper()
+
+	var uploads, creates int
+	serveSourceUpload := newSourceUploadStub(t)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveSourceUpload(w, r) {
+			uploads++
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/apps/"):
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"type":"about:blank","title":"Not Found","status":404}`))
+		case r.Method == http.MethodPost && r.URL.Path == testAppsPath:
+			creates++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(activeAppBody("")))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	t.Setenv("RUNWARE_API_KEY", "test-key")
+	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(append([]string{
+		testModelFile,
+		testSrcDirFlag, dir,
+		testIDFlag, testAppID,
+		testGPUTypeFlag, testGPUType,
+	}, extra...))
+	err := cmd.Execute()
+	if uploads != 0 || creates != 0 {
+		t.Fatalf("source uploads = %d, creates = %d, want none; err = %v", uploads, creates, err)
+	}
+	return err
+}
+
+func requireIndexURLRefused(t *testing.T, err error, secret string) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), "no credentials") {
+		t.Fatalf("err = %v, want the index URL rule", err)
+	}
+	if secret != "" && strings.Contains(err.Error(), secret) {
+		t.Fatalf("err = %v contains %q", err, secret)
+	}
+}
+
 func TestValidateCreateDeployGPU(t *testing.T) {
 	if err := validateCreateDeployGPU(""); err == nil || !strings.Contains(err.Error(), testGPUTypeFlag) {
 		t.Fatalf("empty: %v", err)
@@ -448,11 +741,11 @@ func TestParseSecretAttaches(t *testing.T) {
 		t.Fatalf("empty: got=%v err=%v", got, err)
 	}
 
-	got, err = parseSecretAttaches([]string{"ORG_TOKEN", "API_KEY=INFERENCE_KEY"})
+	got, err = parseSecretAttaches([]string{testOrgToken, "API_KEY=INFERENCE_KEY"})
 	if err != nil || got == nil || len(*got) != 2 {
 		t.Fatalf("attaches: got=%v err=%v", got, err)
 	}
-	if (*got)[0].SecretName != "ORG_TOKEN" || (*got)[0].EnvVarName != nil {
+	if (*got)[0].SecretName != testOrgToken || (*got)[0].EnvVarName != nil {
 		t.Fatalf("name only: %#v", (*got)[0])
 	}
 	if (*got)[1].SecretName != "API_KEY" || (*got)[1].EnvVarName == nil || *(*got)[1].EnvVarName != "INFERENCE_KEY" {
@@ -471,7 +764,7 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags: %v", err)
 	}
-	if err := validateUpdateDeployFlags(cmd); err != nil {
+	if err := validateUpdateDeployFlags(cmd, &serverlessapi.App{}); err != nil {
 		t.Fatalf("no create flags: %v", err)
 	}
 
@@ -480,16 +773,16 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 		flags   []string
 		wantErr string
 	}{
-		{flags: []string{testGPUTypeFlag, "h100"}, wantErr: scaleHint},
+		{flags: []string{testGPUTypeFlag, testGPUType}, wantErr: scaleHint},
 		{flags: []string{"--max-workers", "2"}, wantErr: scaleHint},
 		{flags: []string{"--env-var", "FOO=bar"}, wantErr: "apps env-vars"},
-		{flags: []string{"--env-file", envDotfile}, wantErr: "apps env-vars"},
-		{flags: []string{"--volume", "/data"}, wantErr: "immutable"},
-		{flags: []string{"--secret", "ORG_TOKEN"}, wantErr: "secrets attach"},
-		{flags: []string{"--fallback-gpu-type", testFallbackGPU}, wantErr: scaleHint},
-		{flags: []string{"--min-available-workers", "1"}, wantErr: scaleHint},
-		{flags: []string{"--available-workers-pct", "10"}, wantErr: scaleHint},
-		{flags: []string{"--name", "My App"}, wantErr: "apps rename"},
+		{flags: []string{testEnvFileFlag, envDotfile}, wantErr: "apps env-vars"},
+		{flags: []string{testVolumeFlag, "/data"}, wantErr: "immutable"},
+		{flags: []string{testSecretFlag, testOrgToken}, wantErr: "secrets attach"},
+		{flags: []string{testFallbackGPUTypeFlag, testFallbackGPU}, wantErr: scaleHint},
+		{flags: []string{testMinAvailableWorkersFlag, "1"}, wantErr: scaleHint},
+		{flags: []string{testAvailableWorkersPctFlag, "10"}, wantErr: scaleHint},
+		{flags: []string{testNameFlag, testDisplayName}, wantErr: "apps rename"},
 		{flags: []string{testRequirement, testPipPackage}},
 		{flags: []string{testBaseImageFlag, testBaseImage}},
 		{flags: []string{testSrcDirFlag, "."}},
@@ -497,11 +790,21 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.flags, " "), func(t *testing.T) {
+			flags := append([]string(nil), tc.flags...)
+			for i, flag := range flags {
+				if flag == envDotfile {
+					path := t.TempDir() + "/env"
+					if err := os.WriteFile(path, []byte("FOO=bar\n"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					flags[i] = path
+				}
+			}
 			cmd := newDeployCmd(nil)
-			if err := cmd.ParseFlags(tc.flags); err != nil {
+			if err := cmd.ParseFlags(flags); err != nil {
 				t.Fatalf("ParseFlags: %v", err)
 			}
-			err := validateUpdateDeployFlags(cmd)
+			err := validateUpdateDeployFlags(cmd, &serverlessapi.App{})
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -510,6 +813,141 @@ func TestValidateUpdateDeployFlags(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("got %v, want substring %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateUpdateDeployFlagsNamesEveryFlag(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	if err := cmd.ParseFlags([]string{testGPUTypeFlag, testGPUType, testVolumeFlag, testVolumePath, testSecretFlag, "DEPLOY_TOKEN"}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	err := validateUpdateDeployFlags(cmd, &serverlessapi.App{})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, name := range []string{testGPUTypeFlag, testVolumeFlag, testSecretFlag} {
+		if !strings.Contains(err.Error(), name) {
+			t.Fatalf("missing %s in %v", name, err)
+		}
+	}
+}
+
+func TestValidateUpdateDeployFlagsAllowsAnUnchangedGPUType(t *testing.T) {
+	cmd := newDeployCmd(nil)
+	if err := cmd.ParseFlags([]string{testGPUTypeFlag, testGPUType}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	gpu := testGPUType
+	app := &serverlessapi.App{Configuration: serverlessapi.WorkerConfig{GpuType: &gpu}}
+	if err := validateUpdateDeployFlags(cmd, app); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestValidateUpdateDeployFlagsAcceptsAStoredValue: each create-only flag is
+// accepted when the app already holds that value, and a different value names
+// the flag. The stored numbers, variable and secret differ from a zero App, so
+// a comparison that ignores the app or treats a missing key as "" fails.
+func TestValidateUpdateDeployFlagsAcceptsAStoredValue(t *testing.T) {
+	gpu := testGPUType
+	fallback := testFallbackGPU
+	minAvailable := int32(2)
+	availablePct := int32(15)
+	stored := &serverlessapi.App{
+		AppName: testDisplayName,
+		Configuration: serverlessapi.WorkerConfig{
+			GpuType:             &gpu,
+			FallbackGpuType:     &fallback,
+			MaxWorkers:          3,
+			IdleTtlSecs:         61,
+			ScalingDelaySecs:    11,
+			MinWorkers:          2,
+			GpusPerWorker:       2,
+			MinAvailableWorkers: &minAvailable,
+			AvailableWorkersPct: &availablePct,
+		},
+		EnvironmentVariables: []serverlessapi.EnvironmentVariable{{Key: "FOO", Value: "bar"}},
+		Secrets:              []serverlessapi.SecretAttachment{{Name: testOrgToken}},
+	}
+	onlyOld := &serverlessapi.App{
+		EnvironmentVariables: []serverlessapi.EnvironmentVariable{{Key: "OLD", Value: "x"}},
+	}
+
+	cases := []struct {
+		name    string
+		flags   []string
+		envFile string
+		app     *serverlessapi.App
+		wantErr string
+	}{
+		{name: "gpu type matches", flags: []string{testGPUTypeFlag, testGPUType}},
+		{name: "gpu type differs", flags: []string{testGPUTypeFlag, testFallbackGPU}, wantErr: testGPUTypeFlag},
+		{name: "name matches", flags: []string{testNameFlag, testDisplayName}},
+		{name: "name differs", flags: []string{testNameFlag, "Other"}, wantErr: testNameFlag},
+		{name: "max workers matches", flags: []string{testMaxWorkersFlag, "3"}},
+		{name: "max workers differs", flags: []string{testMaxWorkersFlag, "4"}, wantErr: testMaxWorkersFlag},
+		{name: "idle ttl matches", flags: []string{testIdleTTLFlag, "61"}},
+		{name: "idle ttl differs", flags: []string{testIdleTTLFlag, "62"}, wantErr: testIdleTTLFlag},
+		{name: "scaling delay matches", flags: []string{testScalingDelayFlag, "11"}},
+		{name: "scaling delay differs", flags: []string{testScalingDelayFlag, "12"}, wantErr: testScalingDelayFlag},
+		{name: "min workers matches", flags: []string{testMinWorkersFlag, "2"}},
+		{name: "min workers differs", flags: []string{testMinWorkersFlag, "3"}, wantErr: testMinWorkersFlag},
+		{name: "gpus per worker matches", flags: []string{testGPUsPerWorkerFlag, "2"}},
+		{name: "gpus per worker differs", flags: []string{testGPUsPerWorkerFlag, "4"}, wantErr: testGPUsPerWorkerFlag},
+		{name: "fallback gpu matches", flags: []string{testFallbackGPUTypeFlag, testFallbackGPU}},
+		{name: "fallback gpu differs", flags: []string{testFallbackGPUTypeFlag, testGPUType}, wantErr: testFallbackGPUTypeFlag},
+		{name: "min available workers matches", flags: []string{testMinAvailableWorkersFlag, "2"}},
+		{name: "min available workers differs", flags: []string{testMinAvailableWorkersFlag, "3"}, wantErr: testMinAvailableWorkersFlag},
+		{name: "available workers pct matches", flags: []string{testAvailableWorkersPctFlag, "15"}},
+		{name: "available workers pct differs", flags: []string{testAvailableWorkersPctFlag, "20"}, wantErr: testAvailableWorkersPctFlag},
+		{name: "secret name matches", flags: []string{testSecretFlag, testOrgToken}},
+		{name: "secret env equal to its name matches", flags: []string{testSecretFlag, "ORG_TOKEN=ORG_TOKEN"}},
+		{name: "secret env override differs", flags: []string{testSecretFlag, "ORG_TOKEN=OTHER"}, wantErr: testSecretFlag},
+		{name: "env var matches", flags: []string{"--" + envVarFlag, "FOO=bar"}},
+		{name: "env var differs", flags: []string{"--" + envVarFlag, "FOO=baz"}, wantErr: "--" + envVarFlag},
+		{
+			name:    "empty env value is a different key",
+			flags:   []string{"--" + envVarFlag, "NEW="},
+			app:     onlyOld,
+			wantErr: "--" + envVarFlag,
+		},
+		{name: "env file matches", flags: []string{testEnvFileFlag, envDotfile}, envFile: "FOO=bar\n"},
+		{name: "env file differs", flags: []string{testEnvFileFlag, envDotfile}, envFile: "FOO=baz\n", wantErr: testEnvFileFlag},
+		{name: "volume is always rejected", flags: []string{testVolumeFlag, testVolumePath}, wantErr: testVolumeFlag},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := tc.app
+			if app == nil {
+				app = stored
+			}
+			flags := append([]string(nil), tc.flags...)
+			if tc.envFile != "" {
+				path := t.TempDir() + "/env"
+				if err := os.WriteFile(path, []byte(tc.envFile), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				for i, flag := range flags {
+					if flag == envDotfile {
+						flags[i] = path
+					}
+				}
+			}
+			cmd := newDeployCmd(nil)
+			if err := cmd.ParseFlags(flags); err != nil {
+				t.Fatalf("ParseFlags: %v", err)
+			}
+			err := validateUpdateDeployFlags(cmd, app)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got %v, want it to name %s", err, tc.wantErr)
 			}
 		})
 	}
@@ -756,6 +1194,11 @@ func TestRefuseCodeOnlyFlags(t *testing.T) {
 			name:    "requirement",
 			flags:   []string{testFromFlag, testArchiveURL, testRequirement, testPipPackage},
 			wantErr: testRequirement,
+		},
+		{
+			name:    "extra-index-url",
+			flags:   []string{testFromFlag, testArchiveURL, testExtraIndexURL, "https://example.com/simple"},
+			wantErr: testExtraIndexURL,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1124,4 +1567,45 @@ func TestDeployRefusesADeletingApp(t *testing.T) {
 		run := runServerlessAgainst(t, handler, testDeployCommand, testModelFile, testSrcDirFlag, dir, testIDFlag, testAppID)
 		requireDeployRefused(t, run, want, testAppsPath+"/"+testAppID)
 	})
+}
+
+func TestValidateExtraIndexURL(t *testing.T) {
+	cases := []struct {
+		name   string
+		raw    string
+		ok     bool
+		secret string
+	}{
+		{name: "https with a path", raw: "https://download.pytorch.org/whl/cu124", ok: true},
+		{name: "http allowed", raw: "http://pypi.internal/simple", ok: true},
+		{name: "empty host", raw: "https:///simple"},
+		{name: "userinfo without a password", raw: "https://s3cret@example.com/simple", secret: "s3cret"},
+		{name: "invalid url", raw: "http://[::1"},
+		{name: "user and password", raw: "https://user:" + "pw" + "@host/simple", secret: "pw"},
+		{name: "user and password on the simple index", raw: "https://user:" + "s3cret" + "@example.com/simple", secret: "s3cret"},
+		{name: "non-http scheme", raw: "ftp://example.com/simple"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateExtraIndexURL(tc.raw)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("validateExtraIndexURL(%q) = %v", tc.raw, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("validateExtraIndexURL(%q) succeeded", tc.raw)
+			}
+			if !strings.Contains(err.Error(), "credentials") {
+				t.Fatalf("err = %v, want the index URL rule", err)
+			}
+			if strings.Contains(err.Error(), tc.raw) {
+				t.Fatalf("err = %v echoes the URL", err)
+			}
+			if tc.secret != "" && strings.Contains(err.Error(), tc.secret) {
+				t.Fatalf("err = %v contains %q", err, tc.secret)
+			}
+		})
+	}
 }

@@ -460,7 +460,7 @@ func TestConnectorCommandsPrintJSONAndYAML(t *testing.T) {
 		{name: "delete", args: []string{testConnectorsGroup, "delete", testConnectorName}},
 		{name: "apps detach", args: []string{testAppsGroup, testConnectorsGroup, "detach", testAppID, testConnectorName}},
 	}
-	for _, format := range []string{formatJSON, "yaml"} {
+	for _, format := range []string{formatJSON, testFormatYAML} {
 		for _, tc := range commands {
 			t.Run(format+"/"+tc.name, func(t *testing.T) {
 				run := runServerlessAgainst(t, environmentAPI(t, &bodyRecorder{}, responses), append([]string{"--format", format}, tc.args...)...)
@@ -631,7 +631,7 @@ func TestUsageRefusesHourGrouping(t *testing.T) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			run := runServerless(t, args...)
 
-			if run.err == nil || !strings.Contains(run.err.Error(), `--group-by "hour" is not supported yet`) {
+			if run.err == nil || !strings.Contains(run.err.Error(), `invalid --group-by "hour"`) {
 				t.Fatalf("err = %v, want the hour refusal", run.err)
 			}
 			if len(run.requests) != 0 {

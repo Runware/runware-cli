@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ const (
 	colHealthReason   = "Health reason"
 	colHealthSince    = "Health since"
 	colHealthObserved = "Health observed"
-	colActiveVersion  = "Active version ID"
+	colActiveVersion  = "Rollout target"
+	colServingVersion = "Serving version"
 	colVersion        = "Version"
 	colCreated        = "Created"
 	colUpdated        = "Updated"
@@ -54,7 +56,6 @@ const (
 	colBudgetAlerts   = "Budget alerts"
 	colPauseAtBudget  = "Pause at budget"
 
-	colKind                     = "Kind"
 	colAudience                 = "Audience"
 	colProvider                 = "Provider"
 	colRoleARN                  = "Role ARN"
@@ -130,6 +131,25 @@ func (r appResult) Rows() [][]any {
 	return rows
 }
 
+// appShowResult is one app plus the version its ready and busy workers are
+// running. JSON and YAML stay the app: the serving version is a table row.
+type appShowResult struct {
+	appResult
+	serving string `json:"-" yaml:"-"`
+}
+
+func (r appShowResult) Rows() [][]any {
+	rows := r.appResult.Rows()
+	out := make([][]any, 0, len(rows)+1)
+	for _, row := range rows {
+		out = append(out, row)
+		if len(row) > 0 && row[0] == colActiveVersion {
+			out = append(out, []any{colServingVersion, r.serving})
+		}
+	}
+	return out
+}
+
 // MarshalJSON redacts plaintext environment variable values. The table already omits
 // them; JSON would otherwise print the value field from the app payload.
 func (r appResult) MarshalJSON() ([]byte, error) {
@@ -181,7 +201,7 @@ func (r appsResult) Rows() [][]any {
 // can omit health, so keep that uncertainty visible in table output.
 func formatAppHealth(health *serverlessapi.AppHealth) string {
 	if health == nil {
-		return "unknown"
+		return servingVersionUnknown
 	}
 	return string(health.State)
 }
@@ -690,8 +710,8 @@ func (r envUnsetResult) Rows() [][]any {
 }
 
 // printPage prints a cursor-paginated list. JSON/YAML use the API page shape
-// (data + nextCursor). Table format renders rows, then hints at --cursor on errOut
-// (typically cmd.ErrOrStderr()).
+// (data + nextCursor). Table format renders rows, then writes the next-page
+// hint to stdout, and to errOut only when that writer is not the same file.
 func printPage[T any](format output.Format, page serverlessapi.Page[T], table output.Tabular, errOut io.Writer, extraCursorFlags string) error {
 	switch format {
 	case output.FormatJSON, output.FormatYAML:
@@ -700,15 +720,48 @@ func printPage[T any](format output.Format, page serverlessapi.Page[T], table ou
 		if err := output.Print(format, table); err != nil {
 			return err
 		}
-		return printNextCursor(errOut, page.NextCursor, extraCursorFlags)
+		return writeNextPageHint(os.Stdout, errOut, page.NextCursor, extraCursorFlags)
 	}
 }
 
-func printNextCursor(errOut io.Writer, next *string, extraFlags string) error {
-	return printNamedCursor(errOut, "Next page", next, extraFlags)
+// writeNextPageHint writes the next-page hint to stdout so a redirected or
+// piped stdout captures it. It also writes the hint to errOut when errOut is
+// a different file, or is not an *os.File (a test buffer). When errOut is an
+// *os.File for the same file as stdout, the hint is written once.
+func writeNextPageHint(stdout, errOut io.Writer, next *string, extraFlags string) error {
+	if errOut != stdout {
+		if err := printNextCursor(stdout, next, extraFlags); err != nil {
+			return err
+		}
+		if sameWriter(stdout, errOut) {
+			return nil
+		}
+	}
+	return printNextCursor(errOut, next, extraFlags)
 }
 
-func printNamedCursor(errOut io.Writer, label string, cursor *string, extraFlags string) error {
+// sameWriter reports whether a and b are the same open file. A writer that is
+// not an *os.File is not that file. When Stat fails, *os.File values fall back
+// to pointer equality.
+func sameWriter(a, b io.Writer) bool {
+	fa, aFile := a.(*os.File)
+	fb, bFile := b.(*os.File)
+	if !aFile || !bFile {
+		return false
+	}
+	aInfo, aErr := fa.Stat()
+	bInfo, bErr := fb.Stat()
+	if aErr != nil || bErr != nil {
+		return fa == fb
+	}
+	return os.SameFile(aInfo, bInfo)
+}
+
+func printNextCursor(w io.Writer, next *string, extraFlags string) error {
+	return printNamedCursor(w, "Next page", next, extraFlags)
+}
+
+func printNamedCursor(w io.Writer, label string, cursor *string, extraFlags string) error {
 	if cursor == nil || *cursor == "" {
 		return nil
 	}
@@ -716,7 +769,7 @@ func printNamedCursor(errOut io.Writer, label string, cursor *string, extraFlags
 	if extraFlags != "" {
 		hint = extraFlags + " " + hint
 	}
-	_, err := fmt.Fprintf(errOut, "\n%s: %s\n", label, hint)
+	_, err := fmt.Fprintf(w, "\n%s: %s\n", label, hint)
 	return err
 }
 
