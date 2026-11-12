@@ -24,6 +24,7 @@ const (
 	createCommand       = "create"
 	nameKey             = "name"
 	formatJSON          = "json"
+	formatYAML          = "yaml"
 	testConnectorsGroup = "connectors"
 	testConnectorsPath  = "/v1/oidc-connectors"
 	testConnectorName   = "aws-prod"
@@ -460,7 +461,7 @@ func TestConnectorCommandsPrintJSONAndYAML(t *testing.T) {
 		{name: "delete", args: []string{testConnectorsGroup, "delete", testConnectorName}},
 		{name: "apps detach", args: []string{testAppsGroup, testConnectorsGroup, "detach", testAppID, testConnectorName}},
 	}
-	for _, format := range []string{formatJSON, testFormatYAML} {
+	for _, format := range []string{formatJSON, formatYAML} {
 		for _, tc := range commands {
 			t.Run(format+"/"+tc.name, func(t *testing.T) {
 				run := runServerlessAgainst(t, environmentAPI(t, &bodyRecorder{}, responses), append([]string{"--format", format}, tc.args...)...)
