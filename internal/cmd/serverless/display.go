@@ -30,6 +30,7 @@ const (
 	colCreated        = "Created"
 	colUpdated        = "Updated"
 	colType           = "Type"
+	colKind           = "Kind"
 	colField          = "Field"
 	colValue          = "Value"
 	colApp            = "App"

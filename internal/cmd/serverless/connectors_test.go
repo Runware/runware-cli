@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	testFormatYAML      = "yaml"
 	groupByFlag         = "--group-by"
 	app                 = "app"
 	wipFlag             = "--workload-identity-provider"
