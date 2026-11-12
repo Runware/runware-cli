@@ -354,6 +354,14 @@ var lostAnswers = []invokeAnswerCase{
 		answer: answerBody(http.StatusServiceUnavailable, "application/json", `{"error":"upstream unavailable"}`),
 	},
 	{
+		name:   "proxy JSON 503 with a status",
+		answer: answerBody(http.StatusServiceUnavailable, "application/json", `{"status":503,"error":"Service Unavailable"}`),
+	},
+	{
+		name:   "proxy problem 503",
+		answer: answerBody(http.StatusServiceUnavailable, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503}`),
+	},
+	{
 		name:   "api 502 body malformed",
 		answer: answerBody(http.StatusBadGateway, "application/problem+json", `{"type":`),
 	},
@@ -392,6 +400,10 @@ var refusedAnswers = []invokeAnswerCase{
 	{
 		name:   "capacity unavailable",
 		answer: answerProblem(http.StatusServiceUnavailable, "https://docs.runware.ai/serverless/errors#capacity-unavailable"),
+	},
+	{
+		name:   "service unavailable",
+		answer: answerProblem(http.StatusServiceUnavailable, "https://docs.runware.ai/serverless/errors#service-unavailable"),
 	},
 	{
 		name:   "bad request",

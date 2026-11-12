@@ -229,16 +229,39 @@ func responseLost(taskID uuid.UUID, err error) error {
 	}
 }
 
+// The problem types of the API's 503 to an invocation, which mints no task.
+const (
+	capacityUnavailableType = "https://docs.runware.ai/serverless/errors#capacity-unavailable"
+	serviceUnavailableType  = "https://docs.runware.ai/serverless/errors#service-unavailable"
+)
+
 // invokeUnavailableError is the error for a 503 to an invocation. The API's
-// own 503 carries a problem document and mints no task, so it is a refusal.
-// A 503 without one, whether it carries a page or JSON of another shape,
-// came from a proxy in front of the API, which says nothing about whether
-// the task was accepted.
+// own 503 is a refusal: no task was minted. Any other 503, whether it carries
+// a page, JSON of another shape, or a problem document of a type the API does
+// not send there, came from a proxy in front of the API, which says nothing
+// about whether the task was accepted.
 func invokeUnavailableError(taskID uuid.UUID, problem *gen.ProblemDetails, body []byte) error {
-	if problem != nil && isProblemDetails(*problem) {
+	if isInvocationUnavailable(problem) {
 		return problemToError(problem, http.StatusServiceUnavailable)
 	}
 	return responseLost(taskID, problemFromBody(body, http.StatusServiceUnavailable))
+}
+
+// isInvocationUnavailable reports whether problem is the API's own 503 to an
+// invocation: one of the two types it documents, with the title and status
+// every API problem carries. A proxy's JSON can carry a status of its own, so
+// a status alone does not make a refusal; a refusal taken for a lost response
+// costs a poll, while a lost response taken for a refusal loses the task.
+func isInvocationUnavailable(problem *gen.ProblemDetails) bool {
+	if problem == nil || problem.Status != http.StatusServiceUnavailable || problem.Title == "" {
+		return false
+	}
+	switch problem.Type {
+	case capacityUnavailableType, serviceUnavailableType:
+		return true
+	default:
+		return false
+	}
 }
 
 // unreadableInvokeError is the error for an invocation response whose body
