@@ -7,9 +7,15 @@
 // testdata/format-vectors.json holds the golden vectors every implementation must
 // reproduce byte for byte.
 //
-// Everything that needs fresh randomness (salts, the wrap nonce, the encapsulation)
-// draws it from crypto/rand inside the package, so no caller can reuse a key and
-// nonce pair by passing the same salt twice.
+// Salts, the wrap nonce and the encapsulation are drawn from crypto/rand inside the
+// package, so no caller can reuse a key and nonce pair by passing the same salt twice.
+// The data key and attempt id are the caller's: draw them with NewDataKey and
+// NewAttemptID, one fresh data key per file and attempt, never derived or reused.
+//
+// Keys returned by this package (data keys, session sealing keys) are plain byte
+// slices: clear() each one as soon as it is no longer needed, and drop sealers,
+// openers and session sealers promptly. Go cannot zero the AES key schedules they
+// hold, so their lifetime is the caller's to keep short.
 package volumeformat
 
 import "encoding/binary"

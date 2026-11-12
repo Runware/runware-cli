@@ -55,7 +55,8 @@ func (s *SessionSealer) Encapsulation() []byte { return append([]byte(nil), s.en
 
 // SessionKey derives the 32-byte session sealing key once the open response names
 // the session: an HPKE export with context fields(runware-volumes-v1/session-seal,
-// organization, key pair, session, SHA-256(encapsulation)).
+// organization, key pair, session, SHA-256(encapsulation)). The caller clears the
+// returned key when the session ends.
 func (s *SessionSealer) SessionKey(organization, keyPair, session [16]byte) ([]byte, error) {
 	return s.sender.Export(sessionContext(organization, keyPair, session, s.enc), sessionKeyBytes)
 }
@@ -63,6 +64,7 @@ func (s *SessionSealer) SessionKey(organization, keyPair, session [16]byte) ([]b
 // OpenSessionKey is the preparer side: it decapsulates a session's encapsulation with
 // the key pair's 32-byte private key and derives the same sealing key. X-Wing rejects
 // implicitly, so a wrong encapsulation yields a key that later fails UnwrapDataKey.
+// The caller clears the returned key once the session's data keys are unwrapped.
 func OpenSessionKey(privateKey, enc []byte, organization, keyPair, session [16]byte) ([]byte, error) {
 	sk, err := kem().NewPrivateKey(privateKey)
 	if err != nil {
@@ -84,6 +86,22 @@ func sessionContext(organization, keyPair, session [16]byte, enc []byte) string 
 	b = appendField(b, session[:])
 	b = appendField(b, h[:])
 	return string(b)
+}
+
+// NewDataKey returns a fresh 32-byte data key from crypto/rand. Draw one per file and
+// attempt, never derive one from a hash or reuse it, and clear it after use.
+func NewDataKey() []byte {
+	k := make([]byte, dataKeyBytes)
+	rand.Read(k) //nolint:errcheck,gosec // crypto/rand.Read never returns an error
+	return k
+}
+
+// NewAttemptID returns a fresh random 128-bit attempt id from crypto/rand, drawn with
+// each new data key.
+func NewAttemptID() [16]byte {
+	var id [16]byte
+	rand.Read(id[:]) //nolint:errcheck,gosec // crypto/rand.Read never returns an error
+	return id
 }
 
 // WrapDataKey seals a file's 32-byte data key under the session sealing key:
@@ -111,7 +129,7 @@ func wrapDataKeyWithNonce(sessionKey []byte, session [16]byte, id FileIdentity, 
 }
 
 // UnwrapDataKey opens a sealed key, checking every bound field. Any mismatch returns
-// ErrAuthentication and no key.
+// ErrAuthentication and no key. The caller clears the returned key after use.
 func UnwrapDataKey(sessionKey []byte, session [16]byte, id FileIdentity, sealed []byte) ([]byte, error) {
 	if len(sealed) != SealedKeyBytes {
 		return nil, fmt.Errorf("%w: sealed key is %d bytes, not %d", ErrAuthentication, len(sealed), SealedKeyBytes)

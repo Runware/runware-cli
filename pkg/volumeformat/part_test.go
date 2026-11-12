@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"math"
 	"sync"
 	"testing"
 	"testing/iotest"
@@ -143,7 +144,7 @@ func TestPlanLayout(t *testing.T) {
 	if err != nil || l.SegmentsPerPart != 5119 || l.PartCount != MaxParts || l.PartSize > MaxPartBytes {
 		t.Fatalf("largest file: %+v, %v", l, err)
 	}
-	for _, size := range []int64{-1, largest + 1, maxPlaintextBytes, maxPlaintextBytes + 1} {
+	for _, size := range []int64{-1, largest + 1, maxPlaintextBytes, maxPlaintextBytes + 1, math.MaxInt64} {
 		if _, err := PlanLayout(size); !errors.Is(err, ErrLayout) {
 			t.Fatalf("size %d: %v", size, err)
 		}
@@ -231,8 +232,6 @@ func TestSealOpenRoundTrip(t *testing.T) {
 	}
 }
 
-// TestSealerIsSingleUse: a sealer seals one plaintext once, so two plaintexts never
-// meet under one salt.
 // TestSealerIsSingleUseAcrossGoroutines: two goroutines racing on one sealer, as a
 // retry racing its original attempt might, seal at most one plaintext between them.
 func TestSealerIsSingleUseAcrossGoroutines(t *testing.T) {
@@ -269,6 +268,8 @@ func TestSealerIsSingleUseAcrossGoroutines(t *testing.T) {
 	}
 }
 
+// TestSealerIsSingleUse: a sealer seals one plaintext once, so two plaintexts never
+// meet under one salt.
 func TestSealerIsSingleUse(t *testing.T) {
 	f := newFixture(t, 10)
 	s, err := NewPartSealer(f.key, f.id, f.layout, 1)
@@ -474,6 +475,28 @@ func TestOpenErrorPaths(t *testing.T) {
 	})
 	if _, err := OpenPartTo(&w, r, f.key, f.id, f.layout, 1); !errors.Is(err, errBroken) || w.Len() != 0 {
 		t.Fatalf("read error after the last segment: %v, %d bytes written", err, w.Len())
+	}
+}
+
+// TestNewKeysAreFreshAndSized: a data key is 32 bytes and an attempt id 16, and no
+// two draws repeat.
+func TestNewKeysAreFreshAndSized(t *testing.T) {
+	keys := map[[dataKeyBytes]byte]struct{}{}
+	attempts := map[[16]byte]struct{}{}
+	for range 64 {
+		k := NewDataKey()
+		if len(k) != dataKeyBytes {
+			t.Fatalf("data key is %d bytes", len(k))
+		}
+		if _, dup := keys[[dataKeyBytes]byte(k)]; dup {
+			t.Fatal("a data key repeated")
+		}
+		keys[[dataKeyBytes]byte(k)] = struct{}{}
+		a := NewAttemptID()
+		if _, dup := attempts[a]; dup {
+			t.Fatal("an attempt id repeated")
+		}
+		attempts[a] = struct{}{}
 	}
 }
 

@@ -259,6 +259,9 @@ func SealPart(dataKey []byte, id FileIdentity, l Layout, part int64, plaintext [
 
 // PartOpener opens the sealed segments of one 1-based part, in any order, so a
 // preparer can fetch a part in segment-aligned ranges (Layout.SealedSegmentRange).
+// Its output is untrusted until the whole file's SHA-256 and size match the trusted
+// manifest: anyone holding the key-pair public key can seal a data key and ciphertext
+// for any identity, so segment authentication alone proves nothing about origin.
 type PartOpener struct {
 	c *partCipher
 }

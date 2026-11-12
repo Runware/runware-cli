@@ -36,7 +36,7 @@ type Layout struct {
 // max(1, ceil(size / 1,048,560)) segments (an empty file is one segment holding only
 // its tag), max(64, ceil(segments / 10,000)) of them per part so any file fits in
 // 10,000 parts, and every part starts with its 16-byte salt. A size whose parts would
-// exceed MaxPartBytes (about 48 TiB of plaintext) is refused, as the API refuses it.
+// exceed MaxPartBytes is refused, which caps a file at about 48 TiB of plaintext.
 func PlanLayout(size int64) (Layout, error) {
 	if size < 0 || size > maxPlaintextBytes {
 		return Layout{}, ErrLayout
