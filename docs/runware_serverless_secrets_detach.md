@@ -32,6 +32,7 @@ runware serverless secrets detach <appId> <name> [flags]
 ```
       --debug              Show full debug output
   -e, --env name           Environment the secret belongs to (default RUNWARE_ENV, else the config's environment, else production)
+      --environment name   Alias for --env
   -F, --format string      CLI output format: table, json, yaml (default "table")
       --transport string   Transport protocol: ws (WebSocket) or http (REST) (default "ws")
   -v, --verbose            Show request/response details

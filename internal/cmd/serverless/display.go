@@ -56,6 +56,15 @@ const (
 	colBudgetAlerts   = "Budget alerts"
 	colPauseAtBudget  = "Pause at budget"
 
+	colAudience                 = "Audience"
+	colProvider                 = "Provider"
+	colRoleARN                  = "Role ARN"
+	colWorkloadIdentityProvider = "Workload identity provider"
+	colServiceAccount           = "Service account"
+	colIssuer                   = "Issuer"
+	colSubject                  = "Subject"
+	colSubjectPattern           = "Subject pattern"
+
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
 	colFallbackGPUType     = "Fallback GPU type"
@@ -884,4 +893,175 @@ func formatYesNo(v bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+// oidcConnectorProvider is the provider fields of a connector as one cell: the
+// IAM role of an aws connector, the provider (and service account) of a gcp one.
+func oidcConnectorProvider(aws *serverlessapi.OidcConnectorAws, gcp *serverlessapi.OidcConnectorGcp) string {
+	switch {
+	case aws != nil:
+		return aws.RoleArn
+	case gcp != nil && gcp.ServiceAccountEmail != nil:
+		return gcp.WorkloadIdentityProvider + " (as " + *gcp.ServiceAccountEmail + ")"
+	case gcp != nil:
+		return gcp.WorkloadIdentityProvider
+	default:
+		return ""
+	}
+}
+
+// oidcConnectorFieldRows are the field/value rows both connector shapes share.
+func oidcConnectorFieldRows(c *serverlessapi.OidcConnector) [][]any {
+	rows := [][]any{
+		{colName, c.Name},
+		{colKind, string(c.Kind)},
+		{colAudience, c.Audience},
+	}
+	if c.Aws != nil {
+		rows = append(rows, []any{colRoleARN, c.Aws.RoleArn})
+	}
+	if c.Gcp != nil {
+		rows = append(rows, []any{colWorkloadIdentityProvider, c.Gcp.WorkloadIdentityProvider})
+		if c.Gcp.ServiceAccountEmail != nil {
+			rows = append(rows, []any{colServiceAccount, *c.Gcp.ServiceAccountEmail})
+		}
+	}
+	return append(rows,
+		[]any{colIssuer, formatOptionalString(c.Issuer)},
+		[]any{colCreated, c.CreatedAt.Format(time.RFC3339)},
+		[]any{colUpdated, c.UpdatedAt.Format(time.RFC3339)},
+	)
+}
+
+// oidcConnectorResult wraps one connector for table/json/yaml display.
+type oidcConnectorResult serverlessapi.OidcConnector
+
+func (r oidcConnectorResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r oidcConnectorResult) Rows() [][]any {
+	c := serverlessapi.OidcConnector(r)
+	return oidcConnectorFieldRows(&c)
+}
+
+// oidcConnectorsResult wraps a connector list for table display.
+type oidcConnectorsResult []serverlessapi.OidcConnector
+
+func (r oidcConnectorsResult) Headers() []string {
+	return []string{colName, colKind, colAudience, colProvider, colCreated}
+}
+
+func (r oidcConnectorsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		c := &r[i]
+		rows[i] = []any{c.Name, string(c.Kind), c.Audience, oidcConnectorProvider(c.Aws, c.Gcp), c.CreatedAt.Format(time.RFC3339)}
+	}
+	return rows
+}
+
+// appOidcConnectorResult wraps a connector attached to an app, with its
+// subject, for table/json/yaml display.
+type appOidcConnectorResult serverlessapi.AppOidcConnector
+
+func (r appOidcConnectorResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r appOidcConnectorResult) Rows() [][]any {
+	c := serverlessapi.OidcConnector{
+		Audience:  r.Audience,
+		Aws:       r.Aws,
+		CreatedAt: r.CreatedAt,
+		Gcp:       r.Gcp,
+		Issuer:    r.Issuer,
+		Kind:      r.Kind,
+		Name:      r.Name,
+		UpdatedAt: r.UpdatedAt,
+	}
+	return append(oidcConnectorFieldRows(&c),
+		[]any{colSubject, r.Subject},
+		[]any{colSubjectPattern, r.SubjectPattern},
+	)
+}
+
+// appOidcConnectorsResult wraps the connectors attached to an app for display.
+type appOidcConnectorsResult []serverlessapi.AppOidcConnector
+
+func (r appOidcConnectorsResult) Headers() []string {
+	return []string{colName, colKind, colAudience, colSubject}
+}
+
+func (r appOidcConnectorsResult) Rows() [][]any {
+	rows := make([][]any, len(r))
+	for i := range r {
+		c := &r[i]
+		rows[i] = []any{c.Name, string(c.Kind), c.Audience, c.Subject}
+	}
+	return rows
+}
+
+// oidcConnectorDeletedResult is the success payload for deleting a connector.
+type oidcConnectorDeletedResult struct {
+	Name string `json:"name" yaml:"name"`
+}
+
+func (r oidcConnectorDeletedResult) Headers() []string {
+	return []string{colName}
+}
+
+func (r oidcConnectorDeletedResult) Rows() [][]any {
+	return [][]any{{r.Name}}
+}
+
+// oidcConnectorDetachedResult is the success payload for detaching a connector
+// from an application.
+type oidcConnectorDetachedResult struct {
+	AppID string `json:"appId" yaml:"appId"`
+	Name  string `json:"name"  yaml:"name"`
+}
+
+func (r oidcConnectorDetachedResult) Headers() []string {
+	return []string{colApp, colName}
+}
+
+func (r oidcConnectorDetachedResult) Rows() [][]any {
+	return [][]any{{r.AppID, r.Name}}
+}
+
+// camelKeys prints a value with its JSON key names in YAML too. The API types
+// carry json tags only, and a YAML encoder lowercases such a field's name
+// (subjectPattern becomes subjectpattern).
+type camelKeys struct {
+	V any
+}
+
+func (c camelKeys) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.V)
+}
+
+func (c camelKeys) MarshalYAML() (any, error) {
+	raw, err := json.Marshal(c.V)
+	if err != nil {
+		return nil, err
+	}
+	var doc any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+// camelKeysTable is camelKeys for a value that also prints as a table.
+type camelKeysTable struct {
+	output.Tabular
+}
+
+func (c camelKeysTable) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Tabular)
+}
+
+func (c camelKeysTable) MarshalYAML() (any, error) {
+	return camelKeys{V: c.Tabular}.MarshalYAML()
 }
