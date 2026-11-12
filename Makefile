@@ -11,7 +11,7 @@ GOFLAGS = -trimpath
 
 BINARY=runware
 
-.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix check-go-fix clean install snapshot docs go-tidy generate-serverless
+.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix check-go-fix clean install snapshot docs go-tidy generate-serverless sync-serverless-spec
 
 build:
 	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
@@ -71,3 +71,13 @@ go-tidy:
 # Regenerate the Serverless API client from api/serverless/openapi.yaml.
 generate-serverless:
 	go tool oapi-codegen -config api/serverless/oapi-codegen.yaml api/serverless/openapi.yaml
+
+# Copy the published Serverless API bundle from a serverless checkout and
+# regenerate the client. The source openapi.yaml there is not the published
+# contract: copy only bin/openapi.public.yaml, which `make bundle-api-spec`
+# builds. Usage: make sync-serverless-spec SERVERLESS_DIR=../serverless
+sync-serverless-spec:
+	@test -n "$(SERVERLESS_DIR)" || (echo "set SERVERLESS_DIR to a serverless checkout" >&2; exit 1)
+	$(MAKE) -C $(SERVERLESS_DIR) bundle-api-spec
+	cp $(SERVERLESS_DIR)/bin/openapi.public.yaml api/serverless/openapi.yaml
+	$(MAKE) generate-serverless

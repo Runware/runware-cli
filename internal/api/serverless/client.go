@@ -1,9 +1,10 @@
 // Package serverless is a thin wrapper around the OpenAPI-generated client for
 // the Runware Serverless control-plane API (api.serverless.runware.ai).
 //
-// Regenerate the client after updating api/serverless/openapi.yaml:
+// api/serverless/openapi.yaml is serverless's published bundle, never its
+// source openapi.yaml. Sync it and regenerate the client with:
 //
-//	make generate-serverless
+//	make sync-serverless-spec SERVERLESS_DIR=../serverless
 package serverless
 
 import (
