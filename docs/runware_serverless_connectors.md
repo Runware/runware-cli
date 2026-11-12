@@ -37,5 +37,6 @@ runware serverless connectors [flags]
 * [runware serverless connectors delete](runware_serverless_connectors_delete.md)	 - Delete an OIDC connector
 * [runware serverless connectors list](runware_serverless_connectors_list.md)	 - List OIDC connectors
 * [runware serverless connectors show](runware_serverless_connectors_show.md)	 - Show an OIDC connector
+* [runware serverless connectors trust](runware_serverless_connectors_trust.md)	 - Print the cloud commands that make a provider trust an application's tokens
 * [runware serverless connectors update](runware_serverless_connectors_update.md)	 - Update an OIDC connector
 
