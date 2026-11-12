@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 )
 
 // ErrAuthentication is a part, segment or key that fails to open: wrong key, wrong
@@ -40,16 +41,32 @@ type partCipher struct {
 	binding [32]byte
 }
 
+// checkPart validates everything that keys a part except its salt: the layout, the
+// part number, the identity's size and the data key's length. It returns the part's
+// first segment (over the whole file) and its segment count.
+func checkPart(dataKey []byte, id FileIdentity, l Layout, part int64) (first, count int64, err error) {
+	first, count, err = l.segmentRange(part)
+	if err != nil {
+		return 0, 0, err
+	}
+	if id.Size != uint64(l.Size) { //nolint:gosec // l.Size is checked non-negative by segmentRange
+		return 0, 0, ErrLayout
+	}
+	if len(dataKey) != dataKeyBytes {
+		return 0, 0, fmt.Errorf("volume format: data key is %d bytes, not %d", len(dataKey), dataKeyBytes)
+	}
+	return first, count, nil
+}
+
+// newPartCipher keys a part. Every partCipher therefore holds a layout, part number
+// and identity that checkPart accepted, which the methods below rely on.
 func newPartCipher(dataKey []byte, id FileIdentity, l Layout, part int64, salt []byte) (*partCipher, error) {
-	first, count, err := l.segmentRange(part)
+	first, count, err := checkPart(dataKey, id, l, part)
 	if err != nil {
 		return nil, err
 	}
-	if id.Size != uint64(l.Size) || len(salt) != SaltBytes { //nolint:gosec // l.Size is checked non-negative by segmentRange
+	if len(salt) != SaltBytes {
 		return nil, ErrLayout
-	}
-	if len(dataKey) != dataKeyBytes {
-		return nil, fmt.Errorf("volume format: data key is %d bytes, not %d", len(dataKey), dataKeyBytes)
 	}
 	key, err := partKey(dataKey, salt, part)
 	if err != nil {
@@ -121,11 +138,12 @@ func nonce(dst []byte, i int64) []byte {
 
 // PartSealer seals one plaintext of one 1-based part under a salt it draws itself.
 // It is single-use: a resend of the part takes a new sealer and so a fresh salt, as
-// resuming an upload requires.
+// resuming an upload requires. The single use is claimed atomically, so a sealer
+// shared between goroutines still seals at most one plaintext.
 type PartSealer struct {
 	c    *partCipher
 	salt [SaltBytes]byte
-	used bool
+	used atomic.Bool
 }
 
 // NewPartSealer keys a part with a fresh random salt from crypto/rand.
@@ -152,26 +170,27 @@ func (s *PartSealer) Salt() []byte { return append([]byte(nil), s.salt[:]...) }
 
 // Len is the sealed part's exact length, salt included.
 func (s *PartSealer) Len() int64 {
-	n, _ := s.c.layout.PartLength(s.c.part)
+	n, _ := s.c.layout.PartLength(s.c.part) // cannot fail: newPartCipher checked the part
 	return n
 }
 
-// start checks the plaintext against the part and spends the sealer.
+// start checks the plaintext against the part, then spends the sealer. A plaintext
+// of the wrong length leaves the sealer unspent.
 func (s *PartSealer) start(plaintext []byte) error {
-	if s.used {
-		return ErrSealerUsed
-	}
-	if _, n, _ := s.c.layout.PlaintextRange(s.c.part); int64(len(plaintext)) != n {
+	_, n, _ := s.c.layout.PlaintextRange(s.c.part) // cannot fail: newPartCipher checked the part
+	if int64(len(plaintext)) != n {
 		return ErrLayout
 	}
-	s.used = true
+	if !s.used.CompareAndSwap(false, true) {
+		return ErrSealerUsed
+	}
 	return nil
 }
 
 // sealSegment appends sealed segment i of plaintext, the part's whole plaintext.
 func (s *PartSealer) sealSegment(dst []byte, i int64, plaintext []byte, scratch *[segmentAADBytes + 12]byte) []byte {
 	off := i * SegmentPlaintextBytes
-	n, _ := s.c.segmentLength(i)
+	n, _ := s.c.segmentLength(i) // cannot fail: callers pass 0 <= i < count
 	return s.c.aead.Seal(dst, nonce(scratch[segmentAADBytes:segmentAADBytes], i), plaintext[off:off+n], s.c.aad(scratch[:0], i))
 }
 
@@ -305,11 +324,17 @@ func OpenPart(dataKey []byte, id FileIdentity, l Layout, part int64, sealed []by
 // segment's plaintext is written only after that segment authenticates, and the
 // part's last segment only after r is confirmed to end there, so no unauthenticated
 // byte reaches w. A part that fails part-way has written the plaintext of its earlier,
-// authentic segments: write to a staging file and publish it only on a nil error.
+// authentic segments: write to a staging file, discard it on any error (a retryable
+// read error included, since a retry starts the part again), and publish it only on a
+// nil error.
 //
 // A short or extended part returns ErrAuthentication; any other read error from r is
-// returned as is, so the caller can retry the read.
+// returned as is, so the caller can retry the read. A layout, part, identity or data
+// key that cannot open the part is refused before r is read.
 func OpenPartTo(w io.Writer, r io.Reader, dataKey []byte, id FileIdentity, l Layout, part int64) (int64, error) {
+	if _, _, err := checkPart(dataKey, id, l, part); err != nil {
+		return 0, err
+	}
 	var salt [SaltBytes]byte
 	if err := readExact(r, salt[:], part, -1); err != nil {
 		return 0, err
@@ -322,7 +347,7 @@ func OpenPartTo(w io.Writer, r io.Reader, dataKey []byte, id FileIdentity, l Lay
 	plain := make([]byte, 0, SegmentPlaintextBytes)
 	var written int64
 	for i := range o.c.count {
-		n, _ := o.c.segmentLength(i)
+		n, _ := o.c.segmentLength(i) // cannot fail: i < count
 		seg := sealed[:n+TagBytes]
 		if err := readExact(r, seg, part, i); err != nil {
 			return written, err

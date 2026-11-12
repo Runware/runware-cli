@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"sync"
 	"testing"
 	"testing/iotest"
 )
@@ -136,12 +137,18 @@ func TestPlanLayout(t *testing.T) {
 			}
 		})
 	}
-	for _, size := range []int64{-1, maxPlaintextBytes + 1} {
+	// The largest file whose parts fit MaxPartBytes: 5,119 segments per part.
+	const largest = 5119 * MaxParts * seg
+	l, err := PlanLayout(largest)
+	if err != nil || l.SegmentsPerPart != 5119 || l.PartCount != MaxParts || l.PartSize > MaxPartBytes {
+		t.Fatalf("largest file: %+v, %v", l, err)
+	}
+	for _, size := range []int64{-1, largest + 1, maxPlaintextBytes, maxPlaintextBytes + 1} {
 		if _, err := PlanLayout(size); !errors.Is(err, ErrLayout) {
 			t.Fatalf("size %d: %v", size, err)
 		}
 	}
-	l, _ := PlanLayout(100)
+	l, _ = PlanLayout(100)
 	for _, p := range []int64{0, 2} {
 		if _, err := l.PartLength(p); !errors.Is(err, ErrLayout) {
 			t.Fatalf("part %d: %v", p, err)
@@ -226,6 +233,42 @@ func TestSealOpenRoundTrip(t *testing.T) {
 
 // TestSealerIsSingleUse: a sealer seals one plaintext once, so two plaintexts never
 // meet under one salt.
+// TestSealerIsSingleUseAcrossGoroutines: two goroutines racing on one sealer, as a
+// retry racing its original attempt might, seal at most one plaintext between them.
+func TestSealerIsSingleUseAcrossGoroutines(t *testing.T) {
+	f := newFixture(t, 10)
+	s, err := NewPartSealer(f.key, f.id, f.layout, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := bytes.Clone(f.plain)
+	other[0] ^= 1
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, plain := range [][]byte{f.plain, other} {
+		wg.Go(func() {
+			_, err := s.Seal(plain)
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	var sealed, refused int
+	for err := range errs {
+		switch {
+		case err == nil:
+			sealed++
+		case errors.Is(err, ErrSealerUsed):
+			refused++
+		default:
+			t.Fatal(err)
+		}
+	}
+	if sealed != 1 || refused != 1 {
+		t.Fatalf("%d seals and %d refusals, want one of each", sealed, refused)
+	}
+}
+
 func TestSealerIsSingleUse(t *testing.T) {
 	f := newFixture(t, 10)
 	s, err := NewPartSealer(f.key, f.id, f.layout, 1)
@@ -385,8 +428,9 @@ func TestDataKeyWrap(t *testing.T) {
 	}
 }
 
-// TestOpenErrorPaths: a salt of the wrong length, a segment index outside the part,
-// a writer that fails, and a read error after the last segment are each refused.
+// TestOpenErrorPaths: a salt of the wrong length, a segment index outside the part, a
+// sealed segment of the wrong length, a bad part number, a writer that fails, and a
+// read error after the last segment are each refused.
 func TestOpenErrorPaths(t *testing.T) {
 	f := newFixture(t, 10)
 	sealed, err := SealPart(f.key, f.id, f.layout, 1, f.plain)
@@ -405,8 +449,17 @@ func TestOpenErrorPaths(t *testing.T) {
 			t.Fatalf("segment %d: %v", i, err)
 		}
 	}
+	if _, err := o.OpenSegment(nil, 0, sealed[SaltBytes:len(sealed)-1]); !errors.Is(err, ErrAuthentication) {
+		t.Fatalf("short segment: %v", err)
+	}
 	if _, _, err := f.layout.SealedSegmentRange(1, -1); !errors.Is(err, ErrLayout) {
 		t.Fatalf("range of segment -1: %v", err)
+	}
+	// A bad part number is refused before the reader is touched, so a caller can
+	// retry on the same reader.
+	untouched := bytes.NewReader(sealed)
+	if _, err := OpenPartTo(io.Discard, untouched, f.key, f.id, f.layout, 0); !errors.Is(err, ErrLayout) || untouched.Len() != len(sealed) {
+		t.Fatalf("part 0: %v, %d of %d bytes left", err, untouched.Len(), len(sealed))
 	}
 	errWrite := errors.New("disk full")
 	if _, err := OpenPartTo(errWriter{

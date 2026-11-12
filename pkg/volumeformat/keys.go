@@ -27,9 +27,14 @@ type SessionSealer struct {
 	sender *hpke.Sender
 }
 
-// Encapsulate makes the session's one X-Wing encapsulation to a verified key-pair
-// statement's public key, with randomness from crypto/rand. Session open carries
-// Encapsulation().
+// Encapsulate makes the session's one X-Wing encapsulation to a key-pair public key,
+// with randomness from crypto/rand. Session open carries Encapsulation().
+//
+// The caller must have verified the public key (its signed key-pair statement) before
+// calling: HPKE base mode authenticates no sender, so anyone holding the public key
+// can make an encapsulation and wrap a data key for any identity. A key that unwraps
+// proves only that its sender held the session key; file integrity rests on the
+// plaintext SHA-256 and size the reader checks against its trusted manifest.
 func Encapsulate(publicKey []byte) (*SessionSealer, error) {
 	pk, err := kem().NewPublicKey(publicKey)
 	if err != nil {

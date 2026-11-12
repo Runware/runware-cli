@@ -10,7 +10,8 @@ const (
 	SaltBytes             = 16                      // random salt at the start of every part
 	MinSegmentsPerPart    = 64                      // smallest part, about 64 MiB
 	MaxParts              = 10_000                  // the object store's multipart limit
-	maxPlaintextBytes     = int64(1) << 62          // arithmetic bound, far beyond any stored object
+	MaxPartBytes          = int64(5) << 30          // the object store's largest part
+	maxPlaintextBytes     = int64(1) << 62          // arithmetic bound, checked before any division
 	segmentAADBytes       = 32 + 8 + 1              // binding, index, final flag
 	dataKeyBytes          = 32                      // AES-256 key
 	sessionKeyBytes       = 32                      // HPKE export length
@@ -34,13 +35,17 @@ type Layout struct {
 // PlanLayout returns the layout for a plaintext size. A file has
 // max(1, ceil(size / 1,048,560)) segments (an empty file is one segment holding only
 // its tag), max(64, ceil(segments / 10,000)) of them per part so any file fits in
-// 10,000 parts, and every part starts with its 16-byte salt.
+// 10,000 parts, and every part starts with its 16-byte salt. A size whose parts would
+// exceed MaxPartBytes (about 48 TiB of plaintext) is refused, as the API refuses it.
 func PlanLayout(size int64) (Layout, error) {
 	if size < 0 || size > maxPlaintextBytes {
 		return Layout{}, ErrLayout
 	}
 	segments := max(1, ceilDiv(size, SegmentPlaintextBytes))
 	perPart := max(MinSegmentsPerPart, ceilDiv(segments, MaxParts))
+	if SaltBytes+perPart*SegmentBytes > MaxPartBytes {
+		return Layout{}, ErrLayout
+	}
 	parts := ceilDiv(segments, perPart)
 	return Layout{
 		Size:            size,
@@ -98,7 +103,7 @@ func (l Layout) PartLength(part int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	_, plain, _ := l.PlaintextRange(part)
+	_, plain, _ := l.PlaintextRange(part) // cannot fail: segmentRange accepted the part
 	return SaltBytes + plain + count*TagBytes, nil
 }
 
