@@ -167,8 +167,10 @@ func runServerlessFormatted(t *testing.T, handler http.HandlerFunc, stdin io.Rea
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
 
 	cmd := NewCmd(log.New(io.Discard))
+	// The root command owns --format; stand in for it so a test can pass it
+	// as an argument or preset it through format.
+	cmd.PersistentFlags().String("format", string(format), "")
 	if format != "" {
-		cmd.PersistentFlags().String("format", string(format), "")
 		// Silenced as the real root is, so cobraOutput holds only what the
 		// command wrote beside the error the CLI prints.
 		cmd.SilenceErrors = true
