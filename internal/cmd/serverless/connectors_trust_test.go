@@ -21,6 +21,20 @@ const (
 	trustTail        = `"issuer":"` + trustIssuer + `",` + testConnectorTail
 )
 
+// trustProviderCheck is the line that fails the run while the existing provider's
+// attribute condition does not admit the environment.
+const trustProviderCheck = "gcloud iam workload-identity-pools providers describe " + testWIP +
+	" --format='value(attributeCondition)' | grep -qF -- '" + trustPrefix + "' || {\n"
+
+// attachedAll returns the attached-connector list body for several connectors.
+func attachedAll(bases ...string) string {
+	entries := make([]string, 0, len(bases))
+	for _, base := range bases {
+		entries = append(entries, base+`,"subject":"`+testSubject+`","subjectPattern":"`+testSubjectPattern+`"}`)
+	}
+	return `{"data":[` + strings.Join(entries, ",") + `]}`
+}
+
 // attachedWith returns the attached-connector list body for one connector:
 // base is the connector JSON without its closing brace.
 func attachedWith(base string) string {
@@ -73,11 +87,12 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 				`"oidc.runware.example:aud": "runware:org-1"`,
 				`"oidc.runware.example:sub": "` + testSubject + `"`,
 				`"Federated": "arn:aws:iam::123456789012:oidc-provider/oidc.runware.example"`,
-				"aws iam create-role --role-name runware-worker --path /ci/ --assume-role-policy-document file://trust-policy.json\n",
-				"#    aws iam update-assume-role-policy --role-name runware-worker --policy-document file://trust-policy.json\n",
+				"cat > runware-aws-prod-trust-policy.json <<'EOF'\n",
+				"aws iam create-role --role-name runware-worker --path /ci/ --assume-role-policy-document file://runware-aws-prod-trust-policy.json\n",
+				"#    aws iam update-assume-role-policy --role-name runware-worker --policy-document file://runware-aws-prod-trust-policy.json\n",
 				"REPLACES the existing trust policy and does not merge",
 			},
-			deny: []string{"StringLike", testSubjectPattern},
+			deny: []string{"StringLike", testSubjectPattern, "file://trust-policy.json", "cat > trust-policy.json"},
 		},
 		{
 			name: "aws environment",
@@ -98,12 +113,13 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 			want: []string{
 				"gcloud iam workload-identity-pools create " + trustPool + " --display-name='Runware Serverless'\n",
 				"gcloud iam workload-identity-pools providers create-oidc " + testWIP + " \\\n",
-				"#      gcloud iam workload-identity-pools providers describe " + testWIP + " --format='value(attributeCondition)'\n",
-				"#      gcloud iam workload-identity-pools providers update-oidc " + testWIP + ` --attribute-condition="(<existing condition>) || assertion.sub.startsWith('` + trustPrefix + `')"` + "\n",
+				trustProviderCheck,
+				`  echo "then set it to that condition OR-ed with this one: gcloud iam workload-identity-pools providers update-oidc ` + testWIP +
+					` --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('` + trustPrefix + `')\"" >&2` + "\n",
+				"} && \\\ngcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n",
 				"  --issuer-uri=" + trustIssuer + " \\\n",
 				"attribute.environment_id=assertion.environment_id",
 				`  --attribute-condition="assertion.sub.startsWith('` + trustPrefix + `')"` + "\n",
-				"gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n",
 				"  --role=roles/iam.workloadIdentityUser \\\n",
 				"  --member=principal://iam.googleapis.com/" + trustPool + "/subject/" + testSubject + "\n",
 			},
@@ -126,7 +142,8 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 			base: trustGCPDirectBase,
 			want: []string{
 				`: "${BUCKET:?set BUCKET to the name of the bucket the workers may read}"` + "\n",
-				`gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \` + "\n",
+				trustProviderCheck,
+				"} && \\\n" + `gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \` + "\n",
 				"  --role=roles/storage.objectViewer \\\n",
 				"  --member=principal://iam.googleapis.com/" + trustPool + "/subject/" + testSubject + "\n",
 			},
@@ -191,6 +208,27 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestConnectorsTrustPicksTheRequestedConnectorOfSeveral(t *testing.T) {
+	api := connectorAPI(t, &bodyRecorder{}, map[string]stubResponse{
+		"GET " + testAppConnectors: {status: http.StatusOK, body: attachedAll(trustAWSBase, trustGCPBase)},
+	})
+	for _, tc := range []struct {
+		name       string
+		want, deny string
+	}{
+		{name: trustGCPName, want: testServiceAccount, deny: "runware-worker"},
+		{name: "aws-prod", want: "runware-worker", deny: testServiceAccount},
+	} {
+		run := runServerlessAgainst(t, api, testConnectorsGroup, "trust", tc.name, "--app", testAppID)
+		if run.err != nil {
+			t.Fatalf("%s: %v", tc.name, run.err)
+		}
+		if !strings.Contains(run.cobraOutput, tc.want) || strings.Contains(run.cobraOutput, tc.deny) {
+			t.Errorf("%s: output must name %q and not %q:\n%s", tc.name, tc.want, tc.deny, run.cobraOutput)
+		}
 	}
 }
 
@@ -259,6 +297,9 @@ func TestConnectorsTrustRefusesWhatItCannotPrintSafely(t *testing.T) {
 	add("aws audience", unsafe, setAudience, append(hostile, "aud*", "=aud"), trustAttachmentAWS)
 	add("aws audience", listValue, setAudience, []string{"-aud", "a,b"}, trustAttachmentAWS)
 	add("aws roleArn", notARole, setRole, hostile, trustAttachmentAWS)
+	// The role name sits after "arn:", so only its own check refuses a leading dash or equals sign.
+	add("aws role name", unsafe, setRole, []string{"-deploy", "=deploy", "ci/-deploy", "ci/=deploy"}, trustAttachmentAWS)
+	add("aws connector name", unsafe, func(c *serverlessapi.AppOidcConnector, v string) { c.Name = v }, hostile, trustAttachmentAWS)
 	add("gcp serviceAccountEmail", unsafe, setSA, hostile, trustAttachmentGCP)
 
 	for _, tc := range cases {

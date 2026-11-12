@@ -167,6 +167,17 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 		roleName = rolePath[i+1:]
 		path = "/" + rolePath[:i+1]
 	}
+	// The whole ARN passed the shell check, but it starts with "arn:", so the leading
+	// rules apply to the role name only here: a leading dash would read as a flag.
+	if !shellSafePattern.MatchString(roleName) || strings.HasPrefix(roleName, "-") {
+		return fmt.Errorf("roleArn %q: the role name cannot be printed safely in a shell command", in.connector.Aws.RoleArn)
+	}
+	// The policy file is named after the connector so a run cannot overwrite a
+	// trust-policy.json of the customer's own.
+	if !shellSafePattern.MatchString(in.connector.Name) {
+		return fmt.Errorf("connector name %q cannot be printed safely in a shell command", in.connector.Name)
+	}
+	policyFile := "runware-" + in.connector.Name + "-trust-policy.json"
 	// The condition keys and the provider ARN name the issuer without its scheme.
 	host, ok := strings.CutPrefix(issuer, "https://")
 	if !ok {
@@ -219,18 +230,18 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 
 	b.WriteString("\n# 2. Create the role the connector names, trusting only the tokens above.\n")
 	b.WriteString("#    Grant it permissions afterwards, for example with aws iam attach-role-policy.\n")
-	b.WriteString("cat > trust-policy.json <<'EOF'\n")
+	fmt.Fprintf(b, "cat > %s <<'EOF'\n", policyFile)
 	b.WriteString(doc.String())
 	b.WriteString("EOF\n")
 	fmt.Fprintf(b, "aws iam create-role --role-name %s", roleName)
 	if path != "/" {
 		fmt.Fprintf(b, " --path %s", path)
 	}
-	b.WriteString(" --assume-role-policy-document file://trust-policy.json\n")
+	fmt.Fprintf(b, " --assume-role-policy-document file://%s\n", policyFile)
 	b.WriteString("#    If the role already exists, create-role fails. This command sets the role's trust policy to\n")
-	b.WriteString("#    trust-policy.json: it REPLACES the existing trust policy and does not merge. If other principals\n")
+	fmt.Fprintf(b, "#    %s: it REPLACES the existing trust policy and does not merge. If other principals\n", policyFile)
 	b.WriteString("#    rely on the role, add the statement above to its existing trust policy document instead.\n")
-	fmt.Fprintf(b, "#    aws iam update-assume-role-policy --role-name %s --policy-document file://trust-policy.json\n", roleName)
+	fmt.Fprintf(b, "#    aws iam update-assume-role-policy --role-name %s --policy-document file://%s\n", roleName, policyFile)
 	return nil
 }
 
@@ -254,12 +265,8 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 
 	b.WriteString("\n# 1. Create the workload identity pool and the provider the connector names.\n")
 	b.WriteString("#    The provider admits the tokens of this organization and environment only; the grant in step 2\n")
-	b.WriteString("#    narrows it. If the provider already exists (ALREADY_EXISTS), for example from another environment,\n")
-	b.WriteString("#    it still rejects this environment until its attribute condition admits it too. This command cannot\n")
-	b.WriteString("#    read the existing condition; show it with:\n")
-	fmt.Fprintf(b, "#      gcloud iam workload-identity-pools providers describe %s --format='value(attributeCondition)'\n", provider)
-	b.WriteString("#    then set it to that condition OR-ed with this one:\n")
-	fmt.Fprintf(b, "#      gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('%s')\"\n", provider, prefix)
+	b.WriteString("#    narrows it. Both creates fail with ALREADY_EXISTS when they exist, for example from another\n")
+	b.WriteString("#    environment; step 2 then checks that the existing provider admits this environment.\n")
 	fmt.Fprintf(b, "gcloud iam workload-identity-pools create %s --display-name='Runware Serverless'\n", pool)
 	fmt.Fprintf(b, "gcloud iam workload-identity-pools providers create-oidc %s \\\n", provider)
 	fmt.Fprintf(b, "  --issuer-uri=%s \\\n", issuer)
@@ -273,6 +280,7 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 		}
 		b.WriteString("\n# 2. Let the workers impersonate the connector's service account.\n")
 		b.WriteString("#    Grant the service account the access it needs on your resources separately.\n")
+		writeGCPProviderCheck(b, provider, prefix)
 		fmt.Fprintf(b, "gcloud iam service-accounts add-iam-policy-binding %s \\\n", sa)
 		b.WriteString("  --role=roles/iam.workloadIdentityUser \\\n")
 		fmt.Fprintf(b, "  --member=%s\n", member)
@@ -283,10 +291,26 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 	b.WriteString("#    Set BUCKET to the bucket they may read first, for example: BUCKET=my-inputs\n")
 	b.WriteString("#    To grant another role or resource, change this command.\n")
 	b.WriteString(": \"${BUCKET:?set BUCKET to the name of the bucket the workers may read}\"\n")
+	writeGCPProviderCheck(b, provider, prefix)
 	b.WriteString("gcloud storage buckets add-iam-policy-binding \"gs://${BUCKET}\" \\\n")
 	b.WriteString("  --role=roles/storage.objectViewer \\\n")
 	fmt.Fprintf(b, "  --member=%s\n", member)
 	return nil
+}
+
+// writeGCPProviderCheck prints the guard that keeps a binding from succeeding while the
+// provider still rejects the tokens: an existing provider keeps its old attribute
+// condition. The binding follows on the next line and runs only when the check passes.
+func writeGCPProviderCheck(b *strings.Builder, provider, prefix string) {
+	describe := fmt.Sprintf("gcloud iam workload-identity-pools providers describe %s --format='value(attributeCondition)'", provider)
+	// The update command sits inside a double-quoted echo, so its own quotes are escaped.
+	update := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('%s')\"`, provider, prefix)
+	fmt.Fprintf(b, "%s | grep -qF -- '%s' || {\n", describe, prefix)
+	fmt.Fprintf(b, "  echo \"the provider's attribute condition does not admit %s, so its tokens are still rejected.\" >&2\n", prefix)
+	fmt.Fprintf(b, "  echo \"Show the condition with: %s\" >&2\n", describe)
+	fmt.Fprintf(b, "  echo \"then set it to that condition OR-ed with this one: %s\" >&2\n", update)
+	b.WriteString("  false\n")
+	b.WriteString("} && \\\n")
 }
 
 func renderGeneric(b *strings.Builder, in trustInput, issuer, prefix string) {
