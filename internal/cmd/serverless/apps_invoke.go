@@ -206,13 +206,19 @@ const lostResponseCode = "responseLost"
 // lostInvokeError is how an invoke fails when no response confirmed its task
 // and polling did not recover it. Its *transport.RunwareError gives JSON and
 // YAML output the code and task id as fields, and it unwraps to its causes
-// too, so an interrupt still reads as one.
+// too, so an interrupt still reads as one. It is a cmdutil.ResumableError, so
+// an interrupted run still prints the task id it needs to read that task.
 type lostInvokeError struct {
 	api    *transport.RunwareError
 	causes []error
 }
 
+var _ cmdutil.ResumableError = (*lostInvokeError)(nil)
+
 func (e *lostInvokeError) Error() string { return e.api.Message }
+
+// Resumable marks the error as one the CLI prints even when interrupted.
+func (*lostInvokeError) Resumable() {}
 
 func (e *lostInvokeError) Unwrap() []error {
 	return append([]error{e.api}, e.causes...)

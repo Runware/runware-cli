@@ -2,11 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -63,6 +66,68 @@ func TestRunExits1WhenADeployIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(logged, appIDValidationDetail) {
 		t.Fatalf("stderr = %q, want the refusal printed", logged)
+	}
+}
+
+// interruptedTaskID is the client task id an interrupted invoke sends.
+const interruptedTaskID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+
+// TestRunPrintsALostInvokeWhenInterrupted pins what an interrupt during an
+// invoke leaves the user: the interrupted status, and the task the invoke may
+// have started, so they can read it rather than run it a second time.
+func TestRunPrintsALostInvokeWhenInterrupted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("interrupts the test process, which Windows cannot signal")
+	}
+	for _, format := range []string{"table", "json"} {
+		t.Run(format, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("RUNWARE_ENV", "")
+			t.Setenv("RUNWARE_API_KEY", "test-key")
+
+			// The API holds the invoke open, and the process is interrupted
+			// once it arrives, so no response confirms the task. The server
+			// sees the client hang up only once the body has been read.
+			var interrupt sync.Once
+			srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				interrupt.Do(func() { signalSelf(t, os.Interrupt) })
+				<-r.Context().Done()
+			}))
+			defer srv.Close()
+			t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+			stderr := divertStderr(t)
+
+			code := runArgs([]string{
+				"serverless", "apps", "invoke", "my-app", "infer",
+				"--sync",
+				"--task-id", interruptedTaskID,
+				"--format", format,
+			})
+			logged := stderr()
+
+			if code != exitInterrupted {
+				t.Fatalf("exit = %d, want %d\n%s", code, exitInterrupted, logged)
+			}
+			for _, want := range []string{"responseLost", interruptedTaskID} {
+				if !strings.Contains(logged, want) {
+					t.Fatalf("stderr = %q, want it to carry %q", logged, want)
+				}
+			}
+		})
+	}
+}
+
+// signalSelf sends sig to the test process.
+func signalSelf(t *testing.T, sig os.Signal) {
+	t.Helper()
+	p, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if err := p.Signal(sig); err != nil {
+		t.Error(err)
 	}
 }
 
