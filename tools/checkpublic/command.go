@@ -444,6 +444,57 @@ func parseFlags(args []string, valueFlags string) ([]flagVal, []int) {
 	return flags, pos
 }
 
+// hasBoolFlag reports whether args, parsed as parseFlags does with the given
+// value flags, set one of the boolean flags names (long names) or short (a
+// shorthand letter, 0 for none), alone or grouped (-df), to anything but
+// false.
+func hasBoolFlag(args []string, valueFlags string, names []string, short byte) bool {
+	long := map[string]struct{}{}
+	shorts := map[byte]struct{}{}
+	for f := range strings.FieldsSeq(valueFlags) {
+		name, sh, _ := strings.Cut(f, "/")
+		long[name] = struct{}{}
+		if sh != "" {
+			shorts[sh[0]] = struct{}{}
+		}
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			return false
+		case strings.HasPrefix(a, "--"):
+			name, value, inline := strings.Cut(a[2:], "=")
+			if slices.Contains(names, name) && value != "false" {
+				return true
+			}
+			if _, ok := long[name]; ok && !inline {
+				i++
+			}
+		case strings.HasPrefix(a, "-") && len(a) > 1:
+			for j := 1; j < len(a); j++ {
+				if short != 0 && a[j] == short {
+					return true
+				}
+				if _, ok := shorts[a[j]]; ok {
+					if j == len(a)-1 {
+						i++
+					}
+					break
+				}
+			}
+		}
+	}
+	return false
+}
+
+// fillFlags make gh pr create write the title and body from commit messages.
+var fillFlags = []string{
+	"fill",
+	"fill-first",
+	"fill-verbose",
+}
+
 // ghReadVerbs are the subcommands that publish nothing and change no file.
 var ghReadVerbs = wordSet("checks diff list status view")
 

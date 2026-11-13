@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"maps"
 	"testing"
@@ -13,6 +14,8 @@ const (
 	keyRepo      = "repo"
 	keyOwner     = "owner"
 	ownerRunware = "Runware"
+	keyPath      = "path"
+	keyBranch    = "branch"
 	branchMain   = "main"
 )
 
@@ -155,7 +158,7 @@ func TestHookGitHubToolCall(t *testing.T) {
 		"commit_id": leak,
 		"file_comments": []any{
 			map[string]any{
-				"path":  "a.go",
+				keyPath: "a.go",
 				"line":  1,
 				keyBody: leak,
 			},
@@ -215,11 +218,11 @@ func TestHookGitHubToolCall(t *testing.T) {
 			input: map[string]any{
 				keyOwner:  ownerRunware,
 				keyRepo:   "runware-cli",
-				"branch":  "main",
+				keyBranch: "main",
 				"message": "docs: x",
 				"files": []any{
 					map[string]any{
-						"path":    "a.md",
+						keyPath:   "a.md",
 						"content": "intro\n" + leak,
 					},
 				},
@@ -233,7 +236,7 @@ func TestHookGitHubToolCall(t *testing.T) {
 			input: map[string]any{
 				keyOwner:      ownerRunware,
 				keyRepo:       repoCLI,
-				"branch":      "fix/" + clusterHost,
+				keyBranch:     "fix/" + clusterHost,
 				"from_branch": branchMain,
 			},
 			want:   1,
@@ -245,13 +248,27 @@ func TestHookGitHubToolCall(t *testing.T) {
 			input: map[string]any{
 				keyOwner:  ownerRunware,
 				keyRepo:   repoCLI,
-				"path":    "a.md",
+				keyPath:   "a.md",
 				"content": "clean",
 				"message": "docs: " + leak,
-				"branch":  branchMain,
+				keyBranch: branchMain,
 			},
 			want:   1,
 			wantAt: "mcp__github__create_or_update_file message",
+		},
+		{
+			name: "base64 content of a file update",
+			tool: "mcp__github__create_or_update_file",
+			input: map[string]any{
+				keyOwner:  ownerRunware,
+				keyRepo:   repoCLI,
+				keyPath:   "a.md",
+				"content": base64.StdEncoding.EncodeToString([]byte(leak)),
+				"message": "docs: a",
+				keyBranch: branchMain,
+			},
+			want:   1,
+			wantAt: "mcp__github__create_or_update_file content (base64-decoded)",
 		},
 		{
 			name: "unknown repository is checked",

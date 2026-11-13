@@ -154,6 +154,26 @@ func TestScanLine(t *testing.T) {
 			want: []string{ruleInternalHost},
 		},
 		{
+			name: "single-label internal host in a URL",
+			line: "see http://db" + ".internal/admin",
+			want: []string{ruleInternalHost},
+		},
+		{
+			name: "single-label internal host with a port",
+			line: "DATABASE_HOST=db" + ".internal:5432",
+			want: []string{ruleInternalHost},
+		},
+		{
+			name: "single-label internal host after a user",
+			line: "ssh deploy@build" + ".internal",
+			want: []string{ruleInternalHost},
+		},
+		{
+			name: "field named internal in a literal",
+			line: "x := T{internal: s.internal, n: 1}",
+			want: nil,
+		},
+		{
 			name: "docker host",
 			line: "http://host.docker.internal:8080",
 			want: nil,

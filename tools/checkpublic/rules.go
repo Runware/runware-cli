@@ -167,6 +167,13 @@ func builtinRules() []rule {
 			check:   checkInternalTLD,
 		},
 		{
+			// A single-label .internal host only in a URL context: after
+			// // or user@, or before a port. s.internal is a field.
+			name:    ruleInternalHost,
+			message: "names an internal host",
+			re:      regexp.MustCompile(`(?i)(?://|@)[a-z0-9-]+\.internal(?:[:/?#"'\s)\]>]|$)|(?:^|[^a-z0-9.-])[a-z0-9-]+\.internal:[0-9]`),
+		},
+		{
 			name:    ruleSpecMarker,
 			message: "has an OpenAPI marker of an unpublished section; sync the spec with `make sync-serverless-spec`",
 			re:      regexp.MustCompile(`\bx-(?:internal\b|runware-[a-z0-9-]+)`),

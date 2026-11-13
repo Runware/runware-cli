@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -16,6 +17,7 @@ const (
 	remoteOrigin = "origin"
 	fileBody     = "body.md"
 	cleanText    = "clean text"
+	cmdGitPush   = "git push"
 )
 
 // leak is text with one finding, built at run time (see rules_test.go).
@@ -150,6 +152,8 @@ func TestHookForms(t *testing.T) {
 	mutation := `{"query":"mutation($input: AddCommentInput!){addComment(input:$input){clientMutationId}}","variables":{"input":{"subjectId":"x","note":` + jsonString(leak) + `}}}`
 	readQuery := `{"query":"query{viewer{login}}","variables":{"q":` + jsonString(leak) + `}}`
 	merge := `{"commit_title":"merge","commit_message":` + jsonString(leak) + `}`
+	leak64 := base64.StdEncoding.EncodeToString([]byte("intro\n" + leak + "\n"))
+	clean64 := base64.StdEncoding.EncodeToString([]byte(cleanText + "\n"))
 	leakFile := map[string]string{
 		fileBody: leak,
 	}
@@ -548,6 +552,93 @@ func TestHookForms(t *testing.T) {
 			block:   true,
 		},
 
+		// Contents API writes send the file base64-encoded.
+		{
+			name:    "Contents API file in --input",
+			command: `gh api -X PUT repos/Runware/runware-cli/contents/a.md --input put.json`,
+			files: map[string]string{
+				"put.json": `{"message":"docs: a","content":"` + leak64 + `"}`,
+			},
+			block: true,
+		},
+		{
+			name:    "Contents API file in -f content",
+			command: `gh api -X PUT repos/Runware/runware-cli/contents/a.md -f message=docs -f content=` + leak64,
+			block:   true,
+		},
+		{
+			name:    "Contents API file in -F content=@file",
+			command: `gh api -X PUT repos/Runware/runware-cli/contents/a.md -f message=docs -F content=@a.b64`,
+			files: map[string]string{
+				"a.b64": leak64,
+			},
+			block: true,
+		},
+		{
+			name:    "Contents API clean file",
+			command: `gh api -X PUT repos/Runware/runware-cli/contents/a.md -f message=docs -f content=` + clean64,
+		},
+
+		// gh pr create --fill posts commit messages the hook does not read.
+		{
+			name:    "pr create --fill",
+			command: `gh pr create --fill`,
+			block:   true,
+		},
+		{
+			name:    "pr create --fill-first",
+			command: `gh pr create --fill-first --draft`,
+			block:   true,
+		},
+		{
+			name:    "pr create --fill-verbose with a title",
+			command: `gh pr create --fill-verbose --title x`,
+			block:   true,
+		},
+		{
+			name:    "pr create -f grouped with -d",
+			command: `gh pr create -df`,
+			block:   true,
+		},
+		{
+			name:    "pr create --fill with a title and body",
+			command: `gh pr create --fill --title x --body-file body.md`,
+			files:   cleanFile,
+		},
+		{
+			name:    "pr create -f as a value of -t",
+			command: `gh pr create -t -f -b y`,
+		},
+
+		// Expansions the shell runs.
+		{
+			name:    "variable read from a file",
+			command: `body=clean; read -r body < body.md; gh pr comment 1 --body "$body"`,
+			files:   leakFile,
+			block:   true,
+		},
+		{
+			name:    "variable appended to",
+			command: `body=clean; body+=" more"; gh pr comment 1 --body "$body"`,
+			block:   true,
+		},
+		{
+			name:    "write in a parameter expansion default",
+			command: `result=${result:-$(gh pr comment 1 --body-file body.md)}`,
+			files:   leakFile,
+			block:   true,
+		},
+		{
+			name:    "write in backticks in a quoted parameter expansion",
+			command: "echo \"${x:-`gh pr comment 1 --body-file body.md`}\"",
+			files:   leakFile,
+			block:   true,
+		},
+		{
+			name:    "plain parameter expansion",
+			command: `echo "${HOME:-/tmp}/x"`,
+		},
+
 		// Destinations.
 		{
 			name:    "gh read",
@@ -585,6 +676,22 @@ func TestHookForms(t *testing.T) {
 			block:   true,
 		},
 		{
+			name:    "gh api {owner}/{repo} from a private checkout",
+			command: `gh api repos/{owner}/{repo}/issues/1/comments -f body='` + leak + `'`,
+			setup:   privateCheckout,
+		},
+		{
+			name:    "gh api {owner} with a public name from a private checkout",
+			command: `gh api repos/{owner}/runware-cli/issues/1/comments -f body='` + leak + `'`,
+			setup:   privateCheckout,
+			block:   true,
+		},
+		{
+			name:    "gh api {owner} with a public name from an unknown checkout",
+			command: `gh api repos/{owner}/runware-cli/issues/1/comments -f body='` + leak + `'`,
+			block:   true,
+		},
+		{
 			name:    "graphql from a private checkout",
 			command: `gh api graphql -f query='mutation{x}' -f b='` + leak + `'`,
 			setup:   privateCheckout,
@@ -594,7 +701,7 @@ func TestHookForms(t *testing.T) {
 		// git push.
 		{
 			name:    "git push",
-			command: `git push`,
+			command: cmdGitPush,
 			setup:   cleanRepo,
 		},
 		{
@@ -649,6 +756,17 @@ func TestHookForms(t *testing.T) {
 			block:   true,
 		},
 		{
+			name:    "fetch URL private, push URL public",
+			command: cmdGitPush,
+			setup:   pushURLs("some-private-repo", repoCLI),
+			block:   true,
+		},
+		{
+			name:    "fetch and push URLs private",
+			command: cmdGitPush,
+			setup:   pushURLs("some-private-repo", "some-private-repo"),
+		},
+		{
 			name:    "annotated tag on an unpushed branch",
 			command: `git push --follow-tags`,
 			setup:   tagOnUnpushedBranch,
@@ -690,6 +808,17 @@ func TestHookForms(t *testing.T) {
 				t.Fatalf("blocked = %v (findings %+v, error %v), want %v", blocked, f, err, tc.block)
 			}
 		})
+	}
+}
+
+// pushURLs returns a setup that makes leakyCommit's repository with an origin
+// that fetches from the Runware repository fetch and pushes to push.
+func pushURLs(fetch, push string) func(t *testing.T) string {
+	return func(t *testing.T) string {
+		dir := leakyCommit(t)
+		gitIn(t, dir, "remote", "add", "origin", "https://"+ghRepo+fetch+".git")
+		gitIn(t, dir, "remote", "set-url", "--push", "origin", "https://"+ghRepo+push+".git")
+		return dir
 	}
 }
 
@@ -753,6 +882,16 @@ func TestHookModeExitCode(t *testing.T) {
 	other := `{"tool_name":"Edit","tool_input":{}}`
 	if code := run(context.Background(), []string{modeHook}, strings.NewReader(other), &bytes.Buffer{}, &stderr); code != 0 {
 		t.Fatalf("exit %d for another tool", code)
+	}
+}
+
+func TestHookModeErrorBlocks(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := run(context.Background(), []string{modeHook}, strings.NewReader("not json"), &bytes.Buffer{}, &stderr); code != exitBlock {
+		t.Fatalf("exit %d for a payload the hook cannot read, want %d: %s", code, exitBlock, stderr.String())
+	}
+	if code := run(context.Background(), []string{modeHook, "-unknown"}, strings.NewReader("{}"), &bytes.Buffer{}, &stderr); code != exitBlock {
+		t.Fatalf("exit %d for a bad flag, want %d", code, exitBlock)
 	}
 }
 

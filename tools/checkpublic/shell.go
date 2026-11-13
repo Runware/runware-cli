@@ -237,11 +237,7 @@ func (lx *lexer) dollar() {
 	start := lx.i
 	lx.i++
 	if lx.peek(0) == '{' {
-		end := strings.IndexByte(lx.src[lx.i:], '}')
-		if end < 0 {
-			end = len(lx.src) - lx.i - 1
-		}
-		lx.i += end + 1
+		lx.braced()
 	} else {
 		lx.i++
 		for lx.i < len(lx.src) && isNameByte(lx.src[lx.i]) && !isDigit(lx.src[start+1]) {
@@ -249,6 +245,44 @@ func (lx *lexer) dollar() {
 		}
 	}
 	lx.addExp("", lx.src[start:lx.i])
+}
+
+// braced reads a ${ ... } parameter expansion from its { at lx.i to past its
+// closing }. The command substitutions in it (${x:-$(cmd)}) run when it
+// expands, so they are recorded as nested command lines.
+func (lx *lexer) braced() {
+	depth := 0
+	for lx.i < len(lx.src) {
+		switch c := lx.src[lx.i]; {
+		case c == '\\':
+			lx.i += 2
+			continue
+		case c == '$' && lx.peek(1) == '(':
+			lx.substitution()
+			continue
+		case c == '$' && lx.peek(1) == '{':
+			depth++
+			lx.i += 2
+			continue
+		case c == '`':
+			lx.i++
+			end := strings.IndexByte(lx.src[lx.i:], '`')
+			if end < 0 {
+				end = len(lx.src) - lx.i
+			}
+			lx.cur.nested = append(lx.cur.nested, lx.src[lx.i:lx.i+end])
+			lx.i = min(lx.i+end+1, len(lx.src))
+			continue
+		case c == '{':
+			depth++
+		case c == '}':
+			depth--
+		}
+		lx.i++
+		if depth == 0 {
+			return
+		}
+	}
 }
 
 func isNameByte(c byte) bool {

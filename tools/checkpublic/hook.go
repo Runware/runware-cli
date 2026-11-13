@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -275,18 +276,23 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 	repos := pc.defaultRepos(repoOf)
 	var texts []publication
 	for _, f := range flags {
-		file := ""
+		file, key, inline := "", "", ""
 		switch {
 		case f.name == "repo":
 			repos = []string{f.value}
 		case strings.HasSuffix(f.name, "-file") || f.name == "input":
 			file = f.value
-		case f.name == "field":
-			_, v, _ := strings.Cut(f.value, "=")
-			file, _ = strings.CutPrefix(v, "@")
-			if file == v {
-				file = ""
+		case f.name == "field" || f.name == "raw-field":
+			key, inline, _ = strings.Cut(f.value, "=")
+			if v, ok := strings.CutPrefix(inline, "@"); ok && f.name == "field" {
+				file, inline = v, ""
 			}
+		}
+		where := label + " " + f.name
+		if key == fieldContent && inline != "" {
+			// The line is scanned whole; a Contents API write sends the
+			// file base64-encoded.
+			texts = append(texts, decodedContent(where, inline)...)
 		}
 		if file == "" {
 			continue
@@ -296,9 +302,22 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 			return nil, false, err
 		}
 		texts = append(texts, publication{
-			label: label + " " + f.name,
+			label: where,
 			text:  text,
 		})
+		switch {
+		case key == fieldContent:
+			texts = append(texts, decodedContent(where, text)...)
+		case f.name == "input":
+			var body any
+			if json.Unmarshal([]byte(text), &body) == nil {
+				collectTexts(body, "", true, func(path, v string) {
+					if path == fieldContent || strings.HasSuffix(path, "."+fieldContent) {
+						texts = append(texts, decodedContent(where+" "+path, v)...)
+					}
+				})
+			}
+		}
 	}
 	switch {
 	case group == wordAPI:
@@ -309,8 +328,8 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 		}
 		if m := apiRepoPath.FindStringSubmatch(endpoint); m == nil {
 			repos = []string{""}
-		} else if !strings.Contains(m[1], "{") {
-			repos = []string{m[1]}
+		} else {
+			repos = apiRepos(m[1], repos)
 		}
 	case verb != "create" && group != wordRelease && len(pos) > 2:
 		// A pull request or issue URL names the destination, whatever -R
@@ -328,7 +347,59 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 	if s.allPrivate(repos) {
 		return nil, true, nil
 	}
+	if group == "pr" && verb == "create" && hasBoolFlag(args, valueFlags, fillFlags, 'f') {
+		named := map[string]struct{}{}
+		for _, f := range flags {
+			named[f.name] = struct{}{}
+		}
+		_, title := named["title"]
+		_, body := named["body"]
+		_, bodyFile := named["body-file"]
+		if !title || !body && !bodyFile {
+			return nil, false, uncheckable("`%s` posts a title or body made from commit messages, which the check does not read; pass --title and --body-file", c)
+		}
+	}
 	return texts, false, nil
+}
+
+// apiRepos returns the repositories a gh api path's OWNER/NAME stands for.
+// gh fills {owner} and {repo} from the repository it would use by default,
+// one of defaults; "" stands for one the check cannot tell.
+func apiRepos(path string, defaults []string) []string {
+	if !strings.Contains(path, "{") {
+		return []string{path}
+	}
+	var out []string
+	for _, d := range defaults {
+		owner, name, ok := strings.Cut(d, "/")
+		r := strings.NewReplacer("{owner}", owner, "{repo}", name).Replace(path)
+		if !ok || strings.Contains(r, "{") {
+			r = ""
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// fieldContent is the field of a GitHub Contents API write, and of the
+// GitHub tools that call it, that holds a file, base64-encoded.
+const fieldContent = "content"
+
+// decodedContent returns the base64-decoded text of a content value, or
+// nothing when it is not base64. The value as written is scanned too.
+func decodedContent(where, v string) []publication {
+	v = strings.Join(strings.Fields(v), "")
+	if len(v) < 4 {
+		return nil
+	}
+	b, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return nil
+	}
+	return []publication{{
+		label: where + " (base64-decoded)",
+		text:  string(b),
+	}}
 }
 
 var apiRepoPath = regexp.MustCompile(`^/?repos/([^/]+/[^/]+)`)
@@ -622,12 +693,19 @@ func gitRepoOf(dir string) string {
 	return githubRepo(out)
 }
 
-// remoteIsPrivate reports whether a remote (a name or a URL) is a private
-// Runware repository, where publishing is not this check's concern.
+// remoteIsPrivate reports whether every URL a push to remote (a name or a
+// URL) goes to is a private Runware repository, where publishing is not this
+// check's concern. A push goes to the remote's push URLs, which may differ
+// from the one it fetches from.
 func (s *Scanner) remoteIsPrivate(ctx context.Context, g Git, remote string) bool {
-	url := remote
-	if out, err := g.run(ctx, "remote", "get-url", remote); err == nil {
-		url = out
+	urls := []string{remote}
+	if out, err := g.run(ctx, "remote", "get-url", "--push", "--all", remote); err == nil {
+		urls = strings.Fields(out)
 	}
-	return s.isPrivateTarget(githubRepo(url))
+	for _, u := range urls {
+		if !s.isPrivateTarget(githubRepo(u)) {
+			return false
+		}
+	}
+	return len(urls) > 0
 }

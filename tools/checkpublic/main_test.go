@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -148,5 +150,142 @@ func TestHookFindingsBeforeDenyWarning(t *testing.T) {
 	}
 	if !strings.Contains(out, "warning: the repository deny list is unavailable") {
 		t.Fatalf("deny list warning missing:\n%s", out)
+	}
+}
+
+// fakeTool is a stand-in for tools/checkpublic that the wrapper script builds:
+// it copies its stdin to $FAKE_OUT and exits with $FAKE_EXIT.
+const fakeTool = `package main
+
+import (
+	"io"
+	"os"
+	"strconv"
+)
+
+func main() {
+	b, _ := io.ReadAll(os.Stdin)
+	_ = os.WriteFile(os.Getenv("FAKE_OUT"), b, 0o600)
+	code, _ := strconv.Atoi(os.Getenv("FAKE_EXIT"))
+	os.Exit(code)
+}
+`
+
+// wrapperCase runs the wrapper script in mode with a fake tool that exits
+// with toolExit (or does not build, when broken) and expects it to exit with
+// want.
+type wrapperCase struct {
+	name     string
+	mode     string
+	payload  string
+	toolExit string
+	broken   bool
+	want     int
+}
+
+// TestWrapperScript checks .githooks/checkpublic: it hands every payload to
+// the tool, and in hook mode it exits 2, the status that blocks a tool call,
+// when the tool fails or does not build.
+func TestWrapperScript(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the wrapper is a POSIX shell script")
+	}
+	script, err := os.ReadFile(filepath.Join("..", "..", ".githooks", "checkpublic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	quotedName := `{"tool_name":"Bash","tool_input":{"command":"g'h' pr comment 1 --body x"}}`
+	cases := []wrapperCase{
+		{
+			name:     "quoted command name reaches the tool",
+			mode:     modeHook,
+			payload:  quotedName,
+			toolExit: "0",
+			want:     0,
+		},
+		{
+			name:     "tool blocks",
+			mode:     modeHook,
+			payload:  quotedName,
+			toolExit: "2",
+			want:     exitBlock,
+		},
+		{
+			name:     "tool error in hook mode blocks",
+			mode:     modeHook,
+			payload:  quotedName,
+			toolExit: "3",
+			want:     exitBlock,
+		},
+		{
+			name:     "tool exit 1 in hook mode blocks",
+			mode:     modeHook,
+			payload:  quotedName,
+			toolExit: "1",
+			want:     exitBlock,
+		},
+		{
+			name:    "build failure in hook mode blocks",
+			mode:    modeHook,
+			payload: quotedName,
+			broken:  true,
+			want:    exitBlock,
+		},
+		{
+			name:     "findings in pre-push mode",
+			mode:     "prepush",
+			toolExit: "1",
+			want:     exitFindings,
+		},
+		{
+			name:   "build failure in pre-push mode blocks",
+			mode:   "prepush",
+			broken: true,
+			want:   exitBlock,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			gitIn(t, dir, "init", "-q")
+			src := fakeTool
+			if tc.broken {
+				src = "package main\n\nfunc main() {"
+			}
+			files := map[string]string{
+				".githooks/checkpublic":     string(script),
+				"go.mod":                    "module fake\n\ngo 1.22\n",
+				"tools/checkpublic/main.go": src,
+			}
+			for name, text := range files {
+				path := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(text), 0o700); err != nil { //nolint:gosec // the script must be executable
+					t.Fatal(err)
+				}
+			}
+			out := filepath.Join(dir, "stdin.txt")
+			cmd := exec.CommandContext(context.Background(), filepath.Join(dir, ".githooks", "checkpublic"), tc.mode) //nolint:gosec // test script
+			cmd.Stdin = strings.NewReader(tc.payload)
+			cmd.Env = append(os.Environ(), "FAKE_OUT="+out, "FAKE_EXIT="+tc.toolExit)
+			b, err := cmd.CombinedOutput()
+			code := 0
+			if ee, ok := errors.AsType[*exec.ExitError](err); ok {
+				code = ee.ExitCode()
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if code != tc.want {
+				t.Fatalf("exit %d, want %d: %s", code, tc.want, b)
+			}
+			if tc.broken {
+				return
+			}
+			if got, err := os.ReadFile(out); err != nil || string(got) != tc.payload {
+				t.Errorf("tool read %q (%v), want the payload %q", got, err, tc.payload)
+			}
+		})
 	}
 }

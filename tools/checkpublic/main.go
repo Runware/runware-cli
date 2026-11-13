@@ -12,7 +12,8 @@
 //	checkpublic prepush REMOTE URL   < git pre-push ref lines
 //
 // It prints each finding with where it was found and the rule that fired, and
-// exits 1 when there are findings (2 in hook mode, which blocks the tool call).
+// exits 1 when there are findings. In hook mode it exits 2, which blocks the
+// tool call, on a finding and on any error.
 //
 // The pr mode checks a pull request in GitHub Actions: its range, branch name,
 // title and body, all read from the event file at GITHUB_EVENT_PATH. The
@@ -63,6 +64,17 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	code := runMode(ctx, args, stdin, stdout, stderr)
+	// An agent hook lets a tool call run on any status but exitBlock, so in
+	// hook mode an error blocks: nothing was checked.
+	if len(args) > 0 && args[0] == modeHook && code != 0 && code != exitBlock {
+		logln(stderr, "checkpublic hook: blocked because the check failed")
+		return exitBlock
+	}
+	return code
+}
+
+func runMode(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		logln(stderr, "usage: checkpublic range|text|files|pr|hook|prepush [flags]")
 		return exitError
@@ -301,7 +313,7 @@ func runHookMode(ctx context.Context, s *Scanner, stdin io.Reader, stderr io.Wri
 	payload, err := io.ReadAll(stdin)
 	if err != nil {
 		logln(stderr, "checkpublic hook:", err)
-		return exitFindings
+		return exitBlock
 	}
 	findings, err := s.runHook(ctx, payload, gitRepoOf)
 	if ue, ok := errors.AsType[*UncheckableError](err); ok {
@@ -310,10 +322,10 @@ func runHookMode(ctx context.Context, s *Scanner, stdin io.Reader, stderr io.Wri
 		return exitBlock
 	}
 	if err != nil {
-		// A non-blocking error: the git pre-push hook and CI still check.
-		logln(stderr, "checkpublic hook: could not check this command:", err)
+		// Nothing after the error was checked, so it blocks too.
+		logln(stderr, "checkpublic hook: blocked because the check failed:", err)
 		if len(findings) == 0 {
-			return exitFindings
+			return exitBlock
 		}
 	}
 	if len(findings) == 0 {

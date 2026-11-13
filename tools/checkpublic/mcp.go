@@ -116,6 +116,11 @@ func (s *Scanner) scanToolCall(name string, input json.RawMessage) ([]Finding, e
 	var out []Finding
 	collectTexts(args, "", false, func(path, text string) {
 		out = append(out, s.ScanText(name+" "+path, text)...)
+		if path == fieldContent || strings.HasSuffix(path, "."+fieldContent) {
+			for _, d := range decodedContent(name+" "+path, text) {
+				out = append(out, s.ScanText(d.label, d.text)...)
+			}
+		}
 	})
 	return out, nil
 }
