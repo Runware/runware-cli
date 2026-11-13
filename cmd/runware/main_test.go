@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // appIDValidationDetail is the getApp 422 for an appId outside the AppId schema.
@@ -130,22 +132,22 @@ func interruptedRun(t *testing.T, answer func(http.ResponseWriter, *http.Request
 	return code, stderr()
 }
 
-// structuredErrors is the error document --format json writes to stderr.
+// structuredErrors is the error document --format json or yaml writes to stderr.
 type structuredErrors struct {
-	Errors []map[string]any `json:"errors"`
+	Errors []map[string]any `json:"errors" yaml:"errors"`
 }
 
 // TestRunPrintsALostInvokeWhenInterrupted pins what an interrupt during an
 // invoke, or during the poll that recovers a lost response, leaves the user:
 // the interrupted status, and the task the invoke may have started, so they
-// can read it rather than run it a second time. In json, stderr holds that
-// error document alone.
+// can read it rather than run it a second time. In json and yaml, stderr
+// holds that error document alone.
 func TestRunPrintsALostInvokeWhenInterrupted(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("interrupts the test process, which Windows cannot signal")
 	}
 	for _, phase := range interruptPhases {
-		for _, format := range []string{"table", "json"} {
+		for _, format := range []string{"table", "json", "yaml"} {
 			t.Run(phase.name+"/"+format, func(t *testing.T) {
 				code, logged := interruptedRun(t, phase.answer,
 					"serverless", "apps", "invoke", "my-app", "infer",
@@ -158,13 +160,17 @@ func TestRunPrintsALostInvokeWhenInterrupted(t *testing.T) {
 				if code != exitInterrupted {
 					t.Fatalf("exit = %d, want %d\n%s", code, exitInterrupted, logged)
 				}
-				if format == "json" {
+				if format != "table" {
 					var got structuredErrors
-					if err := json.Unmarshal([]byte(logged), &got); err != nil || len(got.Errors) != 1 {
-						t.Fatalf("stderr = %q (%v), want one json error document", logged, err)
+					decode := json.Unmarshal
+					if format == "yaml" {
+						decode = yaml.Unmarshal
+					}
+					if err := decode([]byte(logged), &got); err != nil || len(got.Errors) != 1 {
+						t.Fatalf("stderr = %q (%v), want one %s error document", logged, err, format)
 					}
 					if item := got.Errors[0]; item["code"] != "responseLost" || item["taskUUID"] != interruptedTaskID {
-						t.Fatalf("json error = %v, want code responseLost and taskUUID %s", item, interruptedTaskID)
+						t.Fatalf("%s error = %v, want code responseLost and taskUUID %s", format, item, interruptedTaskID)
 					}
 					return
 				}
@@ -180,12 +186,12 @@ func TestRunPrintsALostInvokeWhenInterrupted(t *testing.T) {
 
 // TestRunStaysSilentWhenAnInterruptLeavesNothingToResume pins the other side:
 // an interrupted command whose error carries nothing to resume exits with the
-// interrupted status alone, in table and json.
+// interrupted status alone, in every format.
 func TestRunStaysSilentWhenAnInterruptLeavesNothingToResume(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("interrupts the test process, which Windows cannot signal")
 	}
-	for _, format := range []string{"table", "json"} {
+	for _, format := range []string{"table", "json", "yaml"} {
 		t.Run(format, func(t *testing.T) {
 			code, logged := interruptedRun(t, holdAndInterrupt,
 				"serverless", "apps", "tasks", "show", "my-app", interruptedTaskID,

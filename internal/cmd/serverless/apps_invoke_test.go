@@ -20,6 +20,7 @@ import (
 	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
+	"gopkg.in/yaml.v3"
 )
 
 func TestParseInvokeInput_RejectsLeadingSlash(t *testing.T) {
@@ -180,7 +181,7 @@ func countRequests(requests []recordedRequest, method, prefix string) int {
 }
 
 func TestInvoke_PollsTheTaskWhenTheResponseIsLost(t *testing.T) {
-	for _, format := range []output.Format{"", output.FormatJSON} {
+	for _, format := range append([]output.Format{""}, structuredFormats...) {
 		for _, waitFlag := range []string{"--sync", "--wait"} {
 			t.Run(waitFlag+"/"+string(cmp.Or(format, output.FormatTable)), func(t *testing.T) {
 				stub := &lostInvokeStub{}
@@ -190,13 +191,13 @@ func TestInvoke_PollsTheTaskWhenTheResponseIsLost(t *testing.T) {
 					t.Fatalf("err = %v, want the completed task read by id", run.err)
 				}
 				id := stub.taskID()
-				if format == output.FormatJSON {
+				if format != "" {
 					if run.cobraOutput != "" {
-						t.Fatalf("stderr = %q, want nothing beside json output", run.cobraOutput)
+						t.Fatalf("stderr = %q, want nothing beside %s output", run.cobraOutput, format)
 					}
 					var task map[string]any
-					if err := json.Unmarshal([]byte(run.stdout), &task); err != nil || task["id"] != id || task["status"] != string(serverlessapi.TaskStatusCompleted) {
-						t.Fatalf("stdout = %q (%v), want completed task %s as json", run.stdout, err, id)
+					if err := decodeStructured(format, []byte(run.stdout), &task); err != nil || task["id"] != id || task["status"] != string(serverlessapi.TaskStatusCompleted) {
+						t.Fatalf("stdout = %q (%v), want completed task %s as %s", run.stdout, err, id, format)
 					}
 				} else {
 					if !strings.Contains(run.cobraOutput, "Task "+id+" may have started") || !strings.Contains(run.cobraOutput, "Polling it") {
@@ -217,14 +218,35 @@ func TestInvoke_PollsTheTaskWhenTheResponseIsLost(t *testing.T) {
 	}
 }
 
+// structuredFormats are the --format values whose output a script parses.
+var structuredFormats = []output.Format{
+	output.FormatJSON,
+	output.FormatYAML,
+}
+
+// decodeStructured parses data written in format, json or yaml, into v.
+func decodeStructured(format output.Format, data []byte, v any) error {
+	if format == output.FormatYAML {
+		return yaml.Unmarshal(data, v)
+	}
+	return json.Unmarshal(data, v)
+}
+
 // structuredError is err as the CLI prints it with --format json.
 func structuredError(t *testing.T, err error) map[string]any {
 	t.Helper()
+	return structuredErrorIn(t, output.FormatJSON, err)
+}
+
+// structuredErrorIn is err as the CLI prints it with --format format, which
+// must parse as one error document.
+func structuredErrorIn(t *testing.T, format output.Format, err error) map[string]any {
+	t.Helper()
 	var out bytes.Buffer
-	cmdutil.PrintErrorTo(log.New(io.Discard), &out, output.FormatJSON, err)
+	cmdutil.PrintErrorTo(log.New(io.Discard), &out, format, err)
 	var got errorOutput
-	if jsonErr := json.Unmarshal(out.Bytes(), &got); jsonErr != nil || len(got.Errors) != 1 {
-		t.Fatalf("json error output %q: %v", out.String(), jsonErr)
+	if decodeErr := decodeStructured(format, out.Bytes(), &got); decodeErr != nil || len(got.Errors) != 1 {
+		t.Fatalf("%s error output %q: %v", format, out.String(), decodeErr)
 	}
 	return got.Errors[0]
 }
@@ -265,20 +287,36 @@ func TestInvoke_ReportsALostResponseAsStructuredError(t *testing.T) {
 	}
 }
 
+// TestInvoke_ReportsAFailedPollAfterALostResponse pins the error when the
+// poll that recovers a lost response fails too. In table output the polling
+// note precedes it; in json and yaml the error document is the whole of
+// stderr, so nothing may be written ahead of it.
 func TestInvoke_ReportsAFailedPollAfterALostResponse(t *testing.T) {
-	stub := &lostInvokeStub{
-		pending: true,
-	}
-	run := runServerlessAgainst(t, stub.serve(t),
-		testAppsGroup, testInvokeCommand, testAppID, testInferEndpoint, "--sync", "--timeout", "200ms", "--poll-interval", "10ms")
-	id := stub.taskID()
-	item := structuredError(t, run.err)
-	if item["code"] != lostResponseCode || item["taskUUID"] != id {
-		t.Fatalf("json error = %v, want code %s and taskUUID %s", item, lostResponseCode, id)
-	}
-	msg, _ := item["message"].(string)
-	if want := "polling it failed: timed out waiting for task " + id + " after 200ms"; !strings.Contains(msg, want) {
-		t.Fatalf("message = %q, want %q", msg, want)
+	for _, format := range append([]output.Format{""}, structuredFormats...) {
+		t.Run(string(cmp.Or(format, output.FormatTable)), func(t *testing.T) {
+			stub := &lostInvokeStub{
+				pending: true,
+			}
+			run := runServerlessFormatted(t, stub.serve(t), strings.NewReader(""), format,
+				testAppsGroup, testInvokeCommand, testAppID, testInferEndpoint, "--sync", "--timeout", "200ms", "--poll-interval", "10ms")
+			id := stub.taskID()
+			if format == "" {
+				if !strings.Contains(run.cobraOutput, "Polling it") {
+					t.Fatalf("stderr = %q, want the polling note", run.cobraOutput)
+				}
+			} else if run.cobraOutput != "" {
+				t.Fatalf("stderr = %q, want nothing ahead of the %s error", run.cobraOutput, format)
+			}
+
+			item := structuredErrorIn(t, cmp.Or(format, output.FormatJSON), run.err)
+			if item["code"] != lostResponseCode || item["taskUUID"] != id {
+				t.Fatalf("error = %v, want code %s and taskUUID %s", item, lostResponseCode, id)
+			}
+			msg, _ := item["message"].(string)
+			if want := "polling it failed: timed out waiting for task " + id + " after 200ms"; !strings.Contains(msg, want) {
+				t.Fatalf("message = %q, want %q", msg, want)
+			}
+		})
 	}
 }
 

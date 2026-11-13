@@ -361,6 +361,20 @@ var lostAnswers = []invokeAnswerCase{
 		name:   "proxy problem 503",
 		answer: answerBody(http.StatusServiceUnavailable, "application/problem+json", `{"type":"about:blank","title":"Service Unavailable","status":503}`),
 	},
+	// A refusal type alone does not make the API's 503: its title and its
+	// status are checked on their own.
+	{
+		name:   "capacity unavailable 503 without a title",
+		answer: answerBody(http.StatusServiceUnavailable, "application/problem+json", `{"type":"`+capacityUnavailableType+`","status":503}`),
+	},
+	{
+		name:   "capacity unavailable 503 without a status",
+		answer: answerBody(http.StatusServiceUnavailable, "application/problem+json", `{"type":"`+capacityUnavailableType+`","title":"Service Unavailable"}`),
+	},
+	{
+		name:   "service unavailable 503 naming another status",
+		answer: answerBody(http.StatusServiceUnavailable, "application/problem+json", `{"type":"`+serviceUnavailableType+`","title":"Service Unavailable","status":500}`),
+	},
 	{
 		name:   "api 502 body malformed",
 		answer: answerBody(http.StatusBadGateway, "application/problem+json", `{"type":`),
@@ -436,6 +450,12 @@ var refusedAnswers = []invokeAnswerCase{
 	{
 		name:   "unauthorized body cut short",
 		answer: answerProblemCutShort(http.StatusUnauthorized),
+	},
+	{
+		// The last client error: a status the operation does not bind is
+		// still a refusal below 500.
+		name:   "client closed request 499",
+		answer: answerBody(499, "application/problem+json", `{"type":"about:blank","title":"Client Closed Request","status":499}`),
 	},
 }
 
@@ -544,6 +564,11 @@ func TestInvoke_UnreadableResponseKeepsItsStatus(t *testing.T) {
 			lost:   false,
 		},
 		{
+			// The first server error: the boundary with the refusals.
+			status: http.StatusInternalServerError,
+			lost:   true,
+		},
+		{
 			status: http.StatusBadGateway,
 			lost:   true,
 		},
@@ -552,8 +577,12 @@ func TestInvoke_UnreadableResponseKeepsItsStatus(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(fmt.Sprintf("%s/%d", m.name, tc.status), func(t *testing.T) {
 				err := invokeAgainst(t, m, answerBody(tc.status, "application/problem+json", `{"type":`))
-				if _, lost := errors.AsType[*ResponseLostError](err); lost != tc.lost {
+				lostErr, lost := errors.AsType[*ResponseLostError](err)
+				if lost != tc.lost {
 					t.Fatalf("err = %v, lost = %t; want lost = %t", err, lost, tc.lost)
+				}
+				if lost && lostErr.TaskID != testTaskID {
+					t.Fatalf("TaskID = %q, want the id sent, %q", lostErr.TaskID, testTaskID)
 				}
 				re, ok := errors.AsType[*transport.RunwareError](err)
 				if !ok {
