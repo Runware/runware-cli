@@ -3,7 +3,9 @@ package serverless
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -24,7 +26,7 @@ const (
 // trustProviderCheck is the line that fails the run while the existing provider's
 // attribute condition does not admit the environment.
 const trustProviderCheck = "gcloud iam workload-identity-pools providers describe " + testWIP +
-	" --format='value(attributeCondition)' | grep -qF -- '" + trustPrefix + "' || {\n"
+	" --format='value(attributeCondition)' | grep -qF -- \"assertion.sub.startsWith('" + trustPrefix + "')\" || {\n"
 
 // attachedAll returns the attached-connector list body for several connectors.
 func attachedAll(bases ...string) string {
@@ -232,6 +234,62 @@ func TestConnectorsTrustPicksTheRequestedConnectorOfSeveral(t *testing.T) {
 	}
 }
 
+// TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment runs the printed
+// script with a fake gcloud: the creates fail as they do for an existing provider, and the
+// describe prints a condition. The binding must run for the expression the command sets
+// and for no other condition, including one that holds the prefix but admits one app only.
+func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh to run the script with")
+	}
+	bin := t.TempDir()
+	fake := "#!/bin/sh\ncase \"$*\" in\n  *describe*) printf '%s\\n' \"$CONDITION\" ;;\n  *create*) exit 1 ;;\n  *) echo \"$*\" >> \"$CALLS\" ;;\nesac\n"
+	if err := os.WriteFile(filepath.Join(bin, "gcloud"), []byte(fake), 0o755); err != nil { //nolint:gosec // an executable stub in a temp dir
+		t.Fatal(err)
+	}
+
+	withoutSA := trustAttachmentGCP()
+	withoutSA.Gcp.ServiceAccountEmail = nil
+	connectors := map[string]serverlessapi.AppOidcConnector{
+		"with a service account":    trustAttachmentGCP(),
+		"without a service account": withoutSA,
+	}
+	conditions := []struct {
+		name, condition string
+		binds           bool
+	}{
+		{name: "the environment prefix", condition: "assertion.sub.startsWith('" + trustPrefix + "')", binds: true},
+		{name: "OR-ed with another condition", condition: "(assertion.sub.startsWith('worker:org:x:env:y:')) || assertion.sub.startsWith('" + trustPrefix + "')", binds: true},
+		{name: "one app of the environment", condition: "assertion.sub == '" + trustPrefix + "app:first-app'"},
+		{name: "another environment", condition: "assertion.sub.startsWith('worker:org:x:env:y:')"},
+		{name: "no condition", condition: ""},
+	}
+	for connName, conn := range connectors {
+		script, err := renderTrust(trustInput{connector: conn, app: testAppID, environment: testProductionEnvironment, scope: trustScopeApp})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range conditions {
+			t.Run(connName+"/"+tc.name, func(t *testing.T) {
+				calls := filepath.Join(t.TempDir(), "calls")
+				cmd := exec.CommandContext(t.Context(), sh, "-c", script) //nolint:gosec // sh from LookPath, the script is the command under test
+				cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+					"CONDITION="+tc.condition, "CALLS="+calls, "BUCKET=inputs")
+				stderr, runErr := cmd.CombinedOutput()
+				recorded, _ := os.ReadFile(calls)
+				bound := strings.Contains(string(recorded), "add-iam-policy-binding")
+				if bound != tc.binds || (runErr == nil) != tc.binds {
+					t.Errorf("binding ran = %v, exit error = %v, want the binding to run = %v\n%s", bound, runErr, tc.binds, stderr)
+				}
+				if !tc.binds && !strings.Contains(string(stderr), "does not contain assertion.sub.startsWith('"+trustPrefix+"')") {
+					t.Errorf("stderr does not say what is missing:\n%s", stderr)
+				}
+			})
+		}
+	}
+}
+
 func TestConnectorsTrustAwsPolicyIsValidJSONWithTheTrustedSubject(t *testing.T) {
 	for scope, wantOperator := range map[string]string{trustScopeApp: "StringEquals", trustScopeEnvironment: "StringLike"} {
 		run := runTrust(t, testConnectorName, trustAWSBase, scopeFlag, scope)
@@ -296,6 +354,7 @@ func TestConnectorsTrustRefusesWhatItCannotPrintSafely(t *testing.T) {
 	}
 	add("aws audience", unsafe, setAudience, append(hostile, "aud*", "=aud"), trustAttachmentAWS)
 	add("aws audience", listValue, setAudience, []string{"-aud", "a,b"}, trustAttachmentAWS)
+	add("aws audience", "as a file or URL reference", setAudience, []string{"file://a.json", "fileb://a", "http://a.example", "https://a.example"}, trustAttachmentAWS)
 	add("aws roleArn", notARole, setRole, hostile, trustAttachmentAWS)
 	// The role name sits after "arn:", so only its own check refuses a leading dash or equals sign.
 	add("aws role name", unsafe, setRole, []string{"-deploy", "=deploy", "ci/-deploy", "ci/=deploy"}, trustAttachmentAWS)

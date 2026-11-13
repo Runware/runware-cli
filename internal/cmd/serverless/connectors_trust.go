@@ -130,6 +130,10 @@ func renderTrust(in trustInput) (string, error) {
 	return b.String(), nil
 }
 
+// awsParamReferencePrefixes are the parameter prefixes the AWS CLI resolves to the
+// content of a local file or a remote URL.
+var awsParamReferencePrefixes = []string{"file://", "fileb://", "http://", "https://"}
+
 // awsTrustPolicy is the trust policy document of the IAM role.
 type awsTrustPolicy struct {
 	Version   string              `json:"Version"`
@@ -159,6 +163,13 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 	// leading dash would read as a flag.
 	if strings.Contains(in.connector.Audience, ",") || strings.HasPrefix(in.connector.Audience, "-") {
 		return fmt.Errorf("audience %q cannot be printed as an --client-id-list value", in.connector.Audience)
+	}
+	// The AWS CLI loads a parameter value that starts with one of these from a file or
+	// a URL instead of using it, so the audience would never reach the provider.
+	for _, ref := range awsParamReferencePrefixes {
+		if strings.HasPrefix(in.connector.Audience, ref) {
+			return fmt.Errorf("audience %q starts with %s, which the AWS CLI reads as a file or URL reference instead of the audience", in.connector.Audience, ref)
+		}
 	}
 	partition, account, rolePath := m[1], m[2], m[3]
 	roleName := rolePath
@@ -299,14 +310,18 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 }
 
 // writeGCPProviderCheck prints the guard that keeps a binding from succeeding while the
-// provider still rejects the tokens: an existing provider keeps its old attribute
-// condition. The binding follows on the next line and runs only when the check passes.
+// provider may still reject the tokens: an existing provider keeps its old attribute
+// condition. It passes only when the condition holds the exact expression this command
+// sets for the whole environment, which admits every scope. Any other condition, even
+// one that looks related such as a single application's subject, needs a manual review.
+// The binding follows on the next line and runs only when the check passes.
 func writeGCPProviderCheck(b *strings.Builder, provider, prefix string) {
 	describe := fmt.Sprintf("gcloud iam workload-identity-pools providers describe %s --format='value(attributeCondition)'", provider)
+	admits := fmt.Sprintf("assertion.sub.startsWith('%s')", prefix)
 	// The update command sits inside a double-quoted echo, so its own quotes are escaped.
-	update := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('%s')\"`, provider, prefix)
-	fmt.Fprintf(b, "%s | grep -qF -- '%s' || {\n", describe, prefix)
-	fmt.Fprintf(b, "  echo \"the provider's attribute condition does not admit %s, so its tokens are still rejected.\" >&2\n", prefix)
+	update := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || %s\"`, provider, admits)
+	fmt.Fprintf(b, "%s | grep -qF -- \"%s\" || {\n", describe, admits)
+	fmt.Fprintf(b, "  echo \"the provider's attribute condition does not contain %s, so this cannot confirm that it admits the tokens.\" >&2\n", admits)
 	fmt.Fprintf(b, "  echo \"Show the condition with: %s\" >&2\n", describe)
 	fmt.Fprintf(b, "  echo \"then set it to that condition OR-ed with this one: %s\" >&2\n", update)
 	b.WriteString("  false\n")
