@@ -1864,8 +1864,14 @@ paths:
             schema:
               $ref: '#/components/schemas/OidcConnectorAttach'
       responses:
-        '204':
-          description: OIDC connector attached
+        '201':
+          description: >
+            OIDC connector attached. The body is the connector as `GET /v1/apps/{appId}/oidc-connectors`
+            lists it, with the `subject` its tokens carry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppOidcConnector'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4634,7 +4640,9 @@ components:
     Environment:
       type: object
       required:
+        - id
         - name
+        - oidcSubjectPrefix
         - isDefault
         - budgetAlertPercents
         - pauseAtBudget
@@ -4642,8 +4650,25 @@ components:
         - createdAt
         - updatedAt
       properties:
+        id:
+          type: string
+          format: uuid
+          description: >
+            The environment's immutable identifier, the `<environment uuid>` in an OIDC subject.
+            It belongs to the environment, not to its name: an environment deleted and created again
+            under the same name gets a new `id`, and so a new `oidcSubjectPrefix`.
+          example: "0190a6a8-0000-7000-8000-0000000000e1"
         name:
           $ref: '#/components/schemas/EnvironmentName'
+        oidcSubjectPrefix:
+          type: string
+          description: >
+            What the `sub` of every worker token in this environment starts with:
+            `worker:org:<organization uuid>:env:<environment uuid>:`. It is the start of `subject` on every
+            connector attached in the environment, so a trust rule can trust the environment before any app
+            or connector exists. The value has no trailing `*`: for an AWS `StringLike` condition append `*`,
+            and for a GCP attribute condition use it as is, with `assertion.sub.startsWith(...)`.
+          example: "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:"
         isDefault:
           type: boolean
           description: |

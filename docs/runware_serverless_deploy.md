@@ -174,6 +174,7 @@ runware serverless deploy [file] [flags]
   -e, --env name                      Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
       --env-file stringArray          File of KEY=VALUE lines to read environment variables from (repeatable)
       --env-var stringArray           Environment variable as KEY=VALUE (repeatable)
+      --environment name              Alias for --env
       --extra-index-url stringArray   Extra package index for a code deploy, as an http or https URL with no credentials (repeatable). uv reads the index; its first-index strategy takes a package this index also publishes from this index only, not pip's best match across indexes
       --fallback-gpu-type string      Secondary GPU type if the preferred type is unavailable
       --from string                   URL of a packaged source to fetch and deploy as a new application, reading its runware.yaml
