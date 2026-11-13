@@ -2,6 +2,7 @@ package serverless
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,10 +24,11 @@ const (
 	trustTail        = `"issuer":"` + trustIssuer + `",` + testConnectorTail
 )
 
-// trustProviderCheck is the line that fails the run while the existing provider's
-// attribute condition does not admit the environment.
-const trustProviderCheck = `runware_condition="$(gcloud iam workload-identity-pools providers describe ` + testWIP +
-	` --format='value(attributeCondition)')" &&` + "\n"
+// trustProviderCheck is the line that opens the guard around the binding: it reads the
+// existing provider's attribute condition, and the run stops while that does not admit
+// the environment.
+const trustProviderCheck = `if ! runware_condition="$(gcloud iam workload-identity-pools providers describe ` + testWIP +
+	` --format='value(attributeCondition)')" ||` + "\n"
 
 // attachedAll returns the attached-connector list body for several connectors.
 func attachedAll(bases ...string) string {
@@ -118,7 +120,9 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 				trustProviderCheck,
 				`  echo "then set it to that condition OR-ed with this one: gcloud iam workload-identity-pools providers update-oidc ` + testWIP +
 					` --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('` + trustPrefix + `')\"" >&2` + "\n",
-				"} && \\\ngcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n",
+				`  echo "then add the mapping to it: gcloud iam workload-identity-pools providers update-oidc ` + testWIP +
+					` --attribute-mapping=\"<existing mapping>,google.subject=assertion.sub\"" >&2` + "\n",
+				"else\n  gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n",
 				"  --issuer-uri=" + trustIssuer + " \\\n",
 				"attribute.environment_id=assertion.environment_id",
 				`  --attribute-condition="assertion.sub.startsWith('` + trustPrefix + `')"` + "\n",
@@ -145,7 +149,7 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 			want: []string{
 				`: "${BUCKET:?set BUCKET to the name of the bucket the workers may read}"` + "\n",
 				trustProviderCheck,
-				"} && \\\n" + `gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \` + "\n",
+				"else\n  " + `gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \` + "\n",
 				"  --role=roles/storage.objectViewer \\\n",
 				"  --member=principal://iam.googleapis.com/" + trustPool + "/subject/" + testSubject + "\n",
 			},
@@ -234,21 +238,68 @@ func TestConnectorsTrustPicksTheRequestedConnectorOfSeveral(t *testing.T) {
 	}
 }
 
-// TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment runs the printed
-// script with a fake gcloud: the creates fail as they do for an existing provider, and the
-// describe prints a condition. The binding must run for the expression the command sets
-// and for no other condition, including one that holds the prefix but admits one app only.
-func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t *testing.T) {
+// gcpGuardRun is what the printed script did against a fake gcloud.
+type gcpGuardRun struct {
+	bound  bool
+	runErr error
+	stderr string
+}
+
+// runGCPGuard runs the printed script with a fake gcloud. The creates fail as they do for
+// an existing provider, the describe with --format=json prints mapping, the other describe
+// prints condition, and describeFails makes both exit non-zero. Any other call is recorded.
+func runGCPGuard(t *testing.T, script, condition, mapping string, describeFails bool) gcpGuardRun {
+	t.Helper()
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skip("no sh to run the script with")
 	}
 	bin := t.TempDir()
-	fake := "#!/bin/sh\ncase \"$*\" in\n  *describe*) printf '%s\\n' \"$CONDITION\" ;;\n  *create*) exit 1 ;;\n  *) echo \"$*\" >> \"$CALLS\" ;;\nesac\n"
+	fake := "#!/bin/sh\ncase \"$*\" in\n" +
+		"  *describe*) [ -z \"$DESCRIBE_FAILS\" ] || exit 1 ;;\n" +
+		"esac\n" +
+		"case \"$*\" in\n" +
+		"  *describe*format=json*) printf '%s\\n' \"$MAPPING\" ;;\n" +
+		"  *describe*) printf '%s\\n' \"$CONDITION\" ;;\n" +
+		"  *create*) exit 1 ;;\n" +
+		"  *) echo \"$*\" >> \"$CALLS\" ;;\n" +
+		"esac\n"
 	if err := os.WriteFile(filepath.Join(bin, "gcloud"), []byte(fake), 0o755); err != nil { //nolint:gosec // an executable stub in a temp dir
 		t.Fatal(err)
 	}
+	calls := filepath.Join(t.TempDir(), "calls")
+	env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"CONDITION=" + condition, "MAPPING=" + mapping, "CALLS=" + calls, "BUCKET=inputs"}
+	if describeFails {
+		env = append(env, "DESCRIBE_FAILS=1")
+	}
+	cmd := exec.CommandContext(t.Context(), sh, "-c", script) //nolint:gosec // sh from LookPath, the script is the command under test
+	cmd.Env = append(os.Environ(), env...)
+	out, runErr := cmd.CombinedOutput()
+	recorded, _ := os.ReadFile(calls)
+	return gcpGuardRun{bound: strings.Contains(string(recorded), "add-iam-policy-binding"), runErr: runErr, stderr: string(out)}
+}
 
+// gcloudMapping prints an attribute mapping the way gcloud --format=json does.
+func gcloudMapping(pairs ...string) string {
+	var b strings.Builder
+	b.WriteString("{\n  \"attributeMapping\": {\n")
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if i > 0 {
+			b.WriteString(",\n")
+		}
+		fmt.Fprintf(&b, "    %q: %q", pairs[i], pairs[i+1])
+	}
+	b.WriteString("\n  },\n  \"name\": \"projects/1/locations/global/workloadIdentityPools/p/providers/q\"\n}")
+	return b.String()
+}
+
+// TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment runs the printed
+// script with a fake gcloud for both scopes. The binding must run for the condition the
+// command sets and for no other, including one that holds the prefix but admits one app
+// only, one that adds an && or a negation, and a provider whose mapping lacks the attribute
+// the IAM member relies on or that cannot be read at all.
+func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t *testing.T) {
 	withoutSA := trustAttachmentGCP()
 	withoutSA.Gcp.ServiceAccountEmail = nil
 	connectors := map[string]serverlessapi.AppOidcConnector{
@@ -274,25 +325,55 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 		{name: "a longer prefix that holds this one", condition: "assertion.sub.startsWith('" + trustPrefix + "app:first-app')"},
 		{name: "the organization only", condition: "assertion.sub.startsWith('worker:org:x:')"},
 	}
-	for connName, conn := range connectors {
-		script, err := renderTrust(trustInput{connector: conn, app: testAppID, environment: testProductionEnvironment, scope: trustScopeApp})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, tc := range conditions {
-			t.Run(connName+"/"+tc.name, func(t *testing.T) {
-				calls := filepath.Join(t.TempDir(), "calls")
-				cmd := exec.CommandContext(t.Context(), sh, "-c", script) //nolint:gosec // sh from LookPath, the script is the command under test
-				cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-					"CONDITION="+tc.condition, "CALLS="+calls, "BUCKET=inputs")
-				stderr, runErr := cmd.CombinedOutput()
-				recorded, _ := os.ReadFile(calls)
-				bound := strings.Contains(string(recorded), "add-iam-policy-binding")
-				if bound != tc.binds || (runErr == nil) != tc.binds {
-					t.Errorf("binding ran = %v, exit error = %v, want the binding to run = %v\n%s", bound, runErr, tc.binds, stderr)
+	const conditionStopped = "is not only assertion.sub.startsWith terms joined by || with one of them "
+	for _, scope := range trustScopes {
+		attribute, claim := gcpRequiredMapping(scope)
+		goodMapping := gcloudMapping("attribute.org_id", "assertion.org_id", attribute, claim)
+		for connName, conn := range connectors {
+			script, err := renderTrust(trustInput{connector: conn, app: testAppID, environment: testProductionEnvironment, scope: scope})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range conditions {
+				t.Run(scope+"/"+connName+"/"+tc.name, func(t *testing.T) {
+					got := runGCPGuard(t, script, tc.condition, goodMapping, false)
+					if got.bound != tc.binds || (got.runErr == nil) != tc.binds {
+						t.Errorf("binding ran = %v, exit error = %v, want the binding to run = %v\n%s", got.bound, got.runErr, tc.binds, got.stderr)
+					}
+					if !tc.binds && !strings.Contains(got.stderr, conditionStopped+admitsTerm) {
+						t.Errorf("stderr does not say what is missing:\n%s", got.stderr)
+					}
+				})
+			}
+			mappings := []struct {
+				name, mapping string
+				binds         bool
+			}{
+				{name: "the mapping the scope needs", mapping: goodMapping, binds: true},
+				{name: "the mapping on one line", mapping: strings.ReplaceAll(goodMapping, "\n", ""), binds: true},
+				{name: "no mapping at all", mapping: "{}"},
+				{name: "other attributes only", mapping: gcloudMapping("attribute.org_id", "assertion.org_id", "attribute.app_id", "assertion.app_id")},
+				{name: "the attribute mapped to another claim", mapping: gcloudMapping(attribute, "assertion.org_id")},
+				{name: "the attribute mapped to a longer expression", mapping: gcloudMapping(attribute, claim+" + '-x'")},
+			}
+			for _, mc := range mappings {
+				t.Run(scope+"/"+connName+"/mapping: "+mc.name, func(t *testing.T) {
+					got := runGCPGuard(t, script, admitsTerm, mc.mapping, false)
+					if got.bound != mc.binds || (got.runErr == nil) != mc.binds {
+						t.Errorf("binding ran = %v, exit error = %v, want the binding to run = %v\n%s", got.bound, got.runErr, mc.binds, got.stderr)
+					}
+					if !mc.binds && !strings.Contains(got.stderr, "does not map "+attribute+" to "+claim) {
+						t.Errorf("stderr does not say what is missing:\n%s", got.stderr)
+					}
+				})
+			}
+			t.Run(scope+"/"+connName+"/the provider cannot be read", func(t *testing.T) {
+				got := runGCPGuard(t, script, admitsTerm, goodMapping, true)
+				if got.bound || got.runErr == nil {
+					t.Errorf("binding ran = %v, exit error = %v, want it stopped\n%s", got.bound, got.runErr, got.stderr)
 				}
-				if !tc.binds && !strings.Contains(string(stderr), "is not only assertion.sub.startsWith terms joined by || with one of them "+admitsTerm) {
-					t.Errorf("stderr does not say what is missing:\n%s", stderr)
+				if !strings.Contains(got.stderr, "could not read the provider") || strings.Contains(got.stderr, conditionStopped) {
+					t.Errorf("stderr must say the provider could not be read and not blame the condition:\n%s", got.stderr)
 				}
 			})
 		}

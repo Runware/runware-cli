@@ -277,7 +277,8 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 	b.WriteString("\n# 1. Create the workload identity pool and the provider the connector names.\n")
 	b.WriteString("#    The provider admits the tokens of this organization and environment only; the grant in step 2\n")
 	b.WriteString("#    narrows it. Both creates fail with ALREADY_EXISTS when they exist, for example from another\n")
-	b.WriteString("#    environment; step 2 then checks that the existing provider admits this environment.\n")
+	b.WriteString("#    environment; step 2 then checks that the existing provider's condition admits this environment\n")
+	b.WriteString("#    and that its attribute mapping has what the grant relies on.\n")
 	fmt.Fprintf(b, "gcloud iam workload-identity-pools create %s --display-name='Runware Serverless'\n", pool)
 	fmt.Fprintf(b, "gcloud iam workload-identity-pools providers create-oidc %s \\\n", provider)
 	fmt.Fprintf(b, "  --issuer-uri=%s \\\n", issuer)
@@ -291,10 +292,11 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 		}
 		b.WriteString("\n# 2. Let the workers impersonate the connector's service account.\n")
 		b.WriteString("#    Grant the service account the access it needs on your resources separately.\n")
-		writeGCPProviderCheck(b, provider, prefix)
-		fmt.Fprintf(b, "gcloud iam service-accounts add-iam-policy-binding %s \\\n", sa)
-		b.WriteString("  --role=roles/iam.workloadIdentityUser \\\n")
-		fmt.Fprintf(b, "  --member=%s\n", member)
+		writeGCPGuardedBinding(b, provider, prefix, in.scope, []string{
+			fmt.Sprintf("gcloud iam service-accounts add-iam-policy-binding %s \\", sa),
+			"  --role=roles/iam.workloadIdentityUser \\",
+			"  --member=" + member,
+		})
 		return nil
 	}
 
@@ -302,10 +304,11 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 	b.WriteString("#    Set BUCKET to the bucket they may read first, for example: BUCKET=my-inputs\n")
 	b.WriteString("#    To grant another role or resource, change this command.\n")
 	b.WriteString(": \"${BUCKET:?set BUCKET to the name of the bucket the workers may read}\"\n")
-	writeGCPProviderCheck(b, provider, prefix)
-	b.WriteString("gcloud storage buckets add-iam-policy-binding \"gs://${BUCKET}\" \\\n")
-	b.WriteString("  --role=roles/storage.objectViewer \\\n")
-	fmt.Fprintf(b, "  --member=%s\n", member)
+	writeGCPGuardedBinding(b, provider, prefix, in.scope, []string{
+		"gcloud storage buckets add-iam-policy-binding \"gs://${BUCKET}\" \\",
+		"  --role=roles/storage.objectViewer \\",
+		"  --member=" + member,
+	})
 	return nil
 }
 
@@ -318,27 +321,58 @@ const gcpAdmitTerm = `[([:space:]]*assertion\.sub\.startsWith\('[A-Za-z0-9:._-]+
 // when any one term does, so it cannot hide an && or a negation.
 const gcpOnlyStartsWithTerms = `^` + gcpAdmitTerm + `(\|\|` + gcpAdmitTerm + `)*$`
 
-// writeGCPProviderCheck prints the guard that keeps a binding from succeeding while the
-// provider may still reject the tokens: an existing provider keeps its old attribute
-// condition. It fails closed. It passes only when the whole condition is startsWith
-// terms joined by || and one of them is the exact term this command sets for the
-// environment, which admits every scope. Any other condition, including one that holds
-// that term next to an && or a negation, needs a manual review. The condition is read
-// as one line, so a later line cannot narrow it unseen. The binding follows on the next
-// line and runs only when the check passes.
-func writeGCPProviderCheck(b *strings.Builder, provider, prefix string) {
-	describe := fmt.Sprintf("gcloud iam workload-identity-pools providers describe %s --format='value(attributeCondition)'", provider)
+// gcpRequiredMapping is the attribute mapping the IAM member of a scope relies on: the
+// member names google.subject for one application, and attribute.environment_id for the
+// whole environment. An existing provider keeps its old mapping, so the script checks it.
+func gcpRequiredMapping(scope string) (attribute, claim string) {
+	if scope == trustScopeEnvironment {
+		return "attribute.environment_id", "assertion.environment_id"
+	}
+	return "google.subject", "assertion.sub"
+}
+
+// writeGCPGuardedBinding prints the binding commands behind a guard that keeps them from
+// succeeding while the provider may still reject the tokens: an existing provider keeps
+// its old attribute condition and attribute mapping. The guard fails closed, and says
+// which of three things stopped it:
+//   - the provider could not be read (no permission, or it was never created);
+//   - its condition is not only startsWith terms joined by || with the exact term this
+//     command sets for the environment (which admits every scope); a condition that holds
+//     that term next to an && or a negation needs a manual review, and the condition is
+//     read as one line so a later line cannot narrow it unseen;
+//   - its mapping does not map the attribute the IAM member relies on to the token claim.
+//
+// The binding is in the last branch, so it runs only when every check passed.
+func writeGCPGuardedBinding(b *strings.Builder, provider, prefix, scope string, binding []string) {
+	describe := fmt.Sprintf("gcloud iam workload-identity-pools providers describe %s", provider)
 	admits := fmt.Sprintf("assertion.sub.startsWith('%s')", prefix)
-	// The update command sits inside a double-quoted echo, so its own quotes are escaped.
-	update := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || %s\"`, provider, admits)
-	fmt.Fprintf(b, "runware_condition=\"$(%s)\" &&\n", describe)
-	fmt.Fprintf(b, "  printf '%%s' \"$runware_condition\" | tr '\\n' ' ' | grep -Eq -- %s &&\n", shellQuote(gcpOnlyStartsWithTerms))
-	fmt.Fprintf(b, "  printf '%%s' \"$runware_condition\" | grep -qF -- \"%s\" || {\n", admits)
-	fmt.Fprintf(b, "  echo \"the provider's attribute condition is not only assertion.sub.startsWith terms joined by || with one of them %s, so this cannot confirm that it admits the tokens.\" >&2\n", admits)
-	fmt.Fprintf(b, "  echo \"Show the condition with: %s\" >&2\n", describe)
-	fmt.Fprintf(b, "  echo \"then set it to that condition OR-ed with this one: %s\" >&2\n", update)
+	attribute, claim := gcpRequiredMapping(scope)
+	mapped := `"` + regexp.QuoteMeta(attribute) + `"[[:space:]]*:[[:space:]]*"` + regexp.QuoteMeta(claim) + `"`
+	// The update commands sit inside double-quoted echos, so their own quotes are escaped.
+	updateCondition := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || %s\"`, provider, admits)
+	updateMapping := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-mapping=\"<existing mapping>,%s=%s\"`, provider, attribute, claim)
+
+	fmt.Fprintf(b, "if ! runware_condition=\"$(%s --format='value(attributeCondition)')\" ||\n", describe)
+	fmt.Fprintf(b, "   ! runware_mapping=\"$(%s --format=json)\"; then\n", describe)
+	b.WriteString("  echo \"could not read the provider: the account needs iam.workloadIdentityPoolProviders.get, and the provider does not exist if its create above failed for another reason.\" >&2\n")
+	fmt.Fprintf(b, "  echo \"Check with: %s\" >&2\n", describe)
 	b.WriteString("  false\n")
-	b.WriteString("} && \\\n")
+	fmt.Fprintf(b, "elif ! { printf '%%s' \"$runware_condition\" | tr '\\n' ' ' | grep -Eq -- %s &&\n", shellQuote(gcpOnlyStartsWithTerms))
+	fmt.Fprintf(b, "         printf '%%s' \"$runware_condition\" | grep -qF -- \"%s\"; }; then\n", admits)
+	fmt.Fprintf(b, "  echo \"the provider's attribute condition is not only assertion.sub.startsWith terms joined by || with one of them %s, so this cannot confirm that it admits the tokens.\" >&2\n", admits)
+	fmt.Fprintf(b, "  echo \"Show the condition with: %s --format='value(attributeCondition)'\" >&2\n", describe)
+	fmt.Fprintf(b, "  echo \"then set it to that condition OR-ed with this one: %s\" >&2\n", updateCondition)
+	b.WriteString("  false\n")
+	fmt.Fprintf(b, "elif ! printf '%%s' \"$runware_mapping\" | grep -Eq -- %s; then\n", shellQuote(mapped))
+	fmt.Fprintf(b, "  echo \"the provider's attribute mapping does not map %s to %s, which the IAM member below relies on.\" >&2\n", attribute, claim)
+	fmt.Fprintf(b, "  echo \"Show the mapping with: %s --format=json\" >&2\n", describe)
+	fmt.Fprintf(b, "  echo \"then add the mapping to it: %s\" >&2\n", updateMapping)
+	b.WriteString("  false\n")
+	b.WriteString("else\n")
+	for _, line := range binding {
+		b.WriteString("  " + line + "\n")
+	}
+	b.WriteString("fi\n")
 }
 
 func renderGeneric(b *strings.Builder, in trustInput, issuer, prefix string) {
