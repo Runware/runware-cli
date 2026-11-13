@@ -26,6 +26,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -92,10 +93,23 @@ func WriteStub(t testing.TB, cfg StubConfig) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "runware"), []byte(Stub(cfg)), 0o700); err != nil { //nolint:gosec // test executable
+	if err := writeExecutable(filepath.Join(dir, "runware"), Stub(cfg)); err != nil {
 		t.Fatalf("write stub CLI: %v", err)
 	}
 	return dir
+}
+
+// writeExecutable writes a script that a test runs right away. A plain
+// os.WriteFile can make that run fail with "text file busy" on Linux: a
+// process another test forks while the file is still open for writing keeps
+// that descriptor until it execs, and the kernel will not exec a file that
+// is open for writing (golang.org/issue/22315). os/exec forks while holding
+// syscall.ForkLock for writing, so holding it for reading until the file is
+// closed keeps every fork out of that window.
+func writeExecutable(path, script string) error {
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
+	return os.WriteFile(path, []byte(script), 0o700) //nolint:gosec // test executable
 }
 
 // InitArgs is the argv of a serverless init call for the App directory dir.
@@ -577,7 +591,7 @@ func NewTripwires(t testing.TB, names ...string) Tripwires {
 	}
 	for _, name := range names {
 		script := fmt.Sprintf(forbiddenToolTemplate, shellQuote(name), shellQuote(tw.log))
-		if err := os.WriteFile(filepath.Join(tw.Dir, name), []byte(script), 0o700); err != nil { //nolint:gosec // test executable
+		if err := writeExecutable(filepath.Join(tw.Dir, name), script); err != nil {
 			t.Fatalf("write tripwire %s: %v", name, err)
 		}
 	}
@@ -649,7 +663,7 @@ func (r *Release) GitHubShim(t testing.TB) GitHubShim {
 		log: filepath.Join(t.TempDir(), "curl-urls"),
 	}
 	script := fmt.Sprintf(githubShimScript, shellQuote(r.URL), shellQuote(shim.log), shellQuote(curl))
-	if err := os.WriteFile(filepath.Join(shim.Dir, "curl"), []byte(script), 0o700); err != nil { //nolint:gosec // test executable
+	if err := writeExecutable(filepath.Join(shim.Dir, "curl"), script); err != nil {
 		t.Fatalf("write curl shim: %v", err)
 	}
 	return shim
