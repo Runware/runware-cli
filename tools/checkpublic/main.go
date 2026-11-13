@@ -112,7 +112,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		findings, err = scanRangeMode(ctx, s, g, *base, *head, *branch)
 	case "text":
 		findings, err = scanTextMode(s, *label, fs.Args(), stdin)
-	case "files":
+	case wordFiles:
 		findings, err = scanFilesMode(ctx, s, g, fs.Args())
 	case "prepush":
 		findings, err = s.prePush(ctx, g, fs.Args(), stdin)
@@ -132,8 +132,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	switch mode {
 	case "text":
 		heading = *label
-	case "files":
-		heading = "files"
+	case wordFiles:
+		heading = wordFiles
 	}
 	return finish(o, []section{{
 		heading:  heading,
@@ -304,6 +304,11 @@ func runHookMode(ctx context.Context, s *Scanner, stdin io.Reader, stderr io.Wri
 		return exitFindings
 	}
 	findings, err := s.runHook(ctx, payload, gitRepoOf)
+	if ue, ok := errors.AsType[*UncheckableError](err); ok {
+		logf(stderr, "checkpublic: blocked. This command publishes to GitHub, or may, in a form the check cannot read completely: %s.\n", ue.Reason)
+		logln(stderr, "Write the body to a file in a separate call, then post with a simple `gh ... --body-file <file>` (no $( ), no cd, no variables). Run a git push in its own call.")
+		return exitBlock
+	}
 	if err != nil {
 		// A non-blocking error: the git pre-push hook and CI still check.
 		logln(stderr, "checkpublic hook: could not check this command:", err)
@@ -348,25 +353,21 @@ func (s *Scanner) prePush(ctx context.Context, g Git, args []string, stdin io.Re
 			out = append(out, f...)
 			continue
 		}
-		base := ""
+		known := ""
 		if !isZeroSHA(remoteSHA) {
 			if _, err := g.revParse(ctx, remoteSHA); err == nil {
-				if mb, err := g.MergeBase(ctx, remoteSHA, localSHA); err == nil {
-					base = mb
-				}
+				known = remoteSHA
 			}
 		}
-		if base == "" {
-			var err error
-			base, err = g.DefaultBase(ctx, remote, localSHA)
-			if err != nil {
-				return nil, err
-			}
+		base, err := g.PushBase(ctx, remote, known, localSHA)
+		if err != nil {
+			return nil, err
 		}
 		f, err := s.ScanRange(ctx, g, Range{
 			Base:   base,
 			Head:   localSHA,
 			Branch: strings.TrimPrefix(remoteRef, "refs/heads/"),
+			Remote: remote,
 		})
 		if err != nil {
 			return nil, err

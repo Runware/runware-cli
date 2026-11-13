@@ -8,11 +8,16 @@ import (
 )
 
 // keyBody is the argument that holds a comment or description.
-const keyBody = "body"
+const (
+	keyBody      = "body"
+	keyRepo      = "repo"
+	keyOwner     = "owner"
+	ownerRunware = "Runware"
+)
 
 // privateTarget is a Runware repository that is not public, built at run time
 // (see rules_test.go).
-var privateTarget = "Runware" + "/some-private-repo"
+var privateTarget = ownerRunware + "/some-private-repo"
 
 // bashPayload is a Claude Code PreToolUse payload for a Bash command.
 func bashPayload(t *testing.T, command, dir string) []byte {
@@ -88,6 +93,18 @@ func TestIsGitHubWriteTool(t *testing.T) {
 		},
 		{
 			name: "mcp__plugin_github_github__create_issue",
+			want: true,
+		},
+		{
+			name: "mcp__github__push_files",
+			want: true,
+		},
+		{
+			name: "mcp__github__create_or_update_file",
+			want: true,
+		},
+		{
+			name: "mcp__claude_ai_GitHub__create_branch",
 			want: true,
 		},
 		{
@@ -172,11 +189,11 @@ func TestHookGitHubToolCall(t *testing.T) {
 			name: "Claude Code GitHub server with owner and repo",
 			tool: "mcp__github__create_pull_request",
 			input: map[string]any{
-				"owner": "Runware",
-				"repo":  "runware-cli",
-				"title": "feat: x",
-				keyBody: leak,
-				"head":  "feature",
+				keyOwner: ownerRunware,
+				keyRepo:  "runware-cli",
+				"title":  "feat: x",
+				keyBody:  leak,
+				"head":   "feature",
 			},
 			want:   1,
 			wantAt: "mcp__github__create_pull_request body",
@@ -185,11 +202,29 @@ func TestHookGitHubToolCall(t *testing.T) {
 			name: "Claude Code GitHub server, private repository",
 			tool: "mcp__github__add_issue_comment",
 			input: map[string]any{
-				"owner": "Runware",
-				"repo":  "some-private-repo",
-				keyBody: leak,
+				keyOwner: ownerRunware,
+				keyRepo:  "some-private-repo",
+				keyBody:  leak,
 			},
 			want: 0,
+		},
+		{
+			name: "file pushed straight to a branch",
+			tool: "mcp__github__push_files",
+			input: map[string]any{
+				keyOwner:  ownerRunware,
+				keyRepo:   "runware-cli",
+				"branch":  "main",
+				"message": "docs: x",
+				"files": []any{
+					map[string]any{
+						"path":    "a.md",
+						"content": "intro\n" + leak,
+					},
+				},
+			},
+			want:   1,
+			wantAt: "mcp__github__push_files files[0].content line 2",
 		},
 		{
 			name: "unknown repository is checked",
@@ -203,9 +238,9 @@ func TestHookGitHubToolCall(t *testing.T) {
 			name: "read tool passes",
 			tool: "mcp__github__get_pull_request",
 			input: map[string]any{
-				"owner": "Runware",
-				"repo":  "runware-cli",
-				keyBody: leak,
+				keyOwner: ownerRunware,
+				keyRepo:  "runware-cli",
+				keyBody:  leak,
 			},
 			want: 0,
 		},

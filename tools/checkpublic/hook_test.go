@@ -45,10 +45,10 @@ func TestParseShell(t *testing.T) {
 			},
 		},
 		{
-			name: "heredoc in command substitution",
+			name: "heredoc in command substitution keeps its source",
 			src:  "gh pr create --title t --body \"$(cat <<'EOF'\nline (1)\n\"quoted\"\nEOF\n)\"",
 			want: []shellCmd{
-				{args: []string{"gh", "pr", "create", "--title", "t", "--body", "line (1)\n\"quoted\""}},
+				{args: []string{"gh", "pr", "create", "--title", "t", "--body", "$(cat <<'EOF'\nline (1)\n\"quoted\"\nEOF\n)"}},
 			},
 		},
 		{
@@ -76,7 +76,7 @@ func TestParseShell(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseShell(tc.src, "")
+			got := parseShell(tc.src).cmds
 			if len(got) != len(tc.want) {
 				t.Fatalf("parseShell = %+v, want %+v", got, tc.want)
 			}
@@ -90,7 +90,7 @@ func TestParseShell(t *testing.T) {
 }
 
 func TestParseShellPipedHeredoc(t *testing.T) {
-	cmds := parseShell("cat <<'EOF' | gh pr comment 1 --body-file -\nhello\nEOF\n", "")
+	cmds := parseShell("cat <<'EOF' | gh pr comment 1 --body-file -\nhello\nEOF\n").cmds
 	if len(cmds) != 2 || cmds[1].stdin != "hello\n" {
 		t.Fatalf("parseShell = %+v, want the heredoc on gh's stdin", cmds)
 	}
@@ -230,7 +230,10 @@ func TestPlanCommand(t *testing.T) {
 	repoOf := func(string) string { return "Runware/runware-cli" }
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := s.planCommand(tc.command, dir, repoOf)
+			p, err := s.planCommand(tc.command, dir, repoOf)
+			if err != nil {
+				t.Fatalf("planCommand: %v", err)
+			}
 			var labels []string
 			for _, pub := range p.texts {
 				labels = append(labels, pub.label)
@@ -245,13 +248,84 @@ func TestPlanCommand(t *testing.T) {
 	}
 }
 
+type scannedCase struct {
+	name    string
+	command string
+	rule    string
+}
+
+// TestPlanCommandScansText checks the text each route reads, not only its
+// label: every command posts a leak, from a file, a substitution, stdin or a
+// deny pattern, and the scan of what the plan holds finds it once.
+func TestPlanCommandScansText(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "body.md"), []byte(leak), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewScanner(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.loadDeny = func() []string {
+		return []string{`\bfakevendor\b`}
+	}
+	cases := []scannedCase{
+		{
+			name:    "gh api -F body=@file",
+			command: "gh api repos/Runware/runware-cli/issues/3/comments -F body=@body.md",
+			rule:    ruleRepo,
+		},
+		{
+			name:    "cat of a file in a substitution",
+			command: `gh pr comment 3 --body "$(cat body.md)"`,
+			rule:    ruleRepo,
+		},
+		{
+			name:    "stdin from a here-document",
+			command: "gh pr comment 3 -F - <<'EOF'\n" + leak + "\nEOF",
+			rule:    ruleRepo,
+		},
+		{
+			name:    "stdin from a here-string",
+			command: "gh pr comment 3 -F - <<< '" + leak + "'",
+			rule:    ruleRepo,
+		},
+		{
+			name:    "stdin from a file",
+			command: "gh pr comment 3 -F - < body.md",
+			rule:    ruleRepo,
+		},
+		{
+			name:    "deny pattern",
+			command: "gh pr comment 3 --body 'stored at fakevendor'",
+			rule:    ruleDenyList,
+		},
+	}
+	repoOf := func(string) string { return "Runware/runware-cli" }
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := s.planCommand(tc.command, dir, repoOf)
+			if err != nil {
+				t.Fatalf("planCommand: %v", err)
+			}
+			var f []Finding
+			for _, pub := range p.texts {
+				f = append(f, s.ScanText(pub.label, pub.text)...)
+			}
+			if len(f) != 1 || f[0].Rule != tc.rule {
+				t.Fatalf("findings = %+v, want one %s", f, tc.rule)
+			}
+		})
+	}
+}
+
 func TestGHPrivateTargetFromRemote(t *testing.T) {
 	s, err := NewScanner(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	repoOf := func(string) string { return shortRepo + "some-private-repo" }
-	if p := s.planCommand(`gh pr create -t x -b "`+leak+`"`, "", repoOf); len(p.texts) != 0 {
+	if p, err := s.planCommand(`gh pr create -t x -b "`+leak+`"`, "", repoOf); err != nil || len(p.texts) != 0 {
 		t.Errorf("texts for a private repository = %+v", p.texts)
 	}
 }
@@ -289,7 +363,7 @@ func gitRepo(t *testing.T, text, message string) string {
 }
 
 func TestHookBlocksPush(t *testing.T) {
-	dir := gitRepo(t, "clean text", "feat: add b\n\n"+leak)
+	dir := gitRepo(t, cleanText, "feat: add b\n\n"+leak)
 	s, err := NewScanner(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +379,7 @@ func TestHookBlocksPush(t *testing.T) {
 }
 
 func TestHookAllowsCleanPush(t *testing.T) {
-	dir := gitRepo(t, "clean text", "feat: add b")
+	dir := gitRepo(t, cleanText, "feat: add b")
 	var stderr bytes.Buffer
 	payload := `{"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":` + jsonString(dir) + `}`
 	if code := run(context.Background(), []string{modeHook}, strings.NewReader(payload), &bytes.Buffer{}, &stderr); code != 0 {
@@ -366,6 +440,61 @@ func TestPrePush(t *testing.T) {
 	deletion := "(delete) " + zero + " refs/heads/feature " + head + "\n"
 	if f, err := s.prePush(ctx, g, []string{remoteOrigin}, strings.NewReader(deletion)); err != nil || len(f) != 0 {
 		t.Fatalf("findings for a deletion = %+v, %v", f, err)
+	}
+}
+
+// TestScanRangeHistory checks that a leak added by one commit and removed by
+// the next is still found: the history is published, not only the tree.
+func TestScanRangeHistory(t *testing.T) {
+	dir := gitRepo(t, leak, "feat: add b")
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("clean text\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "commit", "-q", "-am", "fix: remove it")
+	s, err := NewScanner(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := s.ScanRange(context.Background(), Git{Dir: dir}, Range{
+		Base: "origin/main",
+		Head: "HEAD",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || !strings.HasPrefix(f[0].Where, "commit ") {
+		t.Fatalf("findings = %+v, want one in a commit", f)
+	}
+}
+
+// TestPrePushAfterRebase checks a force-push of a branch rebased onto a newer
+// main: the main commits in between are on the remote already and are not
+// the pusher's to fix, so a leak in one of them does not block the push.
+func TestPrePushAfterRebase(t *testing.T) {
+	dir := gitRepo(t, cleanText, "feat: add b")
+	old := gitIn(t, dir, "rev-parse", "HEAD")
+	gitIn(t, dir, "update-ref", "refs/remotes/origin/feature", old)
+	gitIn(t, dir, "checkout", "-q", "-b", "newmain", "origin/main")
+	if err := os.WriteFile(filepath.Join(dir, "m.txt"), []byte(leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "commit", "-q", "-m", "feat: someone else's work")
+	gitIn(t, dir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	gitIn(t, dir, "checkout", "-q", "feature")
+	gitIn(t, dir, "rebase", "-q", "newmain")
+	head := gitIn(t, dir, "rev-parse", "HEAD")
+	s, err := NewScanner(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := "refs/heads/feature " + head + " refs/heads/feature " + old + "\n"
+	f, err := s.prePush(context.Background(), Git{Dir: dir}, []string{remoteOrigin}, strings.NewReader(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 0 {
+		t.Fatalf("findings = %+v, want none from main's commits", f)
 	}
 }
 
@@ -469,7 +598,7 @@ type tagPushCase struct {
 }
 
 func TestHookTagPush(t *testing.T) {
-	dir := tagRepo(t, "clean text")
+	dir := tagRepo(t, cleanText)
 	s, err := NewScanner(nil)
 	if err != nil {
 		t.Fatal(err)

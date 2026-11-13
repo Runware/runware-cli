@@ -18,6 +18,9 @@ var (
 	longSecret  = strings.Repeat("a1B2", 8)
 )
 
+// repoCLI is a public repository of the organization.
+const repoCLI = "runware-cli"
+
 type ruleCase struct {
 	name string
 	file string
@@ -194,6 +197,16 @@ func TestScanLine(t *testing.T) {
 			want: []string{ruleBearer},
 		},
 		{
+			name: "authorization header set in Go",
+			line: `req.Header.Set("Authorization", ` + `"Bearer ` + longSecret + `")`,
+			want: []string{ruleBearer},
+		},
+		{
+			name: "authorization header set in Go from a variable",
+			line: `req.Header.Set("Authorization", "Bearer "+key)`,
+			want: nil,
+		},
+		{
 			name: "authorization header with variable",
 			line: `curl -H "Authorization: Bearer $RUNWARE_API_KEY"`,
 			want: nil,
@@ -223,6 +236,26 @@ func TestScanLine(t *testing.T) {
 			name: "json secret",
 			line: `"client_secret"` + `: "` + longSecret + `"`,
 			want: []string{ruleCredential},
+		},
+		{
+			name: "camelCase token",
+			line: `accessToken` + ` := "` + longSecret + `"`,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "camelCase secret in a struct literal",
+			line: `clientSecret` + `: "` + longSecret + `",`,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "camelCase api key",
+			line: `runwareApiKey` + ` = "` + longSecret + `"`,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "camelCase name set from a field",
+			line: `accessToken := cfg.AccessToken`,
+			want: nil,
 		},
 		{
 			name: "short value",
@@ -287,6 +320,16 @@ func TestScanLine(t *testing.T) {
 			name: "private and documentation ips",
 			line: "10.0.0.1 192.168.1.1 172.16.0.1 127.0.0.1 192.0.2.10 198.51.100.7 203.0.113.9 100.64.0.1",
 			want: nil,
+		},
+		{
+			name: "public ip after a resolver",
+			line: fmt.Sprintf("8.8.8.8 %d.%d.%d.%d", 84, 20, 30, 40),
+			want: []string{rulePublicIP},
+		},
+		{
+			name: "public ip after a documentation ip and a comma",
+			line: fmt.Sprintf("192.0.2.10,%d.%d.%d.%d", 84, 20, 30, 40),
+			want: []string{rulePublicIP},
 		},
 		{
 			name: "public resolvers",
@@ -371,7 +414,7 @@ func TestPublicReposAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"runware-cli", "Runware-CLI", "homebrew-tap", "runware-serverless"} {
+	for _, name := range []string{repoCLI, "Runware-CLI", "homebrew-tap", "runware-serverless"} {
 		if !s.IsPublicRepo(name) {
 			t.Errorf("%s is not in the allowlist", name)
 		}

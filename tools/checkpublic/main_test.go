@@ -13,11 +13,10 @@ import (
 	"time"
 )
 
-// TestPRModeReadsEventFile checks that the pr mode reads the title, body and
-// branch name from the event file, so the workflow passes no author text
-// through env, and that it hides the matched text.
-func TestPRModeReadsEventFile(t *testing.T) {
-	dir := gitRepo(t, leak, "feat: add b")
+// leakyEvent writes a pull_request event whose title, body and branch name
+// hold leaks, for the pull request gitRepo made in dir.
+func leakyEvent(t *testing.T, dir string) string {
+	t.Helper()
 	ev := prEvent{
 		PullRequest: prPayload{
 			Title: "fix: " + leak,
@@ -36,12 +35,51 @@ func TestPRModeReadsEventFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmp := t.TempDir()
-	event := filepath.Join(tmp, "event.json")
+	event := filepath.Join(t.TempDir(), "event.json")
 	if err := os.WriteFile(event, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	summary := filepath.Join(tmp, "summary.md")
+	return event
+}
+
+// TestPRModeRedactsInCI runs the pr mode as the workflow does, with no flags:
+// in GitHub Actions the log and the step summary are public, so neither may
+// show the matched text.
+func TestPRModeRedactsInCI(t *testing.T) {
+	dir := gitRepo(t, leak, "feat: add b")
+	summary := filepath.Join(t.TempDir(), "summary.md")
+	t.Setenv("GITHUB_ACTIONS", "true")
+	t.Setenv("GITHUB_STEP_SUMMARY", summary)
+	t.Setenv("GITHUB_EVENT_PATH", leakyEvent(t, dir))
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"pr", "-C", dir}, strings.NewReader(""), &stdout, &stderr); code != exitFindings {
+		t.Fatalf("exit %d, want %d: %s", code, exitFindings, stderr.String())
+	}
+	got, err := os.ReadFile(summary) //nolint:gosec // a test file
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "finding(s)") {
+		t.Errorf("summary has no report:\n%s", got)
+	}
+	for name, text := range map[string]string{
+		"stdout":  stdout.String(),
+		"stderr":  stderr.String(),
+		"summary": string(got),
+	} {
+		if strings.Contains(text, "some-private-repo") || strings.Contains(text, clusterHost) {
+			t.Errorf("the %s shows matched text:\n%s", name, text)
+		}
+	}
+}
+
+// TestPRModeReadsEventFile checks that the pr mode reads the title, body and
+// branch name from the event file, so the workflow passes no author text
+// through env, and that it hides the matched text.
+func TestPRModeReadsEventFile(t *testing.T) {
+	dir := gitRepo(t, leak, "feat: add b")
+	event := leakyEvent(t, dir)
+	summary := filepath.Join(t.TempDir(), "summary.md")
 
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"pr", "-C", dir, "-event", event, "-redact", "-summary", summary}, strings.NewReader(""), &stdout, &stderr)

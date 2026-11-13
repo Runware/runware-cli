@@ -49,6 +49,10 @@ type rule struct {
 	message string
 	re      *regexp.Regexp
 	check   func(s *Scanner, m []string, file string) bool
+	// bounded, when set, keeps a match only when line[start:end] stands on
+	// its own. It replaces boundary groups in re, which would consume the
+	// separator that the next match needs.
+	bounded func(line string, start, end int) bool
 }
 
 // Scanner holds the rules and the public repository allowlist.
@@ -172,13 +176,22 @@ func builtinRules() []rule {
 		{
 			name:    ruleBearer,
 			message: "has an Authorization header with a literal bearer token",
-			re:      regexp.MustCompile(`(?i)\bauthorization["']?\s*[:=]\s*["']?bearer\s+([a-z0-9._~+/-]{16,}=*)`),
-			check:   checkSecretValue(1),
+			// The comma is Go's Header.Set("Authorization", "Bearer ...").
+			re:    regexp.MustCompile(`(?i)\bauthorization["']?\s*[:=,]\s*["']?bearer\s+([a-z0-9._~+/-]{16,}=*)`),
+			check: checkSecretValue(1),
 		},
 		{
 			name:    ruleCredential,
 			message: "assigns a literal value to a credential-like name",
 			re:      regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key|token|secret|passw(?:or)?d)["']?\s*(?::=|=|:)\s*["']?([a-z0-9._~+/-]{20,}=*)`),
+			check:   checkCredential,
+		},
+		{
+			// camelCase and PascalCase names, as Go and JavaScript write
+			// them: accessToken, clientSecret, runwareApiKey.
+			name:    ruleCredential,
+			message: "assigns a literal value to a credential-like name",
+			re:      regexp.MustCompile(`(?:^|[^A-Za-z0-9_])[A-Za-z][A-Za-z0-9]*?(?:Api[Kk]ey|APIKey|AccessKey|Token|Secret|Passw(?:or)?d)["']?\s*(?::=|=|:)\s*["']?([A-Za-z0-9._~+/-]{20,}=*)`),
 			check:   checkCredential,
 		},
 		{
@@ -189,8 +202,9 @@ func builtinRules() []rule {
 		{
 			name:    rulePublicIP,
 			message: "has a public IPv4 address; use one from a documentation range (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)",
-			re:      regexp.MustCompile(`(?:^|[^0-9A-Za-z.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(?:$|[^0-9A-Za-z.]|\.(?:$|[^0-9]))`),
+			re:      regexp.MustCompile(`((?:[0-9]{1,3}\.){3}[0-9]{1,3})`),
 			check:   checkPublicIP,
+			bounded: ipBounded,
 		},
 		{
 			name:    ruleMaskedKey,
@@ -285,6 +299,30 @@ var nonPublicPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("240.0.0.0/4"),     // reserved
 }
 
+// ipBounded reports whether the dotted quad at line[start:end] is not part of
+// a longer word or dotted number: no letter, digit or dot before it, and no
+// letter or digit after it, nor a dot followed by a digit.
+func ipBounded(line string, start, end int) bool {
+	if start > 0 && isWordOrDot(line[start-1]) {
+		return false
+	}
+	if end == len(line) {
+		return true
+	}
+	if line[end] == '.' {
+		return end+1 == len(line) || !isDigit(line[end+1])
+	}
+	return !isWordOrDot(line[end])
+}
+
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
+func isWordOrDot(c byte) bool {
+	return isDigit(c) || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '.'
+}
+
 func checkPublicIP(_ *Scanner, m []string, _ string) bool {
 	addr, err := netip.ParseAddr(m[1])
 	if err != nil {
@@ -316,6 +354,18 @@ func excludedFile(file string) bool {
 // checked on its own when it is pushed.
 var mergeSubject = regexp.MustCompile(`^Merge pull request #[0-9]+ from \S+`)
 
+// submatches turns the indexes of one FindAllStringSubmatchIndex match into
+// the strings FindAllStringSubmatch would return.
+func submatches(line string, idx []int) []string {
+	m := make([]string, len(idx)/2)
+	for i := range m {
+		if idx[2*i] >= 0 {
+			m[i] = line[idx[2*i]:idx[2*i+1]]
+		}
+	}
+	return m
+}
+
 // ScanLine returns the rule matches on one line of file ("" for free text).
 func (s *Scanner) ScanLine(file, line string) []hit {
 	if strings.Contains(line, allowMarker) {
@@ -326,7 +376,11 @@ func (s *Scanner) ScanLine(file, line string) []hit {
 	var hits []hit
 	seen := map[string]struct{}{}
 	for _, r := range s.rules {
-		for _, m := range r.re.FindAllStringSubmatch(line, -1) {
+		for _, idx := range r.re.FindAllStringSubmatchIndex(line, -1) {
+			if r.bounded != nil && !r.bounded(line, idx[0], idx[1]) {
+				continue
+			}
+			m := submatches(line, idx)
 			if r.check != nil && !r.check(s, m, file) {
 				continue
 			}

@@ -3,62 +3,132 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// redirTarget is the file of an output redirection.
+type redirTarget struct {
+	path string
+	// dynamic is set when the name holds an expansion the lexer does not
+	// evaluate, so it could be any file.
+	dynamic bool
+}
+
+// expKind is the kind of an expansion in a word.
+type expKind int
+
+const (
+	// expOther is an expansion the hook does not evaluate: a glob, a brace
+	// or tilde expansion, a special parameter, a process substitution.
+	expOther expKind = iota
+	// expVar is $NAME or ${NAME}.
+	expVar
+	// expSubst is $(...) or a backtick substitution.
+	expSubst
+)
+
+// expansion is one expansion in a word, at word[start:end] in its source form.
+type expansion struct {
+	start  int
+	end    int
+	kind   expKind
+	name   string
+	inner  string
+	quoted bool
+}
 
 // shellCmd is one simple command of a shell command line, after quote
 // removal, with what it reads on stdin when the command line says so.
 type shellCmd struct {
 	args []string
+	// dyn[i] is set when args[i] holds a variable, command substitution or
+	// glob that the lexer does not evaluate: the shell may pass anything.
+	dyn []bool
+	// exps[i] are the expansions in args[i].
+	exps [][]expansion
 	// stdin is the content of a here-document or here-string, or of a
-	// `cat <<EOF` or `cat file` piped into the command.
+	// `cat <<EOF` piped into the command.
 	stdin    string
 	hasStdin bool
-	// stdinFile is the file of a `< file` redirection.
-	stdinFile string
+	// stdinDynamic is set when that here-document or here-string expands
+	// variables or commands.
+	stdinDynamic bool
+	// stdinFile is the file of a `< file` redirection, or of a `cat file`
+	// piped into the command.
+	stdinFile        string
+	stdinFileDynamic bool
+	// stdinSources counts the redirections that feed stdin: <, << and <<<.
+	stdinSources int
 	// pipeFrom is the index of the command piped into this one, or -1.
 	pipeFrom int
+	// writes are the targets of the command's output redirections.
+	writes []redirTarget
+	// nested are the sources of the command and process substitutions in
+	// the command's words, which the shell runs before the command.
+	nested []string
+	// opaque are here-document bodies that expand commands: the shell runs
+	// them, but they are text, not a command line the lexer can split.
+	opaque []string
+	// sep is the operator after the command: ";", "&&", "||", "&", "|",
+	// "|&", "\n", or "" at the end of the line.
+	sep string
+}
+
+// shellLine is a parsed command line.
+type shellLine struct {
+	cmds []shellCmd
+	// grouped is set when the line has parentheses outside a substitution:
+	// a subshell, a function definition or a case pattern.
+	grouped bool
 }
 
 type pendingHeredoc struct {
-	delim string
-	strip bool
-	cmd   int
+	delim  string
+	strip  bool
+	quoted bool
+	cmd    int
 }
 
 // lexer splits a command line into simple commands. It understands quoting,
 // escapes, command separators, pipes, redirections, here-documents and
 // command substitution well enough to recover the arguments a hook has to
-// check. It does not expand variables: $VAR stays literal.
+// check. It evaluates nothing: a word with $VAR, $(...), a backtick or a
+// glob keeps its source text and is marked dynamic.
 type lexer struct {
 	src  string
 	i    int
-	dir  string
-	cmds []shellCmd
+	line shellLine
 
-	cur    shellCmd
-	word   strings.Builder
-	inWord bool
+	cur     shellCmd
+	word    strings.Builder
+	inWord  bool
+	wordDyn bool
+	// wordExps are the expansions in the current word.
+	wordExps []expansion
+	// wordBrace is set when the word has an unquoted {, which with a comma
+	// or .. is a brace expansion.
+	wordBrace bool
+	// wordTilde is set when the word starts with an unquoted ~.
+	wordTilde bool
 
 	// Where the next word goes instead of the argument list.
-	skipNext       bool
+	writeNext      bool
 	stdinFileNext  bool
 	hereStringNext bool
 
 	heredocs []pendingHeredoc
 }
 
-// parseShell parses src. dir resolves the files that `cat file` reads in a
-// command substitution.
-func parseShell(src, dir string) []shellCmd {
+// parseShell parses src.
+func parseShell(src string) shellLine {
 	lx := &lexer{
 		src: src,
-		dir: dir,
 	}
 	lx.cur.pipeFrom = -1
 	lx.run()
 	lx.resolvePipes()
-	return lx.cmds
+	return lx.line
 }
 
 func (lx *lexer) run() {
@@ -70,12 +140,17 @@ func (lx *lexer) run() {
 			lx.i++
 		case c == '\n':
 			lx.endWord()
-			lx.endCmd()
+			lx.endCmd("\n")
 			lx.i++
 			lx.readHeredocs()
-		case c == ';' || c == '(' || c == ')':
+		case c == ';':
 			lx.endWord()
-			lx.endCmd()
+			lx.endCmd(";")
+			lx.i++
+		case c == '(' || c == ')':
+			lx.endWord()
+			lx.endCmd(string(c))
+			lx.line.grouped = true
 			lx.i++
 		case c == '&':
 			if lx.peek(1) == '>' {
@@ -83,25 +158,36 @@ func (lx *lexer) run() {
 				continue
 			}
 			lx.endWord()
-			lx.endCmd()
 			lx.i++
 			if lx.peek(0) == '&' {
 				lx.i++
-			}
-		case c == '|':
-			lx.endWord()
-			lx.endCmd()
-			lx.i++
-			if lx.peek(0) == '|' {
-				lx.i++
+				lx.endCmd("&&")
 				continue
 			}
-			if lx.peek(0) == '&' {
+			lx.endCmd("&")
+		case c == '|':
+			lx.endWord()
+			lx.i++
+			switch lx.peek(0) {
+			case '|':
 				lx.i++
+				lx.endCmd("||")
+				continue
+			case '&':
+				lx.i++
+				lx.endCmd("|&")
+			default:
+				lx.endCmd("|")
 			}
-			if len(lx.cmds) > 0 {
-				lx.cur.pipeFrom = len(lx.cmds) - 1
+			if len(lx.line.cmds) > 0 {
+				lx.cur.pipeFrom = len(lx.line.cmds) - 1
 			}
+		case c == '<' && lx.peek(1) == '(', c == '>' && lx.peek(1) == '(':
+			lx.startWord()
+			src, _ := lx.substitution()
+			lx.addExp(expansion{
+				kind: expOther,
+			}, src)
 		case c == '<':
 			lx.redirectIn()
 		case c == '>':
@@ -115,13 +201,13 @@ func (lx *lexer) run() {
 				lx.i += 2
 				continue
 			}
-			lx.inWord = true
+			lx.startWord()
 			if lx.i+1 < len(lx.src) {
 				lx.word.WriteByte(lx.src[lx.i+1])
 			}
 			lx.i += 2
 		case c == '\'':
-			lx.inWord = true
+			lx.startWord()
 			end := strings.IndexByte(lx.src[lx.i+1:], '\'')
 			if end < 0 {
 				lx.word.WriteString(lx.src[lx.i+1:])
@@ -131,27 +217,40 @@ func (lx *lexer) run() {
 			lx.word.WriteString(lx.src[lx.i+1 : lx.i+1+end])
 			lx.i += end + 2
 		case c == '"':
-			lx.inWord = true
+			lx.startWord()
 			lx.i++
 			lx.doubleQuoted()
-		case c == '$' && lx.peek(1) == '(':
-			lx.inWord = true
-			lx.word.WriteString(lx.substitution())
 		case c == '$' && lx.peek(1) == '\'':
-			lx.inWord = true
+			lx.startWord()
 			lx.i += 2
 			lx.ansiQuoted()
+		case c == '$' && lx.expands():
+			lx.startWord()
+			lx.dollar(false)
 		case c == '`':
-			lx.inWord = true
-			lx.word.WriteString(lx.backtick())
+			lx.startWord()
+			lx.backtick(false)
 		default:
-			lx.inWord = true
-			lx.word.WriteByte(c)
+			if c == '~' && !lx.inWord {
+				lx.wordTilde = true
+			}
+			lx.startWord()
+			switch c {
+			case '*', '?', '[':
+				lx.addExp(expansion{
+					kind: expOther,
+				}, string(c))
+			case '{':
+				lx.wordBrace = true
+				lx.word.WriteByte(c)
+			default:
+				lx.word.WriteByte(c)
+			}
 			lx.i++
 		}
 	}
 	lx.endWord()
-	lx.endCmd()
+	lx.endCmd("")
 }
 
 func (lx *lexer) peek(n int) byte {
@@ -161,38 +260,133 @@ func (lx *lexer) peek(n int) byte {
 	return 0
 }
 
+func (lx *lexer) startWord() {
+	lx.inWord = true
+}
+
+// expands reports whether the $ at lx.i starts an expansion.
+func (lx *lexer) expands() bool {
+	n := lx.peek(1)
+	return n == '(' || n == '{' || n == '_' || n >= 'a' && n <= 'z' || n >= 'A' && n <= 'Z' || n >= '0' && n <= '9' || strings.IndexByte("@*#?$!-", n) >= 0
+}
+
+// addExp appends src, the source text of an expansion, to the word and
+// records the expansion.
+func (lx *lexer) addExp(e expansion, src string) {
+	lx.wordDyn = true
+	e.start = lx.word.Len()
+	lx.word.WriteString(src)
+	e.end = lx.word.Len()
+	lx.wordExps = append(lx.wordExps, e)
+}
+
+var shellName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// dollar reads an expansion at lx.i and keeps its source text.
+func (lx *lexer) dollar(quoted bool) {
+	if lx.peek(1) == '(' {
+		src, inner := lx.substitution()
+		kind := expSubst
+		if strings.HasPrefix(inner, "(") {
+			kind = expOther // $(( arithmetic ))
+		}
+		lx.addExp(expansion{
+			kind:   kind,
+			inner:  inner,
+			quoted: quoted,
+		}, src)
+		return
+	}
+	start := lx.i
+	lx.i++
+	name := ""
+	if lx.peek(0) == '{' {
+		end := strings.IndexByte(lx.src[lx.i:], '}')
+		if end < 0 {
+			lx.i = len(lx.src)
+		} else {
+			name = lx.src[lx.i+1 : lx.i+end]
+			lx.i += end + 1
+		}
+	} else {
+		lx.i++
+		for lx.i < len(lx.src) && isNameByte(lx.src[lx.i]) && !isDigit(lx.src[start+1]) {
+			lx.i++
+		}
+		name = lx.src[start+1 : lx.i]
+	}
+	e := expansion{
+		kind:   expOther,
+		quoted: quoted,
+	}
+	if shellName.MatchString(name) {
+		e.kind = expVar
+		e.name = name
+	}
+	lx.addExp(e, lx.src[start:lx.i])
+}
+
+func isNameByte(c byte) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
 func (lx *lexer) endWord() {
 	if !lx.inWord {
 		return
 	}
 	w := lx.word.String()
+	dyn := lx.wordDyn
+	exps := lx.wordExps
+	if lx.wordBrace && (strings.Contains(w, ",") || strings.Contains(w, "..")) ||
+		lx.wordTilde && w != "~" && !strings.HasPrefix(w, "~/") {
+		dyn = true
+		exps = append(exps, expansion{
+			kind: expOther,
+		})
+	}
 	lx.word.Reset()
 	lx.inWord = false
+	lx.wordDyn = false
+	lx.wordExps = nil
+	lx.wordBrace = false
+	lx.wordTilde = false
 	switch {
-	case lx.skipNext:
-		lx.skipNext = false
+	case lx.writeNext:
+		lx.writeNext = false
+		lx.cur.writes = append(lx.cur.writes, redirTarget{
+			path:    w,
+			dynamic: dyn,
+		})
 	case lx.stdinFileNext:
 		lx.stdinFileNext = false
 		lx.cur.stdinFile = w
+		lx.cur.stdinFileDynamic = dyn
 	case lx.hereStringNext:
 		lx.hereStringNext = false
 		lx.cur.stdin = w + "\n"
 		lx.cur.hasStdin = true
+		lx.cur.stdinDynamic = dyn
 	default:
 		lx.cur.args = append(lx.cur.args, w)
+		lx.cur.dyn = append(lx.cur.dyn, dyn)
+		lx.cur.exps = append(lx.cur.exps, exps)
 	}
 }
 
-func (lx *lexer) endCmd() {
-	if len(lx.cur.args) > 0 || lx.cur.hasStdin || lx.cur.stdinFile != "" {
-		lx.cmds = append(lx.cmds, lx.cur)
+func (lx *lexer) endCmd(sep string) {
+	c := lx.cur
+	if len(c.args) > 0 || c.stdinSources > 0 || len(c.writes) > 0 || len(c.nested) > 0 {
+		c.sep = sep
+		lx.line.cmds = append(lx.line.cmds, c)
 	}
-	lx.cur = shellCmd{pipeFrom: -1}
+	lx.cur = shellCmd{
+		pipeFrom: -1,
+	}
 }
 
 // dropFD drops a word that is only a file descriptor number before a redirection.
 func (lx *lexer) dropFD() {
-	if lx.inWord && strings.Trim(lx.word.String(), "0123456789") == "" {
+	if lx.inWord && strings.Trim(lx.word.String(), "0123456789") == "" && !lx.wordDyn {
 		lx.word.Reset()
 		lx.inWord = false
 	}
@@ -211,7 +405,7 @@ func (lx *lexer) redirectOut() {
 		}
 		return
 	}
-	lx.skipNext = true
+	lx.writeNext = true
 }
 
 func (lx *lexer) redirectIn() {
@@ -219,6 +413,7 @@ func (lx *lexer) redirectIn() {
 	switch {
 	case strings.HasPrefix(lx.src[lx.i:], "<<<"):
 		lx.i += 3
+		lx.cur.stdinSources++
 		lx.hereStringNext = true
 	case strings.HasPrefix(lx.src[lx.i:], "<<"):
 		lx.i += 2
@@ -227,33 +422,37 @@ func (lx *lexer) redirectIn() {
 			strip = true
 			lx.i++
 		}
+		delim, quoted := lx.readDelimiter()
+		lx.cur.stdinSources++
 		lx.heredocs = append(lx.heredocs, pendingHeredoc{
-			delim: lx.readDelimiter(),
-			strip: strip,
-			cmd:   len(lx.cmds),
+			delim:  delim,
+			strip:  strip,
+			quoted: quoted,
+			cmd:    len(lx.line.cmds),
 		})
-	case strings.HasPrefix(lx.src[lx.i:], "<("):
-		// Process substitution: keep it as a literal word.
-		lx.inWord = true
-		lx.word.WriteString(lx.substitution())
 	default:
 		lx.i++
-		if lx.peek(0) == '&' {
+		if lx.peek(0) == '&' || lx.peek(0) == '>' {
 			lx.i++
 		}
+		lx.cur.stdinSources++
 		lx.stdinFileNext = true
 	}
 }
 
-// readDelimiter reads a here-document delimiter word, removing its quotes.
-func (lx *lexer) readDelimiter() string {
+// readDelimiter reads a here-document delimiter word, removing its quotes,
+// and reports whether it was quoted: the body of a here-document with an
+// unquoted delimiter expands variables and commands.
+func (lx *lexer) readDelimiter() (string, bool) {
 	for lx.i < len(lx.src) && (lx.src[lx.i] == ' ' || lx.src[lx.i] == '\t') {
 		lx.i++
 	}
 	var b strings.Builder
+	quoted := false
 	for lx.i < len(lx.src) {
 		c := lx.src[lx.i]
 		if c == '\'' || c == '"' || c == '\\' {
+			quoted = true
 			lx.i++
 			continue
 		}
@@ -263,7 +462,7 @@ func (lx *lexer) readDelimiter() string {
 		b.WriteByte(c)
 		lx.i++
 	}
-	return b.String()
+	return b.String(), quoted
 }
 
 // readHeredocs reads the bodies of the here-documents started on the line
@@ -272,9 +471,17 @@ func (lx *lexer) readDelimiter() string {
 func (lx *lexer) readHeredocs() {
 	for _, h := range lx.heredocs {
 		body := readHeredocBody(lx.src, &lx.i, h.delim, h.strip)
-		if h.cmd < len(lx.cmds) {
-			lx.cmds[h.cmd].stdin = body
-			lx.cmds[h.cmd].hasStdin = true
+		if h.cmd >= len(lx.line.cmds) {
+			continue
+		}
+		c := &lx.line.cmds[h.cmd]
+		c.stdin = body
+		c.hasStdin = true
+		if !h.quoted && strings.ContainsAny(body, "$`\\") {
+			c.stdinDynamic = true
+			if strings.Contains(body, "$(") || strings.Contains(body, "`") {
+				c.opaque = append(c.opaque, body)
+			}
 		}
 	}
 	lx.heredocs = nil
@@ -324,10 +531,10 @@ func (lx *lexer) doubleQuoted() {
 				lx.word.WriteByte(next)
 			}
 			lx.i += 2
-		case c == '$' && lx.peek(1) == '(':
-			lx.word.WriteString(lx.substitution())
+		case c == '$' && lx.expands():
+			lx.dollar(true)
 		case c == '`':
-			lx.word.WriteString(lx.backtick())
+			lx.backtick(true)
 		default:
 			lx.word.WriteByte(c)
 			lx.i++
@@ -348,8 +555,14 @@ func (lx *lexer) ansiQuoted() {
 				lx.word.WriteByte('\n')
 			case 't':
 				lx.word.WriteByte('\t')
-			default:
+			case '\\', '\'', '"', '?':
 				lx.word.WriteByte(next)
+			default:
+				// Octal, hex and other escapes: keep the source and let a
+				// publication that holds one be blocked.
+				lx.addExp(expansion{
+					kind: expOther,
+				}, string([]byte{c, next}))
 			}
 			lx.i += 2
 		default:
@@ -359,30 +572,35 @@ func (lx *lexer) ansiQuoted() {
 	}
 }
 
-// substitution reads $( ... ) or <( ... ) at lx.i and returns its value when
-// it is a plain `cat`, `echo` or `printf` the hook can evaluate, or its source
-// text otherwise, so the text is still scanned.
-func (lx *lexer) substitution() string {
+// substitution reads $( ... ), <( ... ) or >( ... ) at lx.i, records its
+// inner text as a nested command line and returns its source and inner text.
+func (lx *lexer) substitution() (string, string) {
 	start := lx.i
 	lx.i += 2
 	inner := captureParens(lx.src, &lx.i)
-	if lx.src[start] == '<' {
-		return lx.src[start:lx.i]
-	}
-	return evalSubstitution(inner, lx.dir)
+	lx.cur.nested = append(lx.cur.nested, inner)
+	return lx.src[start:lx.i], inner
 }
 
-func (lx *lexer) backtick() string {
+// backtick reads a backtick substitution at lx.i into the word.
+func (lx *lexer) backtick(quoted bool) {
+	start := lx.i
 	lx.i++
 	end := strings.IndexByte(lx.src[lx.i:], '`')
+	inner := ""
 	if end < 0 {
-		inner := lx.src[lx.i:]
+		inner = lx.src[lx.i:]
 		lx.i = len(lx.src)
-		return evalSubstitution(inner, lx.dir)
+	} else {
+		inner = lx.src[lx.i : lx.i+end]
+		lx.i += end + 1
 	}
-	inner := lx.src[lx.i : lx.i+end]
-	lx.i += end + 1
-	return evalSubstitution(inner, lx.dir)
+	lx.cur.nested = append(lx.cur.nested, inner)
+	lx.addExp(expansion{
+		kind:   expSubst,
+		inner:  inner,
+		quoted: quoted,
+	}, lx.src[start:lx.i])
 }
 
 // captureParens reads up to the parenthesis that closes one already opened,
@@ -427,8 +645,9 @@ func captureParens(src string, i *int) string {
 					src: src,
 					i:   *i,
 				}
+				delim, _ := sub.readDelimiter()
 				delims = append(delims, pendingHeredoc{
-					delim: sub.readDelimiter(),
+					delim: delim,
 					strip: strip,
 				})
 				*i = sub.i
@@ -454,66 +673,51 @@ func captureParens(src string, i *int) string {
 		*i++
 	}
 	if start > len(src) {
+		*i = len(src)
 		return ""
 	}
+	*i = len(src)
 	return src[start:]
 }
 
-// evalSubstitution returns the output of a command substitution for the
-// forms people use to pass a body: cat with a here-document or a file, echo
-// and printf. Anything else returns its source text.
-func evalSubstitution(inner, dir string) string {
-	cmds := parseShell(inner, dir)
-	if len(cmds) != 1 || len(cmds[0].args) == 0 {
-		return inner
-	}
-	c := cmds[0]
-	switch c.args[0] {
-	case "cat":
-		if len(c.args) == 1 && c.hasStdin {
-			return strings.TrimRight(c.stdin, "\n")
-		}
-		if len(c.args) == 2 {
-			b, err := os.ReadFile(resolvePath(dir, c.args[1]))
-			if err == nil {
-				return strings.TrimRight(string(b), "\n")
-			}
-		}
-	case "echo":
-		return strings.Join(c.args[1:], " ")
-	case "printf":
-		if len(c.args) >= 3 && strings.HasPrefix(c.args[1], "%s") {
-			return strings.Join(c.args[2:], "")
-		}
-		if len(c.args) == 2 {
-			return c.args[1]
-		}
-	}
-	return inner
-}
-
-// resolvePipes gives a command that reads a pipe the here-document or file
-// that a plain `cat` writes into it.
+// resolvePipes gives a command that reads a pipe, and has no redirection of
+// its own, the here-document or file that a plain `cat` writes into it. A
+// command with both keeps its own and is checked as ambiguous later.
 func (lx *lexer) resolvePipes() {
-	for i := range lx.cmds {
-		from := lx.cmds[i].pipeFrom
-		if from < 0 || lx.cmds[i].hasStdin {
+	for i := range lx.line.cmds {
+		dst := &lx.line.cmds[i]
+		if dst.pipeFrom < 0 || dst.stdinSources > 0 {
 			continue
 		}
-		src := lx.cmds[from]
-		if len(src.args) == 0 || src.args[0] != "cat" {
+		src := lx.line.cmds[dst.pipeFrom]
+		if len(src.args) == 0 || src.args[0] != "cat" || src.pipeFrom >= 0 || src.stdinSources > 1 || anyTrue(src.dyn) {
 			continue
 		}
 		switch {
 		case len(src.args) == 1 && src.hasStdin:
-			lx.cmds[i].stdin = src.stdin
-			lx.cmds[i].hasStdin = true
+			dst.stdin = src.stdin
+			dst.hasStdin = true
+			dst.stdinDynamic = src.stdinDynamic
 		case len(src.args) == 1 && src.stdinFile != "":
-			lx.cmds[i].stdinFile = src.stdinFile
-		case len(src.args) == 2:
-			lx.cmds[i].stdinFile = src.args[1]
+			dst.stdinFile = src.stdinFile
+			dst.stdinFileDynamic = src.stdinFileDynamic
+		case len(src.args) == 2 && src.stdinSources == 0 && !strings.HasPrefix(src.args[1], "-"):
+			dst.stdinFile = src.args[1]
+		default:
+			continue
+		}
+		dst.pipeFrom = -1
+		dst.stdinSources = 1
+	}
+}
+
+func anyTrue(b []bool) bool {
+	for _, v := range b {
+		if v {
+			return true
 		}
 	}
+	return false
 }
 
 // resolvePath resolves p against dir, expanding a leading ~.

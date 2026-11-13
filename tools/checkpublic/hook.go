@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -40,6 +42,10 @@ type pushSpec struct {
 type plan struct {
 	texts  []publication
 	pushes []pushSpec
+	// scanLine is set when the line holds a gh write to a repository that
+	// is not private: the whole command line is scanned too, here-document
+	// bodies included.
+	scanLine bool
 }
 
 // repoResolver returns the owner/name of the GitHub repository a directory
@@ -47,162 +53,376 @@ type plan struct {
 type repoResolver func(dir string) string
 
 // planCommand finds the git pushes and the GitHub titles, bodies and comments
-// in a Bash command line run from dir.
-func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) plan {
+// in a Bash command line run from dir. It returns an UncheckableError when
+// the line publishes, or may publish, in a form it cannot read completely.
+func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, error) {
+	line := parseShell(command)
+	cmds := commands(line)
+	kinds := make([]pubKind, len(cmds))
+	found := false
+	for i := range cmds {
+		c := &cmds[i]
+		if where := hiddenPublication(*c, cmds, 0); where != "" {
+			return plan{}, uncheckable("it runs a GitHub write or git push %s", where)
+		}
+		kinds[i] = publishes(c.words, c.wordDyn)
+		switch kinds[i] {
+		case pubUnknown:
+			return plan{}, uncheckable("`%s` may be a GitHub write or git push the check cannot read", c)
+		case pubGH, pubPush:
+			found = true
+		}
+	}
+	if !found {
+		return plan{}, nil
+	}
+	if line.grouped {
+		return plan{}, uncheckable("it runs a GitHub write or git push in a line with a ( ) group, a function or a case")
+	}
+	for i := range cmds {
+		if _, ok := shellKeywords[cmds[i].name()]; ok {
+			return plan{}, uncheckable("it runs a GitHub write or git push in a line with a loop, condition or { } block")
+		}
+	}
+
 	var p plan
-	for _, c := range parseShell(command, dir) {
-		args := stripPrefixes(c.args)
-		if len(args) == 0 {
+	cd := false
+	cdUnknown := ""
+	vars := shellVars{}
+	for i := range cmds {
+		c := &cmds[i]
+		if as, ok := c.assignments(); ok {
+			pc := newPubContext(cmds, i, dir, cd)
+			pc.vars = vars
+			sequential := c.sep == ";" || c.sep == "&&" || c.sep == "\n"
+			next := shellVars{}
+			maps.Copy(next, vars)
+			for _, a := range as {
+				if !a.ok {
+					continue
+				}
+				v, ok := pc.evalWord(a.value, a.exps, 0)
+				if ok && sequential {
+					next[a.name] = v
+				} else {
+					delete(next, a.name)
+				}
+			}
+			vars = next
+		}
+		switch c.name() {
+		case "cd":
+			if len(c.words) == 2 && !c.wordDyn[1] && c.words[1] != "-" && (!strings.HasPrefix(c.words[1], "~") || c.words[1] == "~" || strings.HasPrefix(c.words[1], "~/")) {
+				dir = resolvePath(dir, c.words[1])
+				cd = true
+			} else {
+				cdUnknown = c.String()
+			}
+		case "pushd", "popd":
+			cdUnknown = c.String()
+		}
+		if kinds[i] == pubNone {
 			continue
 		}
-		switch args[0] {
-		case "cd":
-			if len(args) > 1 {
-				dir = resolvePath(dir, args[1])
-			}
-		case "git":
-			if push, ok := gitPush(args, dir); ok {
-				p.pushes = append(p.pushes, push)
-			}
-		case "gh":
-			p.texts = append(p.texts, s.ghTexts(args, c, dir, repoOf)...)
+		if cdUnknown != "" {
+			return plan{}, uncheckable("`%s` runs before it, and the check cannot tell which directory that leaves", cdUnknown)
 		}
+		pc := newPubContext(cmds, i, dir, cd)
+		pc.vars = vars
+		if kinds[i] == pubPush {
+			push, err := pc.push(s.pushIsPrivate)
+			if err != nil {
+				return plan{}, err
+			}
+			p.pushes = append(p.pushes, push)
+			continue
+		}
+		texts, private, err := s.ghTexts(pc, repoOf)
+		if err != nil {
+			return plan{}, err
+		}
+		if !private {
+			p.scanLine = true
+		}
+		p.texts = append(p.texts, texts...)
 	}
-	return p
+	return p, nil
 }
 
-var envAssignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
-
-// stripPrefixes drops leading variable assignments and wrapper commands.
-func stripPrefixes(args []string) []string {
-	for len(args) > 0 {
-		switch {
-		case envAssignment.MatchString(args[0]):
-			args = args[1:]
-		case args[0] == "env" || args[0] == "command" || args[0] == "time" || args[0] == "nohup" || args[0] == "exec":
-			args = args[1:]
-		default:
-			return args
-		}
-	}
-	return args
+// pubContext is a publication with what runs before it or alongside it in
+// the same command line.
+type pubContext struct {
+	cmd  command
+	line []command
+	dir  string
+	// cd is set when a cd ran before the publication.
+	cd bool
+	// writes are the output redirections of the commands that run before
+	// the publication or alongside it, the publication's own included.
+	writes []redirTarget
+	// changer is the first command that runs before the publication or
+	// alongside it and may write a file or move a ref, or "".
+	changer string
+	// vars are the variables the line sets before the publication.
+	vars shellVars
 }
 
-// gitPush recognizes `git [global options] push ...`.
-func gitPush(args []string, dir string) (pushSpec, bool) {
-	i := 1
-	for i < len(args) && strings.HasPrefix(args[i], "-") {
-		switch args[i] {
-		case "-C":
-			if i+1 < len(args) {
-				dir = resolvePath(dir, args[i+1])
-			}
-			i += 2
-		case "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path":
-			i += 2
-		default:
-			i++
-		}
-	}
-	if i >= len(args) || args[i] != "push" {
-		return pushSpec{}, false
-	}
-	return pushSpec{
+func newPubContext(line []command, i int, dir string, cd bool) pubContext {
+	pc := pubContext{
+		cmd:  line[i],
+		line: line,
 		dir:  dir,
-		args: args[i+1:],
-	}, true
-}
-
-// ghWriteCommands are the gh subcommands that publish a title, body or comment.
-var ghWriteCommands = map[string]struct{}{
-	"pr create":     {},
-	"pr edit":       {},
-	"pr comment":    {},
-	"pr review":     {},
-	"issue create":  {},
-	"issue edit":    {},
-	"issue comment": {},
-}
-
-func (s *Scanner) ghTexts(args []string, c shellCmd, dir string, repoOf repoResolver) []publication {
-	if len(args) < 2 {
-		return nil
+		cd:   cd,
 	}
-	if args[1] == "api" {
-		return s.ghAPITexts(args[2:], c, dir, repoOf)
-	}
-	if len(args) < 3 {
-		return nil
-	}
-	name := args[1] + " " + args[2]
-	if _, ok := ghWriteCommands[name]; !ok {
-		return nil
-	}
-	var texts []publication
-	repo := ""
-	rest := args[3:]
-	for i := 0; i < len(rest); i++ {
-		flag, value, hasValue := strings.Cut(rest[i], "=")
-		if !strings.HasPrefix(flag, "--") {
-			flag, hasValue = rest[i], false
-		}
-		takeValue := func() string {
-			if hasValue {
-				return value
+	pc.writes = append(pc.writes, line[i].writes...)
+	for _, j := range alongside(line, i) {
+		all := append([]command{line[j]}, flatten(line[j], 0)...)
+		for k := range all {
+			pc.writes = append(pc.writes, all[k].writes...)
+			if pc.changer == "" && !inert(all[k]) {
+				pc.changer = all[k].String()
 			}
-			if i+1 < len(rest) {
-				i++
-				return rest[i]
-			}
-			return ""
-		}
-		switch flag {
-		case "-t", "--title":
-			texts = append(texts, publication{
-				label: "gh " + name + " title",
-				text:  takeValue(),
-			})
-		case "-b", "--body":
-			texts = append(texts, publication{
-				label: "gh " + name + " body",
-				text:  takeValue(),
-			})
-		case "-F", "--body-file":
-			if text, ok := readArgFile(takeValue(), c, dir); ok {
-				texts = append(texts, publication{
-					label: "gh " + name + " body file",
-					text:  text,
-				})
-			}
-		case "-R", "--repo":
-			repo = takeValue()
 		}
 	}
-	if repo == "" {
-		repo = repoOf(dir)
-	}
-	if s.isPrivateTarget(repo) {
-		return nil
-	}
-	return texts
+	return pc
 }
 
-// readArgFile reads a file argument; "-" is the command's stdin.
-func readArgFile(name string, c shellCmd, dir string) (string, bool) {
+// readFile reads a file a publication posts, or stdin for "-". It refuses
+// a file the same command line may write first.
+func (pc pubContext) readFile(name string) (string, error) {
 	if name == "-" {
-		if c.hasStdin {
-			return c.stdin, true
-		}
-		if c.stdinFile == "" {
-			return "", false
-		}
-		name = c.stdinFile
+		return pc.readStdin()
 	}
-	b, err := os.ReadFile(resolvePath(dir, name))
+	if pc.changer != "" {
+		return "", uncheckable("it posts %s, but `%s` runs before it or alongside it and may change that file", name, pc.changer)
+	}
+	if pc.cd && !filepath.IsAbs(name) && !strings.HasPrefix(name, "~") {
+		return "", uncheckable("it posts %s by a path relative to a directory that cd changed", name)
+	}
+	for _, w := range pc.writes {
+		if w.dynamic || filepath.Base(w.path) == filepath.Base(name) {
+			return "", uncheckable("it posts %s, which a redirection in the same command may write first", name)
+		}
+	}
+	path := resolvePath(pc.dir, name)
+	st, err := os.Stat(path)
+	if err != nil || !st.Mode().IsRegular() {
+		return "", uncheckable("it posts %s, which does not exist yet or is not a regular file", name)
+	}
+	b, err := os.ReadFile(path) //nolint:gosec // the file the command posts
 	if err != nil {
-		return "", false
+		return "", uncheckable("it posts %s, which the check cannot read: %v", name, err)
 	}
-	return string(b), true
+	return string(b), nil
+}
+
+// readStdin returns what a publication reads on stdin.
+func (pc pubContext) readStdin() (string, error) {
+	c := pc.cmd
+	sources := c.stdinSources
+	if c.pipeFrom >= 0 {
+		sources++
+	}
+	switch {
+	case sources == 0:
+		return "", uncheckable("it posts stdin, but the command gives it nothing the check can read")
+	case sources > 1:
+		return "", uncheckable("it posts stdin, which more than one pipe or redirection feeds")
+	case c.hasStdin && c.stdinDynamic:
+		return "", uncheckable("it posts a here-document that expands variables or commands; quote its delimiter (<<'EOF')")
+	case c.hasStdin:
+		return c.stdin, nil
+	case c.stdinFile != "" && c.stdinFileDynamic:
+		return "", uncheckable("it posts stdin from a file named by a variable")
+	case c.stdinFile != "":
+		return pc.readFile(c.stdinFile)
+	}
+	src := pc.line[c.pipeFrom]
+	words, ok := pc.evalWords(src, 0)
+	switch {
+	case !ok || src.stdinSources > 0 || src.pipeFrom >= 0 || len(src.assigns) > 0:
+	case src.name() == "printf" && len(words) >= 3 && words[1] == "%s":
+		return strings.Join(words[2:], ""), nil
+	case src.name() == "echo" && plainEcho(words[1:]):
+		return strings.Join(words[1:], " ") + "\n", nil
+	}
+	return "", uncheckable("it posts stdin from `%s`, whose output the check cannot work out", src)
+}
+
+// plainEcho reports whether echo prints args as they are: no option and no
+// backslash, which some shells' echo interprets.
+func plainEcho(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") || strings.Contains(a, `\`) {
+			return false
+		}
+	}
+	return true
+}
+
+// push returns the git push of a publication, refusing forms whose target
+// the check cannot work out.
+func (pc pubContext) push(isPrivate func(pushSpec) bool) (pushSpec, error) {
+	c := pc.cmd
+	if anyTrue(c.wordDyn) || anyTrue(c.assignDyn) {
+		return pushSpec{}, uncheckable("`%s` has a variable, command substitution or glob in its arguments", c)
+	}
+	if setsSensitive(c.assigns) {
+		return pushSpec{}, uncheckable("`%s` sets a variable that changes which repository git uses", c)
+	}
+	dir := pc.dir
+	i := 1
+	for ; c.words[i] != wordPush; i++ {
+		switch c.words[i] {
+		case "-C":
+			i++
+			dir = resolvePath(dir, c.words[i])
+		case "--no-pager":
+		default:
+			return pushSpec{}, uncheckable("`%s` has git options before push that the check does not follow", c)
+		}
+	}
+	spec := pushSpec{
+		dir:  dir,
+		args: c.words[i+1:],
+	}
+	// A push to a private repository is not this check's concern, even
+	// after a command that changes what it pushes.
+	if pc.changer != "" && !isPrivate(spec) {
+		return pushSpec{}, uncheckable("`%s` runs before the push or alongside it and may change what it pushes; run the push in its own call", pc.changer)
+	}
+	return spec, nil
+}
+
+// pushIsPrivate reports whether a push goes to a private Runware repository.
+func (s *Scanner) pushIsPrivate(p pushSpec) bool {
+	ctx := context.Background()
+	g := Git{
+		Dir: p.dir,
+	}
+	remote := ""
+	for i := 0; i < len(p.args) && remote == ""; i++ {
+		a := p.args[i]
+		switch {
+		case a == "-o" || a == "--push-option" || a == "--repo" || a == "--receive-pack" || a == "--exec":
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			remote = a
+		}
+	}
+	if remote == "" {
+		remote = "origin"
+		if current := g.CurrentBranch(ctx); current != "" {
+			if out, err := g.run(ctx, "config", "branch."+current+".remote"); err == nil && strings.TrimSpace(out) != "" {
+				remote = strings.TrimSpace(out)
+			}
+		}
+	}
+	return s.remoteIsPrivate(ctx, g, remote)
+}
+
+// ghTexts returns what a gh write publishes, and whether its destination is
+// a private Runware repository, where it publishes nothing to check.
+func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bool, error) {
+	c := pc.cmd
+	if anyTrue(c.assignDyn) {
+		return nil, false, uncheckable("`%s` sets a variable from an expansion", c)
+	}
+	words, ok := pc.evalWords(c, 0)
+	if !ok {
+		return nil, false, uncheckable("`%s` uses a variable set outside the command, a glob, or a substitution the check cannot work out", c)
+	}
+	c.words = words
+	c.wordDyn = make([]bool, len(words))
+	pc.cmd = c
+	repos := pc.defaultRepos(repoOf)
+	group := parseFlags(c.words[1:], c.wordDyn[1:], []flagSpec{flagRepo}).pos[0]
+	if group == wordAPI {
+		return s.ghAPITexts(pc, repos)
+	}
+	if len(parseFlags(c.words[1:], c.wordDyn[1:], []flagSpec{flagRepo}).pos) < 2 {
+		return nil, false, uncheckable("`%s` is not a gh command the check knows", c)
+	}
+	p := parseFlags(c.words[1:], c.wordDyn[1:], []flagSpec{flagRepo})
+	name := p.pos[0] + " " + p.pos[1]
+	p = parseFlags(c.words[1:], c.wordDyn[1:], append([]flagSpec{flagRepo}, ghWriteSpecs[name]...))
+	var texts []publication
+	for _, f := range p.flags {
+		label := "gh " + name + " " + strings.ReplaceAll(f.spec.long, "-", " ")
+		switch f.spec.kind {
+		case flagText:
+			texts = append(texts, publication{
+				label: label,
+				text:  f.value,
+			})
+		case flagFile:
+			text, err := pc.readFile(f.value)
+			if err != nil {
+				return nil, false, err
+			}
+			texts = append(texts, publication{
+				label: label,
+				text:  text,
+			})
+		case flagValue:
+			if f.spec.long == flagRepo.long {
+				repos = []string{f.value}
+			}
+		}
+	}
+	// A pull request or issue URL names the destination, whatever -R says.
+	// Only the commands that take one: create has no positional selector.
+	if p.pos[1] != "create" && p.pos[0] != wordRelease {
+		args := p.pos[2:]
+		if len(args) > 0 {
+			var dests []string
+			for _, a := range args {
+				if r := ghURLRepo(a); r != "" {
+					dests = append(dests, r)
+				} else {
+					dests = append(dests, repos...)
+				}
+			}
+			repos = dests
+		}
+	}
+	if s.allPrivate(repos) {
+		return nil, true, nil
+	}
+	return texts, false, nil
+}
+
+// defaultRepos returns where a gh command without -R or a URL posts: the
+// GH_REPO it is given, or else the repository of its directory and any
+// GH_REPO of the environment. "" stands for one the check cannot tell.
+func (pc pubContext) defaultRepos(repoOf repoResolver) []string {
+	for _, a := range pc.cmd.assigns {
+		if v, ok := strings.CutPrefix(a, "GH_REPO="); ok {
+			return []string{v}
+		}
+	}
+	repos := []string{repoOf(pc.dir)}
+	if v := os.Getenv("GH_REPO"); v != "" {
+		repos = append(repos, v)
+	}
+	for i := range pc.line {
+		if strings.Contains(strings.Join(pc.line[i].args, " "), "GH_REPO") {
+			repos = append(repos, "")
+		}
+	}
+	return repos
+}
+
+// allPrivate reports whether every one of repos is a private Runware
+// repository. An unknown one ("") counts as public.
+func (s *Scanner) allPrivate(repos []string) bool {
+	for _, r := range repos {
+		if !s.isPrivateTarget(r) {
+			return false
+		}
+	}
+	return len(repos) > 0
 }
 
 // isPrivateTarget reports whether owner/name is a Runware repository that is
@@ -227,68 +447,56 @@ type apiField struct {
 
 var apiRepoPath = regexp.MustCompile(`^/?repos/([^/]+)/([^/]+)`)
 
-// apiTextFields are the fields of a REST call that publish text.
+// apiTextFields are the fields of a REST call that publish text: a comment,
+// review, issue or pull request body and title, and the commit title and
+// message of a merge or of a file change.
 var apiTextFields = map[string]struct{}{
-	"body":  {},
-	"title": {},
+	"body":           {},
+	"commit_message": {},
+	"commit_title":   {},
+	"message":        {},
+	"title":          {},
 }
 
-func (s *Scanner) ghAPITexts(args []string, c shellCmd, dir string, repoOf repoResolver) []publication {
-	var texts []publication
+func (s *Scanner) ghAPITexts(pc pubContext, repos []string) ([]publication, bool, error) {
+	c := pc.cmd
+	p := parseFlags(c.words[1:], c.wordDyn[1:], apiSpecs)
 	endpoint := ""
-	graphqlMutation := false
+	if len(p.pos) > 1 {
+		endpoint = p.pos[1]
+	}
 	var fields []apiField
 	var inputs []string
-	for i := 0; i < len(args); i++ {
-		flag, value, hasValue := strings.Cut(args[i], "=")
-		if !strings.HasPrefix(flag, "--") {
-			flag, hasValue = args[i], false
-		}
-		takeValue := func() string {
-			if hasValue {
-				return value
-			}
-			if i+1 < len(args) {
-				i++
-				return args[i]
-			}
-			return ""
-		}
-		switch flag {
-		case "-f", "--raw-field":
-			k, v, _ := strings.Cut(takeValue(), "=")
-			fields = append(fields, apiField{
-				key:   k,
-				value: v,
-			})
-		case "-F", "--field":
-			k, v, _ := strings.Cut(takeValue(), "=")
-			if file, ok := strings.CutPrefix(v, "@"); ok {
-				if text, ok := readArgFile(file, c, dir); ok {
-					v = text
+	for _, f := range p.flags {
+		switch f.spec.long {
+		case "raw-field", "field":
+			k, v, _ := strings.Cut(f.value, "=")
+			if file, ok := strings.CutPrefix(v, "@"); ok && f.spec.long == "field" {
+				text, err := pc.readFile(file)
+				if err != nil {
+					return nil, false, err
 				}
+				v = text
 			}
 			fields = append(fields, apiField{
 				key:   k,
 				value: v,
 			})
-		case "--input":
-			if text, ok := readArgFile(takeValue(), c, dir); ok {
-				inputs = append(inputs, text)
+		case "input":
+			text, err := pc.readFile(f.value)
+			if err != nil {
+				return nil, false, err
 			}
-		case "-X", "--method", "-H", "--header", "-q", "--jq", "-t", "--template", "--hostname", "-p", "--preview", "--cache":
-			takeValue()
-		default:
-			if !strings.HasPrefix(args[i], "-") && endpoint == "" {
-				endpoint = args[i]
-			}
+			inputs = append(inputs, text)
 		}
 	}
+	graphqlMutation := false
 	for _, f := range fields {
 		if f.key == "query" && strings.Contains(f.value, "mutation") {
 			graphqlMutation = true
 		}
 	}
+	var texts []publication
 	for _, text := range inputs {
 		texts = append(texts, inputTexts(text, endpoint)...)
 	}
@@ -301,19 +509,17 @@ func (s *Scanner) ghAPITexts(args []string, c shellCmd, dir string, repoOf repoR
 			})
 		}
 	}
-	if len(texts) == 0 {
-		return nil
-	}
 	if m := apiRepoPath.FindStringSubmatch(endpoint); m != nil {
 		repo := m[1] + "/" + m[2]
 		if strings.Contains(repo, "{") {
-			repo = repoOf(dir)
-		}
-		if s.isPrivateTarget(repo) {
-			return nil
+			if s.allPrivate(repos) {
+				return nil, true, nil
+			}
+		} else if s.isPrivateTarget(repo) {
+			return nil, true, nil
 		}
 	}
-	return texts
+	return texts, false, nil
 }
 
 // fieldLeaf returns the last key of a gh api field name: "body" for
@@ -427,13 +633,18 @@ func (s *Scanner) pushTargets(ctx context.Context, p pushSpec) (pushTargets, err
 	var positional []string
 	all := false
 	allTags := false
+	followTags := false
 	for i := 0; i < len(p.args); i++ {
 		a := p.args[i]
 		switch {
 		case a == "--all" || a == "--branches" || a == "--mirror":
 			all = true
-		case a == "--tags" || a == "--follow-tags":
+		case a == "--tags":
 			allTags = true
+		case a == "--follow-tags":
+			followTags = true
+		case a == "--no-follow-tags":
+			followTags = false
 		case a == "-o" || a == "--push-option" || a == "--repo" || a == "--receive-pack" || a == "--exec":
 			i++
 		case strings.HasPrefix(a, "-"):
@@ -455,7 +666,7 @@ func (s *Scanner) pushTargets(ctx context.Context, p pushSpec) (pushTargets, err
 	if len(positional) > 0 {
 		t.remote = positional[0]
 		for i := 1; i < len(positional); i++ {
-			if positional[i] == "tag" && i+1 < len(positional) {
+			if positional[i] == wordTag && i+1 < len(positional) {
 				i++
 				refspecs = append(refspecs, "refs/tags/"+positional[i])
 				continue
@@ -473,11 +684,14 @@ func (s *Scanner) pushTargets(ctx context.Context, p pushSpec) (pushTargets, err
 		}
 		refspecs = strings.Fields(out)
 	}
-	// git push --tags alone pushes only the tags; --follow-tags also pushes
-	// the current branch.
-	onlyTags := allTags && slices.Contains(p.args, "--tags")
-	if len(refspecs) == 0 && current != "" && !onlyTags {
+	// git push --tags alone pushes only the tags.
+	if len(refspecs) == 0 && current != "" && !allTags {
 		refspecs = []string{current}
+	}
+	if !slices.Contains(p.args, "--no-follow-tags") {
+		if out, err := g.run(ctx, "config", "--bool", "push.followTags"); err == nil && strings.TrimSpace(out) == "true" {
+			followTags = true
+		}
 	}
 	if allTags {
 		out, err := g.run(ctx, "for-each-ref", "--format=%(refname)", "refs/tags/")
@@ -515,25 +729,60 @@ func (s *Scanner) pushTargets(ctx context.Context, p pushSpec) (pushTargets, err
 		if err != nil {
 			continue // not a commit: git push will say
 		}
-		var base string
-		if tracking, err := g.revParse(ctx, "refs/remotes/"+t.remote+"/"+dst); err == nil {
-			base, err = g.MergeBase(ctx, tracking, head)
-			if err != nil {
-				return pushTargets{}, err
-			}
-		} else {
-			base, err = g.DefaultBase(ctx, t.remote, head)
-			if err != nil {
-				return pushTargets{}, err
-			}
+		tracking, _ := g.revParse(ctx, "refs/remotes/"+t.remote+"/"+dst)
+		base, err := g.PushBase(ctx, t.remote, tracking, head)
+		if err != nil {
+			return pushTargets{}, err
 		}
 		t.ranges = append(t.ranges, Range{
 			Base:   base,
 			Head:   head,
 			Branch: dst,
+			Remote: t.remote,
 		})
 	}
+	if followTags && !allTags {
+		tags, err := g.followTags(ctx, t.ranges)
+		if err != nil {
+			return pushTargets{}, err
+		}
+		for _, tag := range tags {
+			if !slices.ContainsFunc(t.tags, func(x pushTag) bool { return x.name == tag.name }) {
+				t.tags = append(t.tags, tag)
+			}
+		}
+	}
 	return t, nil
+}
+
+// followTags returns the tags git push --follow-tags adds to a push: the
+// annotated tags that point at a commit reachable from a pushed branch.
+// Lightweight tags, and tags on commits that are not pushed, stay behind.
+func (g Git) followTags(ctx context.Context, ranges []Range) ([]pushTag, error) {
+	var out []pushTag
+	seen := map[string]struct{}{}
+	for _, r := range ranges {
+		list, err := g.run(ctx, "for-each-ref", "--merged="+r.Head, "--format=%(objecttype) %(objectname) %(refname)", "refs/tags/")
+		if err != nil {
+			return nil, err
+		}
+		for l := range strings.SplitSeq(strings.TrimSpace(list), "\n") {
+			fields := strings.Fields(l)
+			if len(fields) != 3 || fields[0] != wordTag {
+				continue
+			}
+			name := strings.TrimPrefix(fields[2], "refs/tags/")
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, pushTag{
+				name:   name,
+				object: fields[1],
+			})
+		}
+	}
+	return out, nil
 }
 
 // tagName returns the tag a refspec src[:dst] pushes, if it pushes one: the
@@ -578,8 +827,19 @@ func (s *Scanner) runHook(ctx context.Context, payload []byte, repoOf repoResolv
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
-	p := s.planCommand(bash.Command, dir, repoOf)
+	p, err := s.planCommand(bash.Command, dir, repoOf)
+	if err != nil {
+		// A line the check cannot read is blocked either way; lead with
+		// what its text shows when that is a finding.
+		if f := s.ScanText("command line", bash.Command); len(f) > 0 {
+			return f, nil
+		}
+		return nil, err
+	}
 	var out []Finding
+	if p.scanLine {
+		out = append(out, s.ScanText("command line", bash.Command)...)
+	}
 	for _, t := range p.texts {
 		out = append(out, s.ScanText(t.label, t.text)...)
 	}

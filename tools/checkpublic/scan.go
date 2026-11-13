@@ -208,6 +208,50 @@ type Range struct {
 	Base   string
 	Head   string
 	Branch string
+	// Remote, when set, names the remote a push goes to: commits it has
+	// already (under refs/remotes/<Remote>/) are not scanned again.
+	Remote string
+}
+
+// PushBase returns the base of what a push of head publishes. remoteSHA is
+// what the remote branch points to, "" for a new branch. The base is the
+// merge-base with that commit, or with remote/main when that is newer: after
+// a rebase onto a newer main and a force-push, the old fork point would
+// bring in main's commits that others wrote.
+func (g Git) PushBase(ctx context.Context, remote, remoteSHA, head string) (string, error) {
+	base := ""
+	if remoteSHA != "" {
+		mb, err := g.MergeBase(ctx, remoteSHA, head)
+		if err != nil {
+			return "", err
+		}
+		base = mb
+	}
+	mainBase, err := g.DefaultBase(ctx, remote, head)
+	switch {
+	case err != nil && base == "":
+		return "", err
+	case err != nil:
+		return base, nil //nolint:nilerr // without remote/main, the remote branch alone gives the base
+	case base == "" || g.isAncestor(ctx, base, mainBase):
+		return mainBase, nil
+	}
+	return base, nil
+}
+
+// isAncestor reports whether commit a is an ancestor of commit b.
+func (g Git) isAncestor(ctx context.Context, a, b string) bool {
+	_, err := g.run(ctx, "merge-base", "--is-ancestor", a, b)
+	return err == nil
+}
+
+// notOnRemote returns the git log arguments that leave out the commits that
+// r.Remote already has.
+func (r Range) notOnRemote() []string {
+	if r.Remote == "" || strings.ContainsAny(r.Remote, ":/") {
+		return nil
+	}
+	return []string{"--not", "--remotes=" + r.Remote}
 }
 
 // ScanRange scans what a range would publish: the added lines of the range's
@@ -230,7 +274,7 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		out = append(out, f)
 	}
 
-	patches, err := g.run(ctx, "log", "--no-merges", "-p", "--no-color", "--no-ext-diff", "--no-renames", "-U0", "--format=%x00commit %H", r.Base+".."+r.Head)
+	patches, err := g.run(ctx, append([]string{"log", "--no-merges", "-p", "--no-color", "--no-ext-diff", "--no-renames", "-U0", "--format=%x00commit %H", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +287,7 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		out = append(out, f)
 	}
 
-	msgs, err := g.run(ctx, "log", "--format=%H%x1f%B%x1e", r.Base+".."+r.Head)
+	msgs, err := g.run(ctx, append([]string{"log", "--format=%H%x1f%B%x1e", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -275,8 +319,8 @@ func fileKey(f Finding) string {
 // merge-base with main; a tag on a commit remote already has adds none.
 func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object string) ([]Finding, error) {
 	out := s.ScanText("tag name", name)
-	if typ, err := g.run(ctx, "cat-file", "-t", object); err == nil && strings.TrimSpace(typ) == "tag" {
-		raw, err := g.run(ctx, "cat-file", "tag", object)
+	if typ, err := g.run(ctx, "cat-file", "-t", object); err == nil && strings.TrimSpace(typ) == wordTag {
+		raw, err := g.run(ctx, "cat-file", wordTag, object)
 		if err != nil {
 			return nil, err
 		}

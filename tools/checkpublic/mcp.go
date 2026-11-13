@@ -7,8 +7,9 @@ import (
 )
 
 // githubWriteVerbs and githubWriteObjects are the words of an MCP tool name
-// that publishes a title, body or comment on GitHub: create_pull_request,
-// add_issue_comment, pull_request_review_write, add_review_to_pr and so on.
+// that publishes a title, body, comment or file on GitHub:
+// create_pull_request, add_issue_comment, pull_request_review_write,
+// add_review_to_pr, push_files, create_or_update_file and so on.
 // A tool needs one word from each set.
 var (
 	githubWriteVerbs = map[string]struct{}{
@@ -18,15 +19,19 @@ var (
 		"edit":    {},
 		"merge":   {},
 		"post":    {},
+		wordPush:  {},
 		"reply":   {},
 		"submit":  {},
 		"update":  {},
 		"write":   {},
 	}
 	githubWriteObjects = map[string]struct{}{
+		"branch":   {},
 		"comment":  {},
 		"comments": {},
-		"issue":    {},
+		"file":     {},
+		wordFiles:  {},
+		wordIssue:  {},
 		"pr":       {},
 		"pull":     {},
 		"review":   {},
@@ -40,6 +45,7 @@ var toolTextFields = map[string]struct{}{
 	"comment":        {},
 	"commit_message": {},
 	"commit_title":   {},
+	"content":        {},
 	"message":        {},
 	"review":         {},
 	"title":          {},

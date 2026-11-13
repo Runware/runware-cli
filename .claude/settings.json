@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "^mcp__.*github",
+        "matcher": "^mcp__.*[Gg]it[Hh]ub",
         "hooks": [
           {
             "type": "command",
