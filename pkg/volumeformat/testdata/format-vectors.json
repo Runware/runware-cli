@@ -1,0 +1,217 @@
+{
+  "about": "Golden vectors for the Volumes encrypted file format and key protocol. Bytes are lowercase hex, ids are UUID strings and attempt ids 32 hex characters (16 bytes in every derivation and associated data, UUIDs in RFC 9562 order), integers are decimal. Keys, ids and secrets here are synthetic test values, never real keys.",
+  "constants": {
+    "kemIdentifier": "hpke-kem-0x647a",
+    "maxParts": 10000,
+    "minSegmentsPerPart": 64,
+    "saltBytes": 16,
+    "segmentBytes": 1048576,
+    "segmentPlaintextBytes": 1048560
+  },
+  "files": [
+    {
+      "attemptId": "b536997aaeeb74d191e6a3a7e95c9acb",
+      "crc64nvme": "0e212d49fc3ce1f0",
+      "dataKey": "0a27bb3f518f908a9475850427b41b7b1bc2587b0e78d6a09e7a13f8f1120e03",
+      "layout": {
+        "ciphertextBytes": 32,
+        "partCount": 1,
+        "partSizeBytes": 67108880,
+        "segments": 1,
+        "segmentsPerPart": 64
+      },
+      "name": "empty",
+      "parts": [
+        {
+          "ciphertext": "b579d5175dee738bc1aeb5e13327adf5838e041a28e087ec84bfc137668983d0",
+          "length": 32,
+          "partNumber": 1,
+          "salt": "b579d5175dee738bc1aeb5e13327adf5",
+          "sha256": "59d63679af6156aecd815157f9d27d878c39ad5b90cf63ef675f73ef741047da"
+        }
+      ],
+      "plaintext": {
+        "byte": "plaintext[j] = (j + 0) mod 251",
+        "size": 0
+      },
+      "sealedKey": "fe5024f04f090973d9187b9ae282664d20ce642200057327a712e15757cfa54d53679a1366a4ef87a2d088f1a165ae5840d87a110566a15ec14c16c4",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "attemptId": "2981bc975d7fd3611b99d588cd19eb5b",
+      "crc64nvme": "d534c54de7ce2c25",
+      "dataKey": "5aae83245e29c47780945ba201eb3e0345e4d64f040b89a630ff5500249411b5",
+      "layout": {
+        "ciphertextBytes": 45,
+        "partCount": 1,
+        "partSizeBytes": 67108880,
+        "segments": 1,
+        "segmentsPerPart": 64
+      },
+      "name": "tiny",
+      "parts": [
+        {
+          "ciphertext": "8fa556d0d32e21e4382e99b469d86830248e4a4f00a3d03db508e2ab3fdd9a298322fba881768a5be4d0280d68",
+          "length": 45,
+          "partNumber": 1,
+          "salt": "8fa556d0d32e21e4382e99b469d86830",
+          "sha256": "6e55071373c7fa97a2ca0764ce9f0ec33c3baf22758fa705c8baee347535fac6"
+        }
+      ],
+      "plaintext": {
+        "byte": "plaintext[j] = (j + 1) mod 251",
+        "size": 13
+      },
+      "sealedKey": "659b2ed53a1fe7c8a3fc73c17a91049b1641c88dcd60ac7ffb07e87891be5433e986b729d7cb004cef65dab794680804a4e6b5f471cd4ebca6a9db54",
+      "sha256": "8b08f4bd38a7e3f5f0d30e323bd574f3e1fbf7cf2d1ca17b3dc22f3d7d24e065"
+    },
+    {
+      "attemptId": "a3a9955e89b82c4da999d36ec5c55258",
+      "crc64nvme": "d14e06a7bf954c57",
+      "dataKey": "44ff89558e0d3171b09e91fabab16ab9c844f449207e286e125f198581493ae9",
+      "layout": {
+        "ciphertextBytes": 1049608,
+        "partCount": 1,
+        "partSizeBytes": 67108880,
+        "segments": 2,
+        "segmentsPerPart": 64
+      },
+      "name": "two-segments",
+      "parts": [
+        {
+          "length": 1049608,
+          "partNumber": 1,
+          "salt": "2efb7bbca5c9602d70278dba2e0a7a4a",
+          "sha256": "34316e6771b8c671035ea36ccbfbed557ffa6ce419822452a6f92c6bb536700f"
+        }
+      ],
+      "plaintext": {
+        "byte": "plaintext[j] = (j + 2) mod 251",
+        "size": 1049560
+      },
+      "sealedKey": "d924bc9901753b8813311717f64f57c49d2eef2ef55869f2088ebc246b1cafee08ef31e011945e0203532a095dcc7e06a50b0f6adc25fede3662c7c4",
+      "sha256": "74e41cd8c3f54e870fdbd0b42ea9e8d35df266e0ac91c1ee877c6048c3d86fd5"
+    },
+    {
+      "attemptId": "86eb29c297f994591f39b7293a75e965",
+      "crc64nvme": "4495aca24d7fa40f",
+      "dataKey": "9cb52efebc283635bd52b6100f901b152f00bb5df7ad3486c38d9d9c0c5b0fc8",
+      "layout": {
+        "ciphertextBytes": 67108917,
+        "partCount": 2,
+        "partSizeBytes": 67108880,
+        "segments": 65,
+        "segmentsPerPart": 64
+      },
+      "name": "two-parts",
+      "parts": [
+        {
+          "length": 67108880,
+          "partNumber": 1,
+          "salt": "ee81527966cc953f0dda0abc8b27f824",
+          "sha256": "da6dd16b95adee870cf8464002d3e5c47abf14c57e6968b35017a2e9ab66021c"
+        },
+        {
+          "ciphertext": "4e597c158d46ce6cba4d5833616ab0bd83192c5841b4f33cda2f4048baec97e0fe8f656e3b",
+          "length": 37,
+          "partNumber": 2,
+          "salt": "4e597c158d46ce6cba4d5833616ab0bd",
+          "sha256": "53e85f7556b67fa55ff4556f8297ef756c49812f68c27942220ae70be099438f"
+        }
+      ],
+      "plaintext": {
+        "byte": "plaintext[j] = (j + 3) mod 251",
+        "size": 67107845
+      },
+      "sealedKey": "c49298a29c974b2e754bc9a9b15ac30d60d99c68468b89579a695db0d5ad6278a32d7635f3fbcd9df2aedaa3b54f6222f499caba3351e7c731dfcf25",
+      "sha256": "767e7305af369473e9c0787846e44992997a6c8b71d175e9995089e02e61466f"
+    }
+  ],
+  "keyPair": {
+    "deriveKeyPairIkm": "8019c0d3187ea0cc831d2dac2d8a8ea7337444e78eb47f293934b2e61f3d15f4",
+    "fakeKms": {
+      "about": "Stands in for the KMS encrypt and decrypt calls in tests: AES-256-GCM under filesKey, output nonce || ciphertext || tag, associated data as below.",
+      "associatedData": "0000002372756e776172652d766f6c756d65732d76312f6b65792d706169722d70726976617465000000100b9d2c6e5a1f4c3e9e7a2f4b8d1c6a3500000010c4a1f8e23b6d4e9a8c571d2f0e9b6a73",
+      "encryptedPrivateKey": "529cf44d00eec36dcf46d1b2c105e3020c2e6a5cea4e2e9c7abfc0738af0fd6fca98ecc56b02063683e0e08c295174766fe300f36bce26d4acf3e8e0",
+      "filesKey": "718616106e801646fd409768a396464f9d853680e2bcd5a4de1592a0732c5f96"
+    },
+    "keyPairId": "c4a1f8e2-3b6d-4e9a-8c57-1d2f0e9b6a73",
+    "organization": "0b9d2c6e-5a1f-4c3e-9e7a-2f4b8d1c6a35",
+    "privateKey": "b89e20a9df0e508e795c2c11b1555726fc367d06a75744c174e4b2bcd153e67f",
+    "publicKey": "302b262481661d7386d12b16f0db9222fb37d75242b3834459dc1310fabbf6fb918b006b6026820ce2a4902ab0cf7447ebdacae5c7a8de083fe245bd5d3b20b5783359b0961b004aba83887228ad64973abc119a2a83bc57914b26a54035f9a4f97a005fbc922039390ad44df8958eb6c00532d0b765036db7ac185ac361c5ab41cb9638db9b2e50132307a3b17c85cbf9d71101a758c5b7a563258e4682a194bc262a844d2ca30f0bc666ef2a0f1234568a76680c734a4b2135d8f9539e87b57772bedf585aed103c315626450c0f24705592025ebfb0a439ab69e2614c8b199563c435fb3a6d91648125992ebe860f9a1a5f3bc9b4437b1bf6cb06ca4ac499c2b52a9c5e2a87ce018203ddac33c87c1161f841013115a8872e0d697fe71482bd61842c5503f4682de5d9b4e7b38940f70f5aa748bafb71b02cce77b113f78a28d242b8d9715bb025a4004b07ef902f568335d6c09c0068a4f980a1a5ca66f8578f621c2c2ff22405479f2c11bc95442524e310f7d14fd4a4ced074adf0f6c166829b6230cdd7894b99139db42acedabace1afb558de1ce11896b78f1628462aece341d8c9c120f01a6d2a88891f97f4566cae9a9560c52586183711cf67951ec91567b818e062c41e9602b2198eab29a1ab631e72c8d9124cacd4663e670b0cc485bf19b7e6bd432cd825330986856d12c52a27a3b3502fd281449c9c2394abf10476ce6813865b67307aac10dfa2eba1193d28b69e4cb6b98aacaef967350b01d662b3fbb4706dddc6202426b77851104375ec6f65509f25d6f077090f920d3535ed8e00416064446d0cd7cf1305de951fa22ae31079b9639175df66f196b4e2f9a72f97b542eccc5114c76a3fab514a8a107e045d5402c557485576466f33b0023a9114ca81441e16b0ab0207214705b6a12e57081844630f8807d26fb523c6cc7c0d04fe560675e2492874173b906bf73d50c21920ef063b03fbaa8fec8c5f5c55436fa1f745a209d960bcc020ffc2027d42c31e5c915b5ea713627052bf4490f34985243439a6a885e704184cc525c7ba388754acfd2894c7c5ffc5048da494166a5a29ae037cc81444ae95811e7806066a7e543239ad0596780505e4641af6365eed37bf4355601bc54f490b220d2818f4923cf232cecc150de663837b30a26a93e3b331d33393468fabb3362575b95a609aa52ca058901e2bc9646a5b6c20c5c2575e76597c37b4e33e1312d70c62eec748e8bc402162a4680a827c71c8e140b8d69a89d599056b9a23d151504eabca3927910d9ae1bdb28d64c2a793812f288a8018c7b245cca66d673c26c994fdbb0317221662bb3c0b8bca5a3405be7ae41e58bfb395e58527311ab4072978829e64c5446082ba925c16cba59d7a2e17bbd4ad4207c400b44b03d5da608d812a93d7c5152d10c7c0bcb1bbcb90c9937a12badc45291fc37262fcb7cb23a8a67811109cba660100719aa66f1967f9ef1345162877533bcfcb167bbf36138557e689452ae50ac8767b7e37b5a8b0901881691e044c86dc36683f149297299562ac35d765994366a7a1090f3d846f9684f7c17cd57d067d85a07559bbe001421c3098c2bfb4d910230c781cbc2787469323717f9b788bd5c365062ac9142e3a46f0e9788b7aaf43630b4f65b252502022d8603b738d3161406a4055390bf8c65e03b0ab620f8be960b75980a851214"
+  },
+  "negatives": [
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "two-segments part 1: flip the lowest bit of byte 100",
+      "name": "flip-bit"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "two-segments part 1: salt, then segment 2, then segment 1 (lengths kept by padding is not possible, so the length check or authentication fails)",
+      "name": "swap-segments"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "two-segments part 1: drop the last 16 bytes",
+      "name": "truncate"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "two-segments part 1: append 16 zero bytes",
+      "name": "extend"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "two-parts: open part 1's bytes as part 2 (wrong per-part key and final flag)",
+      "name": "part-number"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "two-segments part 1: replace the salt with the tiny file's salt",
+      "name": "replace-salt"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "two-segments part 1: open with the tiny file's attempt id",
+      "name": "wrong-attempt"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "unwrap the tiny file's sealed key with the two-segments file's identity",
+      "name": "swap-sealed-key"
+    },
+    {
+      "expect": "fails, no plaintext",
+      "mutation": "unwrap the tiny file's sealed key with session id = keyPairId",
+      "name": "wrong-session"
+    }
+  ],
+  "session": {
+    "encapsulation": "08e98f1c4bdb53f9e21fe25a60c7145d80ec995776ebc795eeeabf9dd3a4f2641cb37c69e69c62a989cf65bf89942c35c0d20230197ad27ea76a3d474c6a9ff40be48d6d188b0c6e72c843effe6406063067a0a9deed993610d87a9e1c38097e3e5f2aa124f397e6cd72f9d22c211113561b313996d6a32cd8e6c8d93ba7e1a55a3dfb80e47d2cd48a223b07ffefadead08aee640896a86d51b2f7168cd8bf0c3fee0c2ca078fe8f4e7654b077b4ef78d1100f1ea51900a5ea9a397a8cf8a40fd04138d6df4786a0cb12fed82e0c68d5580c31768188604190a384be969fe5379dbf72c4d125e5d85f538109dea39fa9800b1c347371dc7b7ab40c7e6beaffd815c3bcf8afa819cef153915e46d7e990db68f8d2f3ff8113341e6cad08ab570bdc4ff6b103a41907956358f8859c9ea605a9ce13239e74509301cb43e7ab77cbde00b03cf3d9efdc1baf341004cacaee9b5619c707ec4c7482e7ff38e624d5f35f259d579528336e0270793021a5914cd7b603ef32822c5d19de530dd55b14d9673b287af47bfe6fd6333b3e9ea8a6091c66b58af90b9abfeeada474596521d5b879106fcf12ac396ae75a0138b54f7ac24f5f6ccaa19a6b28c721acea5dad6c647d3fbe0cad0c250ebe9fbdc0eeacfabacfbeca1c7b7a10a273e4282d815b288550cb2d9237bf2d7cf1bb478366a7af7257fba15d121411d9d37c9d5de4738448216d7cbbd82b5c6c3af02366ed0b0fa91dba0baed115ba23fa12731c295fd1f2dd55deadbd1572f4183095c0091c21396548a7a9ff6bde4e85684a00477cb8be720bae801e89dd67b54ed94dc3f0736090aa5d2c55d00787bacb0487a76f136af966dadcd5e312da160bd3076fd416614255dfc329659161a25ce76cd95d3e3a5ef9df64b251eac667f929753a326eca3f082dc71209f4f1596588fb360af78bdbd4391c0b286b04abfea4fb6805d34d4a09a129f5735a3e24bb5b3d48abb84b2025de03a0fa9e4272f7f61d2cc477542b0b3215341aff079096080988e05157af0144921af3ffba7ed0eb25316e2b0150801e6057bbc8e6d2482fb70014249728752622dfc8162b9f0dc07b3d5f9f446a612e0776d016c36dcaa105ecbe3447de89e9afce212e14a31bfc46d9333598dd126967b102e79673094fe6016125c38e6c1d5bf796557dc3be46b8382fc23d5f09f1865be67a25f371f690a50e6cf4b7cb85bc6dc60a3235c4b6622d1b614a9ac32b71764e4cbfa3c52b31565995f933f3df995ef04727efd22004178eb7a5e7fe7fd8ad24bf66d0812d8e94af3dd8cf1479dca8c183a4b4527ad8200d772a027776eed02efd4cf35c61776b239cb39f40e4cc58ee2f4aa51ee2f7f612cbc9d062fc1f59699038c4fc1b780f7f1ca06e98ce6ac16772387bfc351f7193d159d74978d6dbd9fba67e3c78e5c462c21cedb3f74a2b5a9d91a528714d19fc5349268f0c60b2fc1deb522518a7719cbfb5fae173399ff7c45f2cf188fbe6678b9e66099125d4041ca2957dafbb9444219079aaa80f889c2f9603e6ea0cc07de7250f64ccc82c0b4f9279138a483fe830",
+    "keyPairId": "c4a1f8e2-3b6d-4e9a-8c57-1d2f0e9b6a73",
+    "organization": "0b9d2c6e-5a1f-4c3e-9e7a-2f4b8d1c6a35",
+    "sessionKey": "45757265e9b8bd0493247d5ecfa2b4bcfaa8e1f7e9ab103960c940dc589ac3ad",
+    "uploadId": "7f3e9b1c-2d4a-4c8e-b5f6-a0e1d2c3b4a5"
+  },
+  "statement": {
+    "encoded": "0000002572756e776172652d766f6c756d65732d76312f6b65792d706169722d73746174656d656e740000000f68706b652d6b656d2d3078363437610000000400000001000000100b9d2c6e5a1f4c3e9e7a2f4b8d1c6a3500000010c4a1f8e23b6d4e9a8c571d2f0e9b6a7300000008000000000000000100000008000000006af3b00000000008000000006b7ccc00000004c0302b262481661d7386d12b16f0db9222fb37d75242b3834459dc1310fabbf6fb918b006b6026820ce2a4902ab0cf7447ebdacae5c7a8de083fe245bd5d3b20b5783359b0961b004aba83887228ad64973abc119a2a83bc57914b26a54035f9a4f97a005fbc922039390ad44df8958eb6c00532d0b765036db7ac185ac361c5ab41cb9638db9b2e50132307a3b17c85cbf9d71101a758c5b7a563258e4682a194bc262a844d2ca30f0bc666ef2a0f1234568a76680c734a4b2135d8f9539e87b57772bedf585aed103c315626450c0f24705592025ebfb0a439ab69e2614c8b199563c435fb3a6d91648125992ebe860f9a1a5f3bc9b4437b1bf6cb06ca4ac499c2b52a9c5e2a87ce018203ddac33c87c1161f841013115a8872e0d697fe71482bd61842c5503f4682de5d9b4e7b38940f70f5aa748bafb71b02cce77b113f78a28d242b8d9715bb025a4004b07ef902f568335d6c09c0068a4f980a1a5ca66f8578f621c2c2ff22405479f2c11bc95442524e310f7d14fd4a4ced074adf0f6c166829b6230cdd7894b99139db42acedabace1afb558de1ce11896b78f1628462aece341d8c9c120f01a6d2a88891f97f4566cae9a9560c52586183711cf67951ec91567b818e062c41e9602b2198eab29a1ab631e72c8d9124cacd4663e670b0cc485bf19b7e6bd432cd825330986856d12c52a27a3b3502fd281449c9c2394abf10476ce6813865b67307aac10dfa2eba1193d28b69e4cb6b98aacaef967350b01d662b3fbb4706dddc6202426b77851104375ec6f65509f25d6f077090f920d3535ed8e00416064446d0cd7cf1305de951fa22ae31079b9639175df66f196b4e2f9a72f97b542eccc5114c76a3fab514a8a107e045d5402c557485576466f33b0023a9114ca81441e16b0ab0207214705b6a12e57081844630f8807d26fb523c6cc7c0d04fe560675e2492874173b906bf73d50c21920ef063b03fbaa8fec8c5f5c55436fa1f745a209d960bcc020ffc2027d42c31e5c915b5ea713627052bf4490f34985243439a6a885e704184cc525c7ba388754acfd2894c7c5ffc5048da494166a5a29ae037cc81444ae95811e7806066a7e543239ad0596780505e4641af6365eed37bf4355601bc54f490b220d2818f4923cf232cecc150de663837b30a26a93e3b331d33393468fabb3362575b95a609aa52ca058901e2bc9646a5b6c20c5c2575e76597c37b4e33e1312d70c62eec748e8bc402162a4680a827c71c8e140b8d69a89d599056b9a23d151504eabca3927910d9ae1bdb28d64c2a793812f288a8018c7b245cca66d673c26c994fdbb0317221662bb3c0b8bca5a3405be7ae41e58bfb395e58527311ab4072978829e64c5446082ba925c16cba59d7a2e17bbd4ad4207c400b44b03d5da608d812a93d7c5152d10c7c0bcb1bbcb90c9937a12badc45291fc37262fcb7cb23a8a67811109cba660100719aa66f1967f9ef1345162877533bcfcb167bbf36138557e689452ae50ac8767b7e37b5a8b0901881691e044c86dc36683f149297299562ac35d765994366a7a1090f3d846f9684f7c17cd57d067d85a07559bbe001421c3098c2bfb4d910230c781cbc2787469323717f9b788bd5c365062ac9142e3a46f0e9788b7aaf43630b4f65b252502022d8603b738d3161406a4055390bf8c65e03b0ab620f8be960b75980a851214",
+    "issuedAt": 1794355200,
+    "kem": "hpke-kem-0x647a",
+    "keyPairId": "c4a1f8e2-3b6d-4e9a-8c57-1d2f0e9b6a73",
+    "notAfter": 1803340800,
+    "organization": "0b9d2c6e-5a1f-4c3e-9e7a-2f4b8d1c6a35",
+    "refuse": [
+      "another organization",
+      "now at or after notAfter",
+      "sequence below the highest accepted",
+      "unknown signingKeyVersion",
+      "label or KEM changed",
+      "any byte of encoded or signature changed"
+    ],
+    "sequence": 1,
+    "signature": "304402206cdae4ce0440df63cc22b565a46d5d51492d494ca7696f48a363135f423b82c6022009981e8110a203e0e0504188cde83bdd570fe7e3ad6b79cc50f72341773b16ca",
+    "signingKeyVersion": 1,
+    "signingPublicKeySpki": "3059301306072a8648ce3d020106082a8648ce3d03010703420004e335231b25d47a709326b4cccc2f9facbc14c0f9541a1f5ff4b2644deedb9f92a5e337645e39823457783e2eb9ef740b85d99fc586c09af41837fe4b7d1f4000"
+  }
+}
