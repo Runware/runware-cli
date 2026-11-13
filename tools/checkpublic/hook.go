@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -40,10 +39,11 @@ type pushSpec struct {
 
 // plan is what a command line would publish.
 type plan struct {
+	// texts are the files a gh write posts.
 	texts  []publication
 	pushes []pushSpec
 	// scanLine is set when the line holds a gh write to a repository that
-	// is not private: the whole command line is scanned too, here-document
+	// is not private: the whole command line is scanned, here-document
 	// bodies included.
 	scanLine bool
 }
@@ -52,9 +52,9 @@ type plan struct {
 // belongs to, or "" when it cannot tell.
 type repoResolver func(dir string) string
 
-// planCommand finds the git pushes and the GitHub titles, bodies and comments
-// in a Bash command line run from dir. It returns an UncheckableError when
-// the line publishes, or may publish, in a form it cannot read completely.
+// planCommand finds the git pushes and the gh writes in a Bash command line
+// run from dir. It returns an UncheckableError when the line publishes, or
+// may publish, in a form it cannot read completely.
 func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, error) {
 	line := parseShell(command)
 	cmds := commands(line)
@@ -88,31 +88,11 @@ func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, e
 	var p plan
 	cd := false
 	cdUnknown := ""
-	vars := shellVars{}
 	for i := range cmds {
 		c := &cmds[i]
-		if as, ok := c.assignments(); ok {
-			pc := newPubContext(cmds, i, dir, cd)
-			pc.vars = vars
-			sequential := c.sep == ";" || c.sep == "&&" || c.sep == "\n"
-			next := shellVars{}
-			maps.Copy(next, vars)
-			for _, a := range as {
-				if !a.ok {
-					continue
-				}
-				v, ok := pc.evalWord(a.value, a.exps, 0)
-				if ok && sequential {
-					next[a.name] = v
-				} else {
-					delete(next, a.name)
-				}
-			}
-			vars = next
-		}
 		switch c.name() {
 		case "cd":
-			if len(c.words) == 2 && !c.wordDyn[1] && c.words[1] != "-" && (!strings.HasPrefix(c.words[1], "~") || c.words[1] == "~" || strings.HasPrefix(c.words[1], "~/")) {
+			if len(c.words) == 2 && !c.wordDyn[1] && c.words[1] != "-" {
 				dir = resolvePath(dir, c.words[1])
 				cd = true
 			} else {
@@ -128,9 +108,8 @@ func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, e
 			return plan{}, uncheckable("`%s` runs before it, and the check cannot tell which directory that leaves", cdUnknown)
 		}
 		pc := newPubContext(cmds, i, dir, cd)
-		pc.vars = vars
 		if kinds[i] == pubPush {
-			push, err := pc.push(s.pushIsPrivate)
+			push, err := pc.push()
 			if err != nil {
 				return plan{}, err
 			}
@@ -141,9 +120,7 @@ func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, e
 		if err != nil {
 			return plan{}, err
 		}
-		if !private {
-			p.scanLine = true
-		}
+		p.scanLine = p.scanLine || !private
 		p.texts = append(p.texts, texts...)
 	}
 	return p, nil
@@ -163,25 +140,20 @@ type pubContext struct {
 	// changer is the first command that runs before the publication or
 	// alongside it and may write a file or move a ref, or "".
 	changer string
-	// vars are the variables the line sets before the publication.
-	vars shellVars
 }
 
 func newPubContext(line []command, i int, dir string, cd bool) pubContext {
 	pc := pubContext{
-		cmd:  line[i],
-		line: line,
-		dir:  dir,
-		cd:   cd,
+		cmd:    line[i],
+		line:   line,
+		dir:    dir,
+		cd:     cd,
+		writes: line[i].writes,
 	}
-	pc.writes = append(pc.writes, line[i].writes...)
 	for _, j := range alongside(line, i) {
-		all := append([]command{line[j]}, flatten(line[j], 0)...)
-		for k := range all {
-			pc.writes = append(pc.writes, all[k].writes...)
-			if pc.changer == "" && !inert(all[k]) {
-				pc.changer = all[k].String()
-			}
+		pc.writes = append(pc.writes, line[j].writes...)
+		if pc.changer == "" && !inert(line[j]) {
+			pc.changer = line[j].String()
 		}
 	}
 	return pc
@@ -216,7 +188,9 @@ func (pc pubContext) readFile(name string) (string, error) {
 	return string(b), nil
 }
 
-// readStdin returns what a publication reads on stdin.
+// readStdin returns what a publication reads on stdin. A here-document or
+// here-string, its own or piped from cat, is text of the command line, which
+// is scanned whole, so it returns "" for one.
 func (pc pubContext) readStdin() (string, error) {
 	c := pc.cmd
 	sources := c.stdinSources
@@ -224,45 +198,23 @@ func (pc pubContext) readStdin() (string, error) {
 		sources++
 	}
 	switch {
-	case sources == 0:
-		return "", uncheckable("it posts stdin, but the command gives it nothing the check can read")
-	case sources > 1:
-		return "", uncheckable("it posts stdin, which more than one pipe or redirection feeds")
+	case sources != 1:
+		return "", uncheckable("it posts stdin, which %d pipes or redirections feed; give it exactly one", sources)
 	case c.hasStdin && c.stdinDynamic:
 		return "", uncheckable("it posts a here-document that expands variables or commands; quote its delimiter (<<'EOF')")
 	case c.hasStdin:
-		return c.stdin, nil
-	case c.stdinFile != "" && c.stdinFileDynamic:
-		return "", uncheckable("it posts stdin from a file named by a variable")
-	case c.stdinFile != "":
+		return "", nil
+	case c.stdinFile != "" && !c.stdinFileDynamic:
 		return pc.readFile(c.stdinFile)
+	case c.pipeFrom >= 0 && pc.line[c.pipeFrom].inlineHeredoc():
+		return "", nil
 	}
-	src := pc.line[c.pipeFrom]
-	words, ok := pc.evalWords(src, 0)
-	switch {
-	case !ok || src.stdinSources > 0 || src.pipeFrom >= 0 || len(src.assigns) > 0:
-	case src.name() == "printf" && len(words) >= 3 && words[1] == "%s":
-		return strings.Join(words[2:], ""), nil
-	case src.name() == "echo" && plainEcho(words[1:]):
-		return strings.Join(words[1:], " ") + "\n", nil
-	}
-	return "", uncheckable("it posts stdin from `%s`, whose output the check cannot work out", src)
-}
-
-// plainEcho reports whether echo prints args as they are: no option and no
-// backslash, which some shells' echo interprets.
-func plainEcho(args []string) bool {
-	for _, a := range args {
-		if strings.HasPrefix(a, "-") || strings.Contains(a, `\`) {
-			return false
-		}
-	}
-	return true
+	return "", uncheckable("it posts stdin from a source the check cannot read; use a file or a quoted here-document")
 }
 
 // push returns the git push of a publication, refusing forms whose target
 // the check cannot work out.
-func (pc pubContext) push(isPrivate func(pushSpec) bool) (pushSpec, error) {
+func (pc pubContext) push() (pushSpec, error) {
 	c := pc.cmd
 	if anyTrue(c.wordDyn) || anyTrue(c.assignDyn) {
 		return pushSpec{}, uncheckable("`%s` has a variable, command substitution or glob in its arguments", c)
@@ -282,116 +234,104 @@ func (pc pubContext) push(isPrivate func(pushSpec) bool) (pushSpec, error) {
 			return pushSpec{}, uncheckable("`%s` has git options before push that the check does not follow", c)
 		}
 	}
-	spec := pushSpec{
-		dir:  dir,
-		args: c.words[i+1:],
-	}
-	// A push to a private repository is not this check's concern, even
-	// after a command that changes what it pushes.
-	if pc.changer != "" && !isPrivate(spec) {
+	if pc.changer != "" {
 		return pushSpec{}, uncheckable("`%s` runs before the push or alongside it and may change what it pushes; run the push in its own call", pc.changer)
 	}
-	return spec, nil
+	return pushSpec{
+		dir:  dir,
+		args: c.words[i+1:],
+	}, nil
 }
 
-// pushIsPrivate reports whether a push goes to a private Runware repository.
-func (s *Scanner) pushIsPrivate(p pushSpec) bool {
-	ctx := context.Background()
-	g := Git{
-		Dir: p.dir,
-	}
-	remote := ""
-	for i := 0; i < len(p.args) && remote == ""; i++ {
-		a := p.args[i]
-		switch {
-		case a == "-o" || a == "--push-option" || a == "--repo" || a == "--receive-pack" || a == "--exec":
-			i++
-		case strings.HasPrefix(a, "-"):
-		default:
-			remote = a
-		}
-	}
-	if remote == "" {
-		remote = "origin"
-		if current := g.CurrentBranch(ctx); current != "" {
-			if out, err := g.run(ctx, "config", "branch."+current+".remote"); err == nil && strings.TrimSpace(out) != "" {
-				remote = strings.TrimSpace(out)
-			}
-		}
-	}
-	return s.remoteIsPrivate(ctx, g, remote)
-}
-
-// ghTexts returns what a gh write publishes, and whether its destination is
-// a private Runware repository, where it publishes nothing to check.
+// ghTexts returns the files a gh write posts, and whether its destination is
+// a private Runware repository, where it publishes nothing to check. The rest
+// of what it posts is text of the command line, which is scanned whole.
 func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bool, error) {
 	c := pc.cmd
 	if anyTrue(c.assignDyn) {
 		return nil, false, uncheckable("`%s` sets a variable from an expansion", c)
 	}
-	words, ok := pc.evalWords(c, 0)
-	if !ok {
-		return nil, false, uncheckable("`%s` uses a variable set outside the command, a glob, or a substitution the check cannot work out", c)
+	for i := range c.words {
+		if c.wordDyn[i] && !inLine(c.wordSubs[i]) {
+			return nil, false, uncheckable("`%s` uses a variable, glob or command substitution; only $(cat <<'EOF' ... EOF) is read", c)
+		}
 	}
-	c.words = words
-	c.wordDyn = make([]bool, len(words))
-	pc.cmd = c
-	repos := pc.defaultRepos(repoOf)
-	group := parseFlags(c.words[1:], c.wordDyn[1:], []flagSpec{flagRepo}).pos[0]
+	args := c.words[1:]
+	group, verb, _ := ghCommand(c.words, c.wordDyn)
+	valueFlags := apiValueFlags
+	if group != wordAPI {
+		valueFlags = "repo/R " + ghValueFlags[group+" "+verb]
+	}
+	flags, pos := parseFlags(args, valueFlags)
+	for _, i := range pos {
+		if c.wordDyn[i+1] {
+			return nil, false, uncheckable("`%s` takes a positional argument from a substitution", c)
+		}
+	}
+	label := "gh " + group + " " + verb
 	if group == wordAPI {
-		return s.ghAPITexts(pc, repos)
+		label = "gh api"
 	}
-	if len(parseFlags(c.words[1:], c.wordDyn[1:], []flagSpec{flagRepo}).pos) < 2 {
-		return nil, false, uncheckable("`%s` is not a gh command the check knows", c)
-	}
-	p := parseFlags(c.words[1:], c.wordDyn[1:], []flagSpec{flagRepo})
-	name := p.pos[0] + " " + p.pos[1]
-	p = parseFlags(c.words[1:], c.wordDyn[1:], append([]flagSpec{flagRepo}, ghWriteSpecs[name]...))
+	repos := pc.defaultRepos(repoOf)
 	var texts []publication
-	for _, f := range p.flags {
-		label := "gh " + name + " " + strings.ReplaceAll(f.spec.long, "-", " ")
-		switch f.spec.kind {
-		case flagText:
-			texts = append(texts, publication{
-				label: label,
-				text:  f.value,
-			})
-		case flagFile:
-			text, err := pc.readFile(f.value)
-			if err != nil {
-				return nil, false, err
-			}
-			texts = append(texts, publication{
-				label: label,
-				text:  text,
-			})
-		case flagValue:
-			if f.spec.long == flagRepo.long {
-				repos = []string{f.value}
+	for _, f := range flags {
+		file := ""
+		switch {
+		case f.name == "repo":
+			repos = []string{f.value}
+		case strings.HasSuffix(f.name, "-file") || f.name == "input":
+			file = f.value
+		case f.name == "field":
+			_, v, _ := strings.Cut(f.value, "=")
+			file, _ = strings.CutPrefix(v, "@")
+			if file == v {
+				file = ""
 			}
 		}
+		if file == "" {
+			continue
+		}
+		text, err := pc.readFile(file)
+		if err != nil {
+			return nil, false, err
+		}
+		texts = append(texts, publication{
+			label: label + " " + f.name,
+			text:  text,
+		})
 	}
-	// A pull request or issue URL names the destination, whatever -R says.
-	// Only the commands that take one: create has no positional selector.
-	if p.pos[1] != "create" && p.pos[0] != wordRelease {
-		args := p.pos[2:]
-		if len(args) > 0 {
-			var dests []string
-			for _, a := range args {
-				if r := ghURLRepo(a); r != "" {
-					dests = append(dests, r)
-				} else {
-					dests = append(dests, repos...)
-				}
-			}
-			repos = dests
+	switch {
+	case group == wordAPI:
+		// A call outside repos/OWNER/NAME, such as graphql, may go anywhere.
+		endpoint := ""
+		if len(pos) > 1 {
+			endpoint = args[pos[1]]
 		}
+		if m := apiRepoPath.FindStringSubmatch(endpoint); m == nil {
+			repos = []string{""}
+		} else if !strings.Contains(m[1], "{") {
+			repos = []string{m[1]}
+		}
+	case verb != "create" && group != wordRelease && len(pos) > 2:
+		// A pull request or issue URL names the destination, whatever -R
+		// says.
+		var dests []string
+		for _, i := range pos[2:] {
+			if r := ghURLRepo(args[i]); r != "" {
+				dests = append(dests, r)
+			} else {
+				dests = append(dests, repos...)
+			}
+		}
+		repos = dests
 	}
 	if s.allPrivate(repos) {
 		return nil, true, nil
 	}
 	return texts, false, nil
 }
+
+var apiRepoPath = regexp.MustCompile(`^/?repos/([^/]+/[^/]+)`)
 
 // defaultRepos returns where a gh command without -R or a URL posts: the
 // GH_REPO it is given, or else the repository of its directory and any
@@ -439,371 +379,6 @@ func (s *Scanner) isPrivateTarget(repo string) bool {
 	return !s.IsPublicRepo(name)
 }
 
-// apiField is one -f or -F field of a gh api call.
-type apiField struct {
-	key   string
-	value string
-}
-
-var apiRepoPath = regexp.MustCompile(`^/?repos/([^/]+)/([^/]+)`)
-
-// apiTextFields are the fields of a REST call that publish text: a comment,
-// review, issue or pull request body and title, and the commit title and
-// message of a merge or of a file change.
-var apiTextFields = map[string]struct{}{
-	"body":           {},
-	"commit_message": {},
-	"commit_title":   {},
-	"message":        {},
-	"title":          {},
-}
-
-func (s *Scanner) ghAPITexts(pc pubContext, repos []string) ([]publication, bool, error) {
-	c := pc.cmd
-	p := parseFlags(c.words[1:], c.wordDyn[1:], apiSpecs)
-	endpoint := ""
-	if len(p.pos) > 1 {
-		endpoint = p.pos[1]
-	}
-	var fields []apiField
-	var inputs []string
-	for _, f := range p.flags {
-		switch f.spec.long {
-		case "raw-field", "field":
-			k, v, _ := strings.Cut(f.value, "=")
-			if file, ok := strings.CutPrefix(v, "@"); ok && f.spec.long == "field" {
-				text, err := pc.readFile(file)
-				if err != nil {
-					return nil, false, err
-				}
-				v = text
-			}
-			fields = append(fields, apiField{
-				key:   k,
-				value: v,
-			})
-		case "input":
-			text, err := pc.readFile(f.value)
-			if err != nil {
-				return nil, false, err
-			}
-			inputs = append(inputs, text)
-		}
-	}
-	graphqlMutation := false
-	for _, f := range fields {
-		if f.key == "query" && strings.Contains(f.value, "mutation") {
-			graphqlMutation = true
-		}
-	}
-	var texts []publication
-	for _, text := range inputs {
-		texts = append(texts, inputTexts(text, endpoint)...)
-	}
-	for _, f := range fields {
-		_, isText := apiTextFields[fieldLeaf(f.key)]
-		if isText || graphqlMutation {
-			texts = append(texts, publication{
-				label: "gh api field " + f.key,
-				text:  f.value,
-			})
-		}
-	}
-	if m := apiRepoPath.FindStringSubmatch(endpoint); m != nil {
-		repo := m[1] + "/" + m[2]
-		if strings.Contains(repo, "{") {
-			if s.allPrivate(repos) {
-				return nil, true, nil
-			}
-		} else if s.isPrivateTarget(repo) {
-			return nil, true, nil
-		}
-	}
-	return texts, false, nil
-}
-
-// fieldLeaf returns the last key of a gh api field name: "body" for
-// "comments[][body]", "labels" for "labels[]".
-func fieldLeaf(key string) string {
-	parts := strings.FieldsFunc(key, func(r rune) bool {
-		return r == '[' || r == ']'
-	})
-	if len(parts) == 0 {
-		return key
-	}
-	return parts[len(parts)-1]
-}
-
-// inputTexts returns the text a JSON request body passed with --input would
-// publish, or the whole text when it is not JSON: every string under a key in
-// apiTextFields at any depth (a review's comments[].body, for example), and
-// for a GraphQL mutation the query and every string in its variables.
-func inputTexts(text, endpoint string) []publication {
-	var v any
-	if err := json.Unmarshal([]byte(text), &v); err != nil {
-		return []publication{{
-			label: "gh api --input",
-			text:  text,
-		}}
-	}
-	var out []publication
-	if obj, ok := v.(map[string]any); ok {
-		query, _ := obj["query"].(string)
-		isGraphQL := strings.TrimPrefix(endpoint, "/") == "graphql" || query != ""
-		if isGraphQL && strings.Contains(query, "mutation") {
-			out = append(out, publication{
-				label: "gh api --input query",
-				text:  query,
-			})
-			apiInputWalk.collect(obj["variables"], "variables", true, &out)
-			delete(obj, "query")
-			delete(obj, "variables")
-		}
-	}
-	apiInputWalk.collect(v, "", false, &out)
-	return out
-}
-
-// stringWalk collects the strings of a decoded JSON value that would be
-// published: those under one of keys, labeled with label and their path.
-type stringWalk struct {
-	label string
-	keys  map[string]struct{}
-}
-
-var apiInputWalk = stringWalk{
-	label: "gh api --input",
-	keys:  apiTextFields,
-}
-
-// collect walks v in a stable order and appends the strings to publish: every
-// string when all is set, otherwise only those under a key in w.keys. path
-// names the value in labels.
-func (w stringWalk) collect(v any, path string, all bool, out *[]publication) {
-	switch x := v.(type) {
-	case string:
-		if all {
-			*out = append(*out, publication{
-				label: w.label + " " + path,
-				text:  x,
-			})
-		}
-	case []any:
-		for i, e := range x {
-			w.collect(e, fmt.Sprintf("%s[%d]", path, i), all, out)
-		}
-	case map[string]any:
-		keys := make([]string, 0, len(x))
-		for k := range x {
-			keys = append(keys, k)
-		}
-		slices.Sort(keys)
-		for _, k := range keys {
-			p := k
-			if path != "" {
-				p = path + "." + k
-			}
-			_, isText := w.keys[k]
-			w.collect(x[k], p, all || isText, out)
-		}
-	}
-}
-
-// pushTag is a tag a git push would publish.
-type pushTag struct {
-	name   string
-	object string
-}
-
-// pushTargets is what a git push would publish.
-type pushTargets struct {
-	remote string
-	ranges []Range
-	tags   []pushTag
-}
-
-// pushTargets returns what a git push would publish: for each pushed branch,
-// what it has beyond its remote-tracking branch, or beyond its merge-base with
-// main when the remote does not have it yet; and each pushed tag, named
-// directly, as refs/tags/NAME, as `tag NAME`, or with --tags or --follow-tags.
-func (s *Scanner) pushTargets(ctx context.Context, p pushSpec) (pushTargets, error) {
-	g := Git{
-		Dir: p.dir,
-	}
-	var positional []string
-	all := false
-	allTags := false
-	followTags := false
-	for i := 0; i < len(p.args); i++ {
-		a := p.args[i]
-		switch {
-		case a == "--all" || a == "--branches" || a == "--mirror":
-			all = true
-		case a == "--tags":
-			allTags = true
-		case a == "--follow-tags":
-			followTags = true
-		case a == "--no-follow-tags":
-			followTags = false
-		case a == "-o" || a == "--push-option" || a == "--repo" || a == "--receive-pack" || a == "--exec":
-			i++
-		case strings.HasPrefix(a, "-"):
-		default:
-			positional = append(positional, a)
-		}
-	}
-
-	current := g.CurrentBranch(ctx)
-	t := pushTargets{
-		remote: "origin",
-	}
-	if current != "" {
-		if out, err := g.run(ctx, "config", "branch."+current+".remote"); err == nil && strings.TrimSpace(out) != "" {
-			t.remote = strings.TrimSpace(out)
-		}
-	}
-	var refspecs []string
-	if len(positional) > 0 {
-		t.remote = positional[0]
-		for i := 1; i < len(positional); i++ {
-			if positional[i] == wordTag && i+1 < len(positional) {
-				i++
-				refspecs = append(refspecs, "refs/tags/"+positional[i])
-				continue
-			}
-			refspecs = append(refspecs, positional[i])
-		}
-	}
-	if s.remoteIsPrivate(ctx, g, t.remote) {
-		return pushTargets{}, nil
-	}
-	if all {
-		out, err := g.run(ctx, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
-		if err != nil {
-			return pushTargets{}, err
-		}
-		refspecs = strings.Fields(out)
-	}
-	// git push --tags alone pushes only the tags.
-	if len(refspecs) == 0 && current != "" && !allTags {
-		refspecs = []string{current}
-	}
-	if !slices.Contains(p.args, "--no-follow-tags") {
-		if out, err := g.run(ctx, "config", "--bool", "push.followTags"); err == nil && strings.TrimSpace(out) == "true" {
-			followTags = true
-		}
-	}
-	if allTags {
-		out, err := g.run(ctx, "for-each-ref", "--format=%(refname)", "refs/tags/")
-		if err != nil {
-			return pushTargets{}, err
-		}
-		refspecs = append(refspecs, strings.Fields(out)...)
-	}
-
-	for _, spec := range refspecs {
-		spec = strings.TrimPrefix(spec, "+")
-		src, dst, hasDst := strings.Cut(spec, ":")
-		if src == "" {
-			continue // deleting a remote ref publishes nothing
-		}
-		if tag, ok := g.tagName(ctx, src, dst, hasDst); ok {
-			object, err := g.run(ctx, "rev-parse", "--verify", "--quiet", src)
-			if err != nil {
-				continue // not a tag here: git push will say
-			}
-			t.tags = append(t.tags, pushTag{
-				name:   tag,
-				object: strings.TrimSpace(object),
-			})
-			continue
-		}
-		if src == "HEAD" && current != "" {
-			src = current
-		}
-		if !hasDst || dst == "" {
-			dst = src
-		}
-		dst = strings.TrimPrefix(dst, "refs/heads/")
-		head, err := g.revParse(ctx, src)
-		if err != nil {
-			continue // not a commit: git push will say
-		}
-		tracking, _ := g.revParse(ctx, "refs/remotes/"+t.remote+"/"+dst)
-		base, err := g.PushBase(ctx, t.remote, tracking, head)
-		if err != nil {
-			return pushTargets{}, err
-		}
-		t.ranges = append(t.ranges, Range{
-			Base:   base,
-			Head:   head,
-			Branch: dst,
-			Remote: t.remote,
-		})
-	}
-	if followTags && !allTags {
-		tags, err := g.followTags(ctx, t.ranges)
-		if err != nil {
-			return pushTargets{}, err
-		}
-		for _, tag := range tags {
-			if !slices.ContainsFunc(t.tags, func(x pushTag) bool { return x.name == tag.name }) {
-				t.tags = append(t.tags, tag)
-			}
-		}
-	}
-	return t, nil
-}
-
-// followTags returns the tags git push --follow-tags adds to a push: the
-// annotated tags that point at a commit reachable from a pushed branch.
-// Lightweight tags, and tags on commits that are not pushed, stay behind.
-func (g Git) followTags(ctx context.Context, ranges []Range) ([]pushTag, error) {
-	var out []pushTag
-	seen := map[string]struct{}{}
-	for _, r := range ranges {
-		list, err := g.run(ctx, "for-each-ref", "--merged="+r.Head, "--format=%(objecttype) %(objectname) %(refname)", "refs/tags/")
-		if err != nil {
-			return nil, err
-		}
-		for l := range strings.SplitSeq(strings.TrimSpace(list), "\n") {
-			fields := strings.Fields(l)
-			if len(fields) != 3 || fields[0] != wordTag {
-				continue
-			}
-			name := strings.TrimPrefix(fields[2], "refs/tags/")
-			if _, ok := seen[name]; ok {
-				continue
-			}
-			seen[name] = struct{}{}
-			out = append(out, pushTag{
-				name:   name,
-				object: fields[1],
-			})
-		}
-	}
-	return out, nil
-}
-
-// tagName returns the tag a refspec src[:dst] pushes, if it pushes one: the
-// destination is under refs/tags/, or the source is a tag (git resolves a
-// short name to a tag before a branch).
-func (g Git) tagName(ctx context.Context, src, dst string, hasDst bool) (string, bool) {
-	if name, ok := strings.CutPrefix(dst, "refs/tags/"); ok {
-		return name, true
-	}
-	if hasDst && dst != "" {
-		return "", false
-	}
-	if name, ok := strings.CutPrefix(src, "refs/tags/"); ok {
-		return name, true
-	}
-	if !strings.HasPrefix(src, "refs/") && src != "HEAD" && g.hasRef(ctx, "refs/tags/"+src) {
-		return src, true
-	}
-	return "", false
-}
-
 // runHook reads a PreToolUse payload and returns the findings in what the
 // Bash command or GitHub tool call would publish.
 func (s *Scanner) runHook(ctx context.Context, payload []byte, repoOf repoResolver) ([]Finding, error) {
@@ -844,29 +419,187 @@ func (s *Scanner) runHook(ctx context.Context, payload []byte, repoOf repoResolv
 		out = append(out, s.ScanText(t.label, t.text)...)
 	}
 	for _, push := range p.pushes {
-		t, err := s.pushTargets(ctx, push)
+		f, err := s.scanPush(ctx, push)
+		out = append(out, f...)
 		if err != nil {
 			return out, err
 		}
-		g := Git{
-			Dir: push.dir,
-		}
-		for _, r := range t.ranges {
-			f, err := s.ScanRange(ctx, g, r)
-			if err != nil {
-				return out, err
-			}
-			out = append(out, f...)
-		}
-		for _, tag := range t.tags {
-			f, err := s.ScanTag(ctx, g, t.remote, tag.name, tag.object)
-			if err != nil {
-				return out, err
-			}
-			out = append(out, f...)
-		}
 	}
 	return out, nil
+}
+
+// pushArgs splits git push arguments into the positional ones and the options.
+func pushArgs(args []string) (pos, opts []string) {
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "-o" || a == "--push-option" || a == "--repo" || a == "--receive-pack" || a == "--exec":
+			i++
+		case strings.HasPrefix(a, "-"):
+			opts = append(opts, a)
+		default:
+			pos = append(pos, a)
+		}
+	}
+	return pos, opts
+}
+
+// pushRemote returns the remote a git push goes to: the one it names, or the
+// current branch's remote, or origin.
+func pushRemote(ctx context.Context, g Git, pos []string) string {
+	if len(pos) > 0 {
+		return pos[0]
+	}
+	if current := g.CurrentBranch(ctx); current != "" {
+		if out, err := g.run(ctx, "config", "branch."+current+".remote"); err == nil && strings.TrimSpace(out) != "" {
+			return strings.TrimSpace(out)
+		}
+	}
+	return "origin"
+}
+
+// scanPush scans what a git push would publish: for each pushed branch, what
+// it has beyond its remote-tracking branch, or beyond its merge-base with main
+// when the remote does not have it yet; and each pushed tag, named directly,
+// as refs/tags/NAME, as `tag NAME`, or with --tags or --follow-tags.
+func (s *Scanner) scanPush(ctx context.Context, p pushSpec) ([]Finding, error) {
+	g := Git{
+		Dir: p.dir,
+	}
+	pos, opts := pushArgs(p.args)
+	remote := pushRemote(ctx, g, pos)
+	if s.remoteIsPrivate(ctx, g, remote) {
+		return nil, nil
+	}
+	current := g.CurrentBranch(ctx)
+	var refspecs []string
+	for i := 1; i < len(pos); i++ {
+		if pos[i] == wordTag && i+1 < len(pos) {
+			i++
+			pos[i] = "refs/tags/" + pos[i]
+		}
+		refspecs = append(refspecs, pos[i])
+	}
+	has := func(o ...string) bool {
+		return slices.ContainsFunc(opts, func(x string) bool { return slices.Contains(o, x) })
+	}
+	allTags := has("--tags")
+	followTags := has("--follow-tags")
+	if !followTags && !has("--no-follow-tags") {
+		if out, err := g.run(ctx, "config", "--bool", "push.followTags"); err == nil && strings.TrimSpace(out) == "true" {
+			followTags = true
+		}
+	}
+	if has("--all", "--branches", "--mirror") {
+		out, err := g.run(ctx, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+		if err != nil {
+			return nil, err
+		}
+		refspecs = strings.Fields(out)
+	}
+	// git push --tags alone pushes only the tags.
+	if len(refspecs) == 0 && current != "" && !allTags {
+		refspecs = []string{current}
+	}
+	if allTags {
+		out, err := g.run(ctx, "for-each-ref", "--format=%(refname)", "refs/tags/")
+		if err != nil {
+			return nil, err
+		}
+		refspecs = append(refspecs, strings.Fields(out)...)
+	}
+
+	var out []Finding
+	var heads []string
+	tags := map[string]string{}
+	var tagOrder []string
+	addTag := func(name, object string) {
+		if _, ok := tags[name]; !ok {
+			tags[name] = object
+			tagOrder = append(tagOrder, name)
+		}
+	}
+	for _, spec := range refspecs {
+		src, dst, hasDst := strings.Cut(strings.TrimPrefix(spec, "+"), ":")
+		if src == "" {
+			continue // deleting a remote ref publishes nothing
+		}
+		if tag, ok := g.tagName(ctx, src, dst, hasDst); ok {
+			if object, err := g.run(ctx, "rev-parse", "--verify", "--quiet", src); err == nil {
+				addTag(tag, strings.TrimSpace(object))
+			}
+			continue
+		}
+		if src == "HEAD" && current != "" {
+			src = current
+		}
+		if !hasDst || dst == "" {
+			dst = src
+		}
+		dst = strings.TrimPrefix(dst, "refs/heads/")
+		head, err := g.revParse(ctx, src)
+		if err != nil {
+			continue // not a commit: git push will say
+		}
+		tracking, _ := g.revParse(ctx, "refs/remotes/"+remote+"/"+dst)
+		base, err := g.PushBase(ctx, remote, tracking, head)
+		if err != nil {
+			return out, err
+		}
+		f, err := s.ScanRange(ctx, g, Range{
+			Base:   base,
+			Head:   head,
+			Branch: dst,
+			Remote: remote,
+		})
+		if err != nil {
+			return out, err
+		}
+		out = append(out, f...)
+		heads = append(heads, head)
+	}
+	// --follow-tags adds the annotated tags on commits a pushed branch
+	// reaches. Lightweight tags, and tags on commits not pushed, stay behind.
+	for _, head := range heads {
+		if !followTags || allTags {
+			break
+		}
+		list, err := g.run(ctx, "for-each-ref", "--merged="+head, "--format=%(objecttype) %(objectname) %(refname)", "refs/tags/")
+		if err != nil {
+			return out, err
+		}
+		for l := range strings.SplitSeq(strings.TrimSpace(list), "\n") {
+			if fields := strings.Fields(l); len(fields) == 3 && fields[0] == wordTag {
+				addTag(strings.TrimPrefix(fields[2], "refs/tags/"), fields[1])
+			}
+		}
+	}
+	for _, name := range tagOrder {
+		f, err := s.ScanTag(ctx, g, remote, name, tags[name])
+		if err != nil {
+			return out, err
+		}
+		out = append(out, f...)
+	}
+	return out, nil
+}
+
+// tagName returns the tag a refspec src[:dst] pushes, if it pushes one: the
+// destination is under refs/tags/, or the source is a tag (git resolves a
+// short name to a tag before a branch).
+func (g Git) tagName(ctx context.Context, src, dst string, hasDst bool) (string, bool) {
+	if name, ok := strings.CutPrefix(dst, "refs/tags/"); ok {
+		return name, true
+	}
+	if hasDst && dst != "" {
+		return "", false
+	}
+	if name, ok := strings.CutPrefix(src, "refs/tags/"); ok {
+		return name, true
+	}
+	if !strings.HasPrefix(src, "refs/") && src != "HEAD" && g.hasRef(ctx, "refs/tags/"+src) {
+		return src, true
+	}
+	return "", false
 }
 
 var remoteURL = regexp.MustCompile(`github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$`)

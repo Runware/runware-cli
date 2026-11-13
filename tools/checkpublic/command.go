@@ -12,8 +12,13 @@ import (
 // git push anywhere, including inside a substitution, a subshell, a `bash -c`
 // string or xargs, must run it in a simple form the hook reads completely:
 // a top-level gh or git command with literal arguments, files that exist and
-// that nothing in the same line changes, and stdin from one known source.
-// Anything else is blocked with UncheckableError.
+// that nothing in the same line changes, and stdin from one source the hook
+// can read. Anything else is blocked with UncheckableError.
+//
+// The hook evaluates nothing. When a line holds a gh write to a repository
+// that is not private, it scans the whole line, so text written in the line
+// itself (a literal --body, a quoted here-document, $(cat <<'EOF' ... EOF))
+// needs no evaluation; only files the command posts are read.
 
 // UncheckableError reports a command line that would or could publish to
 // GitHub in a form the hook cannot read completely.
@@ -35,56 +40,60 @@ func uncheckable(format string, a ...any) error {
 // A deeper line is treated as publishing.
 const maxNesting = 8
 
+// Words that several command and tool names share.
+const (
+	wordAPI     = "api"
+	wordFiles   = "files"
+	wordIssue   = "issue"
+	wordPush    = "push"
+	wordRelease = "release"
+	wordTag     = "tag"
+)
+
 // command is a simple command with its leading assignments and wrappers
 // removed.
 type command struct {
 	shellCmd
-	words      []string
-	wordDyn    []bool
-	wordExps   [][]expansion
-	assigns    []string
-	assignDyn  []bool
-	assignExps [][]expansion
+	words     []string
+	wordDyn   []bool
+	wordSubs  [][]string
+	assigns   []string
+	assignDyn []bool
 }
 
 var envAssignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\+?=`)
 
 // simpleWrappers run their arguments as a command without changing it.
-var simpleWrappers = map[string]struct{}{
-	"command": {},
-	"env":     {},
-	"exec":    {},
-	"nohup":   {},
-	"time":    {},
-}
+var simpleWrappers = wordSet("command env exec nohup time")
 
-func newCommand(c shellCmd) command {
-	cmd := command{
-		shellCmd: c,
+// wordSet returns the set of the space-separated words in s.
+func wordSet(s string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for w := range strings.FieldsSeq(s) {
+		out[w] = struct{}{}
 	}
-	i := 0
-	for ; i < len(c.args); i++ {
-		if envAssignment.MatchString(c.args[i]) {
-			cmd.assigns = append(cmd.assigns, c.args[i])
-			cmd.assignDyn = append(cmd.assignDyn, c.dyn[i])
-			cmd.assignExps = append(cmd.assignExps, c.exps[i])
-			continue
-		}
-		if _, ok := simpleWrappers[c.args[i]]; ok && !c.dyn[i] {
-			continue
-		}
-		break
-	}
-	cmd.words = c.args[i:]
-	cmd.wordDyn = c.dyn[i:]
-	cmd.wordExps = c.exps[i:]
-	return cmd
+	return out
 }
 
 func commands(line shellLine) []command {
 	out := make([]command, len(line.cmds))
-	for i := range line.cmds {
-		out[i] = newCommand(line.cmds[i])
+	for n := range line.cmds {
+		c := &line.cmds[n]
+		i := 0
+		for ; i < len(c.args); i++ {
+			if envAssignment.MatchString(c.args[i]) {
+				out[n].assigns = append(out[n].assigns, c.args[i])
+				out[n].assignDyn = append(out[n].assignDyn, c.dyn[i])
+				continue
+			}
+			if _, ok := simpleWrappers[c.args[i]]; !ok || c.dyn[i] {
+				break
+			}
+		}
+		out[n].shellCmd = *c
+		out[n].words = c.args[i:]
+		out[n].wordDyn = c.dyn[i:]
+		out[n].wordSubs = c.subs[i:]
 	}
 	return out
 }
@@ -106,6 +115,26 @@ func (c command) String() string {
 	return s
 }
 
+// inlineHeredoc reports whether c is `cat` reading a here-document or
+// here-string that expands nothing: its output is text of the command line.
+func (c command) inlineHeredoc() bool {
+	return len(c.words) == 1 && c.name() == "cat" && !c.wordDyn[0] && len(c.assigns) == 0 &&
+		c.stdinSources == 1 && c.hasStdin && !c.stdinDynamic && c.pipeFrom < 0 && len(c.writes) == 0
+}
+
+// inLine reports whether a word's expansions are all $(cat <<'EOF' ... EOF):
+// its value is then text of the command line, which the hook scans whole.
+func inLine(subs []string) bool {
+	for _, s := range subs {
+		line := parseShell(s)
+		cmds := commands(line)
+		if s == "" || line.grouped || len(cmds) != 1 || !cmds[0].inlineHeredoc() {
+			return false
+		}
+	}
+	return true
+}
+
 // pubKind says whether a command publishes to GitHub.
 type pubKind int
 
@@ -120,22 +149,7 @@ const (
 
 // writeWords are the words that make a command with a dynamic name look
 // like a GitHub write or a git push.
-var writeWords = map[string]struct{}{
-	wordAPI:     {},
-	"close":     {},
-	"comment":   {},
-	"create":    {},
-	"edit":      {},
-	"gh":        {},
-	"git":       {},
-	wordIssue:   {},
-	"merge":     {},
-	"pr":        {},
-	wordPush:    {},
-	wordRelease: {},
-	"reopen":    {},
-	"review":    {},
-}
+var writeWords = wordSet("api close comment create edit gh git issue merge pr push release reopen review")
 
 // publishes reports whether words, a command and its arguments, publish.
 func publishes(words []string, dyn []bool) pubKind {
@@ -154,20 +168,20 @@ func publishes(words []string, dyn []bool) pubKind {
 	case "gh":
 		return ghPublishes(words, dyn)
 	case "git":
-		return gitPublishes(words, dyn)
+		i := gitSubcommand(words)
+		switch {
+		case i >= len(words):
+		case anyTrue(dyn[1 : i+1]):
+			return pubUnknown
+		case words[i] == wordPush:
+			return pubPush
+		}
 	}
 	return pubNone
 }
 
 // gitValueOptions are the git options before the subcommand that take a value.
-var gitValueOptions = map[string]struct{}{
-	"-C":          {},
-	"-c":          {},
-	"--exec-path": {},
-	"--git-dir":   {},
-	"--namespace": {},
-	"--work-tree": {},
-}
+var gitValueOptions = wordSet("-C -c --exec-path --git-dir --namespace --work-tree")
 
 // gitSubcommand returns the index of git's subcommand in words, or len(words).
 func gitSubcommand(words []string) int {
@@ -181,58 +195,17 @@ func gitSubcommand(words []string) int {
 	return i
 }
 
-func gitPublishes(words []string, dyn []bool) pubKind {
-	i := gitSubcommand(words)
-	if i >= len(words) {
-		return pubNone
-	}
-	if anyTrue(dyn[1 : i+1]) {
-		return pubUnknown
-	}
-	if words[i] == wordPush {
-		return pubPush
-	}
-	return pubNone
-}
-
 // shells run a command line given as an argument or on stdin.
-var shells = map[string]struct{}{
-	"bash": {},
-	"dash": {},
-	"fish": {},
-	"ksh":  {},
-	"sh":   {},
-	"zsh":  {},
-}
+var shells = wordSet("bash dash fish ksh sh zsh")
 
 // evaluators run their arguments as a command line.
-var evaluators = map[string]struct{}{
-	"alias": {},
-	"eval":  {},
-	"trap":  {},
-	"watch": {},
-}
+var evaluators = wordSet("alias eval trap watch")
 
 // scriptInterpreters run code in another language, which the hook only
 // searches for gh and push.
-var scriptInterpreters = map[string]struct{}{
-	"bun":       {},
-	"deno":      {},
-	"node":      {},
-	"osascript": {},
-	"perl":      {},
-	"php":       {},
-	"python":    {},
-	"python3":   {},
-	"ruby":      {},
-}
+var scriptInterpreters = wordSet("bun deno node osascript perl php python python3 ruby")
 
 var publicationMention = regexp.MustCompile(`\bgh\b|\bpush\b`)
-
-// mentionsPublication reports whether text that runs as code names gh or push.
-func mentionsPublication(text string) bool {
-	return publicationMention.MatchString(text)
-}
 
 // containsPublication reports whether a command line run in some other way
 // (a substitution, a `bash -c` string) publishes anywhere.
@@ -258,31 +231,25 @@ func hiddenPublication(c command, line []command, depth int) string {
 			return "inside a command substitution"
 		}
 	}
-	if slices.ContainsFunc(c.opaque, mentionsPublication) {
+	if slices.ContainsFunc(c.opaque, publicationMention.MatchString) {
 		return "inside a here-document that runs commands"
 	}
 	for k, w := range c.words {
 		base := filepath.Base(w)
+		rest := strings.Join(c.words[k+1:], " ")
 		if k > 0 && publishes(c.words[k:], c.wordDyn[k:]) != pubNone {
 			return fmt.Sprintf("through `%s`", c.words[0])
 		}
 		if _, ok := shells[base]; ok {
-			for _, a := range c.words[k+1:] {
-				if containsPublication(a, depth+1) {
-					return fmt.Sprintf("inside a `%s` command string", base)
-				}
-			}
-			if c.hasStdin && containsPublication(c.stdin, depth+1) {
-				return fmt.Sprintf("in a script that `%s` reads", base)
-			}
-			if c.pipeFrom >= 0 && c.pipeFrom < len(line) && mentionsPublication(strings.Join(line[c.pipeFrom].args, " ")) {
-				return fmt.Sprintf("in a script piped to `%s`", base)
+			piped := c.pipeFrom >= 0 && c.pipeFrom < len(line) && publicationMention.MatchString(strings.Join(line[c.pipeFrom].args, " "))
+			if containsPublication(rest, depth+1) || containsPublication(c.stdin, depth+1) || piped {
+				return fmt.Sprintf("in a script that `%s` runs", base)
 			}
 		}
-		if _, ok := evaluators[base]; ok && containsPublication(strings.Join(c.words[k+1:], " "), depth+1) {
+		if _, ok := evaluators[base]; ok && containsPublication(rest, depth+1) {
 			return fmt.Sprintf("inside `%s`", base)
 		}
-		if _, ok := scriptInterpreters[base]; ok && mentionsPublication(strings.Join(c.words[k+1:], " ")+"\n"+c.stdin) {
+		if _, ok := scriptInterpreters[base]; ok && publicationMention.MatchString(rest+"\n"+c.stdin) {
 			return fmt.Sprintf("inside a `%s` script", base)
 		}
 	}
@@ -291,50 +258,12 @@ func hiddenPublication(c command, line []command, depth int) string {
 
 // shellKeywords start or end a compound command, whose body the shell runs
 // later, repeatedly or not at all.
-var shellKeywords = map[string]struct{}{
-	"!":        {},
-	"case":     {},
-	"do":       {},
-	"done":     {},
-	"elif":     {},
-	"else":     {},
-	"esac":     {},
-	"fi":       {},
-	"for":      {},
-	"function": {},
-	"if":       {},
-	"select":   {},
-	"then":     {},
-	"until":    {},
-	"while":    {},
-	"{":        {},
-	"}":        {},
-}
-
-// flatten returns the commands that the substitutions in c run, at any depth.
-func flatten(c command, depth int) []command {
-	if depth > maxNesting {
-		return nil
-	}
-	var out []command
-	for _, src := range c.nested {
-		nested := commands(parseShell(src))
-		for i := range nested {
-			out = append(out, nested[i])
-			out = append(out, flatten(nested[i], depth+1)...)
-		}
-	}
-	return out
-}
+var shellKeywords = wordSet("! case do done elif else esac fi for function if select then until while { }")
 
 // alongside returns the indexes of the commands of a line that run before
 // cmds[i] or at the same time: every earlier command, the rest of its
 // pipeline, and every later command when its pipeline runs in the background.
 func alongside(cmds []command, i int) []int {
-	var out []int
-	for j := range i {
-		out = append(out, j)
-	}
 	end := i
 	for end < len(cmds)-1 && (cmds[end].sep == "|" || cmds[end].sep == "|&") {
 		end++
@@ -342,20 +271,17 @@ func alongside(cmds []command, i int) []int {
 	if cmds[end].sep == "&" {
 		end = len(cmds) - 1
 	}
-	for j := i + 1; j <= end; j++ {
-		out = append(out, j)
+	var out []int
+	for j := 0; j <= end; j++ {
+		if j != i {
+			out = append(out, j)
+		}
 	}
 	return out
 }
 
 // sensitiveEnv are the variables that change where gh or git publishes.
-var sensitiveEnv = map[string]struct{}{
-	"GH_HOST":       {},
-	"GH_REPO":       {},
-	"GIT_DIR":       {},
-	"GIT_NAMESPACE": {},
-	"GIT_WORK_TREE": {},
-}
+var sensitiveEnv = wordSet("GH_HOST GH_REPO GIT_DIR GIT_NAMESPACE GIT_WORK_TREE")
 
 func setsSensitive(assigns []string) bool {
 	for _, a := range assigns {
@@ -367,60 +293,25 @@ func setsSensitive(assigns []string) bool {
 	return false
 }
 
-// inertCommands neither write files nor change git refs.
-var inertCommands = map[string]struct{}{
-	":":        {},
-	"[":        {},
-	"[[":       {},
-	"basename": {},
-	"cat":      {},
-	"date":     {},
-	"df":       {},
-	"diff":     {},
-	"dirname":  {},
-	"du":       {},
-	"echo":     {},
-	"egrep":    {},
-	"false":    {},
-	"fgrep":    {},
-	"file":     {},
-	"grep":     {},
-	"head":     {},
-	"jq":       {},
-	"ls":       {},
-	"printenv": {},
-	"printf":   {},
-	"pwd":      {},
-	"readlink": {},
-	"realpath": {},
-	"rg":       {},
-	"sleep":    {},
-	"stat":     {},
-	"tail":     {},
-	"test":     {},
-	"true":     {},
-	"type":     {},
-	"uname":    {},
-	"wc":       {},
-	"which":    {},
-	"whoami":   {},
-}
-
-// declarations set variables, which inert allows unless they are sensitive.
-var declarations = map[string]struct{}{
-	"declare":  {},
-	"export":   {},
-	"local":    {},
-	"readonly": {},
-	"typeset":  {},
-}
+// inertCommands neither write files nor change git refs. cd is followed by
+// the caller; a declaration that sets a sensitive variable is not inert.
+var inertCommands = wordSet(": [ [[ cat cd date diff echo false grep head jq ls printf pwd rg sleep tail test true wc which declare export local readonly")
 
 // inert reports whether c can run before a publication without changing
-// what it publishes: it writes no file (apart from its redirections, which
-// are checked on their own) and changes no git ref or gh destination.
+// what it publishes: it, and every substitution in it, writes no file (apart
+// from its own redirections, which are checked on their own) and changes no
+// git ref or gh destination.
 func inert(c command) bool {
-	if setsSensitive(c.assigns) {
+	if setsSensitive(c.assigns) || setsSensitive(c.words) {
 		return false
+	}
+	for _, src := range c.nested {
+		nested := commands(parseShell(src))
+		for i := range nested {
+			if len(nested[i].writes) > 0 || !inert(nested[i]) {
+				return false
+			}
+		}
 	}
 	if len(c.words) == 0 {
 		return true
@@ -428,276 +319,219 @@ func inert(c command) bool {
 	if c.wordDyn[0] {
 		return false
 	}
-	name := c.name()
-	if _, ok := declarations[name]; ok {
-		return !setsSensitive(c.words[1:])
-	}
-	switch name {
-	case "cd":
-		return true // the caller follows it
+	switch c.name() {
 	case "git":
 		return gitInert(c.words, c.wordDyn)
 	case "gh":
 		return ghInert(c.words, c.wordDyn)
 	}
-	_, ok := inertCommands[name]
+	_, ok := inertCommands[c.name()]
 	return ok
 }
 
 // gitReadSubcommands change no file in the working tree and no ref a push
 // publishes.
-var gitReadSubcommands = map[string]struct{}{
-	"add":           {},
-	"blame":         {},
-	"cat-file":      {},
-	"count-objects": {},
-	"describe":      {},
-	"diff":          {},
-	"fetch":         {},
-	"for-each-ref":  {},
-	"grep":          {},
-	"log":           {},
-	"ls-files":      {},
-	"ls-remote":     {},
-	"merge-base":    {},
-	wordPush:        {},
-	"rev-list":      {},
-	"rev-parse":     {},
-	"shortlog":      {},
-	"show":          {},
-	"show-ref":      {},
-	"status":        {},
-	"version":       {},
-}
-
-// gitListOptions are the options that keep branch, tag and remote listing.
-var gitListOptions = map[string]struct{}{
-	"--all":          {},
-	"--list":         {},
-	"--remotes":      {},
-	"--show-current": {},
-	"--verbose":      {},
-	"-a":             {},
-	"-l":             {},
-	"-r":             {},
-	"-v":             {},
-	"-vv":            {},
-}
+var gitReadSubcommands = wordSet("add blame cat-file describe diff fetch for-each-ref grep log ls-files ls-remote merge-base push rev-list rev-parse show show-ref status")
 
 func gitInert(words []string, dyn []bool) bool {
 	i := 1
-	for i < len(words) && strings.HasPrefix(words[i], "-") {
-		switch words[i] {
-		case "-C":
-			i += 2
-		case "--no-pager", "--no-optional-locks":
+	for i < len(words) && (words[i] == "-C" || words[i] == "--no-pager") {
+		if words[i] == "-C" {
 			i++
-		default:
-			return false
 		}
+		i++
 	}
 	if i >= len(words) {
-		return true
+		return i == len(words) && !anyTrue(dyn)
 	}
 	if anyTrue(dyn[:i+1]) {
 		return false
 	}
-	sub, rest := words[i], words[i+1:]
-	if _, ok := gitReadSubcommands[sub]; ok {
+	rest := strings.Join(words[i+1:], " ")
+	switch words[i] {
+	case "branch":
+		return rest == "" || rest == "--show-current"
+	case "remote":
+		return rest == "" || rest == "-v" || strings.HasPrefix(rest, "get-url")
+	}
+	_, ok := gitReadSubcommands[words[i]]
+	return ok
+}
+
+// ghValueFlags are, for each gh command that publishes a title, body or
+// comment, the flags that take a value, as long/short. A flag named *-file
+// takes a file whose content is published. Flags not listed are taken as
+// booleans: a value they take is read as a positional argument.
+var ghValueFlags = map[string]string{
+	"pr create":      "title/t body/b body-file/F base/B head/H",
+	"pr edit":        "title/t body/b body-file/F base/B add-assignee remove-assignee add-label remove-label add-project remove-project milestone add-reviewer remove-reviewer",
+	"pr comment":     "body/b body-file/F",
+	"pr review":      "body/b body-file/F",
+	"pr merge":       "subject/t body/b body-file/F match-head-commit author-email",
+	"pr close":       "comment/c",
+	"pr reopen":      "comment/c",
+	"issue create":   "title/t body/b body-file/F",
+	"issue edit":     "title/t body/b body-file/F add-assignee remove-assignee add-label remove-label add-project remove-project milestone",
+	"issue comment":  "body/b body-file/F",
+	"issue close":    "comment/c reason/r",
+	"issue reopen":   "comment/c",
+	"release create": "title/t notes/n notes-file/F target discussion-category notes-start-tag",
+	"release edit":   "title/t notes/n notes-file/F tag target discussion-category",
+}
+
+// apiValueFlags are the gh api flags that take a value.
+const apiValueFlags = "method/X raw-field/f field/F input header/H jq/q template/t hostname preview/p cache"
+
+// flagVal is one flag found on a command line.
+type flagVal struct {
+	name  string
+	value string
+}
+
+// parseFlags splits args as pflag does, given the flags that take a value
+// (see ghValueFlags): --name value, --name=value, -x value, -xvalue, -x=value
+// and boolean shorthands grouped before a value flag (-wbtext), with --
+// ending the flags. It returns the flags and the indexes of the positional
+// arguments.
+func parseFlags(args []string, valueFlags string) ([]flagVal, []int) {
+	long := map[string]struct{}{}
+	short := map[byte]string{}
+	for f := range strings.FieldsSeq(valueFlags) {
+		name, s, _ := strings.Cut(f, "/")
+		long[name] = struct{}{}
+		if s != "" {
+			short[s[0]] = name
+		}
+	}
+	var flags []flagVal
+	var pos []int
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		var f flagVal
+		inline := false
+		switch {
+		case a == "--":
+			for j := i + 1; j < len(args); j++ {
+				pos = append(pos, j)
+			}
+			return flags, pos
+		case strings.HasPrefix(a, "--"):
+			f.name, f.value, inline = strings.Cut(a[2:], "=")
+			if _, ok := long[f.name]; !ok {
+				continue
+			}
+		case strings.HasPrefix(a, "-") && len(a) > 1:
+			j := 1
+			for j < len(a) && short[a[j]] == "" {
+				j++
+			}
+			if j == len(a) {
+				continue
+			}
+			f.name = short[a[j]]
+			f.value = strings.TrimPrefix(a[j+1:], "=")
+			inline = j+1 < len(a)
+		default:
+			pos = append(pos, i)
+			continue
+		}
+		if !inline && i+1 < len(args) {
+			i++
+			f.value = args[i]
+		}
+		flags = append(flags, f)
+	}
+	return flags, pos
+}
+
+// ghReadVerbs are the subcommands that publish nothing and change no file.
+var ghReadVerbs = wordSet("checks diff list status view")
+
+// ghOtherGroups are the gh commands that publish no title, body or comment
+// this hook checks. Anything else may be an alias or an extension.
+var ghOtherGroups = wordSet("alias attestation auth browse cache co codespace completion config extension gist gpg-key help label org project repo ruleset run search secret ssh-key status variable version workflow")
+
+// ghCommand returns the group and verb of a gh command line ("" when it has
+// none), and whether either is dynamic.
+func ghCommand(words []string, dyn []bool) (group, verb string, dynamic bool) {
+	_, pos := parseFlags(words[1:], "repo/R")
+	if len(pos) > 0 {
+		group, dynamic = words[1+pos[0]], dyn[1+pos[0]]
+	}
+	if len(pos) > 1 {
+		verb, dynamic = words[1+pos[1]], dynamic || dyn[1+pos[1]]
+	}
+	return group, verb, dynamic
+}
+
+func ghPublishes(words []string, dyn []bool) pubKind {
+	group, verb, dynamic := ghCommand(words, dyn)
+	switch {
+	case group == "":
+		return pubNone
+	case group == wordAPI:
+		if apiWrites(words, dyn) {
+			return pubGH
+		}
+		return pubNone
+	case dynamic:
+		return pubUnknown
+	case group == "pr" || group == wordIssue || group == wordRelease:
+		if _, ok := ghValueFlags[group+" "+verb]; ok {
+			return pubGH
+		}
+		return pubNone
+	}
+	if _, ok := ghOtherGroups[group]; ok {
+		return pubNone
+	}
+	return pubUnknown
+}
+
+// ghInert reports whether a gh command changes nothing a later publication
+// reads: a read, or a publication itself.
+func ghInert(words []string, dyn []bool) bool {
+	if anyTrue(dyn) {
+		return false
+	}
+	switch publishes(words, dyn) {
+	case pubGH:
+		return true
+	case pubUnknown:
+		return false
+	}
+	group, verb, _ := ghCommand(words, dyn)
+	_, ok := ghReadVerbs[verb]
+	return ok || verb == "" || group == wordAPI
+}
+
+// apiWrites reports whether a gh api call may write: it has fields or an
+// input, a method other than GET, or arguments the hook cannot read.
+func apiWrites(words []string, dyn []bool) bool {
+	if anyTrue(dyn) {
 		return true
 	}
-	switch sub {
-	case "branch", wordTag:
-		for _, a := range rest {
-			if _, ok := gitListOptions[a]; !ok {
-				return false
+	flags, _ := parseFlags(words[1:], apiValueFlags)
+	for _, f := range flags {
+		switch f.name {
+		case "method":
+			if !strings.EqualFold(f.value, "GET") {
+				return true
 			}
+		case "raw-field", "field", "input":
+			return true
 		}
-		return true
-	case "remote":
-		return len(rest) == 0 || rest[0] == "-v" || rest[0] == "get-url" || rest[0] == "show"
-	case "config":
-		return len(rest) > 0 && (rest[0] == "--get" || rest[0] == "--get-all" || rest[0] == "--list" || rest[0] == "-l")
 	}
 	return false
 }
 
-// shellVars are the variables a command line sets before a publication,
-// with the values the check worked out from the line itself. A name set to
-// something it could not work out is absent, like one set outside the line.
-type shellVars map[string]string
+var prURL = regexp.MustCompile(`^https?://(?:www\.)?github\.com/([^/]+/[^/]+)/(?:pull|issues)/`)
 
-// assignment is NAME=value split, with the expansions of value.
-type assignment struct {
-	name  string
-	value string
-	exps  []expansion
-	ok    bool
+// ghURLRepo returns the owner/name of a pull request or issue URL, or "".
+func ghURLRepo(s string) string {
+	m := prURL.FindStringSubmatch(s)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
-
-func splitAssignment(word string, exps []expansion) assignment {
-	name, value, ok := strings.Cut(word, "=")
-	if !ok || strings.HasSuffix(name, "+") || !shellName.MatchString(name) {
-		return assignment{}
-	}
-	shift := len(name) + 1
-	shifted := make([]expansion, 0, len(exps))
-	for _, e := range exps {
-		if e.start < shift {
-			return assignment{}
-		}
-		e.start -= shift
-		e.end -= shift
-		// An assignment's value is not split into words.
-		e.quoted = true
-		shifted = append(shifted, e)
-	}
-	return assignment{
-		name:  name,
-		value: value,
-		exps:  shifted,
-		ok:    true,
-	}
-}
-
-// assignments returns what a command that only sets variables sets: plain
-// NAME=value words, or export NAME=value. ok is false for any other command.
-func (c command) assignments() ([]assignment, bool) {
-	var out []assignment
-	switch {
-	case len(c.words) == 0:
-		for i, a := range c.assigns {
-			out = append(out, splitAssignment(a, c.assignExps[i]))
-		}
-	case c.name() == "export" && !c.wordDyn[0]:
-		for i, w := range c.words[1:] {
-			if strings.HasPrefix(w, "-") {
-				return nil, false
-			}
-			if !strings.Contains(w, "=") {
-				continue
-			}
-			out = append(out, splitAssignment(w, c.wordExps[i+1]))
-		}
-	default:
-		return nil, false
-	}
-	return out, true
-}
-
-// evalWord returns the value of a word whose expansions all come from the
-// command line itself, or false.
-func (pc pubContext) evalWord(word string, exps []expansion, depth int) (string, bool) {
-	var b strings.Builder
-	last := 0
-	for _, e := range exps {
-		var v string
-		switch e.kind {
-		case expVar:
-			val, ok := pc.vars[e.name]
-			if !ok {
-				return "", false
-			}
-			v = val
-		case expSubst:
-			val, ok := pc.evalSubst(e.inner, depth+1)
-			if !ok {
-				return "", false
-			}
-			v = val
-		default:
-			return "", false
-		}
-		// Unquoted, the shell would split the value and expand globs in it.
-		if !e.quoted && strings.ContainsAny(v, " \t\n*?[") {
-			return "", false
-		}
-		b.WriteString(word[last:e.start])
-		b.WriteString(v)
-		last = e.end
-	}
-	b.WriteString(word[last:])
-	return b.String(), true
-}
-
-// evalWords returns the values of a command's words, or false when one
-// depends on something outside the command line.
-func (pc pubContext) evalWords(c command, depth int) ([]string, bool) {
-	out := make([]string, len(c.words))
-	for i, w := range c.words {
-		if !c.wordDyn[i] {
-			out[i] = w
-			continue
-		}
-		v, ok := pc.evalWord(w, c.wordExps[i], depth)
-		if !ok {
-			return nil, false
-		}
-		out[i] = v
-	}
-	return out, true
-}
-
-// evalSubst returns the output of a command substitution whose content is
-// in the command line, or in a file the line does not change: cat of a
-// here-document or of a file, echo, or printf with the format %s.
-func (pc pubContext) evalSubst(inner string, depth int) (string, bool) {
-	if depth > maxNesting {
-		return "", false
-	}
-	line := parseShell(inner)
-	if line.grouped || len(line.cmds) != 1 {
-		return "", false
-	}
-	c := newCommand(line.cmds[0])
-	if len(c.assigns) > 0 || len(c.writes) > 0 || c.pipeFrom >= 0 || len(c.words) == 0 {
-		return "", false
-	}
-	words, ok := pc.evalWords(c, depth)
-	if !ok {
-		return "", false
-	}
-	out := ""
-	switch c.name() {
-	case "cat":
-		switch {
-		case len(words) == 1 && c.hasStdin && !c.stdinDynamic && c.stdinSources == 1:
-			out = c.stdin
-		case len(words) == 2 && c.stdinSources == 0 && !strings.HasPrefix(words[1], "-"):
-			text, err := pc.readFile(words[1])
-			if err != nil {
-				return "", false
-			}
-			out = text
-		default:
-			return "", false
-		}
-	case "echo":
-		if !plainEcho(words[1:]) {
-			return "", false
-		}
-		out = strings.Join(words[1:], " ")
-	case "printf":
-		switch {
-		case len(words) >= 2 && words[1] == "%s":
-			out = strings.Join(words[2:], "")
-		case len(words) == 2 && !strings.ContainsAny(words[1], `%\`):
-			out = words[1]
-		default:
-			return "", false
-		}
-	default:
-		return "", false
-	}
-	return strings.TrimRight(out, "\n"), true
-}
-
-// Words that several command and tool names share.
-const (
-	wordAPI     = "api"
-	wordFiles   = "files"
-	wordIssue   = "issue"
-	wordPush    = "push"
-	wordRelease = "release"
-	wordTag     = "tag"
-)

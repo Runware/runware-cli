@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -110,14 +112,34 @@ func (s *Scanner) scanToolCall(name string, input json.RawMessage) ([]Finding, e
 	if s.isPrivateTarget(toolRepo(args)) {
 		return nil, nil
 	}
-	var texts []publication
-	stringWalk{
-		label: name,
-		keys:  toolTextFields,
-	}.collect(args, "", false, &texts)
 	var out []Finding
-	for _, t := range texts {
-		out = append(out, s.ScanText(t.label, t.text)...)
-	}
+	collectTexts(args, "", false, func(path, text string) {
+		out = append(out, s.ScanText(name+" "+path, text)...)
+	})
 	return out, nil
+}
+
+// collectTexts walks v in a stable order and passes each string to publish to
+// found with its path: every string when all is set, otherwise only those
+// under a key in toolTextFields.
+func collectTexts(v any, path string, all bool, found func(path, text string)) {
+	switch x := v.(type) {
+	case string:
+		if all {
+			found(path, x)
+		}
+	case []any:
+		for i, e := range x {
+			collectTexts(e, fmt.Sprintf("%s[%d]", path, i), all, found)
+		}
+	case map[string]any:
+		for _, k := range slices.Sorted(maps.Keys(x)) {
+			p := k
+			if path != "" {
+				p = path + "." + k
+			}
+			_, isText := toolTextFields[k]
+			collectTexts(x[k], p, all || isText, found)
+		}
+	}
 }

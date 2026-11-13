@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,8 +13,9 @@ import (
 )
 
 const (
-	labelCreateTitle = "gh pr create title"
-	remoteOrigin     = "origin"
+	remoteOrigin = "origin"
+	fileBody     = "body.md"
+	cleanText    = "clean text"
 )
 
 // leak is text with one finding, built at run time (see rules_test.go).
@@ -89,178 +91,162 @@ func TestParseShell(t *testing.T) {
 	}
 }
 
-func TestParseShellPipedHeredoc(t *testing.T) {
-	cmds := parseShell("cat <<'EOF' | gh pr comment 1 --body-file -\nhello\nEOF\n").cmds
-	if len(cmds) != 2 || cmds[1].stdin != "hello\n" {
-		t.Fatalf("parseShell = %+v, want the heredoc on gh's stdin", cmds)
-	}
-}
-
-type planCase struct {
+// hookCase is a Bash command run through the hook in a directory that setup
+// makes (an empty one when nil) holding files, and whether the hook blocks
+// it: by a finding, or because it cannot read the command completely.
+type hookCase struct {
 	name    string
 	command string
-	labels  []string
-	pushes  int
+	files   map[string]string
+	setup   func(t *testing.T) string
+	block   bool
 }
 
-func TestPlanCommand(t *testing.T) {
-	dir := t.TempDir()
-	bodyFile := filepath.Join(dir, "body.md")
-	if err := os.WriteFile(bodyFile, []byte(leak), 0o600); err != nil {
-		t.Fatal(err)
+// Directories the hook cases run in.
+var (
+	cleanRepo = func(t *testing.T) string {
+		return gitRepo(t, cleanText, "feat: add b")
 	}
+	leakyCommit = func(t *testing.T) string {
+		return gitRepo(t, cleanText, "feat: add b\n\n"+leak)
+	}
+	privateCheckout = func(t *testing.T) string {
+		dir := t.TempDir()
+		gitIn(t, dir, "init", "-q")
+		gitIn(t, dir, "remote", "add", "origin", "https://"+ghRepo+"some-private-repo.git")
+		return dir
+	}
+	// tagOnUnpushedBranch has an annotated tag with a leak on a commit the
+	// push does not include; tagOnPushedBranch has one on the pushed commit.
+	tagOnUnpushedBranch = func(t *testing.T) string {
+		dir := cleanRepo(t)
+		gitIn(t, dir, "checkout", "-q", "-b", "other", "origin/main")
+		gitIn(t, dir, "commit", "-q", "--allow-empty", "-m", "other work")
+		gitIn(t, dir, "tag", "-a", "v9.0.0", "-m", "release\n\n"+leak)
+		gitIn(t, dir, "checkout", "-q", "feature")
+		return dir
+	}
+	tagOnPushedBranch = func(t *testing.T) string {
+		dir := cleanRepo(t)
+		gitIn(t, dir, "tag", "-a", "v1.1.0", "-m", "release\n\n"+leak)
+		return dir
+	}
+)
+
+// TestHookForms runs the forms of posting and pushing through the hook. Every
+// form that publishes a leak is blocked, by a finding when the hook reads it
+// and otherwise because it cannot; the simple forms people use still pass.
+func TestHookForms(t *testing.T) {
+	hiddenRepo := shortRepo + "some-private-repo"
 	review := `{"event":"COMMENT","body":"ok","comments":[{"path":"a.go","line":1,"body":` + jsonString(leak) + `}]}`
-	if err := os.WriteFile(filepath.Join(dir, "review.json"), []byte(review), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	mutation := `{"query":"mutation($input: AddCommentInput!){addComment(input:$input){clientMutationId}}","variables":{"input":{"subjectId":"x","note":` + jsonString(leak) + `}}}`
-	if err := os.WriteFile(filepath.Join(dir, "mutation.json"), []byte(mutation), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	readQuery := `{"query":"query{viewer{login}}","variables":{"q":` + jsonString(leak) + `}}`
-	if err := os.WriteFile(filepath.Join(dir, "query.json"), []byte(readQuery), 0o600); err != nil {
-		t.Fatal(err)
+	merge := `{"commit_title":"merge","commit_message":` + jsonString(leak) + `}`
+	leakFile := map[string]string{
+		fileBody: leak,
 	}
-	cases := []planCase{
-		{
-			name:    "gh pr create with --body and --title",
-			command: `gh pr create --title "fix: x" --body "` + leak + `"`,
-			labels:  []string{labelCreateTitle, "gh pr create body"},
-		},
-		{
-			name:    "gh pr create with -t and -b and = forms",
-			command: `gh pr create -t x -b "` + leak + `" --title=y`,
-			labels:  []string{labelCreateTitle, "gh pr create body", labelCreateTitle},
-		},
-		{
-			name:    "gh pr create with --body-file",
-			command: "gh pr create --title x --body-file body.md",
-			labels:  []string{labelCreateTitle, "gh pr create body file"},
-		},
-		{
-			name:    "gh pr edit with -F",
-			command: "gh pr edit 3 -F " + bodyFile,
-			labels:  []string{"gh pr edit body file"},
-		},
-		{
-			name:    "gh pr review",
-			command: `gh pr review 3 --comment -b "` + leak + `"`,
-			labels:  []string{"gh pr review body"},
-		},
-		{
-			name:    "gh issue comment",
-			command: `gh issue comment 3 --body "` + leak + `"`,
-			labels:  []string{"gh issue comment body"},
-		},
-		{
-			name:    "gh on a private repository",
-			command: `gh pr comment 3 -R ` + shortRepo + `some-private-repo --body "` + leak + `"`,
-			labels:  nil,
-		},
-		{
-			name:    "gh read",
-			command: "gh pr view 3 --json body",
-			labels:  nil,
-		},
-		{
-			name:    "gh api comment with -f",
-			command: `gh api repos/Runware/runware-cli/issues/3/comments -f body="` + leak + `"`,
-			labels:  []string{"gh api field body"},
-		},
-		{
-			name:    "gh api comment with -F body=@file",
-			command: "gh api -X POST repos/{owner}/{repo}/pulls/3/comments -F body=@body.md -f path=x.go",
-			labels:  []string{"gh api field body"},
-		},
-		{
-			name:    "gh api on a private repository",
-			command: `gh api repos/` + shortRepo + `some-private-repo/issues/3/comments -f body="` + leak + `"`,
-			labels:  nil,
-		},
-		{
-			name:    "gh api read",
-			command: "gh api repos/Runware/runware-cli/pulls/3 --jq .body",
-			labels:  nil,
-		},
-		{
-			name:    "gh api graphql mutation",
-			command: `gh api graphql -f query='mutation($b:String!){addComment(input:{subjectId:"x",body:$b}){clientMutationId}}' -f b="` + leak + `"`,
-			labels:  []string{"gh api field query", "gh api field b"},
-		},
-		{
-			name:    "gh api review with nested comments in --input",
-			command: "gh api repos/Runware/runware-cli/pulls/3/reviews --input review.json",
-			labels:  []string{"gh api --input body", "gh api --input comments[0].body"},
-		},
-		{
-			name:    "gh api graphql mutation with --input",
-			command: "gh api graphql --input mutation.json",
-			labels:  []string{"gh api --input query", "gh api --input variables.input.note", "gh api --input variables.input.subjectId"},
-		},
-		{
-			name:    "gh api graphql read with --input",
-			command: "gh api graphql --input query.json",
-			labels:  nil,
-		},
-		{
-			name:    "gh api review with nested -f fields",
-			command: `gh api repos/Runware/runware-cli/pulls/3/reviews -f event=COMMENT -f 'comments[][path]=a.go' -f 'comments[][body]=` + leak + `'`,
-			labels:  []string{"gh api field comments[][body]"},
-		},
-		{
-			name:    "git push",
-			command: "cd sub && git -C . push -u origin HEAD",
-			pushes:  1,
-		},
-		{
-			name:    "git push behind env and wrapper",
-			command: "GIT_TRACE=0 command git push --force-with-lease",
-			pushes:  1,
-		},
-		{
-			name:    "not a push",
-			command: "git log --oneline | grep push",
-			pushes:  0,
-		},
+	cleanFile := map[string]string{
+		fileBody: cleanText,
 	}
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	repoOf := func(string) string { return "Runware/runware-cli" }
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			p, err := s.planCommand(tc.command, dir, repoOf)
-			if err != nil {
-				t.Fatalf("planCommand: %v", err)
-			}
-			var labels []string
-			for _, pub := range p.texts {
-				labels = append(labels, pub.label)
-			}
-			if strings.Join(labels, ",") != strings.Join(tc.labels, ",") {
-				t.Errorf("labels = %v, want %v", labels, tc.labels)
-			}
-			if len(p.pushes) != tc.pushes {
-				t.Errorf("pushes = %d, want %d", len(p.pushes), tc.pushes)
-			}
-		})
-	}
-}
+	cases := []hookCase{
+		// Text in the command line itself.
+		{name: "literal title and body", command: `gh pr create --title "x" --body "y"`},
+		{name: "leak in --body", command: `gh pr create --title "fix: x" --body "` + leak + `"`, block: true},
+		{name: "leak in -b with = forms", command: `gh pr create -t x -b "` + leak + `" --title=y`, block: true},
+		{name: "body attached to its short flag", command: `gh pr comment 1 -b"` + leak + `"`, block: true},
+		{name: "gh pr review body", command: `gh pr review 3 --comment -b "` + leak + `"`, block: true},
+		{name: "gh issue comment body", command: `gh issue comment 3 --body "` + leak + `"`, block: true},
+		{name: "gh pr close comment", command: `gh pr close 1 --comment '` + leak + `'`, block: true},
+		{name: "gh issue reopen comment", command: `gh issue reopen 1 -c '` + leak + `'`, block: true},
+		{name: "gh pr merge subject", command: `gh pr merge 1 --squash --subject '` + leak + `'`, block: true},
+		{name: "gh pr merge body", command: `gh pr merge 1 -b '` + leak + `'`, block: true},
+		{name: "repo flag between gh subcommands", command: `gh pr --repo Runware/runware-cli comment 1 --body '` + leak + `'`, block: true},
+		{name: "repo flag before gh subcommands", command: `gh -R Runware/runware-cli pr comment 1 --body '` + leak + `'`, block: true},
+		{name: "deny pattern", command: `gh pr comment 3 --body 'stored at fakevendor'`, block: true},
+		{name: "here-document in a substitution", command: "gh pr create --title x --body \"$(cat <<'EOF'\nclean text\nEOF\n)\""},
+		{name: "leak in a here-document in a substitution", command: "gh pr create --title x --body \"$(cat <<'EOF'\n" + leak + "\nEOF\n)\"", block: true},
+		{name: "here-document on stdin", command: "gh pr comment 1 -F - <<'EOF'\nclean text\nEOF"},
+		{name: "leak in a here-document on stdin", command: "gh pr comment 3 -F - <<'EOF'\n" + leak + "\nEOF", block: true},
+		{name: "here-document piped to gh", command: "cat <<'EOF' | gh pr comment 1 --body-file -\nclean text\nEOF"},
+		{name: "here-string", command: "gh pr comment 3 -F - <<< 'clean text'"},
+		{name: "leak in a here-string", command: "gh pr comment 3 -F - <<< '" + leak + "'", block: true},
+		{name: "unquoted here-document that expands", command: "gh pr comment 1 -F - <<EOF\n$(cat body.md)\nEOF", files: cleanFile, block: true},
 
-type scannedCase struct {
-	name    string
-	command string
-	rule    string
-}
+		// Files the command posts.
+		{name: "body file", command: `gh pr comment 1 --body-file body.md`, files: cleanFile},
+		{name: "body file then another command", command: `gh pr comment 1 --body-file body.md && echo done`, files: cleanFile},
+		{name: "leak in a body file", command: `gh pr create --title x --body-file body.md`, files: leakFile, block: true},
+		{name: "leak in a -F body file", command: `gh pr edit 3 -F body.md`, files: leakFile, block: true},
+		{name: "gh pr merge body file", command: `gh pr merge 1 --body-file body.md`, files: leakFile, block: true},
+		{name: "stdin from a file", command: `gh pr comment 3 -F - < body.md`, files: cleanFile},
+		{name: "leak in stdin from a file", command: `gh pr comment 3 -F - < body.md`, files: leakFile, block: true},
+		{name: "body file that does not exist", command: `gh pr comment 1 --body-file missing.md`, block: true},
+		{name: "here-document written to the body file", command: "cat > body.md <<'EOF'\n" + leak + "\nEOF\ngh pr comment 1 --body-file body.md", block: true},
+		{name: "stale body file rewritten", command: "cat > body.md <<'EOF'\n" + leak + "\nEOF\ngh pr comment 1 --body-file body.md", files: cleanFile, block: true},
+		{name: "body file copied over first", command: `cp other.md body.md && gh pr comment 1 --body-file body.md`, files: cleanFile, block: true},
+		{name: "relative body file after cd", command: `cd sub && gh pr comment 1 --body-file body.md`, files: map[string]string{"sub/body.md": cleanText}, block: true},
+		{name: "file substitution after cd", command: `cd sub && gh pr comment 1 --body "$(cat body.md)"`, files: map[string]string{fileBody: cleanText, "sub/body.md": leak}, block: true},
+		{name: "cat of a file in a substitution", command: `gh pr comment 3 --body "$(cat body.md)"`, files: cleanFile, block: true},
+		{name: "printf in a substitution", command: `gh pr comment 1 --body "$(printf '%s\n' 'see' '` + hiddenRepo + `')"`, block: true},
+		{name: "printf piped to gh", command: `printf '%s' 'clean text' | gh pr comment 1 -F -`, block: true},
+		{name: "pipe and redirection both feed stdin", command: `cat safe.md | gh pr comment 1 -F - < body.md`, files: map[string]string{"safe.md": cleanText, fileBody: leak}, block: true},
+		{name: "stdin from an unknown command", command: `make body | gh pr comment 1 -F -`, block: true},
+		{name: "echo of a variable piped to gh", command: `echo "$text" | gh pr comment 1 -F -`, block: true},
+		{name: "echo of a variable the line sets", command: `text='` + leak + `'; echo "$text" | gh pr comment 1 -F -`, block: true},
+		{name: "jq piped to gh api", command: `jq -n '{body: "` + leak + `"}' | gh api repos/Runware/runware-cli/issues/1/comments --input -`, block: true},
 
-// TestPlanCommandScansText checks the text each route reads, not only its
-// label: every command posts a leak, from a file, a substitution, stdin or a
-// deny pattern, and the scan of what the plan holds finds it once.
-func TestPlanCommandScansText(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "body.md"), []byte(leak), 0o600); err != nil {
-		t.Fatal(err)
+		// Variables, wrappers and compound commands.
+		{name: "variable body", command: `gh pr comment 1 --body "$BODY"`, block: true},
+		{name: "body from a variable the line sets", command: "body=$(cat <<'EOF'\nclean text\nEOF\n); gh pr create --title x --body \"$body\"", block: true},
+		{name: "variable command name", command: `$GH pr comment 1 --body x`, block: true},
+		{name: "write inside an assignment's substitution", command: `url=$(gh pr create --title ok --body '` + leak + `')`, block: true},
+		{name: "bash -c string", command: `bash -c "gh pr comment 1 --body 'x'"`, block: true},
+		{name: "eval", command: `eval "gh pr comment 1 --body x"`, block: true},
+		{name: "xargs", command: `echo 1 | xargs -I{} gh pr comment {} --body x`, block: true},
+		{name: "timeout", command: `timeout 60 gh pr comment 1 --body '` + leak + `'`, block: true},
+		{name: "backticks", command: "echo `gh pr comment 1 --body x`", block: true},
+		{name: "subshell", command: `(gh pr comment 1 --body x)`, block: true},
+		{name: "loop", command: `for n in 1 2; do gh pr comment "$n" --body x; done`, block: true},
+		{name: "reserved words", command: `if true; then gh pr comment 1 --body '` + leak + `'; fi`, block: true},
+		{name: "multi-line function", command: "post() {\n  gh pr comment 1 --body-file body.md\n}\ncp other.md body.md\npost", files: cleanFile, block: true},
+
+		// gh api.
+		{name: "gh api read", command: `gh api repos/Runware/runware-cli/pulls/3 --jq .body`},
+		{name: "gh api comment with -f", command: `gh api repos/Runware/runware-cli/issues/3/comments -f body="` + leak + `"`, block: true},
+		{name: "gh api -F body=@file", command: `gh api -X POST repos/{owner}/{repo}/pulls/3/comments -F body=@body.md -f path=x.go`, files: leakFile, block: true},
+		{name: "gh api review with nested -f fields", command: `gh api repos/Runware/runware-cli/pulls/3/reviews -f event=COMMENT -f 'comments[][path]=a.go' -f 'comments[][body]=` + leak + `'`, block: true},
+		{name: "gh api graphql mutation", command: `gh api graphql -f query='mutation($b:String!){addComment(input:{subjectId:"x",body:$b}){clientMutationId}}' -f b="` + leak + `"`, block: true},
+		{name: "gh api review in --input", command: `gh api repos/Runware/runware-cli/pulls/3/reviews --input review.json`, files: map[string]string{"review.json": review}, block: true},
+		{name: "gh api graphql mutation in --input", command: `gh api graphql --input mutation.json`, files: map[string]string{"mutation.json": mutation}, block: true},
+		{name: "gh api graphql query in --input", command: `gh api graphql --input query.json`, files: map[string]string{"query.json": readQuery}, block: true},
+		{name: "REST merge commit message", command: `gh api -X PUT repos/Runware/runware-cli/pulls/1/merge -f commit_message='` + leak + `'`, block: true},
+		{name: "REST merge commit title", command: `gh api -X PUT repos/Runware/runware-cli/pulls/1/merge -f commit_title='` + leak + `'`, block: true},
+		{name: "REST merge with --input", command: `gh api -X PUT repos/Runware/runware-cli/pulls/1/merge --input merge.json`, files: map[string]string{"merge.json": merge}, block: true},
+
+		// Destinations.
+		{name: "gh read", command: `gh pr view 1 --json body`},
+		{name: "plain commands", command: `ls -la && echo hi | wc -l`},
+		{name: "commit message from a substitution", command: "git commit -m \"$(cat <<'EOF'\nfix: mention gh pr comment and push\nEOF\n)\""},
+		{name: "private destination", command: `gh pr comment 1 -R ` + hiddenRepo + ` --body '` + leak + `'`},
+		{name: "gh api on a private repository", command: `gh api repos/` + hiddenRepo + `/issues/3/comments -f body="` + leak + `"`},
+		{name: "private pull request URL", command: `gh pr comment https://` + ghRepo + `some-private-repo/pull/1 --body '` + leak + `'`},
+		{name: "comment in a private checkout", command: `gh pr comment 1 --body '` + leak + `'`, setup: privateCheckout},
+		{name: "public pull request URL from a private checkout", command: `gh pr comment https://github.com/Runware/runware-cli/pull/1 --body '` + leak + `'`, setup: privateCheckout, block: true},
+		{name: "graphql from a private checkout", command: `gh api graphql -f query='mutation{x}' -f b='` + leak + `'`, setup: privateCheckout, block: true},
+
+		// git push.
+		{name: "git push", command: `git push`, setup: cleanRepo},
+		{name: "git push origin branch", command: `git push origin feature`, setup: cleanRepo},
+		{name: "git push after a read", command: `git status && git push -u origin HEAD`, setup: cleanRepo},
+		{name: "leak in a pushed commit", command: `git -C . push -u origin HEAD`, setup: leakyCommit, block: true},
+		{name: "push behind env and wrapper", command: `GIT_TRACE=0 command git push --force-with-lease`, setup: leakyCommit, block: true},
+		{name: "not a push", command: `git log --oneline | grep push`, setup: leakyCommit},
+		{name: "commit before push", command: `git commit -q --allow-empty -m '` + leak + `' && git push`, setup: cleanRepo, block: true},
+		{name: "variable refspec", command: `git push origin "$BRANCH"`, setup: cleanRepo, block: true},
+		{name: "git dir from the environment", command: `GIT_DIR=/elsewhere/.git git push`, setup: cleanRepo, block: true},
+		{name: "cd to a variable", command: `cd "$REPO" && git push`, setup: cleanRepo, block: true},
+		{name: "annotated tag on an unpushed branch", command: `git push --follow-tags`, setup: tagOnUnpushedBranch},
+		{name: "annotated tag on the pushed branch", command: `git push --follow-tags`, setup: tagOnPushedBranch, block: true},
 	}
 	s, err := NewScanner(nil)
 	if err != nil {
@@ -269,64 +255,29 @@ func TestPlanCommandScansText(t *testing.T) {
 	s.loadDeny = func() []string {
 		return []string{`\bfakevendor\b`}
 	}
-	cases := []scannedCase{
-		{
-			name:    "gh api -F body=@file",
-			command: "gh api repos/Runware/runware-cli/issues/3/comments -F body=@body.md",
-			rule:    ruleRepo,
-		},
-		{
-			name:    "cat of a file in a substitution",
-			command: `gh pr comment 3 --body "$(cat body.md)"`,
-			rule:    ruleRepo,
-		},
-		{
-			name:    "stdin from a here-document",
-			command: "gh pr comment 3 -F - <<'EOF'\n" + leak + "\nEOF",
-			rule:    ruleRepo,
-		},
-		{
-			name:    "stdin from a here-string",
-			command: "gh pr comment 3 -F - <<< '" + leak + "'",
-			rule:    ruleRepo,
-		},
-		{
-			name:    "stdin from a file",
-			command: "gh pr comment 3 -F - < body.md",
-			rule:    ruleRepo,
-		},
-		{
-			name:    "deny pattern",
-			command: "gh pr comment 3 --body 'stored at fakevendor'",
-			rule:    ruleDenyList,
-		},
-	}
-	repoOf := func(string) string { return "Runware/runware-cli" }
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := s.planCommand(tc.command, dir, repoOf)
-			if err != nil {
-				t.Fatalf("planCommand: %v", err)
+			dir := t.TempDir()
+			if tc.setup != nil {
+				dir = tc.setup(t)
 			}
-			var f []Finding
-			for _, pub := range p.texts {
-				f = append(f, s.ScanText(pub.label, pub.text)...)
+			for name, text := range tc.files {
+				path := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
-			if len(f) != 1 || f[0].Rule != tc.rule {
-				t.Fatalf("findings = %+v, want one %s", f, tc.rule)
+			f, err := s.runHook(context.Background(), bashPayload(t, tc.command, dir), gitRepoOf)
+			if err != nil && !errors.As(err, new(*UncheckableError)) {
+				t.Fatal(err)
+			}
+			if blocked := err != nil || len(f) > 0; blocked != tc.block {
+				t.Fatalf("blocked = %v (findings %+v, error %v), want %v", blocked, f, err, tc.block)
 			}
 		})
-	}
-}
-
-func TestGHPrivateTargetFromRemote(t *testing.T) {
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	repoOf := func(string) string { return shortRepo + "some-private-repo" }
-	if p, err := s.planCommand(`gh pr create -t x -b "`+leak+`"`, "", repoOf); err != nil || len(p.texts) != 0 {
-		t.Errorf("texts for a private repository = %+v", p.texts)
 	}
 }
 
@@ -375,15 +326,6 @@ func TestHookBlocksPush(t *testing.T) {
 	}
 	if len(f) != 1 || !strings.HasPrefix(f[0].Where, "commit ") {
 		t.Fatalf("findings = %+v, want one in the commit message", f)
-	}
-}
-
-func TestHookAllowsCleanPush(t *testing.T) {
-	dir := gitRepo(t, cleanText, "feat: add b")
-	var stderr bytes.Buffer
-	payload := `{"tool_name":"Bash","tool_input":{"command":"git push"},"cwd":` + jsonString(dir) + `}`
-	if code := run(context.Background(), []string{modeHook}, strings.NewReader(payload), &bytes.Buffer{}, &stderr); code != 0 {
-		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
 }
 
