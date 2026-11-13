@@ -1,0 +1,496 @@
+package serverless
+
+import (
+	"bytes"
+	"cmp"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"slices"
+	"strings"
+
+	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/spf13/cobra"
+)
+
+const (
+	flagApp   = "app"
+	flagScope = "scope"
+
+	// trustScopeApp trusts the tokens of one application.
+	trustScopeApp = "app"
+	// trustScopeEnvironment trusts the tokens of every application of the
+	// organization in one environment.
+	trustScopeEnvironment = "environment"
+
+	// shellSafe is what a value may contain to be printed unquoted inside a
+	// shell command or a heredoc. The identifiers a trust rule is built from
+	// (uuids, app ids, resource names, ARNs) all fit; anything else is refused
+	// rather than escaped, so no value can end a quote or start an expansion.
+	shellSafe = `^[A-Za-z0-9:_./@+,-][A-Za-z0-9:_./@=+,-]*$`
+)
+
+var (
+	shellSafePattern = regexp.MustCompile(shellSafe)
+	// subjectPrefixPattern is the part of a subject up to the app segment:
+	// worker:org:<organization uuid>:env:<environment uuid>:
+	subjectPrefixPattern = regexp.MustCompile(`^worker:org:([A-Za-z0-9-]+):env:([A-Za-z0-9-]+):$`)
+	// gcpProviderPattern is a workload identity provider resource name.
+	gcpProviderPattern = regexp.MustCompile(`^(projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+)/providers/[a-z0-9-]+$`)
+	// awsRolePattern is an IAM role ARN: partition, account, optional path, name.
+	awsRolePattern = regexp.MustCompile(`^arn:(aws[a-z-]*):iam::([0-9]{12}):role/(.+)$`)
+)
+
+// trustScopes are the --scope values.
+var trustScopes = []string{trustScopeApp, trustScopeEnvironment}
+
+// trustInput is what the trust commands are built from.
+type trustInput struct {
+	// connector is the attachment, which carries the subject and subjectPattern
+	// the API reports for the application's tokens.
+	connector serverlessapi.AppOidcConnector
+	// app, environment and scope describe the request, for the header comment.
+	app         string
+	environment string
+	scope       string
+}
+
+// subjectPrefix returns the environment's subject prefix, which the attachment's
+// subject and subjectPattern both start with.
+func (in trustInput) subjectPrefix() (prefix, envID string, err error) {
+	prefix, ok := strings.CutSuffix(in.connector.SubjectPattern, "*")
+	if !ok {
+		return "", "", fmt.Errorf("subjectPattern %q does not end in *", in.connector.SubjectPattern)
+	}
+	m := subjectPrefixPattern.FindStringSubmatch(prefix)
+	if m == nil {
+		return "", "", fmt.Errorf("subjectPattern %q is not worker:org:<organization>:env:<environment>:*", in.connector.SubjectPattern)
+	}
+	if !strings.HasPrefix(in.connector.Subject, prefix) {
+		return "", "", fmt.Errorf("subject %q is outside subjectPattern %q", in.connector.Subject, in.connector.SubjectPattern)
+	}
+	return prefix, m[2], nil
+}
+
+// renderTrust returns the shell commands that make the cloud account of a
+// connector trust the application's tokens. The output runs in a POSIX shell
+// as printed; the one value it cannot know, the resource the workers may
+// reach, is read from a variable and refused when unset.
+func renderTrust(in trustInput) (string, error) {
+	prefix, envID, err := in.subjectPrefix()
+	if err != nil {
+		return "", err
+	}
+	if in.connector.Issuer == nil || *in.connector.Issuer == "" {
+		return "", errors.New("the connector has no issuer: this environment has no OIDC issuer")
+	}
+	issuer := *in.connector.Issuer
+	// The subject pattern is already held to subjectPrefixPattern plus one *.
+	// Everything else printed unquoted must be shell safe, and no value may
+	// carry a * (a glob).
+	checked := []string{in.connector.Subject, issuer}
+	if in.connector.Kind == serverlessapi.OidcConnectorKindAws {
+		// Only an aws audience is printed unquoted; a generic one is quoted.
+		checked = append(checked, in.connector.Audience)
+	}
+	for _, v := range checked {
+		if !shellSafePattern.MatchString(v) {
+			return "", fmt.Errorf("value %q has characters that cannot be printed safely in a shell command", v)
+		}
+	}
+
+	var b strings.Builder
+	trusted := in.connector.Subject
+	if in.scope == trustScopeEnvironment {
+		trusted = in.connector.SubjectPattern
+	}
+	fmt.Fprintf(&b, "# Trust for connector %s (%s) in environment %s.\n", in.connector.Name, in.connector.Kind, in.environment)
+	if in.scope == trustScopeEnvironment {
+		fmt.Fprintf(&b, "# Scope environment: tokens of EVERY application of the organization in this environment (sub %s).\n", trusted)
+	} else {
+		fmt.Fprintf(&b, "# Scope app: tokens of application %s only (sub %s).\n", in.app, trusted)
+	}
+
+	switch in.connector.Kind {
+	case serverlessapi.OidcConnectorKindAws:
+		err = renderAWS(&b, in, issuer)
+	case serverlessapi.OidcConnectorKindGcp:
+		err = renderGCP(&b, in, issuer, prefix, envID)
+	case serverlessapi.OidcConnectorKindGeneric:
+		renderGeneric(&b, in, issuer, prefix)
+	default:
+		err = fmt.Errorf("unknown connector kind %q", in.connector.Kind)
+	}
+	if err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
+// awsParamReferencePrefixes are the parameter prefixes the AWS CLI resolves to the
+// content of a local file or a remote URL.
+var awsParamReferencePrefixes = []string{"file://", "fileb://", "http://", "https://"}
+
+// awsTrustPolicy is the trust policy document of the IAM role.
+type awsTrustPolicy struct {
+	Version   string              `json:"Version"`
+	Statement []awsTrustStatement `json:"Statement"`
+}
+
+type awsTrustStatement struct {
+	Effect    string                       `json:"Effect"`
+	Principal awsTrustPrincipal            `json:"Principal"`
+	Action    string                       `json:"Action"`
+	Condition map[string]map[string]string `json:"Condition"`
+}
+
+type awsTrustPrincipal struct {
+	Federated string `json:"Federated"`
+}
+
+func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
+	if in.connector.Aws == nil {
+		return errors.New("the aws connector has no roleArn")
+	}
+	m := awsRolePattern.FindStringSubmatch(in.connector.Aws.RoleArn)
+	if m == nil || !shellSafePattern.MatchString(in.connector.Aws.RoleArn) {
+		return fmt.Errorf("roleArn %q is not an IAM role ARN", in.connector.Aws.RoleArn)
+	}
+	// The audience is a --client-id-list item: a comma would split it in two and a
+	// leading dash would read as a flag.
+	if strings.Contains(in.connector.Audience, ",") || strings.HasPrefix(in.connector.Audience, "-") {
+		return fmt.Errorf("audience %q cannot be printed as an --client-id-list value", in.connector.Audience)
+	}
+	// The AWS CLI loads a parameter value that starts with one of these from a file or
+	// a URL instead of using it, so the audience would never reach the provider.
+	for _, ref := range awsParamReferencePrefixes {
+		if strings.HasPrefix(in.connector.Audience, ref) {
+			return fmt.Errorf("audience %q starts with %s, which the AWS CLI reads as a file or URL reference instead of the audience", in.connector.Audience, ref)
+		}
+	}
+	partition, account, rolePath := m[1], m[2], m[3]
+	roleName := rolePath
+	path := "/"
+	if i := strings.LastIndex(rolePath, "/"); i >= 0 {
+		roleName = rolePath[i+1:]
+		path = "/" + rolePath[:i+1]
+	}
+	// The whole ARN passed the shell check, but it starts with "arn:", so the leading
+	// rules apply to the role name only here: a leading dash would read as a flag.
+	if !shellSafePattern.MatchString(roleName) || strings.HasPrefix(roleName, "-") {
+		return fmt.Errorf("roleArn %q: the role name cannot be printed safely in a shell command", in.connector.Aws.RoleArn)
+	}
+	// The policy file is named after the connector so a run cannot overwrite a
+	// trust-policy.json of the customer's own.
+	if !shellSafePattern.MatchString(in.connector.Name) {
+		return fmt.Errorf("connector name %q cannot be printed safely in a shell command", in.connector.Name)
+	}
+	policyFile := "runware-" + in.connector.Name + "-trust-policy.json"
+	// The condition keys and the provider ARN name the issuer without its scheme.
+	host, ok := strings.CutPrefix(issuer, "https://")
+	if !ok {
+		return fmt.Errorf("issuer %q does not start with https://", issuer)
+	}
+
+	subjectOperator, trusted := "StringEquals", in.connector.Subject
+	if in.scope == trustScopeEnvironment {
+		subjectOperator, trusted = "StringLike", in.connector.SubjectPattern
+	}
+	// Two operators cannot share one key, so aud and sub sit in separate blocks.
+	condition := map[string]map[string]string{
+		"StringEquals": {
+			host + ":aud": in.connector.Audience,
+		},
+	}
+	if subjectOperator == "StringEquals" {
+		condition["StringEquals"][host+":sub"] = trusted
+	} else {
+		condition[subjectOperator] = map[string]string{
+			host + ":sub": trusted,
+		}
+	}
+	policy := awsTrustPolicy{
+		Version: "2012-10-17",
+		Statement: []awsTrustStatement{
+			{
+				Effect: "Allow",
+				Principal: awsTrustPrincipal{
+					Federated: fmt.Sprintf("arn:%s:iam::%s:oidc-provider/%s", partition, account, host),
+				},
+				Action:    "sts:AssumeRoleWithWebIdentity",
+				Condition: condition,
+			},
+		},
+	}
+	var doc bytes.Buffer
+	enc := json.NewEncoder(&doc)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(policy); err != nil {
+		return err
+	}
+
+	b.WriteString("\n# 1. Register the Runware issuer once per AWS account. It fails with EntityAlreadyExists when\n")
+	b.WriteString("#    the account already trusts the issuer; then add the audience to the existing provider instead:\n")
+	fmt.Fprintf(b, "#    aws iam add-client-id-to-open-id-connect-provider --open-id-connect-provider-arn %s --client-id %s\n",
+		policy.Statement[0].Principal.Federated, in.connector.Audience)
+	fmt.Fprintf(b, "aws iam create-open-id-connect-provider --url %s --client-id-list %s\n", issuer, in.connector.Audience)
+
+	b.WriteString("\n# 2. Create the role the connector names, trusting only the tokens above.\n")
+	b.WriteString("#    Grant it permissions afterwards, for example with aws iam attach-role-policy.\n")
+	fmt.Fprintf(b, "cat > %s <<'EOF'\n", policyFile)
+	b.WriteString(doc.String())
+	b.WriteString("EOF\n")
+	fmt.Fprintf(b, "aws iam create-role --role-name %s", roleName)
+	if path != "/" {
+		fmt.Fprintf(b, " --path %s", path)
+	}
+	fmt.Fprintf(b, " --assume-role-policy-document file://%s\n", policyFile)
+	b.WriteString("#    If the role already exists, create-role fails. This command sets the role's trust policy to\n")
+	fmt.Fprintf(b, "#    %s: it REPLACES the existing trust policy and does not merge. If other principals\n", policyFile)
+	b.WriteString("#    rely on the role, add the statement above to its existing trust policy document instead.\n")
+	fmt.Fprintf(b, "#    aws iam update-assume-role-policy --role-name %s --policy-document file://%s\n", roleName, policyFile)
+	return nil
+}
+
+func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) error {
+	if in.connector.Gcp == nil {
+		return errors.New("the gcp connector has no workloadIdentityProvider")
+	}
+	provider := in.connector.Gcp.WorkloadIdentityProvider
+	m := gcpProviderPattern.FindStringSubmatch(provider)
+	if m == nil {
+		return fmt.Errorf("workloadIdentityProvider %q is not projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>", provider)
+	}
+	pool := m[1]
+
+	var member string
+	if in.scope == trustScopeEnvironment {
+		member = "principalSet://iam.googleapis.com/" + pool + "/attribute.environment_id/" + envID
+	} else {
+		member = "principal://iam.googleapis.com/" + pool + "/subject/" + in.connector.Subject
+	}
+
+	b.WriteString("\n# 1. Create the workload identity pool and the provider the connector names.\n")
+	b.WriteString("#    The provider admits the tokens of this organization and environment only; the grant in step 2\n")
+	b.WriteString("#    narrows it. Both creates fail with ALREADY_EXISTS when they exist, for example from another\n")
+	b.WriteString("#    environment; step 2 then checks that the existing provider's condition admits this environment\n")
+	b.WriteString("#    and that its attribute mapping has what the grant relies on.\n")
+	fmt.Fprintf(b, "gcloud iam workload-identity-pools create %s --display-name='Runware Serverless'\n", pool)
+	fmt.Fprintf(b, "gcloud iam workload-identity-pools providers create-oidc %s \\\n", provider)
+	fmt.Fprintf(b, "  --issuer-uri=%s \\\n", issuer)
+	b.WriteString("  --attribute-mapping='google.subject=assertion.sub,attribute.org_id=assertion.org_id,attribute.environment_id=assertion.environment_id,attribute.app_id=assertion.app_id' \\\n")
+	fmt.Fprintf(b, "  --attribute-condition=\"assertion.sub.startsWith('%s')\"\n", prefix)
+
+	if in.connector.Gcp.ServiceAccountEmail != nil && *in.connector.Gcp.ServiceAccountEmail != "" {
+		sa := *in.connector.Gcp.ServiceAccountEmail
+		if !shellSafePattern.MatchString(sa) {
+			return fmt.Errorf("serviceAccountEmail %q cannot be printed safely in a shell command", sa)
+		}
+		b.WriteString("\n# 2. Let the workers impersonate the connector's service account.\n")
+		b.WriteString("#    Grant the service account the access it needs on your resources separately.\n")
+		writeGCPGuardedBinding(b, provider, issuer, prefix, in.scope, []string{
+			fmt.Sprintf("gcloud iam service-accounts add-iam-policy-binding %s \\", sa),
+			"  --role=roles/iam.workloadIdentityUser \\",
+			"  --member=" + member,
+		})
+		return nil
+	}
+
+	b.WriteString("\n# 2. Grant the workers' identity access to your resource directly (the connector has no service account).\n")
+	b.WriteString("#    Set BUCKET to the bucket they may read first, for example: BUCKET=my-inputs\n")
+	b.WriteString("#    To grant another role or resource, change this command.\n")
+	b.WriteString(": \"${BUCKET:?set BUCKET to the name of the bucket the workers may read}\"\n")
+	writeGCPGuardedBinding(b, provider, issuer, prefix, in.scope, []string{
+		"gcloud storage buckets add-iam-policy-binding \"gs://${BUCKET}\" \\",
+		"  --role=roles/storage.objectViewer \\",
+		"  --member=" + member,
+	})
+	return nil
+}
+
+// gcpAdmitTerm is one assertion.sub.startsWith('...') term of a provider's attribute
+// condition, with only parentheses and whitespace around it.
+const gcpAdmitTerm = `[([:space:]]*assertion\.sub\.startsWith\('[A-Za-z0-9:._-]+'\)[)[:space:]]*`
+
+// gcpOnlyStartsWithTerms is an extended regular expression for a condition made of
+// startsWith terms joined by || and nothing else. Such a condition admits a subject
+// when any one term does, so it cannot hide an && or a negation.
+const gcpOnlyStartsWithTerms = `^` + gcpAdmitTerm + `(\|\|` + gcpAdmitTerm + `)*$`
+
+// gcpRequiredMapping is the attribute mapping the IAM member of a scope relies on: the
+// member names google.subject for one application, and attribute.environment_id for the
+// whole environment. An existing provider keeps its old mapping, so the script checks it.
+func gcpRequiredMapping(scope string) (attribute, claim string) {
+	if scope == trustScopeEnvironment {
+		return "attribute.environment_id", "assertion.environment_id"
+	}
+	return "google.subject", "assertion.sub"
+}
+
+// writeGCPGuardedBinding prints the binding commands behind a guard that keeps them from
+// succeeding while the provider may still reject the tokens: an existing provider keeps
+// its old attribute condition and attribute mapping. The guard fails closed, and says
+// which of four things stopped it:
+//   - the provider could not be read (no permission, or it was never created);
+//   - its condition is not only startsWith terms joined by || with the exact term this
+//     command sets for the environment (which admits every scope); a condition that holds
+//     that term next to an && or a negation needs a manual review, and the condition is
+//     read as one line so a later line cannot narrow it unseen;
+//   - its mapping does not map the attribute the IAM member relies on to the token claim;
+//   - it is disabled, names another issuer, or restricts allowedAudiences (which create-oidc
+//     here never sets, so tokens with the default audience could be refused).
+//
+// The binding is in the last branch, so it runs only when every check passed.
+func writeGCPGuardedBinding(b *strings.Builder, provider, issuer, prefix, scope string, binding []string) {
+	describe := fmt.Sprintf("gcloud iam workload-identity-pools providers describe %s", provider)
+	admits := fmt.Sprintf("assertion.sub.startsWith('%s')", prefix)
+	attribute, claim := gcpRequiredMapping(scope)
+	mapped := `"` + regexp.QuoteMeta(attribute) + `"[[:space:]]*:[[:space:]]*"` + regexp.QuoteMeta(claim) + `"`
+	disabled := `"disabled"[[:space:]]*:[[:space:]]*true`
+	issuedBy := `"issuerUri"[[:space:]]*:[[:space:]]*"` + regexp.QuoteMeta(issuer) + `"`
+	// The update commands sit inside double-quoted echos, so their own quotes are escaped.
+	updateCondition := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || %s\"`, provider, admits)
+	updateMapping := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-mapping=\"<every existing entry>,%s=%s\"`, provider, attribute, claim)
+	// Every branch drops the variables first, so a paste into an interactive shell leaves
+	// no provider data behind, and the status of the whole if is that of its last command.
+	const unset = "  unset runware_condition runware_provider\n"
+
+	fmt.Fprintf(b, "if ! runware_condition=\"$(%s --format='value(attributeCondition)')\" ||\n", describe)
+	fmt.Fprintf(b, "   ! runware_provider=\"$(%s --format=json)\"; then\n", describe)
+	b.WriteString(unset)
+	b.WriteString("  echo \"could not read the provider: the account needs iam.workloadIdentityPoolProviders.get, and the provider does not exist if its create above failed for another reason.\" >&2\n")
+	fmt.Fprintf(b, "  echo \"Check with: %s\" >&2\n", describe)
+	b.WriteString("  false\n")
+	fmt.Fprintf(b, "elif ! { printf '%%s' \"$runware_condition\" | tr '\\n' ' ' | grep -Eq -- %s &&\n", shellQuote(gcpOnlyStartsWithTerms))
+	fmt.Fprintf(b, "         printf '%%s' \"$runware_condition\" | grep -qF -- \"%s\"; }; then\n", admits)
+	b.WriteString(unset)
+	fmt.Fprintf(b, "  echo \"the provider's attribute condition is not only assertion.sub.startsWith terms joined by || with one of them %s, so this cannot confirm that it admits the tokens.\" >&2\n", admits)
+	fmt.Fprintf(b, "  echo \"Show the condition with: %s --format='value(attributeCondition)'\" >&2\n", describe)
+	fmt.Fprintf(b, "  echo \"then set it to that condition OR-ed with this one: %s\" >&2\n", updateCondition)
+	b.WriteString("  false\n")
+	fmt.Fprintf(b, "elif ! printf '%%s' \"$runware_provider\" | grep -Eq -- %s; then\n", shellQuote(mapped))
+	b.WriteString(unset)
+	fmt.Fprintf(b, "  echo \"the provider's attribute mapping does not map %s to %s, which the IAM member below relies on.\" >&2\n", attribute, claim)
+	fmt.Fprintf(b, "  echo \"Show the mapping with: %s --format='value(attributeMapping)'\" >&2\n", describe)
+	fmt.Fprintf(b, "  echo \"then add the entry to it. --attribute-mapping replaces the whole mapping, so keep every entry it has: %s\" >&2\n", updateMapping)
+	b.WriteString("  false\n")
+	fmt.Fprintf(b, "elif printf '%%s' \"$runware_provider\" | grep -Eq -- %s ||\n", shellQuote(disabled))
+	fmt.Fprintf(b, "     ! printf '%%s' \"$runware_provider\" | grep -Eq -- %s ||\n", shellQuote(issuedBy))
+	b.WriteString("     printf '%s' \"$runware_provider\" | grep -q -- '\"allowedAudiences\"'; then\n")
+	b.WriteString(unset)
+	fmt.Fprintf(b, "  echo \"the provider is disabled, has another issuer than %s, or lists allowedAudiences, so it may reject these tokens.\" >&2\n", issuer)
+	fmt.Fprintf(b, "  echo \"Show it with: %s --format=json\" >&2\n", describe)
+	b.WriteString("  false\n")
+	b.WriteString("else\n")
+	b.WriteString(unset)
+	for _, line := range binding {
+		b.WriteString("  " + line + "\n")
+	}
+	b.WriteString("fi\n")
+}
+
+func renderGeneric(b *strings.Builder, in trustInput, issuer, prefix string) {
+	b.WriteString("\n# What a verifier of these tokens checks. Also check the signature (RS256, keys from the issuer's\n")
+	b.WriteString("# discovery document), exp and nbf.\n")
+	fmt.Fprintf(b, "OIDC_ISS=%s\n", issuer)
+	fmt.Fprintf(b, "OIDC_AUD=%s\n", shellQuote(in.connector.Audience))
+	if in.scope == trustScopeEnvironment {
+		b.WriteString("# sub must start with this prefix; it matches every application of the organization in this environment.\n")
+		fmt.Fprintf(b, "OIDC_SUB_PREFIX=%s\n", prefix)
+		fmt.Fprintf(b, "OIDC_SUB_PATTERN=%s\n", shellQuote(in.connector.SubjectPattern))
+		return
+	}
+	b.WriteString("# sub must equal this value; it matches this application in this environment only.\n")
+	fmt.Fprintf(b, "OIDC_SUB=%s\n", in.connector.Subject)
+}
+
+// shellQuote single-quotes s for a POSIX shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func newConnectorsTrustCmd(logger *log.Logger) *cobra.Command {
+	var app, scope string
+	cmd := &cobra.Command{
+		Use:   "trust <name>",
+		Short: "Print the cloud commands that make a provider trust an application's tokens",
+		Long: `Print the commands that set up the cloud side of an attached OIDC connector, with
+every value filled in from the connector and its attachment:
+
+  aws      aws iam commands for the OIDC identity provider and the role, with the
+           trust policy JSON
+  gcp      gcloud commands for the workload identity pool and provider, with its
+           attribute condition, and the IAM binding for the application's identity
+  generic  the iss, aud and sub a verifier of your own checks
+
+The output is shell and runs as printed. The one value it cannot know is the
+bucket a gcp connector without a service account grants access to: set the
+BUCKET variable first. Nothing is run or changed by this command.
+
+The connector must be attached to the application in the environment (see
+'apps connectors attach'), because the subject exists only then.
+
+--scope app (the default) trusts the tokens of this application only.
+--scope environment trusts every application of the organization in the
+environment, so use it only when all of them may reach the resource. Tokens of
+another environment are never trusted by either.`,
+		Example: `  runware serverless connectors trust aws-prod --app my-app
+
+  # every application of the staging environment
+  runware serverless connectors trust aws-prod --app my-app --env staging --scope environment
+
+  # run the printed commands
+  BUCKET=my-inputs sh -c "$(runware serverless connectors trust gcp-prod --app my-app)"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if !isTrustScope(scope) {
+				return fmt.Errorf("invalid --%s %q: must be one of: %s", flagScope, scope, strings.Join(trustScopes, ", "))
+			}
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Reading the connectors attached to %s...", app))
+			spin.Start()
+			attached, err := newServerlessClient(cmd, logger).ListAppOidcConnectors(cmd.Context(), app)
+			spin.Stop()
+			if err != nil {
+				return err
+			}
+
+			// The attachment carries the connector's kind, audience, provider block and
+			// issuer as well as the subject, so the connector itself is not read.
+			i := slices.IndexFunc(attached, func(c serverlessapi.AppOidcConnector) bool { return c.Name == name })
+			if i < 0 {
+				attach := serverlessCommand(commandEnvironment(cmd), defaultEnvironment(cmd), "apps", "connectors", "attach", app, name)
+				return fmt.Errorf("connector %s is not attached to %s (or does not exist): attach it first with '%s'",
+					name, deleteSubject(cmd, app), attach)
+			}
+
+			script, err := renderTrust(trustInput{
+				connector:   attached[i],
+				app:         app,
+				environment: cmp.Or(commandEnvironment(cmd), serverlessapi.ProductionEnvironment),
+				scope:       scope,
+			})
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprint(cmd.OutOrStdout(), script)
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&app, flagApp, "", "Application whose tokens to trust")
+	cmd.Flags().StringVar(&scope, flagScope, trustScopeApp, "Whose tokens to trust: app (this application) or environment (every application of the organization in it)")
+	if err := cmd.MarkFlagRequired(flagApp); err != nil {
+		panic(err)
+	}
+	addEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment the application runs in "+environmentFlagDefault)
+	return cmd
+}
+
+func isTrustScope(s string) bool {
+	return slices.Contains(trustScopes, s)
+}
