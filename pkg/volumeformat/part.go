@@ -139,11 +139,13 @@ func nonce(dst []byte, i int64) []byte {
 // PartSealer seals one plaintext of one 1-based part under a salt it draws itself.
 // It is single-use: a resend of the part takes a new sealer and so a fresh salt, as
 // resuming an upload requires. The single use is claimed atomically, so a sealer
-// shared between goroutines still seals at most one plaintext.
+// shared between goroutines still seals at most one plaintext. The flag sits behind a
+// pointer, so a copy of a PartSealer value shares it with the original rather than
+// starting unspent under the same salt.
 type PartSealer struct {
 	c    *partCipher
 	salt [SaltBytes]byte
-	used atomic.Bool
+	used *atomic.Bool
 }
 
 // NewPartSealer keys a part with a fresh random salt from crypto/rand.
@@ -162,6 +164,7 @@ func newPartSealerWithSalt(dataKey []byte, id FileIdentity, l Layout, part int64
 	return &PartSealer{
 		c:    c,
 		salt: salt,
+		used: new(atomic.Bool),
 	}, nil
 }
 

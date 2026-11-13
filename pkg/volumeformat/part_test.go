@@ -290,6 +290,28 @@ func TestSealerIsSingleUse(t *testing.T) {
 	}
 }
 
+// TestCopiedSealerIsStillSingleUse: a copy of a fresh PartSealer value shares its
+// single use, so the original and the copy cannot seal two plaintexts under one salt.
+func TestCopiedSealerIsStillSingleUse(t *testing.T) {
+	f := newFixture(t, 10)
+	s, err := NewPartSealer(f.key, f.id, f.layout, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dup := *s
+	other := bytes.Clone(f.plain)
+	other[0] ^= 1
+	if _, err := s.Seal(f.plain); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dup.Seal(other); !errors.Is(err, ErrSealerUsed) {
+		t.Fatalf("Seal through a copy: %v", err)
+	}
+	if _, err := dup.Reader(other); !errors.Is(err, ErrSealerUsed) {
+		t.Fatalf("Reader through a copy: %v", err)
+	}
+}
+
 // TestResumeFromCopiedStateNeverRepeatsAKey is the resume test:
 // sealing the same part again from the same saved state (data key, attempt, layout)
 // draws a fresh salt, so the part key differs and no key and nonce pair repeats,
