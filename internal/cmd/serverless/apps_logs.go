@@ -156,7 +156,7 @@ entry is printed as one JSON object per line.`,
 	}
 
 	cmd.Flags().StringVar(&flags.window, "window", "1h", "Time window for the recent page ("+logWindows+")")
-	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of entries on the recent page (1-100, default 20)")
+	cmd.Flags().IntVar(&flags.limit, "limit", 0, "Maximum number of entries on the recent page (1-1000, default 20)")
 	cmd.Flags().StringVar(&flags.sort, "sort", "", "Order of the recent page ("+logSorts+"; default: latest page, oldest first)")
 	cmd.Flags().StringVar(&flags.cursor, "cursor", "", "Pagination cursor (nextCursor or prevCursor)")
 	cmd.Flags().BoolVarP(&flags.follow, "follow", "f", false, "Stream new log entries until interrupted")
@@ -164,9 +164,26 @@ entry is printed as one JSON object per line.`,
 	return cmd
 }
 
+// maxLogPageLimit is the log store's page ceiling. Other lists stay at 100.
+const maxLogPageLimit = 1000
+
+// validateLogPageLimit checks apps logs --limit. Zero means unset (the CLI
+// then sends its own default of 20). A log page may be larger than other lists
+// because a worker that is still loading writes hundreds of lines before the
+// one that says why it failed.
+func validateLogPageLimit(limit int) error {
+	if limit == 0 {
+		return nil
+	}
+	if limit < 1 || limit > maxLogPageLimit {
+		return fmt.Errorf("--limit must be between 1 and %d", maxLogPageLimit)
+	}
+	return nil
+}
+
 // logEntriesParams validates the page flags locally and maps them onto the API.
 func logEntriesParams(appID string, flags logsFlags) (serverlessapi.GetLogEntriesParams, error) {
-	if err := validateListLimit(flags.limit); err != nil {
+	if err := validateLogPageLimit(flags.limit); err != nil {
 		return serverlessapi.GetLogEntriesParams{}, err
 	}
 	window, err := parseValidFlag[serverlessapi.LogWindow]("--window", flags.window, logWindows)
