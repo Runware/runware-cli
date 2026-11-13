@@ -393,6 +393,14 @@ var lostAnswers = []invokeAnswerCase{
 		name:   "body not JSON",
 		answer: answerNotJSON,
 	},
+	{
+		// A sync invoke's 202 is the wait window expiring; its task must
+		// still be read back, or the id it was sent under recovered.
+		name: "accepted body not JSON",
+		answer: func(w http.ResponseWriter, _ int) {
+			answerNotJSON(w, http.StatusAccepted)
+		},
+	},
 }
 
 // refusedAnswers say the API did not accept the task.

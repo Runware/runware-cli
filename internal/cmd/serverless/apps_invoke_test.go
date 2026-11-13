@@ -125,6 +125,9 @@ type lostInvokeStub struct {
 	sent string
 	// pending serves the task as still running, so polling never ends.
 	pending bool
+	// hold keeps the invocation open until the client gives up on it, in
+	// place of the 520.
+	hold bool
 }
 
 func (s *lostInvokeStub) taskID() string {
@@ -145,6 +148,10 @@ func (s *lostInvokeStub) serve(t *testing.T) http.HandlerFunc {
 			s.mu.Lock()
 			s.sent = id
 			s.mu.Unlock()
+			if s.hold {
+				<-r.Context().Done()
+				return
+			}
 			w.Header().Set("Content-Type", "text/html")
 			w.WriteHeader(520)
 			_, _ = io.WriteString(w, "<html>error code: 520</html>")
@@ -272,6 +279,36 @@ func TestInvoke_ReportsAFailedPollAfterALostResponse(t *testing.T) {
 	msg, _ := item["message"].(string)
 	if want := "polling it failed: timed out waiting for task " + id + " after 200ms"; !strings.Contains(msg, want) {
 		t.Fatalf("message = %q, want %q", msg, want)
+	}
+}
+
+// TestInvoke_ReportsATimeoutDuringTheCallAsALostResponse pins a --timeout
+// that runs out while the sync call itself is in flight: the task may have
+// started, so the error names it, and with no wait budget left the command
+// reports it rather than polling.
+func TestInvoke_ReportsATimeoutDuringTheCallAsALostResponse(t *testing.T) {
+	stub := &lostInvokeStub{
+		hold: true,
+	}
+	run := runServerlessAgainst(t, stub.serve(t),
+		testAppsGroup, testInvokeCommand, testAppID, testInferEndpoint, "--sync", "--timeout", "100ms", "--poll-interval", "10ms")
+	id := stub.taskID()
+	if id == "" {
+		t.Fatal("no invocation reached the stub")
+	}
+	item := structuredError(t, run.err)
+	if item["code"] != lostResponseCode || item["taskUUID"] != id {
+		t.Fatalf("json error = %v, want code %s and taskUUID %s", item, lostResponseCode, id)
+	}
+	msg, _ := item["message"].(string)
+	if want := "no response confirmed it: timed out waiting for sync invocation after 100ms"; !strings.Contains(msg, want) {
+		t.Fatalf("message = %q, want %q", msg, want)
+	}
+	if strings.Contains(msg, "polling it failed") || strings.Contains(run.cobraOutput, "Polling it") {
+		t.Fatalf("message = %q, stderr = %q; want no poll once the wait budget is spent", msg, run.cobraOutput)
+	}
+	if gets := countRequests(run.requests, http.MethodGet, testAppsPath+"/"+testAppID+"/tasks/"); gets != 0 {
+		t.Fatalf("requests = %v, want no task poll once the wait budget is spent", run.requests)
 	}
 }
 

@@ -80,6 +80,15 @@ type requestRecorder struct {
 	handler  http.HandlerFunc
 }
 
+// recorded returns a copy of the requests received so far. A handler that
+// never answers leaves no response to order its record before the caller's
+// read, so the read takes the lock too.
+func (r *requestRecorder) recorded() []recordedRequest {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]recordedRequest(nil), r.requests...)
+}
+
 func (r *requestRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mu.Lock()
 	r.requests = append(r.requests, recordedRequest{
@@ -195,8 +204,10 @@ func runServerlessFormatted(t *testing.T, handler http.HandlerFunc, stdin io.Rea
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Close waits for every handler, so the record holds every request.
+	srv.Close()
 	return serverlessRun{
-		requests:    rec.requests,
+		requests:    rec.recorded(),
 		cobraOutput: cobraOutput.String(),
 		stdout:      string(out),
 		err:         execErr,
