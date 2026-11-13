@@ -20,7 +20,11 @@ const environmentPausedType = "https://docs.runware.ai/serverless/errors#environ
 // auth hint on 401/403) applies uniformly. Field-level 422 entries in `errors`
 // are appended so validation failures are readable.
 func problemToError(p *gen.ProblemDetails, statusCode int) error {
-	msg := fmt.Sprintf("HTTP %d: %s", statusCode, http.StatusText(statusCode))
+	// A proxy status such as Cloudflare's 520 has no standard text.
+	msg := fmt.Sprintf("HTTP %d", statusCode)
+	if text := http.StatusText(statusCode); text != "" {
+		msg += ": " + text
+	}
 	var problemType string
 	if p != nil {
 		if p.Status != 0 {

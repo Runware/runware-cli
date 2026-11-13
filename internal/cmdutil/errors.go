@@ -18,6 +18,21 @@ const (
 	fieldProblemType = "problemType"
 )
 
+// ResumableError is an error that carries what the user needs to resume the
+// work it cut short, such as the id of a task that may have started. The CLI
+// prints one even when an interrupt stopped the command, which otherwise
+// exits with the interrupted status alone. Resumable only marks the error.
+type ResumableError interface {
+	error
+	Resumable()
+}
+
+// IsResumable reports whether err, or an error it wraps, is a ResumableError.
+func IsResumable(err error) bool {
+	_, ok := errors.AsType[ResumableError](err)
+	return ok
+}
+
 // PrintError logs err with formatting that matches the CLI output format.
 //
 // Special cases:
