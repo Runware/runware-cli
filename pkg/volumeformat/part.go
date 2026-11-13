@@ -97,7 +97,7 @@ func partKey(dataKey, salt []byte, part int64) ([]byte, error) {
 	return hkdf.Key(sha256.New, dataKey, salt, string(info), dataKeyBytes)
 }
 
-// segmentBinding hashes the file identity once, as the replicator does:
+// segmentBinding hashes the file identity once, as every implementation does:
 // SHA-256(fields(runware-volumes-v1/segment, organization, sha256, u64 size, attempt)).
 func segmentBinding(id FileIdentity) [32]byte {
 	var b []byte
@@ -261,7 +261,7 @@ func SealPart(dataKey []byte, id FileIdentity, l Layout, part int64, plaintext [
 }
 
 // PartOpener opens the sealed segments of one 1-based part, in any order, so a
-// preparer can fetch a part in segment-aligned ranges (Layout.SealedSegmentRange).
+// reader can fetch a part in segment-aligned ranges (Layout.SealedSegmentRange).
 // Its output is untrusted until the whole file's SHA-256 and size match the trusted
 // manifest: anyone holding the key-pair public key can seal a data key and ciphertext
 // for any identity, so segment authentication alone proves nothing about origin.

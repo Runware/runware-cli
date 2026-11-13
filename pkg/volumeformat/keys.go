@@ -61,7 +61,7 @@ func (s *SessionSealer) SessionKey(organization, keyPair, session [16]byte) ([]b
 	return s.sender.Export(sessionContext(organization, keyPair, session, s.enc), sessionKeyBytes)
 }
 
-// OpenSessionKey is the preparer side: it decapsulates a session's encapsulation with
+// OpenSessionKey is the decrypting side: it decapsulates a session's encapsulation with
 // the key pair's 32-byte private key and derives the same sealing key. X-Wing rejects
 // implicitly, so a wrong encapsulation yields a key that later fails UnwrapDataKey.
 // The caller clears the returned key once the session's data keys are unwrapped.

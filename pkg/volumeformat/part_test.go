@@ -22,9 +22,9 @@ type layoutCase struct {
 	ciphertext int64
 }
 
-// TestPlanLayout matches the part-layout check the API enforces
-// (volume_upload_files_part_layout_check): parts of 16 + k * 1 MiB holding
-// ceil(segments / k) parts, and a ciphertext of size + 16 per segment + 16 per part.
+// TestPlanLayout matches the part-layout check the server enforces: parts of
+// 16 + k * 1 MiB holding ceil(segments / k) parts, and a ciphertext of size + 16 per
+// segment + 16 per part.
 func TestPlanLayout(t *testing.T) {
 	const (
 		mib  = 1 << 20

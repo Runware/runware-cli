@@ -14,8 +14,8 @@ import (
 	"testing"
 )
 
-// The golden vectors are testdata/format-vectors.json, the reference implementation's
-// vector file, whose output an independent TypeScript implementation also matched.
+// The golden vectors are testdata/format-vectors.json, the format's shared vector
+// file, whose output an independent TypeScript implementation also matched.
 // Only its two about notes differ. Every consumer of the format runs them.
 
 type vectorFile struct {
@@ -214,7 +214,7 @@ func TestVectorKeyPair(t *testing.T) {
 	}
 }
 
-// TestVectorSession: the preparer's decapsulation of the vectors' encapsulation gives
+// TestVectorSession: the decrypting side's decapsulation of the vectors' encapsulation gives
 // the vectors' sealing key, and an encapsulation the CLI makes to the vectors' public
 // key opens to the key the CLI derives. Encapsulation is randomized, so the CLI side
 // is checked by that round trip against the fixed key pair.
@@ -249,7 +249,7 @@ func TestVectorSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(cli, prep) || len(cli) != sessionKeyBytes {
-		t.Fatal("CLI and preparer derive different session keys")
+		t.Fatal("CLI and decrypting side derive different session keys")
 	}
 	other := lv.session
 	other[0] ^= 1

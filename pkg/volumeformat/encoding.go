@@ -1,8 +1,8 @@
 // Package volumeformat is the Shared Volumes encrypted file format: the part layout,
 // the segmented AES-256-GCM construction with a random salt per part, the session
 // sealing key agreed over X-Wing, and the data-key wrap. The CLI seals files with it
-// and the GPU preparer opens them, so it depends on the standard library only and
-// lives outside internal/ where the backend can import it.
+// and the decrypting side opens them, so it depends on the standard library only and
+// lives outside internal/ where any consumer of this package can import it.
 //
 // testdata/format-vectors.json holds the golden vectors every implementation must
 // reproduce byte for byte.

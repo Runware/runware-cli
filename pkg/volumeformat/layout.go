@@ -21,8 +21,8 @@ const (
 // not the one PlanLayout returns for its size.
 var ErrLayout = errors.New("volume format: outside the part layout")
 
-// Layout is the part layout of one file. The API returns it at declaration and the
-// preparer reads it from the blob descriptor; both must equal PlanLayout(Size).
+// Layout is the part layout of one file. The server returns it at declaration and the
+// reader takes it from the file's stored metadata; both must equal PlanLayout(Size).
 type Layout struct {
 	Size            int64 // plaintext bytes
 	Segments        int64 // sealed segments in the whole file, at least one
