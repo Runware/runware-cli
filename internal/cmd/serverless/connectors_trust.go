@@ -309,19 +309,32 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 	return nil
 }
 
+// gcpAdmitTerm is one assertion.sub.startsWith('...') term of a provider's attribute
+// condition, with only parentheses and whitespace around it.
+const gcpAdmitTerm = `[([:space:]]*assertion\.sub\.startsWith\('[A-Za-z0-9:._-]+'\)[)[:space:]]*`
+
+// gcpOnlyStartsWithTerms is an extended regular expression for a condition made of
+// startsWith terms joined by || and nothing else. Such a condition admits a subject
+// when any one term does, so it cannot hide an && or a negation.
+const gcpOnlyStartsWithTerms = `^` + gcpAdmitTerm + `(\|\|` + gcpAdmitTerm + `)*$`
+
 // writeGCPProviderCheck prints the guard that keeps a binding from succeeding while the
 // provider may still reject the tokens: an existing provider keeps its old attribute
-// condition. It passes only when the condition holds the exact expression this command
-// sets for the whole environment, which admits every scope. Any other condition, even
-// one that looks related such as a single application's subject, needs a manual review.
-// The binding follows on the next line and runs only when the check passes.
+// condition. It fails closed. It passes only when the whole condition is startsWith
+// terms joined by || and one of them is the exact term this command sets for the
+// environment, which admits every scope. Any other condition, including one that holds
+// that term next to an && or a negation, needs a manual review. The condition is read
+// as one line, so a later line cannot narrow it unseen. The binding follows on the next
+// line and runs only when the check passes.
 func writeGCPProviderCheck(b *strings.Builder, provider, prefix string) {
 	describe := fmt.Sprintf("gcloud iam workload-identity-pools providers describe %s --format='value(attributeCondition)'", provider)
 	admits := fmt.Sprintf("assertion.sub.startsWith('%s')", prefix)
 	// The update command sits inside a double-quoted echo, so its own quotes are escaped.
 	update := fmt.Sprintf(`gcloud iam workload-identity-pools providers update-oidc %s --attribute-condition=\"(<existing condition>) || %s\"`, provider, admits)
-	fmt.Fprintf(b, "%s | grep -qF -- \"%s\" || {\n", describe, admits)
-	fmt.Fprintf(b, "  echo \"the provider's attribute condition does not contain %s, so this cannot confirm that it admits the tokens.\" >&2\n", admits)
+	fmt.Fprintf(b, "runware_condition=\"$(%s)\" &&\n", describe)
+	fmt.Fprintf(b, "  printf '%%s' \"$runware_condition\" | tr '\\n' ' ' | grep -Eq -- %s &&\n", shellQuote(gcpOnlyStartsWithTerms))
+	fmt.Fprintf(b, "  printf '%%s' \"$runware_condition\" | grep -qF -- \"%s\" || {\n", admits)
+	fmt.Fprintf(b, "  echo \"the provider's attribute condition is not only assertion.sub.startsWith terms joined by || with one of them %s, so this cannot confirm that it admits the tokens.\" >&2\n", admits)
 	fmt.Fprintf(b, "  echo \"Show the condition with: %s\" >&2\n", describe)
 	fmt.Fprintf(b, "  echo \"then set it to that condition OR-ed with this one: %s\" >&2\n", update)
 	b.WriteString("  false\n")

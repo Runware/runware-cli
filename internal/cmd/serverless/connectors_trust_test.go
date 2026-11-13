@@ -25,8 +25,8 @@ const (
 
 // trustProviderCheck is the line that fails the run while the existing provider's
 // attribute condition does not admit the environment.
-const trustProviderCheck = "gcloud iam workload-identity-pools providers describe " + testWIP +
-	" --format='value(attributeCondition)' | grep -qF -- \"assertion.sub.startsWith('" + trustPrefix + "')\" || {\n"
+const trustProviderCheck = `runware_condition="$(gcloud iam workload-identity-pools providers describe ` + testWIP +
+	` --format='value(attributeCondition)')" &&` + "\n"
 
 // attachedAll returns the attached-connector list body for several connectors.
 func attachedAll(bases ...string) string {
@@ -255,15 +255,24 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 		"with a service account":    trustAttachmentGCP(),
 		"without a service account": withoutSA,
 	}
+	admitsTerm := "assertion.sub.startsWith('" + trustPrefix + "')"
 	conditions := []struct {
 		name, condition string
 		binds           bool
 	}{
 		{name: "the environment prefix", condition: "assertion.sub.startsWith('" + trustPrefix + "')", binds: true},
 		{name: "OR-ed with another condition", condition: "(assertion.sub.startsWith('worker:org:x:env:y:')) || assertion.sub.startsWith('" + trustPrefix + "')", binds: true},
+		{name: "OR-ed inside parentheses", condition: "(assertion.sub.startsWith('worker:org:x:env:y:') || assertion.sub.startsWith('" + trustPrefix + "'))", binds: true},
+		{name: "OR-ed across lines", condition: "assertion.sub.startsWith('worker:org:x:env:y:') ||\n  assertion.sub.startsWith('" + trustPrefix + "')", binds: true},
 		{name: "one app of the environment", condition: "assertion.sub == '" + trustPrefix + "app:first-app'"},
 		{name: "another environment", condition: "assertion.sub.startsWith('worker:org:x:env:y:')"},
 		{name: "no condition", condition: ""},
+		{name: "AND-ed with false", condition: admitsTerm + " && false"},
+		{name: "AND-ed with another claim", condition: admitsTerm + " && assertion.app_id == 'first-app'"},
+		{name: "negated", condition: "!" + admitsTerm},
+		{name: "narrowed on a later line", condition: admitsTerm + "\n&& false"},
+		{name: "a longer prefix that holds this one", condition: "assertion.sub.startsWith('" + trustPrefix + "app:first-app')"},
+		{name: "the organization only", condition: "assertion.sub.startsWith('worker:org:x:')"},
 	}
 	for connName, conn := range connectors {
 		script, err := renderTrust(trustInput{connector: conn, app: testAppID, environment: testProductionEnvironment, scope: trustScopeApp})
@@ -282,7 +291,7 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 				if bound != tc.binds || (runErr == nil) != tc.binds {
 					t.Errorf("binding ran = %v, exit error = %v, want the binding to run = %v\n%s", bound, runErr, tc.binds, stderr)
 				}
-				if !tc.binds && !strings.Contains(string(stderr), "does not contain assertion.sub.startsWith('"+trustPrefix+"')") {
+				if !tc.binds && !strings.Contains(string(stderr), "is not only assertion.sub.startsWith terms joined by || with one of them "+admitsTerm) {
 					t.Errorf("stderr does not say what is missing:\n%s", stderr)
 				}
 			})
