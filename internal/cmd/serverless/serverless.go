@@ -24,9 +24,9 @@ func NewCmd(logger *log.Logger) *cobra.Command {
 		newGPUsCmd(logger),
 		newOpenCmd(logger),
 		newSecretsCmd(logger),
+		newConnectorsCmd(logger),
 		newAppsCmd(logger),
 		newEnvironmentsCmd(logger),
-		newVolumesCmd(logger),
 	)
 	return cmd
 }

@@ -13,8 +13,9 @@ runware serverless apps [flags]
 ### Options
 
 ```
-  -e, --env name   Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
-  -h, --help       help for apps
+  -e, --env name           Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
+      --environment name   Alias for --env
+  -h, --help               help for apps
 ```
 
 ### Options inherited from parent commands
@@ -30,6 +31,7 @@ runware serverless apps [flags]
 
 * [runware serverless](runware_serverless.md)	 - Manage Runware serverless applications
 * [runware serverless apps builds](runware_serverless_apps_builds.md)	 - Inspect application builds
+* [runware serverless apps connectors](runware_serverless_apps_connectors.md)	 - Manage the OIDC connectors attached to an application
 * [runware serverless apps delete](runware_serverless_apps_delete.md)	 - Delete a serverless application
 * [runware serverless apps endpoints](runware_serverless_apps_endpoints.md)	 - List and inspect endpoints for a serverless application
 * [runware serverless apps env-vars](runware_serverless_apps_env-vars.md)	 - Manage plain-text environment variables for an application

@@ -34,7 +34,9 @@ const (
 
 	// testStagingEnvironment sets its own worker cap and inherits its GPU cap.
 	testStagingEnvironment = `{
+		"id":"00000000-0000-0000-0000-000000000000",
 		"name":"staging",
+		"oidcSubjectPrefix":"worker:org:11111111-1111-1111-1111-111111111111:env:00000000-0000-0000-0000-000000000000:",
 		"isDefault":false,
 		"maxConcurrentWorkers":2,
 		"monthlyBudget":{"amount":"50.00","currency":"USD"},
@@ -47,7 +49,9 @@ const (
 	}`
 	// testProductionEnvironmentBody sets nothing and inherits no GPU cap.
 	testProductionEnvironmentBody = `{
+		"id":"22222222-2222-2222-2222-222222222222",
 		"name":"production",
+		"oidcSubjectPrefix":"worker:org:11111111-1111-1111-1111-111111111111:env:22222222-2222-2222-2222-222222222222:",
 		"isDefault":true,
 		"budgetAlertPercents":[],
 		"pauseAtBudget":false,
