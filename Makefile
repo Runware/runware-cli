@@ -11,7 +11,7 @@ GOFLAGS = -trimpath
 
 BINARY=runware
 
-.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix check-go-fix clean install snapshot docs go-tidy generate-serverless sync-serverless-spec
+.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix check-go-fix clean install snapshot docs go-tidy generate-serverless sync-serverless-spec setup check-public
 
 build:
 	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
@@ -67,6 +67,15 @@ docs:
 
 go-tidy:
 	go mod tidy && go mod verify
+
+# Run once per clone: enables the hooks in .githooks (pre-push runs check-public).
+setup:
+	git config core.hooksPath .githooks
+
+# Check what this branch would publish (diff, commit messages and branch name
+# since the merge-base with origin/main) for text that must not be public.
+check-public:
+	go run ./tools/checkpublic range
 
 # Regenerate the Serverless API client from api/serverless/openapi.yaml.
 generate-serverless:

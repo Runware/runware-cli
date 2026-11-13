@@ -1,0 +1,34 @@
+#!/bin/sh
+# Runs tools/checkpublic, rebuilt into this worktree's git directory when its source
+# changes. The git pre-push hook and the agent hooks in .claude/settings.json
+# and .codex/hooks.json call it.
+set -eu
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cache=$(git -C "$root" rev-parse --path-format=absolute --git-dir)/checkpublic
+bin=$cache/checkpublic
+
+# The agent hooks run before every Bash call and GitHub tool call: let commands
+# that cannot push or post anything through without building or starting the
+# tool.
+if [ "${1:-}" = hook ]; then
+	payload=$(cat)
+	case $payload in
+	*push* | *gh* | *github*) ;;
+	*) exit 0 ;;
+	esac
+fi
+
+if [ ! -x "$bin" ] || [ -n "$(find "$root/tools/checkpublic" "$root/go.mod" -newer "$bin" 2>/dev/null | head -n 1)" ]; then
+	mkdir -p "$cache"
+	if ! (cd "$root" && go build -o "$bin" ./tools/checkpublic); then
+		echo "checkpublic: could not build tools/checkpublic" >&2
+		exit 1
+	fi
+fi
+
+if [ "${1:-}" = hook ]; then
+	printf '%s\n' "$payload" | "$bin" "$@"
+	exit $?
+fi
+exec "$bin" "$@"

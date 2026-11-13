@@ -1,0 +1,40 @@
+name: Public content
+
+# This repository is public. Check that a pull request publishes nothing that
+# must stay private: its diff, commit messages, branch name, title and body.
+# Rerun when the title or body is edited.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-public:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build checkpublic
+        run: go build -o "$RUNNER_TEMP/checkpublic" ./tools/checkpublic
+
+      # The title, body and branch name are written by the PR author. The
+      # runner prints a step's env in the public log, so they reach the tool
+      # neither through env nor through ${{ }} in run: it reads them, and the
+      # base and head, from the event file at GITHUB_EVENT_PATH. It hides
+      # matched text in the log and the job summary, which are public.
+      - name: Check diff, commits, branch name, title and body
+        run: |
+          if ! "$RUNNER_TEMP/checkpublic" pr; then
+            echo "This repository is public. Remove the findings above: edit the title or body, or rewrite the commits with neutral messages and force-push. Then delete the old revisions of an edited description in the GitHub UI."
+            exit 1
+          fi
