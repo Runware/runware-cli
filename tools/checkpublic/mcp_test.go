@@ -13,6 +13,7 @@ const (
 	keyRepo      = "repo"
 	keyOwner     = "owner"
 	ownerRunware = "Runware"
+	branchMain   = "main"
 )
 
 // privateTarget is a Runware repository that is not public, built at run time
@@ -225,6 +226,32 @@ func TestHookGitHubToolCall(t *testing.T) {
 			},
 			want:   1,
 			wantAt: "mcp__github__push_files files[0].content line 2",
+		},
+		{
+			name: "branch created with a private name",
+			tool: "mcp__claude_ai_GitHub__create_branch",
+			input: map[string]any{
+				keyOwner:      ownerRunware,
+				keyRepo:       repoCLI,
+				"branch":      "fix/" + clusterHost,
+				"from_branch": branchMain,
+			},
+			want:   1,
+			wantAt: "mcp__claude_ai_GitHub__create_branch branch",
+		},
+		{
+			name: "commit message of a file update",
+			tool: "mcp__github__create_or_update_file",
+			input: map[string]any{
+				keyOwner:  ownerRunware,
+				keyRepo:   repoCLI,
+				"path":    "a.md",
+				"content": "clean",
+				"message": "docs: " + leak,
+				"branch":  branchMain,
+			},
+			want:   1,
+			wantAt: "mcp__github__create_or_update_file message",
 		},
 		{
 			name: "unknown repository is checked",

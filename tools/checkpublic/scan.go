@@ -256,8 +256,8 @@ func (r Range) notOnRemote() []string {
 
 // ScanRange scans what a range would publish: the added lines of the range's
 // diff, the added lines of every commit in it (a line added and removed again
-// is still published in the history), every commit message, and the branch
-// name.
+// is still published in the history), the path of every added file, every
+// commit message, and the branch name.
 func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, error) {
 	var out []Finding
 	if r.Branch != "" {
@@ -285,6 +285,20 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		}
 		seen[key] = struct{}{}
 		out = append(out, f)
+	}
+
+	// The path of each file added in the range, or renamed (with
+	// --no-renames a rename is an addition), once.
+	paths, err := g.run(ctx, append([]string{"log", "--no-merges", "--no-renames", "--diff-filter=A", "--name-only", "--format=", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
+	if err != nil {
+		return nil, err
+	}
+	seenPath := map[string]struct{}{}
+	for p := range strings.SplitSeq(paths, "\n") {
+		if _, ok := seenPath[p]; !ok && p != "" {
+			seenPath[p] = struct{}{}
+			out = append(out, s.ScanText("path of an added file", p)...)
+		}
 	}
 
 	msgs, err := g.run(ctx, append([]string{"log", "--format=%H%x1f%B%x1e", r.Base + ".." + r.Head}, r.notOnRemote()...)...)

@@ -210,6 +210,15 @@ func TestHookForms(t *testing.T) {
 		{name: "reserved words", command: `if true; then gh pr comment 1 --body '` + leak + `'; fi`, block: true},
 		{name: "multi-line function", command: "post() {\n  gh pr comment 1 --body-file body.md\n}\ncp other.md body.md\npost", files: cleanFile, block: true},
 
+		// Releases.
+		{name: "release with clean notes", command: `gh release create v1.2.0 -t "v1.2.0" -n "clean text"`},
+		{name: "release title", command: `gh release create v1.2.0 -t '` + leak + `'`, block: true},
+		{name: "release notes", command: `gh release edit v1.2.0 --notes '` + leak + `'`, block: true},
+		{name: "release notes file", command: `gh release create v1.2.0 -F body.md`, files: leakFile, block: true},
+		{name: "release notes file that does not exist", command: `gh release create v1.2.0 --notes-file missing.md`, block: true},
+		{name: "release on a private repository", command: `gh release create v1.2.0 -R ` + hiddenRepo + ` -n '` + leak + `'`},
+		{name: "release from a private checkout", command: `gh release create v1.2.0 -n '` + leak + `'`, setup: privateCheckout},
+
 		// gh api.
 		{name: "gh api read", command: `gh api repos/Runware/runware-cli/pulls/3 --jq .body`},
 		{name: "gh api comment with -f", command: `gh api repos/Runware/runware-cli/issues/3/comments -f body="` + leak + `"`, block: true},
@@ -437,6 +446,41 @@ func TestPrePushAfterRebase(t *testing.T) {
 	}
 	if len(f) != 0 {
 		t.Fatalf("findings = %+v, want none from main's commits", f)
+	}
+}
+
+// TestAddedPathIsScanned checks that the path of a file added or renamed in
+// the range is scanned once, however many commits touch it.
+func TestAddedPathIsScanned(t *testing.T) {
+	name := "notes-" + clusterHost + ".md"
+	added := gitRepo(t, cleanText, "feat: add b")
+	if err := os.WriteFile(filepath.Join(added, name), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, added, "add", ".")
+	gitIn(t, added, "commit", "-q", "-m", "docs: add notes")
+	if err := os.WriteFile(filepath.Join(added, name), []byte("two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, added, "commit", "-q", "-am", "docs: edit notes")
+	renamed := gitRepo(t, cleanText, "feat: add b")
+	gitIn(t, renamed, "mv", "a.txt", name)
+	gitIn(t, renamed, "commit", "-q", "-m", "chore: rename a")
+	s, err := NewScanner(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{added, renamed} {
+		f, err := s.ScanRange(context.Background(), Git{Dir: dir}, Range{
+			Base: "origin/main",
+			Head: "HEAD",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(f) != 1 || f[0].Where != "path of an added file" {
+			t.Fatalf("findings = %+v, want one in the path", f)
+		}
 	}
 }
 

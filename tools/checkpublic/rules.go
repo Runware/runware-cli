@@ -133,8 +133,11 @@ func builtinRules() []rule {
 		{
 			name:    ruleRepo,
 			message: repoMessage,
-			re:      regexp.MustCompile(`(?i)github\.com[/:]runware/([a-z0-9_.-]+)`),
-			check:   checkRepo,
+			// A web or clone URL, an API or raw-content URL, or a gh api
+			// path: github.com/, api.github.com/repos/,
+			// raw.githubusercontent.com/ or repos/ before the owner.
+			re:    regexp.MustCompile(`(?i)(?:github\.com[/:]|githubusercontent\.com/|\brepos/)runware/([a-z0-9_.-]+)`),
+			check: checkRepo,
 		},
 		{
 			// The short forms (owner/name#123, owner/name/pull/1, or a bare

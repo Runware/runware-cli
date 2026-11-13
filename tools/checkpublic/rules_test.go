@@ -47,6 +47,26 @@ func TestScanLine(t *testing.T) {
 			want: []string{ruleRepo},
 		},
 		{
+			name: "private repo API URL",
+			line: "curl https://api.github.com/repos/" + shortRepo + "some-private-repo/pulls",
+			want: []string{ruleRepo},
+		},
+		{
+			name: "private repo raw-content URL",
+			line: "https://raw.githubusercontent.com/" + shortRepo + "some-private-repo/main/x.md",
+			want: []string{ruleRepo},
+		},
+		{
+			name: "private repo gh api path",
+			line: "gh api repos/" + shortRepo + "some-private-repo/issues/1",
+			want: []string{ruleRepo},
+		},
+		{
+			name: "public repo API, raw-content and gh api forms",
+			line: "api.github.com/repos/Runware/runware-cli raw.githubusercontent.com/Runware/runware-cli/main/a gh api repos/Runware/runware-cli/pulls",
+			want: nil,
+		},
+		{
 			name: "private repo short issue form",
 			line: "fixed in " + shortRepo + "some-private-repo#123",
 			want: []string{ruleRepo},

@@ -129,8 +129,8 @@ func TestDenyFetchFailureUsesStaleCache(t *testing.T) {
 	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"cached"}) {
 		t.Errorf("patterns = %q, want the stale list", got)
 	}
-	if stderr.Len() != 0 {
-		t.Errorf("stderr = %q, want nothing", stderr.String())
+	if !strings.Contains(stderr.String(), "72h0m0s ago") || strings.Contains(stderr.String(), "cached") {
+		t.Errorf("stderr = %q, want a warning with the cache's age and not the list", stderr.String())
 	}
 }
 

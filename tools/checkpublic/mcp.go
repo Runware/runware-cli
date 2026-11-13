@@ -44,6 +44,7 @@ var (
 // at any depth: a review's file_comments[].body, for example.
 var toolTextFields = map[string]struct{}{
 	"body":           {},
+	"branch":         {},
 	"comment":        {},
 	"commit_message": {},
 	"commit_title":   {},

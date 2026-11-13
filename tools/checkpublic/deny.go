@@ -78,20 +78,23 @@ func (d denySource) patterns(ctx context.Context) []string {
 	if d.inCI {
 		return nil
 	}
-	text, ok := d.variable(ctx)
-	if !ok {
+	text, age, ok := d.variable(ctx)
+	switch {
+	case !ok:
 		logf(d.stderr, "checkpublic: warning: the repository deny list is unavailable (could not read the %s variable with gh); the other rules still apply.\n", denyVariable)
+	case age >= denyCacheTTL:
+		logf(d.stderr, "checkpublic: warning: could not refresh the repository deny list with gh; using the copy saved %s ago, which misses names added since.\n", age.Round(time.Hour))
 	}
 	return d.parse(text + "\n" + d.extra)
 }
 
 // variable returns the variable's value from a fresh cache, from gh, or from a
-// stale cache when gh fails.
-func (d denySource) variable(ctx context.Context) (string, bool) {
+// stale cache when gh fails, with the age of the cache it used.
+func (d denySource) variable(ctx context.Context) (string, time.Duration, bool) {
 	cache := d.cachePath()
-	cached, fresh, haveCache := d.readCache(cache)
-	if haveCache && fresh {
-		return cached, true
+	cached, age, haveCache := d.readCache(cache)
+	if haveCache && age < denyCacheTTL {
+		return cached, age, true
 	}
 	if d.repo != "" {
 		ctx, cancel := context.WithTimeout(ctx, denyFetchTimeout)
@@ -99,10 +102,10 @@ func (d denySource) variable(ctx context.Context) (string, bool) {
 		out, err := d.run(ctx, "gh", "variable", "get", denyVariable, "-R", d.repo)
 		if err == nil {
 			d.writeCache(cache, out)
-			return string(out), true
+			return string(out), 0, true
 		}
 	}
-	return cached, haveCache
+	return cached, age, haveCache
 }
 
 var unsafePathChars = regexp.MustCompile(`[^A-Za-z0-9._-]`)
@@ -114,19 +117,20 @@ func (d denySource) cachePath() string {
 	return filepath.Join(d.cacheDir, "deny-"+unsafePathChars.ReplaceAllString(strings.ToLower(d.repo), "_"))
 }
 
-func (d denySource) readCache(path string) (text string, fresh, ok bool) {
+// readCache returns the cached list and its age.
+func (d denySource) readCache(path string) (text string, age time.Duration, ok bool) {
 	if path == "" {
-		return "", false, false
+		return "", 0, false
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", false, false
+		return "", 0, false
 	}
 	b, err := os.ReadFile(path) //nolint:gosec // this tool's own cache file
 	if err != nil {
-		return "", false, false
+		return "", 0, false
 	}
-	return string(b), d.now().Sub(info.ModTime()) < denyCacheTTL, true
+	return string(b), d.now().Sub(info.ModTime()), true
 }
 
 // writeCache stores the list readable only by the user. A failed write only

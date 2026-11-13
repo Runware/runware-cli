@@ -34,7 +34,7 @@ jobs:
       # matched text in the log and the job summary, which are public.
       - name: Check diff, commits, branch name, title and body
         run: |
-          if ! "$RUNNER_TEMP/checkpublic" pr; then
+          if ! "$RUNNER_TEMP/checkpublic" pr -redact; then
             echo "This repository is public. Remove the findings above: edit the title or body, or rewrite the commits with neutral messages and force-push. Then delete the old revisions of an edited description in the GitHub UI."
             exit 1
           fi
