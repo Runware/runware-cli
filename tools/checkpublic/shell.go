@@ -53,6 +53,10 @@ type shellLine struct {
 	// grouped is set when the line has parentheses outside a substitution:
 	// a subshell, a function definition or a case pattern.
 	grouped bool
+	// unparsed is set when the lexer met a form it cannot follow, such as a
+	// here-document delimiter with a quote left open: what follows may hold
+	// commands it did not see.
+	unparsed bool
 }
 
 type pendingHeredoc struct {
@@ -379,7 +383,10 @@ func (lx *lexer) redirectIn() {
 		if strip {
 			lx.i++
 		}
-		delim, quoted := lx.readDelimiter()
+		delim, quoted, ok := lx.readDelimiter()
+		if !ok {
+			lx.line.unparsed = true
+		}
 		lx.heredocs = append(lx.heredocs, pendingHeredoc{
 			delim:  delim,
 			strip:  strip,
@@ -395,27 +402,41 @@ func (lx *lexer) redirectIn() {
 	}
 }
 
-// readDelimiter reads a here-document delimiter word, removing its quotes,
-// and reports whether it was quoted: the body of a here-document with an
-// unquoted delimiter expands variables and commands.
-func (lx *lexer) readDelimiter() (string, bool) {
+// readDelimiter reads a here-document delimiter word, removing its quotes
+// and escapes ('END HERE' is one word), and reports whether it was quoted:
+// the body of a here-document with an unquoted delimiter expands variables
+// and commands. ok is false when a quote is left open on the line.
+func (lx *lexer) readDelimiter() (delim string, quoted, ok bool) {
 	for lx.i < len(lx.src) && (lx.src[lx.i] == ' ' || lx.src[lx.i] == '\t') {
 		lx.i++
 	}
 	var b strings.Builder
-	quoted := false
+	var open byte
 	for ; lx.i < len(lx.src); lx.i++ {
 		c := lx.src[lx.i]
-		if c == '\'' || c == '"' || c == '\\' {
+		switch {
+		case open != 0 && c == '\n':
+			return b.String(), true, false
+		case open != 0 && c == open:
+			open = 0
+		case open != 0:
+			b.WriteByte(c)
+		case c == '\'' || c == '"':
 			quoted = true
-			continue
+			open = c
+		case c == '\\':
+			quoted = true
+			if lx.i+1 < len(lx.src) && lx.src[lx.i+1] != '\n' {
+				lx.i++
+				b.WriteByte(lx.src[lx.i])
+			}
+		case strings.IndexByte(" \t\n;&|<>()", c) >= 0:
+			return b.String(), quoted, true
+		default:
+			b.WriteByte(c)
 		}
-		if strings.IndexByte(" \t\n;&|<>()", c) >= 0 {
-			break
-		}
-		b.WriteByte(c)
 	}
-	return b.String(), quoted
+	return b.String(), quoted, open == 0
 }
 
 // readHeredocs reads the bodies of the here-documents started on the line
@@ -495,7 +516,10 @@ func (lx *lexer) doubleQuoted() {
 func (lx *lexer) substitution() (string, string) {
 	start := lx.i
 	lx.i += 2
-	inner := captureParens(lx.src, &lx.i)
+	inner, ok := captureParens(lx.src, &lx.i)
+	if !ok {
+		lx.line.unparsed = true
+	}
 	lx.cur.nested = append(lx.cur.nested, inner)
 	return lx.src[start:lx.i], inner
 }
@@ -516,7 +540,9 @@ func (lx *lexer) backtick() {
 
 // captureParens reads up to the parenthesis that closes one already opened,
 // skipping quoted text and here-document bodies, and returns what is inside.
-func captureParens(src string, i *int) string {
+// ok is false when a here-document delimiter in it cannot be read.
+func captureParens(src string, i *int) (inner string, ok bool) {
+	ok = true
 	start := min(*i, len(src))
 	depth := 1
 	var delims []pendingHeredoc
@@ -547,7 +573,8 @@ func captureParens(src string, i *int) string {
 					src: src,
 					i:   *i,
 				}
-				delim, _ := sub.readDelimiter()
+				delim, _, dok := sub.readDelimiter()
+				ok = ok && dok
 				delims = append(delims, pendingHeredoc{
 					delim: delim,
 					strip: strip,
@@ -568,13 +595,13 @@ func captureParens(src string, i *int) string {
 			depth--
 			if depth == 0 {
 				*i++
-				return src[start : *i-1]
+				return src[start : *i-1], ok
 			}
 		}
 		*i++
 	}
 	*i = len(src)
-	return src[start:]
+	return src[start:], ok
 }
 
 func anyTrue(b []bool) bool {

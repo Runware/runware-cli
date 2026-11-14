@@ -201,11 +201,26 @@ var shells = wordSet("bash dash fish ksh sh zsh")
 // evaluators run their arguments as a command line.
 var evaluators = wordSet("alias eval trap watch")
 
-// scriptInterpreters run code in another language, which the hook only
-// searches for gh and push.
+// scriptInterpreters run code in another language. The hook searches only
+// the code given inline (-e, -c, --eval or stdin) for a gh write or git push.
 var scriptInterpreters = wordSet("bun deno node osascript perl php python python3 ruby")
 
-var publicationMention = regexp.MustCompile(`\bgh\b|\bpush\b`)
+// inlineCodeFlags are the interpreter flags whose value is code to run.
+var inlineCodeFlags = wordSet("-c -e -E -r --command --eval --exec --run")
+
+// execWrappers run their arguments, or some of them, as a command: a gh
+// write or git push among their arguments runs. A bare gh or push in the
+// arguments of any other command is only a word.
+var execWrappers = wordSet("caffeinate chrt command doas env exec flock ionice nice nohup parallel setsid stdbuf sudo taskset time timeout unbuffer xargs")
+
+// execFlags make the command they belong to run the words that follow:
+// find -exec, for example.
+var execFlags = wordSet("-exec -execdir -ok -okdir")
+
+// publicationMention matches text that may run a gh write or git push:
+// a gh command with a group that publishes, or git with push later on the
+// same line.
+var publicationMention = regexp.MustCompile(`\bgh\b[^\n]{0,60}?\b(?:api|gist|issue|label|pr|release|repo)\b|\bgit\b[^\n;|&]{0,80}?\bpush\b`)
 
 // containsPublication reports whether a command line run in some other way
 // (a substitution, a `bash -c` string) publishes anywhere.
@@ -213,7 +228,11 @@ func containsPublication(src string, depth int) bool {
 	if depth > maxNesting {
 		return true
 	}
-	cmds := commands(parseShell(src))
+	line := parseShell(src)
+	if line.unparsed && publicationMention.MatchString(src) {
+		return true
+	}
+	cmds := commands(line)
 	for i := range cmds {
 		if publishes(cmds[i].words, cmds[i].wordDyn) != pubNone || hiddenPublication(cmds[i], cmds, depth) != "" {
 			return true
@@ -234,26 +253,62 @@ func hiddenPublication(c command, line []command, depth int) string {
 	if slices.ContainsFunc(c.opaque, publicationMention.MatchString) {
 		return "inside a here-document that runs commands"
 	}
+	runsArgs := false
 	for k, w := range c.words {
 		base := filepath.Base(w)
 		rest := strings.Join(c.words[k+1:], " ")
-		if k > 0 && publishes(c.words[k:], c.wordDyn[k:]) != pubNone {
+		if runsArgs && publishes(c.words[k:], c.wordDyn[k:]) != pubNone {
 			return fmt.Sprintf("through `%s`", c.words[0])
+		}
+		if _, ok := execWrappers[base]; ok || c.wordDyn[k] {
+			runsArgs = true
+		}
+		if _, ok := shellKeywords[w]; ok {
+			runsArgs = true // do gh ..., if git push ...
+		}
+		if _, ok := execFlags[w]; ok {
+			runsArgs = true
 		}
 		if _, ok := shells[base]; ok {
 			piped := c.pipeFrom >= 0 && c.pipeFrom < len(line) && publicationMention.MatchString(strings.Join(line[c.pipeFrom].args, " "))
-			if containsPublication(rest, depth+1) || containsPublication(c.stdin, depth+1) || piped {
+			script := slices.ContainsFunc(c.words[k+1:], func(w string) bool {
+				return containsPublication(w, depth+1)
+			})
+			if script || containsPublication(rest, depth+1) || containsPublication(c.stdin, depth+1) || piped {
 				return fmt.Sprintf("in a script that `%s` runs", base)
 			}
 		}
 		if _, ok := evaluators[base]; ok && containsPublication(rest, depth+1) {
 			return fmt.Sprintf("inside `%s`", base)
 		}
-		if _, ok := scriptInterpreters[base]; ok && publicationMention.MatchString(rest+"\n"+c.stdin) {
+		if _, ok := scriptInterpreters[base]; ok && publicationMention.MatchString(inlineCode(c.words[k+1:], c.stdin)) {
 			return fmt.Sprintf("inside a `%s` script", base)
 		}
 	}
 	return ""
+}
+
+// inlineCode returns the code an interpreter is given inline: the values of
+// its inline code flags (-e CODE, -eCODE, --eval=CODE) and its stdin.
+func inlineCode(args []string, stdin string) string {
+	var b strings.Builder
+	b.WriteString(stdin)
+	for i, a := range args {
+		name, value, inline := strings.Cut(a, "=")
+		if _, ok := inlineCodeFlags[name]; ok {
+			if !inline && i+1 < len(args) {
+				value = args[i+1]
+			}
+			b.WriteString("\n" + value)
+			continue
+		}
+		if len(a) > 2 && a[0] == '-' && a[1] != '-' {
+			if _, ok := inlineCodeFlags[a[:2]]; ok {
+				b.WriteString("\n" + a[2:])
+			}
+		}
+	}
+	return b.String()
 }
 
 // shellKeywords start or end a compound command, whose body the shell runs
@@ -330,8 +385,9 @@ func inert(c command) bool {
 }
 
 // gitReadSubcommands change no file in the working tree and no ref a push
-// publishes.
-var gitReadSubcommands = wordSet("add blame cat-file describe diff fetch for-each-ref grep log ls-files ls-remote merge-base push rev-list rev-parse show show-ref status")
+// publishes. git fetch is not one: a refspec such as main:main moves a local
+// branch.
+var gitReadSubcommands = wordSet("add blame cat-file describe diff for-each-ref grep log ls-files ls-remote merge-base push rev-list rev-parse show show-ref status")
 
 func gitInert(words []string, dyn []bool) bool {
 	i := 1
@@ -346,6 +402,11 @@ func gitInert(words []string, dyn []bool) bool {
 	}
 	if anyTrue(dyn[:i+1]) {
 		return false
+	}
+	for _, w := range words[i+1:] {
+		if w == "--output" || strings.HasPrefix(w, "--output=") {
+			return false // git diff --output=FILE writes a file
+		}
 	}
 	rest := strings.Join(words[i+1:], " ")
 	switch words[i] {
@@ -377,7 +438,13 @@ var ghValueFlags = map[string]string{
 	"issue reopen":   "comment/c",
 	"release create": "title/t notes/n notes-file/F target discussion-category notes-start-tag",
 	"release edit":   "title/t notes/n notes-file/F tag target discussion-category",
+	"repo edit":      "description/d homepage/h default-branch add-topic remove-topic visibility template",
+	"label create":   "description/d color/c",
+	"label edit":     "description/d color/c name/n",
 }
+
+// ghPublishingGroups are the gh groups with commands in ghValueFlags.
+var ghPublishingGroups = wordSet("issue label pr release repo")
 
 // apiValueFlags are the gh api flags that take a value.
 const apiValueFlags = "method/X raw-field/f field/F input header/H jq/q template/t hostname preview/p cache"
@@ -500,7 +567,7 @@ var ghReadVerbs = wordSet("checks diff list status view")
 
 // ghOtherGroups are the gh commands that publish no title, body or comment
 // this hook checks. Anything else may be an alias or an extension.
-var ghOtherGroups = wordSet("alias attestation auth browse cache co codespace completion config extension gist gpg-key help label org project repo ruleset run search secret ssh-key status variable version workflow")
+var ghOtherGroups = wordSet("alias attestation auth browse cache co codespace completion config extension gist gpg-key help org project ruleset run search secret ssh-key status variable version workflow")
 
 // ghCommand returns the group and verb of a gh command line ("" when it has
 // none), and whether either is dynamic.
@@ -527,10 +594,11 @@ func ghPublishes(words []string, dyn []bool) pubKind {
 		return pubNone
 	case dynamic:
 		return pubUnknown
-	case group == "pr" || group == wordIssue || group == wordRelease:
-		if _, ok := ghValueFlags[group+" "+verb]; ok {
-			return pubGH
-		}
+	}
+	if _, ok := ghValueFlags[group+" "+verb]; ok {
+		return pubGH
+	}
+	if _, ok := ghPublishingGroups[group]; ok {
 		return pubNone
 	}
 	if _, ok := ghOtherGroups[group]; ok {
@@ -556,13 +624,28 @@ func ghInert(words []string, dyn []bool) bool {
 	return ok || verb == "" || group == wordAPI
 }
 
+// apiReadFlags are the gh api value flags that change only how a response
+// is shown or fetched: a variable in their value cannot make a call write.
+var apiReadFlags = wordSet("--cache --header -H --hostname --jq -q --preview -p --template -t")
+
 // apiWrites reports whether a gh api call may write: it has fields or an
-// input, a method other than GET, or arguments the hook cannot read.
+// input, a method other than GET, or a variable where it could add one. A
+// variable in the endpoint, such as pulls/$PR/comments, or in the value of
+// a flag such as --jq, is a read.
 func apiWrites(words []string, dyn []bool) bool {
-	if anyTrue(dyn) {
-		return true
+	flags, pos := parseFlags(words[1:], apiValueFlags)
+	for i := 1; i < len(words); i++ {
+		if !dyn[i] {
+			continue
+		}
+		name, _, inline := strings.Cut(words[i], "=")
+		_, readValue := apiReadFlags[name]
+		_, afterRead := apiReadFlags[words[i-1]]
+		isEndpoint := len(pos) > 1 && i == pos[1]+1
+		if !isEndpoint && (!inline || !readValue) && (!afterRead || dyn[i-1]) {
+			return true
+		}
 	}
-	flags, _ := parseFlags(words[1:], apiValueFlags)
 	for _, f := range flags {
 		switch f.name {
 		case "method":

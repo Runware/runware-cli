@@ -74,6 +74,9 @@ func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, e
 			found = true
 		}
 	}
+	if line.unparsed && publicationMention.MatchString(command) {
+		return plan{}, uncheckable("it has a here-document delimiter the check cannot read, and may hide a GitHub write or git push after it")
+	}
 	if !found {
 		return plan{}, nil
 	}
@@ -93,7 +96,10 @@ func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, e
 		c := &cmds[i]
 		switch c.name() {
 		case "cd":
-			if len(c.words) == 2 && !c.wordDyn[1] && c.words[1] != "-" {
+			// A cd in a pipeline or a background job runs in a subshell
+			// and leaves the directory of what follows unchanged.
+			inSubshell := c.pipeFrom >= 0 || c.sep == "&" || c.sep == "|" || c.sep == "|&"
+			if len(c.words) == 2 && !c.wordDyn[1] && c.words[1] != "-" && !inSubshell {
 				dir = resolvePath(dir, c.words[1])
 				cd = true
 			} else {
@@ -189,9 +195,10 @@ func (pc pubContext) readFile(name string) (string, error) {
 	return string(b), nil
 }
 
-// readStdin returns what a publication reads on stdin. A here-document or
-// here-string, its own or piped from cat, is text of the command line, which
-// is scanned whole, so it returns "" for one.
+// readStdin returns what a publication reads on stdin: a file, or a quoted
+// here-document or here-string, its own or piped from cat. The command line
+// is scanned whole too; the body is returned so that a JSON or base64 body is
+// decoded like a file's.
 func (pc pubContext) readStdin() (string, error) {
 	c := pc.cmd
 	sources := c.stdinSources
@@ -204,11 +211,11 @@ func (pc pubContext) readStdin() (string, error) {
 	case c.hasStdin && c.stdinDynamic:
 		return "", uncheckable("it posts a here-document that expands variables or commands; quote its delimiter (<<'EOF')")
 	case c.hasStdin:
-		return "", nil
+		return c.stdin, nil
 	case c.stdinFile != "" && !c.stdinFileDynamic:
 		return pc.readFile(c.stdinFile)
 	case c.pipeFrom >= 0 && pc.line[c.pipeFrom].inlineHeredoc():
-		return "", nil
+		return pc.line[c.pipeFrom].stdin, nil
 	}
 	return "", uncheckable("it posts stdin from a source the check cannot read; use a file or a quoted here-document")
 }
@@ -237,6 +244,9 @@ func (pc pubContext) push() (pushSpec, error) {
 	}
 	if pc.changer != "" {
 		return pushSpec{}, uncheckable("`%s` runs before the push or alongside it and may change what it pushes; run the push in its own call", pc.changer)
+	}
+	if slices.Contains(c.words[i+1:], "--mirror") {
+		return pushSpec{}, uncheckable("`%s` pushes every ref, which the check does not enumerate; push branches and tags by name", c)
 	}
 	return pushSpec{
 		dir:  dir,
@@ -312,6 +322,12 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 			var body any
 			if json.Unmarshal([]byte(text), &body) == nil {
 				collectTexts(body, "", true, func(path, v string) {
+					// The file holds the strings JSON-escaped; GitHub
+					// publishes them unescaped.
+					texts = append(texts, publication{
+						label: where + " " + path,
+						text:  v,
+					})
 					if path == fieldContent || strings.HasSuffix(path, "."+fieldContent) {
 						texts = append(texts, decodedContent(where+" "+path, v)...)
 					}
@@ -331,6 +347,13 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 		} else {
 			repos = apiRepos(m[1], repos)
 		}
+	case group == "repo":
+		// gh repo edit [OWNER/NAME]: the argument names the repository.
+		if len(pos) > 2 {
+			repos = []string{args[pos[2]]}
+		}
+	case group == "label":
+		// A label's name is its argument, not a destination.
 	case verb != "create" && group != wordRelease && len(pos) > 2:
 		// A pull request or issue URL names the destination, whatever -R
 		// says.
@@ -485,6 +508,7 @@ func (s *Scanner) runHook(ctx context.Context, payload []byte, repoOf repoResolv
 	var out []Finding
 	if p.scanLine {
 		out = append(out, s.ScanText("command line", bash.Command)...)
+		out = append(out, newFindings(out, s.ScanText("command line, quotes removed", unquotedArgs(bash.Command)))...)
 	}
 	for _, t := range p.texts {
 		out = append(out, s.ScanText(t.label, t.text)...)
@@ -499,11 +523,17 @@ func (s *Scanner) runHook(ctx context.Context, payload []byte, repoOf repoResolv
 	return out, nil
 }
 
-// pushArgs splits git push arguments into the positional ones and the options.
-func pushArgs(args []string) (pos, opts []string) {
+// pushArgs splits git push arguments into the positional ones and the
+// options, and returns the value of --repo.
+func pushArgs(args []string) (pos, opts []string, repo string) {
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
-		case a == "-o" || a == "--push-option" || a == "--repo" || a == "--receive-pack" || a == "--exec":
+		case a == "--repo" && i+1 < len(args):
+			i++
+			repo = args[i]
+		case strings.HasPrefix(a, "--repo="):
+			repo = strings.TrimPrefix(a, "--repo=")
+		case a == "-o" || a == "--push-option" || a == "--receive-pack" || a == "--exec":
 			i++
 		case strings.HasPrefix(a, "-"):
 			opts = append(opts, a)
@@ -511,21 +541,49 @@ func pushArgs(args []string) (pos, opts []string) {
 			pos = append(pos, a)
 		}
 	}
-	return pos, opts
+	return pos, opts, repo
 }
 
-// pushRemote returns the remote a git push goes to: the one it names, or the
-// current branch's remote, or origin.
-func pushRemote(ctx context.Context, g Git, pos []string) string {
+// pushRemote returns the remote a git push goes to, in git's order: the one
+// it names, --repo, branch.<name>.pushRemote, remote.pushDefault,
+// branch.<name>.remote, then origin.
+func pushRemote(ctx context.Context, g Git, pos []string, repo string) string {
 	if len(pos) > 0 {
 		return pos[0]
 	}
-	if current := g.CurrentBranch(ctx); current != "" {
-		if out, err := g.run(ctx, "config", "branch."+current+".remote"); err == nil && strings.TrimSpace(out) != "" {
+	if repo != "" {
+		return repo
+	}
+	current := g.CurrentBranch(ctx)
+	keys := []string{
+		"remote.pushDefault",
+	}
+	if current != "" {
+		keys = []string{
+			"branch." + current + ".pushRemote",
+			"remote.pushDefault",
+			"branch." + current + ".remote",
+		}
+	}
+	for _, k := range keys {
+		if out, err := g.run(ctx, "config", k); err == nil && strings.TrimSpace(out) != "" {
 			return strings.TrimSpace(out)
 		}
 	}
 	return "origin"
+}
+
+// configuredPush returns an UncheckableError when a git push without
+// refspecs to remote would push something other than the current branch: a
+// remote.<name>.push refspec, or push.default=matching.
+func configuredPush(ctx context.Context, g Git, remote string) error {
+	if out, err := g.run(ctx, "config", "--get-all", "remote."+remote+".push"); err == nil && strings.TrimSpace(out) != "" {
+		return uncheckable("remote.%s.push sets what a git push without refspecs pushes, which the check does not follow; name the branch: git push %s BRANCH", remote, remote)
+	}
+	if out, err := g.run(ctx, "config", "push.default"); err == nil && strings.TrimSpace(out) == "matching" {
+		return uncheckable("push.default=matching pushes every branch the remote has, which the check does not follow; name the branch: git push %s BRANCH", remote)
+	}
+	return nil
 }
 
 // scanPush scans what a git push would publish: for each pushed branch, what
@@ -536,8 +594,8 @@ func (s *Scanner) scanPush(ctx context.Context, p pushSpec) ([]Finding, error) {
 	g := Git{
 		Dir: p.dir,
 	}
-	pos, opts := pushArgs(p.args)
-	remote := pushRemote(ctx, g, pos)
+	pos, opts, repo := pushArgs(p.args)
+	remote := pushRemote(ctx, g, pos, repo)
 	if s.remoteIsPrivate(ctx, g, remote) {
 		return nil, nil
 	}
@@ -560,7 +618,7 @@ func (s *Scanner) scanPush(ctx context.Context, p pushSpec) ([]Finding, error) {
 			followTags = true
 		}
 	}
-	if has("--all", "--branches", "--mirror") {
+	if has("--all", "--branches") {
 		out, err := g.run(ctx, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
 		if err != nil {
 			return nil, err
@@ -568,6 +626,11 @@ func (s *Scanner) scanPush(ctx context.Context, p pushSpec) ([]Finding, error) {
 		refspecs = strings.Fields(out)
 	}
 	// git push --tags alone pushes only the tags.
+	if len(refspecs) == 0 && !allTags {
+		if err := configuredPush(ctx, g, remote); err != nil {
+			return nil, err
+		}
+	}
 	if len(refspecs) == 0 && current != "" && !allTags {
 		refspecs = []string{current}
 	}
@@ -708,4 +771,32 @@ func (s *Scanner) remoteIsPrivate(ctx context.Context, g Git, remote string) boo
 		}
 	}
 	return len(urls) > 0
+}
+
+// unquotedArgs returns the arguments of every command of a line after quote
+// removal, one command per line: 'fake”vendor' reads as fakevendor.
+func unquotedArgs(command string) string {
+	var b strings.Builder
+	cmds := parseShell(command).cmds
+	for i := range cmds {
+		b.WriteString(strings.Join(cmds[i].args, " "))
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// newFindings returns the findings of more whose rule and match none of seen
+// has.
+func newFindings(seen, more []Finding) []Finding {
+	have := map[string]struct{}{}
+	for _, f := range seen {
+		have[f.Rule+"\x00"+f.Match] = struct{}{}
+	}
+	var out []Finding
+	for _, f := range more {
+		if _, ok := have[f.Rule+"\x00"+f.Match]; !ok {
+			out = append(out, f)
+		}
+	}
+	return out
 }

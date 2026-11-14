@@ -21,9 +21,19 @@ gitdir=$(git -C "$root" rev-parse --path-format=absolute --git-dir) || fail "can
 cache=$gitdir/checkpublic
 bin=$cache/checkpublic
 
+# A source that does not build must not block every agent tool call (the
+# agent could not even run the build to see the error): the previous binary
+# keeps checking, with a warning. Only without any binary is nothing checked.
 if [ ! -x "$bin" ] || [ -n "$(find "$root/tools/checkpublic" "$root/go.mod" -newer "$bin" 2>/dev/null | head -n 1)" ]; then
 	mkdir -p "$cache" || fail "cannot create $cache"
-	(cd "$root" && go build -o "$bin" ./tools/checkpublic) || fail "could not build tools/checkpublic"
+	if (cd "$root" && go build -o "$bin.new" ./tools/checkpublic) && mv -f "$bin.new" "$bin"; then
+		:
+	elif [ -x "$bin" ]; then
+		rm -f "$bin.new"
+		echo "checkpublic: warning: tools/checkpublic does not build; checking with the previous build" >&2
+	else
+		fail "could not build tools/checkpublic"
+	fi
 fi
 
 status=0

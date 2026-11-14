@@ -777,6 +777,187 @@ func TestHookForms(t *testing.T) {
 			setup:   tagOnPushedBranch,
 			block:   true,
 		},
+		{
+			name:    "remote.pushDefault to a public remote",
+			command: cmdGitPush,
+			setup:   pushTo("remote.pushDefault"),
+			block:   true,
+		},
+		{
+			name:    "branch pushRemote to a public remote",
+			command: cmdGitPush,
+			setup:   pushTo("branch.feature.pushRemote"),
+			block:   true,
+		},
+		{
+			name:    "push --repo to a public remote",
+			command: `git push --repo public`,
+			setup:   pushTo(""),
+			block:   true,
+		},
+		{
+			name:    "push --repo= to a public remote",
+			command: `git push --repo=public`,
+			setup:   pushTo(""),
+			block:   true,
+		},
+		{
+			name:    "plain push from a private default",
+			command: cmdGitPush,
+			setup:   pushTo(""),
+		},
+		{
+			name:    "mirror push",
+			command: `git push --mirror`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "push refspec in the remote's configuration",
+			command: `git push origin`,
+			setup:   withConfig("remote.origin.push", "refs/heads/other:refs/heads/other"),
+			block:   true,
+		},
+		{
+			name:    "push.default matching",
+			command: cmdGitPush,
+			setup:   withConfig("push.default", "matching"),
+			block:   true,
+		},
+		{
+			name:    "push.default simple",
+			command: cmdGitPush,
+			setup:   withConfig("push.default", "simple"),
+		},
+		{
+			name:    "fetch before a push",
+			command: `git fetch && git push`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "git diff --output before a post of that file",
+			command: `git diff --output=body.md && gh pr comment 1 --body-file body.md`,
+			files:   cleanFile,
+			block:   true,
+		},
+
+		// Forms from the third review round.
+		{
+			name:    "cd in a background job",
+			command: `cd priv & gh pr comment 1 --body '` + leak + `'`,
+			setup:   privateSubdir,
+			block:   true,
+		},
+		{
+			name:    "cd in a pipeline",
+			command: `cd priv | gh pr comment 1 --body '` + leak + `'`,
+			setup:   privateSubdir,
+			block:   true,
+		},
+		{
+			name:    "cd before a post from a private subdirectory",
+			command: `cd priv && gh pr comment 1 --body '` + leak + `'`,
+			setup:   privateSubdir,
+		},
+		{
+			name:    "deny-listed name split by quotes",
+			command: `gh pr comment 1 --body 'fake''vendor'`,
+			block:   true,
+		},
+		{
+			name:    "escaped credential in --input JSON",
+			command: `gh api repos/Runware/runware-cli/issues/1/comments --input c.json`,
+			files: map[string]string{
+				"c.json": `{"body":` + jsonString(`token = "`+longSecret+`"`) + `}`,
+			},
+			block: true,
+		},
+		{
+			name:    "Contents API file in --input from a here-document",
+			command: "gh api -X PUT repos/Runware/runware-cli/contents/a.md --input - <<'EOF'\n{\"message\":\"docs: a\",\"content\":\"" + leak64 + "\"}\nEOF",
+			block:   true,
+		},
+		{
+			name:    "Contents API file in --input from cat",
+			command: "cat <<'EOF' | gh api -X PUT repos/Runware/runware-cli/contents/a.md --input -\n{\"message\":\"docs: a\",\"content\":\"" + leak64 + "\"}\nEOF",
+			block:   true,
+		},
+		{
+			name:    "clean Contents API file from a here-document",
+			command: "gh api -X PUT repos/Runware/runware-cli/contents/a.md --input - <<'EOF'\n{\"message\":\"docs: a\",\"content\":\"" + clean64 + "\"}\nEOF",
+		},
+		{
+			name:    "here-document delimiter with a space",
+			command: "cat <<'END HERE'\nx\nEND HERE\ngh pr comment 1 --body '" + leak + "'",
+			block:   true,
+		},
+		{
+			name:    "here-document delimiter with a quote left open",
+			command: "cat <<'END\nx\ngh pr comment 1 --body-file body.md",
+			files:   leakFile,
+			block:   true,
+		},
+		{
+			name:    "here-document delimiter with a space, clean",
+			command: "cat <<'END HERE'\ngh pr comment\nEND HERE",
+		},
+
+		// gh commands that publish a description or name.
+		{
+			name:    "repo description",
+			command: `gh repo edit --description '` + leak + `'`,
+			block:   true,
+		},
+		{
+			name:    "repo homepage",
+			command: `gh repo edit Runware/runware-cli -h 'https://` + clusterHost + `'`,
+			block:   true,
+		},
+		{
+			name:    "description of a private repository",
+			command: `gh repo edit ` + hiddenRepo + ` --description '` + leak + `'`,
+		},
+		{
+			name:    "label description",
+			command: `gh label create bug --description '` + leak + `'`,
+			block:   true,
+		},
+		{
+			name:    "label name",
+			command: `gh label edit bug --name ` + clusterHost,
+			block:   true,
+		},
+		{
+			name:    "gh api with a variable endpoint and a field",
+			command: `gh api repos/o/r/pulls/$PR/comments -f body=x`,
+			block:   true,
+		},
+		{
+			name:    "gh api with a variable method",
+			command: `gh api repos/o/r/pulls/1 -X "$METHOD"`,
+			block:   true,
+		},
+		{
+			name:    "interpreter code that runs gh",
+			command: `python3 -c "import subprocess; subprocess.run(['gh', 'pr', 'comment', '1', '-b', 'x'])"`,
+			block:   true,
+		},
+		{
+			name:    "interpreter code that pushes",
+			command: `node -e "require('child_process').execSync('git push')"`,
+			block:   true,
+		},
+		{
+			name:    "sudo",
+			command: `sudo -u someone git push`,
+			block:   true,
+		},
+		{
+			name:    "find -exec",
+			command: `find . -name x -exec gh pr comment 1 --body-file {} \;`,
+			block:   true,
+		},
 	}
 	s, err := NewScanner(nil)
 	if err != nil {
@@ -819,6 +1000,121 @@ func pushURLs(fetch, push string) func(t *testing.T) string {
 		gitIn(t, dir, "remote", "add", "origin", "https://"+ghRepo+fetch+".git")
 		gitIn(t, dir, "remote", "set-url", "--push", "origin", "https://"+ghRepo+push+".git")
 		return dir
+	}
+}
+
+// pushTo returns a setup that makes leakyCommit's repository with a private
+// origin and a public remote named public, set as key when key is not "".
+func pushTo(key string) func(t *testing.T) string {
+	return func(t *testing.T) string {
+		dir := leakyCommit(t)
+		gitIn(t, dir, "remote", "add", "origin", "https://"+ghRepo+"some-private-repo.git")
+		gitIn(t, dir, "remote", "add", "public", "https://"+ghRepo+repoCLI+".git")
+		if key != "" {
+			gitIn(t, dir, "config", key, "public")
+		}
+		return dir
+	}
+}
+
+// withConfig returns a setup that makes cleanRepo's repository with a public
+// origin and key set to value.
+func withConfig(key, value string) func(t *testing.T) string {
+	return func(t *testing.T) string {
+		dir := cleanRepo(t)
+		gitIn(t, dir, "remote", "add", "origin", "https://"+ghRepo+repoCLI+".git")
+		gitIn(t, dir, "config", key, value)
+		return dir
+	}
+}
+
+// privateSubdir makes a directory, not a checkout, with a private checkout
+// in priv.
+func privateSubdir(t *testing.T) string {
+	dir := t.TempDir()
+	priv := filepath.Join(dir, "priv")
+	if err := os.Mkdir(priv, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, priv, "init", "-q")
+	gitIn(t, priv, "remote", "add", "origin", "https://"+ghRepo+"some-private-repo.git")
+	return dir
+}
+
+// TestHookReadOnlyCommands runs everyday commands that publish nothing
+// through the hook mode: each must exit 0, also when it holds the word gh or
+// push, a variable or an interpreter.
+func TestHookReadOnlyCommands(t *testing.T) {
+	dir := cleanRepo(t)
+	commands := []string{
+		`rg -n gh tools/checkpublic`,
+		`echo gh is installed`,
+		`ls ~/.config/gh ~/.config/git`,
+		`node -e "a.push(1)"`,
+		`python3 tool.py --push`,
+		`git status`,
+		`git log --oneline -5`,
+		`go build ./...`,
+		`go test ./...`,
+		`grep -r push .`,
+		`cat README.md`,
+		`gh pr view 1`,
+		`gh pr checks 1`,
+		`gh api repos/o/r/pulls/$N/comments`,
+		`gh run view`,
+		`make test`,
+		`npm run build`,
+		`git fetch`,
+		`git diff`,
+		`gh api "repos/o/r/pulls/${PR}/comments" --jq '.[].body'`,
+		`gh api repos/o/r/pulls/1 -q "$FILTER"`,
+		`find . -name '*.go' | xargs grep -n push`,
+		`timeout 60 go test ./...`,
+		`git add -A && git commit -m "fix: push the gh thing"`,
+		`gh pr list --state open`,
+		`gh repo view --json visibility`,
+		`gh label list`,
+		`gh auth status`,
+		`which gh && gh --version`,
+		`cat ~/.config/gh/hosts.yml`,
+		`env | grep GH`,
+		`git log --grep=push --oneline`,
+		`python3 -c "print(1)"`,
+		`git fetch origin && git status`,
+		`echo "$PATH" | tr : '\n' | grep gh`,
+		`cd tools && go test ./...`,
+		`for f in *.go; do echo "$f"; done`,
+		"git commit -m \"$(cat <<'EOF'\nfix: mention gh pr comment and git push\nEOF\n)\"",
+	}
+	for _, command := range commands {
+		t.Run(command, func(t *testing.T) {
+			var stderr bytes.Buffer
+			if code := run(context.Background(), []string{modeHook}, bytes.NewReader(bashPayload(t, command, dir)), &bytes.Buffer{}, &stderr); code != 0 {
+				t.Fatalf("exit %d, want 0: %s", code, stderr.String())
+			}
+		})
+	}
+}
+
+// TestClearlyPublishesNothing checks the test that lets a command run when
+// the check itself fails: only commands with no word that could publish.
+func TestClearlyPublishesNothing(t *testing.T) {
+	cases := map[string]bool{
+		`ls -la`:                       true,
+		`make test && go vet ./...`:    true,
+		`g'h' pr comment 1 --body x`:   false,
+		"g\\\nh pr comment 1 --body x": false,
+		`git status`:                   false,
+		`echo $X`:                      false,
+		`echo "push"`:                  false,
+	}
+	for command, want := range cases {
+		if got := clearlyPublishesNothing(bashPayload(t, command, "")); got != want {
+			t.Errorf("clearlyPublishesNothing(%q) = %v, want %v", command, got, want)
+		}
+	}
+	if clearlyPublishesNothing([]byte(`{"tool_name":"mcp__github__add_issue_comment","tool_input":{}}`)) {
+		t.Error("a GitHub tool call counts as publishing nothing")
 	}
 }
 

@@ -17,6 +17,8 @@ const (
 	keyPath      = "path"
 	keyBranch    = "branch"
 	branchMain   = "main"
+	keyMessage   = "message"
+	toolFileSave = "mcp__github__create_or_update_file"
 )
 
 // privateTarget is a Runware repository that is not public, built at run time
@@ -104,7 +106,7 @@ func TestIsGitHubWriteTool(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "mcp__github__create_or_update_file",
+			name: toolFileSave,
 			want: true,
 		},
 		{
@@ -216,19 +218,51 @@ func TestHookGitHubToolCall(t *testing.T) {
 			name: "file pushed straight to a branch",
 			tool: "mcp__github__push_files",
 			input: map[string]any{
-				keyOwner:  ownerRunware,
-				keyRepo:   "runware-cli",
-				keyBranch: "main",
-				"message": "docs: x",
+				keyOwner:   ownerRunware,
+				keyRepo:    "runware-cli",
+				keyBranch:  "main",
+				keyMessage: "docs: x",
 				"files": []any{
 					map[string]any{
-						keyPath:   "a.md",
-						"content": "intro\n" + leak,
+						keyPath:      "a.md",
+						fieldContent: "intro\n" + leak,
 					},
 				},
 			},
 			want:   1,
 			wantAt: "mcp__github__push_files files[0].content line 2",
+		},
+		{
+			name: "file pushed with a private name",
+			tool: "mcp__github__push_files",
+			input: map[string]any{
+				keyOwner:   ownerRunware,
+				keyRepo:    repoCLI,
+				keyBranch:  branchMain,
+				keyMessage: "docs: x",
+				"files": []any{
+					map[string]any{
+						keyPath:      "docs/" + clusterHost + ".md",
+						fieldContent: "clean",
+					},
+				},
+			},
+			want:   1,
+			wantAt: "mcp__github__push_files files[0].path",
+		},
+		{
+			name: "file updated with a private name",
+			tool: toolFileSave,
+			input: map[string]any{
+				keyOwner:     ownerRunware,
+				keyRepo:      repoCLI,
+				keyPath:      clusterHost + ".md",
+				fieldContent: "clean",
+				keyMessage:   "docs: a",
+				keyBranch:    branchMain,
+			},
+			want:   1,
+			wantAt: toolFileSave + " path",
 		},
 		{
 			name: "branch created with a private name",
@@ -244,28 +278,28 @@ func TestHookGitHubToolCall(t *testing.T) {
 		},
 		{
 			name: "commit message of a file update",
-			tool: "mcp__github__create_or_update_file",
+			tool: toolFileSave,
 			input: map[string]any{
-				keyOwner:  ownerRunware,
-				keyRepo:   repoCLI,
-				keyPath:   "a.md",
-				"content": "clean",
-				"message": "docs: " + leak,
-				keyBranch: branchMain,
+				keyOwner:     ownerRunware,
+				keyRepo:      repoCLI,
+				keyPath:      "a.md",
+				fieldContent: "clean",
+				keyMessage:   "docs: " + leak,
+				keyBranch:    branchMain,
 			},
 			want:   1,
-			wantAt: "mcp__github__create_or_update_file message",
+			wantAt: toolFileSave + " message",
 		},
 		{
 			name: "base64 content of a file update",
-			tool: "mcp__github__create_or_update_file",
+			tool: toolFileSave,
 			input: map[string]any{
-				keyOwner:  ownerRunware,
-				keyRepo:   repoCLI,
-				keyPath:   "a.md",
-				"content": base64.StdEncoding.EncodeToString([]byte(leak)),
-				"message": "docs: a",
-				keyBranch: branchMain,
+				keyOwner:     ownerRunware,
+				keyRepo:      repoCLI,
+				keyPath:      "a.md",
+				fieldContent: base64.StdEncoding.EncodeToString([]byte(leak)),
+				keyMessage:   "docs: a",
+				keyBranch:    branchMain,
 			},
 			want:   1,
 			wantAt: "mcp__github__create_or_update_file content (base64-decoded)",

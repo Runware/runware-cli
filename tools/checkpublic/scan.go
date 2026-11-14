@@ -17,6 +17,11 @@ type Finding struct {
 	Rule    string
 	Message string
 	Match   string
+	// Subject is the part of Where that names a file or a tag, which a
+	// public log must not show either (see redactor); SubjectKind is
+	// "file" or "tag".
+	Subject     string
+	SubjectKind string
 }
 
 // ScanText scans free text (a PR title, body or comment). label names it in
@@ -53,12 +58,17 @@ func isBinary(content []byte) bool {
 func (s *Scanner) findings(where, file, line string) []Finding {
 	var out []Finding
 	for _, h := range s.ScanLine(file, line) {
-		out = append(out, Finding{
+		f := Finding{
 			Where:   where,
 			Rule:    h.rule,
 			Message: h.message,
 			Match:   h.match,
-		})
+		}
+		if file != "" {
+			f.Subject = file
+			f.SubjectKind = "file"
+		}
+		out = append(out, f)
 	}
 	return out
 }
@@ -339,7 +349,11 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 			return nil, err
 		}
 		if _, msg, ok := strings.Cut(raw, "\n\n"); ok {
-			out = append(out, s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n"))...)
+			for _, f := range s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n")) {
+				f.Subject = "tag " + name
+				f.SubjectKind = wordTag
+				out = append(out, f)
+			}
 		}
 	}
 	commit, err := g.revParse(ctx, object)

@@ -44,11 +44,23 @@ func leakyEvent(t *testing.T, dir string) string {
 	return event
 }
 
+// addSensitiveFile commits a file whose name is itself text that must not be
+// published, with a leak in it.
+func addSensitiveFile(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, clusterHost+".md"), []byte(leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "-m", "docs: add notes")
+}
+
 // TestPRModeRedactsInCI runs the pr mode as the workflow does, with no flags:
 // in GitHub Actions the log and the step summary are public, so neither may
 // show the matched text.
 func TestPRModeRedactsInCI(t *testing.T) {
 	dir := gitRepo(t, leak, "feat: add b")
+	addSensitiveFile(t, dir)
 	summary := filepath.Join(t.TempDir(), "summary.md")
 	t.Setenv("GITHUB_ACTIONS", "true")
 	t.Setenv("GITHUB_STEP_SUMMARY", summary)
@@ -80,6 +92,7 @@ func TestPRModeRedactsInCI(t *testing.T) {
 // through env, and that it hides the matched text.
 func TestPRModeReadsEventFile(t *testing.T) {
 	dir := gitRepo(t, leak, "feat: add b")
+	addSensitiveFile(t, dir)
 	event := leakyEvent(t, dir)
 	summary := filepath.Join(t.TempDir(), "summary.md")
 
@@ -92,7 +105,8 @@ func TestPRModeReadsEventFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, where := range []string{"branch name", "b.txt:1", "PR title", "PR body line 3"} {
+	// With -redact the files are numbered: a path can be private too.
+	for _, where := range []string{"branch name", "file #1:1", "file #2:1", "PR title", "PR body line 3"} {
 		if !strings.Contains(stdout.String(), where+":") {
 			t.Errorf("no finding at %q in:\n%s", where, stdout.String())
 		}
@@ -101,9 +115,12 @@ func TestPRModeReadsEventFile(t *testing.T) {
 		"log":     stdout.String() + stderr.String(),
 		"summary": string(got),
 	} {
-		if strings.Contains(text, "some-private-repo") || strings.Contains(text, clusterHost) {
-			t.Errorf("the %s shows matched text:\n%s", name, text)
+		if strings.Contains(text, "some-private-repo") || strings.Contains(text, clusterHost) || strings.Contains(text, "b.txt") {
+			t.Errorf("the %s shows matched text or a path:\n%s", name, text)
 		}
+	}
+	if !strings.Contains(string(got), "file #2:1") {
+		t.Errorf("the summary does not number the files like the log:\n%s", got)
 	}
 
 	stderr.Reset()
@@ -180,6 +197,9 @@ type wrapperCase struct {
 	payload  string
 	toolExit string
 	broken   bool
+	// prebuilt runs the wrapper once with a tool that builds before the
+	// source breaks.
+	prebuilt bool
 	want     int
 }
 
@@ -232,6 +252,15 @@ func TestWrapperScript(t *testing.T) {
 			want:    exitBlock,
 		},
 		{
+			name:     "build failure with a previous build uses it",
+			mode:     modeHook,
+			payload:  quotedName,
+			toolExit: "0",
+			broken:   true,
+			prebuilt: true,
+			want:     0,
+		},
+		{
 			name:     "findings in pre-push mode",
 			mode:     "prepush",
 			toolExit: "1",
@@ -249,7 +278,7 @@ func TestWrapperScript(t *testing.T) {
 			dir := t.TempDir()
 			gitIn(t, dir, "init", "-q")
 			src := fakeTool
-			if tc.broken {
+			if tc.broken && !tc.prebuilt {
 				src = "package main\n\nfunc main() {"
 			}
 			files := map[string]string{
@@ -267,6 +296,22 @@ func TestWrapperScript(t *testing.T) {
 				}
 			}
 			out := filepath.Join(dir, "stdin.txt")
+			if tc.prebuilt {
+				build := exec.CommandContext(context.Background(), filepath.Join(dir, ".githooks", "checkpublic"), tc.mode) //nolint:gosec // test script
+				build.Stdin = strings.NewReader(tc.payload)
+				build.Env = append(os.Environ(), "FAKE_OUT="+out, "FAKE_EXIT=0")
+				if b, err := build.CombinedOutput(); err != nil {
+					t.Fatalf("first run: %v: %s", err, b)
+				}
+				source := filepath.Join(dir, "tools", "checkpublic", "main.go")
+				if err := os.WriteFile(source, []byte("package main\n\nfunc main() {"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				later := time.Now().Add(time.Hour)
+				if err := os.Chtimes(source, later, later); err != nil {
+					t.Fatal(err)
+				}
+			}
 			cmd := exec.CommandContext(context.Background(), filepath.Join(dir, ".githooks", "checkpublic"), tc.mode) //nolint:gosec // test script
 			cmd.Stdin = strings.NewReader(tc.payload)
 			cmd.Env = append(os.Environ(), "FAKE_OUT="+out, "FAKE_EXIT="+tc.toolExit)
@@ -280,7 +325,10 @@ func TestWrapperScript(t *testing.T) {
 			if code != tc.want {
 				t.Fatalf("exit %d, want %d: %s", code, tc.want, b)
 			}
-			if tc.broken {
+			if tc.prebuilt && !strings.Contains(string(b), "previous build") {
+				t.Errorf("no warning that the previous build checked: %s", b)
+			}
+			if tc.broken && !tc.prebuilt {
 				return
 			}
 			if got, err := os.ReadFile(out); err != nil || string(got) != tc.payload {

@@ -41,7 +41,8 @@ var (
 )
 
 // toolTextFields are the arguments of a GitHub write tool that publish text,
-// at any depth: a review's file_comments[].body, for example.
+// at any depth: a review's file_comments[].body, for example, or the path of
+// a file that push_files or create_or_update_file creates.
 var toolTextFields = map[string]struct{}{
 	"body":           {},
 	"branch":         {},
@@ -50,6 +51,7 @@ var toolTextFields = map[string]struct{}{
 	"commit_title":   {},
 	"content":        {},
 	"message":        {},
+	"path":           {},
 	"review":         {},
 	"title":          {},
 }
