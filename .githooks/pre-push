@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks a push whose diff, commit messages or branch name hold text that must
+# not be published: this repository is public. Enable with `make setup`.
+exec "$(dirname "$0")/checkpublic" prepush "$@"

@@ -1,0 +1,46 @@
+#!/bin/sh
+# Runs tools/checkpublic, rebuilt into this worktree's git directory when its source
+# changes. The git pre-push hook and the agent hooks in .claude/settings.json
+# and .codex/hooks.json call it.
+#
+# Every failure exits 2: an agent hook blocks the tool call only on status 2
+# (any other status lets it run unchecked), and git blocks the push on any
+# non-zero status. The agent hooks pass every Bash command to the tool, which
+# answers a command that cannot publish in a few milliseconds: a quick text
+# filter here would let through forms the tool reads as publishing, such as a
+# command name in a variable or in quotes.
+set -u
+
+fail() {
+	echo "checkpublic: $1; blocked because nothing was checked" >&2
+	exit 2
+}
+
+root=$(cd "$(dirname "$0")/.." && pwd) || fail "cannot find the repository"
+gitdir=$(git -C "$root" rev-parse --path-format=absolute --git-dir) || fail "cannot find the git directory"
+cache=$gitdir/checkpublic
+bin=$cache/checkpublic
+
+# A source that does not build must not block every agent tool call (the
+# agent could not even run the build to see the error): the previous binary
+# keeps checking, with a warning. Only without any binary is nothing checked.
+if [ ! -x "$bin" ] || [ -n "$(find "$root/tools/checkpublic" "$root/go.mod" -newer "$bin" 2>/dev/null | head -n 1)" ]; then
+	mkdir -p "$cache" || fail "cannot create $cache"
+	if (cd "$root" && go build -o "$bin.new" ./tools/checkpublic) && mv -f "$bin.new" "$bin"; then
+		:
+	elif [ -x "$bin" ]; then
+		rm -f "$bin.new"
+		echo "checkpublic: warning: tools/checkpublic does not build; checking with the previous build" >&2
+	else
+		fail "could not build tools/checkpublic"
+	fi
+fi
+
+status=0
+"$bin" "$@" || status=$?
+case ${1:-}:$status in
+*:0) ;;
+hook:2) exit 2 ;;
+hook:*) fail "tools/checkpublic failed with status $status" ;;
+*) exit "$status" ;;
+esac

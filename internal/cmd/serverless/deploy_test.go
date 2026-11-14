@@ -1577,7 +1577,7 @@ func TestValidateExtraIndexURL(t *testing.T) {
 		secret string
 	}{
 		{name: "https with a path", raw: "https://download.pytorch.org/whl/cu124", ok: true},
-		{name: "http allowed", raw: "http://pypi.internal/simple", ok: true},
+		{name: "http allowed", raw: "http://pypi.example.com/simple", ok: true},
 		{name: "empty host", raw: "https:///simple"},
 		{name: "userinfo without a password", raw: "https://s3cret@example.com/simple", secret: "s3cret"},
 		{name: "invalid url", raw: "http://[::1"},

@@ -397,6 +397,8 @@ make docs           # Regenerate ./docs/ command reference
 make snapshot       # GoReleaser snapshot build
 make clean          # Remove ./bin and ./dist
 make go-tidy        # go mod tidy && go mod verify
+make setup          # Once per clone: enable the git hooks in .githooks
+make check-public   # Check this branch for text that must not be public
 ```
 
 ## Shell completions

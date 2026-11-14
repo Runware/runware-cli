@@ -15,7 +15,7 @@ import (
 // `make bundle-api-spec` in serverless has none of them, so finding one means
 // the source openapi.yaml was copied instead.
 var unpublishedMarkers = []string{
-	"x-internal",
+	"x-internal", // checkpublic:allow: the guard has to name the marker it looks for
 	"x-runware-",
 }
 
