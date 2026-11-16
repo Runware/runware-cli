@@ -1,0 +1,218 @@
+package put
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+const (
+	stateDirName  = "volumes"
+	hashCacheFile = "hashes.json"
+	hashCacheForm = 1
+	hashBufBytes  = 1 << 20
+)
+
+type cacheEntry struct {
+	Size    int64  `json:"size"`
+	ModTime int64  `json:"modTimeUnixNano"`
+	SHA256  string `json:"sha256"`
+}
+
+type cacheFile struct {
+	Version int                   `json:"version"`
+	Files   map[string]cacheEntry `json:"files"`
+}
+
+// hashCache remembers file digests by path, size and modification time; it is only a hint.
+type hashCache struct {
+	path    string
+	entries map[string]cacheEntry
+	dirty   bool
+}
+
+// loadHashCache reads the cache; a missing or unreadable file is an empty cache.
+func loadHashCache(stateDir string) *hashCache {
+	c := &hashCache{
+		path:    filepath.Join(stateDir, hashCacheFile),
+		entries: map[string]cacheEntry{},
+	}
+	data, err := os.ReadFile(c.path)
+	if err != nil {
+		return c
+	}
+	var f cacheFile
+	if json.Unmarshal(data, &f) != nil || f.Version != hashCacheForm || f.Files == nil {
+		return c
+	}
+	c.entries = f.Files
+	return c
+}
+
+func (c *hashCache) lookup(abs string, size int64, modTime time.Time) ([32]byte, bool) {
+	e, ok := c.entries[abs]
+	if !ok || e.Size != size || e.ModTime != modTime.UnixNano() {
+		return [32]byte{}, false
+	}
+	raw, err := hex.DecodeString(e.SHA256)
+	if err != nil || len(raw) != sha256.Size {
+		return [32]byte{}, false
+	}
+	return [32]byte(raw), true
+}
+
+func (c *hashCache) store(abs string, size int64, modTime time.Time, sum [32]byte) {
+	c.entries[abs] = cacheEntry{
+		Size:    size,
+		ModTime: modTime.UnixNano(),
+		SHA256:  hex.EncodeToString(sum[:]),
+	}
+	c.dirty = true
+}
+
+func (c *hashCache) forget(abs string) {
+	if _, ok := c.entries[abs]; ok {
+		delete(c.entries, abs)
+		c.dirty = true
+	}
+}
+
+// save writes the cache when it changed: a 0600 file, in a 0700 directory, by temp file and rename.
+func (c *hashCache) save() error {
+	if !c.dirty {
+		return nil
+	}
+	dir := filepath.Dir(c.path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create the hash cache directory: %w", err)
+	}
+	data, err := json.Marshal(cacheFile{
+		Version: hashCacheForm,
+		Files:   c.entries,
+	})
+	if err != nil {
+		return fmt.Errorf("encode the hash cache: %w", err)
+	}
+	if err := writeFileAtomic(dir, filepath.Base(c.path), data); err != nil {
+		return fmt.Errorf("write the hash cache: %w", err)
+	}
+	c.dirty = false
+	return nil
+}
+
+// writeFileAtomic writes data to dir/name through a 0600 temp file, a sync and a rename.
+func writeFileAtomic(dir, name string, data []byte) error {
+	tmp, err := os.CreateTemp(dir, name+".*")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), filepath.Join(dir, name))
+	}
+	if err != nil {
+		_ = os.Remove(tmp.Name())
+	}
+	return err
+}
+
+// hashSources sets each source's digest from the cache or by reading the file.
+func hashSources(ctx context.Context, sources []Source, cache *hashCache, p *progress, onHash func(string)) error {
+	var total int64
+	for i := range sources {
+		total += sources[i].Size
+	}
+	p.begin("hashing", len(sources), total)
+	defer p.end()
+	buf := make([]byte, hashBufBytes)
+	for i := range sources {
+		s := &sources[i]
+		if sum, ok := cache.lookup(s.Abs, s.Size, s.ModTime); ok {
+			s.SHA256 = sum
+			p.addBytes(s.Size)
+			p.fileDone()
+			continue
+		}
+		if onHash != nil {
+			onHash(s.Abs)
+		}
+		if err := hashFile(ctx, s, buf, p); err != nil {
+			return err
+		}
+		cache.store(s.Abs, s.Size, s.ModTime, s.SHA256)
+		p.fileDone()
+	}
+	return nil
+}
+
+// hashFile hashes the file in one read; a file that changes while it is read is an error.
+func hashFile(ctx context.Context, s *Source, buf []byte, p *progress) error {
+	f, err := os.Open(s.Abs)
+	if err != nil {
+		return fileErr(s.Abs, err)
+	}
+	defer func() { _ = f.Close() }()
+	before, err := f.Stat()
+	if err != nil {
+		return fileErr(s.Abs, err)
+	}
+	h := sha256.New()
+	n, err := io.CopyBuffer(h, &hashReader{
+		ctx: ctx,
+		r:   f,
+		p:   p,
+	}, buf)
+	if err != nil {
+		return fileErr(s.Abs, err)
+	}
+	after, err := f.Stat()
+	if err != nil {
+		return fileErr(s.Abs, err)
+	}
+	if n != before.Size() || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+		return fileErr(s.Abs, ErrSourceChanged)
+	}
+	s.Size, s.ModTime = before.Size(), before.ModTime()
+	copy(s.SHA256[:], h.Sum(nil))
+	return nil
+}
+
+// hashReader reads under a context and counts the bytes for progress.
+type hashReader struct {
+	ctx context.Context
+	r   io.Reader
+	p   *progress
+}
+
+func (h *hashReader) Read(b []byte) (int, error) {
+	if err := h.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := h.r.Read(b)
+	h.p.addBytes(int64(n))
+	return n, err
+}
+
+// unchanged returns ErrSourceChanged when the file's size or modification time moved since hashing.
+func unchanged(s *Source) error {
+	info, err := os.Stat(s.Abs)
+	if err != nil {
+		return fileErr(s.Abs, fmt.Errorf("%w: %w", ErrSourceChanged, err))
+	}
+	if info.Size() != s.Size || !info.ModTime().Equal(s.ModTime) {
+		return fileErr(s.Abs, ErrSourceChanged)
+	}
+	return nil
+}
