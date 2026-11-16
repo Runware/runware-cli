@@ -40,10 +40,11 @@ var (
 	subjectPrefixPattern = regexp.MustCompile(`^worker:org:([A-Za-z0-9-]+):env:([A-Za-z0-9-]+):$`)
 	// gcpProviderPattern is a workload identity provider resource name.
 	gcpProviderPattern = regexp.MustCompile(`^(projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+)/providers/[a-z0-9-]+$`)
-	// gcpServiceAccountPattern is a service account created in a project:
-	// <name>@<project id>.iam.gserviceaccount.com. gcloud cannot resolve the account
-	// without a project, so the binding names the one the email carries.
-	gcpServiceAccountPattern = regexp.MustCompile(`^[^@]+@([a-z][a-z0-9-]*)\.iam\.gserviceaccount\.com$`)
+	// gcpServiceAccountPattern is the service account email the API accepts (the pattern of
+	// serviceAccountEmail in openapi.yaml): <name>@<project id>.iam.gserviceaccount.com.
+	// gcloud cannot resolve the account without a project, so the binding names the one the
+	// email carries.
+	gcpServiceAccountPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]@([a-z][a-z0-9-]{4,28}[a-z0-9])\.iam\.gserviceaccount\.com$`)
 	// awsRolePattern is an IAM role ARN: partition, account, optional path, name.
 	awsRolePattern = regexp.MustCompile(`^arn:(aws[a-z-]*):iam::([0-9]{12}):role/(.+)$`)
 )
@@ -300,14 +301,19 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 		if !shellSafePattern.MatchString(sa) {
 			return fmt.Errorf("serviceAccountEmail %q cannot be printed safely in a shell command", sa)
 		}
+		pm := gcpServiceAccountPattern.FindStringSubmatch(sa)
+		if pm == nil {
+			return fmt.Errorf("serviceAccountEmail %q is not <name>@<project id>.iam.gserviceaccount.com", sa)
+		}
 		b.WriteString("\n# 2. Let the workers impersonate the connector's service account.\n")
 		b.WriteString("#    Grant the service account the access it needs on your resources separately.\n")
-		binding := []string{fmt.Sprintf("gcloud iam service-accounts add-iam-policy-binding %s \\", sa)}
 		// Without a default project gcloud stops with "Failed to find attribute [project]".
-		if pm := gcpServiceAccountPattern.FindStringSubmatch(sa); pm != nil {
-			binding = append(binding, "  --project="+pm[1]+" \\")
+		binding := []string{
+			fmt.Sprintf("gcloud iam service-accounts add-iam-policy-binding %s \\", sa),
+			"  --project=" + pm[1] + " \\",
+			"  --role=roles/iam.workloadIdentityUser \\",
+			"  --member=" + member,
 		}
-		binding = append(binding, "  --role=roles/iam.workloadIdentityUser \\", "  --member="+member)
 		writeGCPGuardedBinding(b, provider, issuer, prefix, in.scope, binding)
 		return nil
 	}
