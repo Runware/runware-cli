@@ -333,13 +333,18 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 	connectors := []struct {
 		name     string
 		conn     serverlessapi.AppOidcConnector
-		wantArgs func(member string) []string
+		wantArgs func(member string) []string // what the recorded binding call holds
+		printed  func(member string) []string // the binding lines printed for a run by hand
 	}{
 		{"with a service account", trustAttachmentGCP(), func(member string) []string {
 			return []string{"service-accounts add-iam-policy-binding " + testServiceAccount, "--role=roles/iam.workloadIdentityUser", "--member=" + member}
+		}, func(member string) []string {
+			return []string{"gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + ` \`, `  --role=roles/iam.workloadIdentityUser \`, "  --member=" + member}
 		}},
 		{"without a service account", withoutSA, func(member string) []string {
 			return []string{"storage buckets add-iam-policy-binding gs://inputs", "--role=roles/storage.objectViewer", "--member=" + member}
+		}, func(member string) []string {
+			return []string{`gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \`, `  --role=roles/storage.objectViewer \`, "  --member=" + member}
 		}},
 	}
 	admitsTerm := "assertion.sub.startsWith('" + trustPrefix + "')"
@@ -396,9 +401,13 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 				if !binds && strings.Contains(wantStderr, conditionStopped) {
 					// A condition the check cannot read is the customer's to review, so the binding
 					// is printed for a run by hand, with the member of this scope.
-					for _, want := range []string{"run the binding yourself", "--member=" + member, "--role=roles/"} {
-						if !strings.Contains(got.stderr, want) {
-							t.Errorf("stderr lacks %q for a run by hand:\n%s", want, got.stderr)
+					want := append([]string{"run the binding yourself"}, cn.printed(member)...)
+					for _, line := range want {
+						if !strings.Contains(got.stderr, line+"\n") && line != "run the binding yourself" {
+							t.Errorf("stderr lacks the line %q for a run by hand:\n%s", line, got.stderr)
+						}
+						if line == "run the binding yourself" && !strings.Contains(got.stderr, line) {
+							t.Errorf("stderr does not say to run the binding by hand:\n%s", got.stderr)
 						}
 					}
 				}
@@ -448,6 +457,66 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 	}
 }
 
+// fakeAWSBin returns a directory holding a fake aws that records each call in $CALLS and
+// fails the provider calls when $CREATE_FAILS or $ADD_FAILS is set.
+func fakeAWSBin(t *testing.T) string {
+	t.Helper()
+	bin := t.TempDir()
+	fake := "#!/bin/sh\necho \"$*\" >> \"$CALLS\"\ncase \"$*\" in\n" +
+		"  *create-open-id-connect-provider*) [ -z \"$CREATE_FAILS\" ] || exit 1 ;;\n" +
+		"  *add-client-id-to-open-id-connect-provider*) [ -z \"$ADD_FAILS\" ] || exit 1 ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(bin, "aws"), []byte(fake), 0o755); err != nil { //nolint:gosec // an executable stub in a temp dir
+		t.Fatal(err)
+	}
+	return bin
+}
+
+// TestConnectorsTrustAWSChainHoldsWhenPastedIntoInteractiveZsh feeds the printed aws script to
+// an interactive zsh line by line, as a paste does. Without interactivecomments, which is the
+// default, zsh reads a # line as a command, and a # line inside the && chain would end it and
+// let create-role run after a failed step.
+func TestConnectorsTrustAWSChainHoldsWhenPastedIntoInteractiveZsh(t *testing.T) {
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("no zsh to paste the script into")
+	}
+	bin := fakeAWSBin(t)
+	for _, tc := range []struct {
+		name                  string
+		createFails, addFails bool
+		wantRole              bool
+	}{
+		{name: "provider created", wantRole: true},
+		{name: "audience added to the existing provider", createFails: true, wantRole: true},
+		{name: "neither step worked", createFails: true, addFails: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script, err := renderTrust(trustInput{connector: trustAttachmentAWS(), app: testAppID, environment: testProductionEnvironment, scope: trustScopeApp})
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := filepath.Join(t.TempDir(), "calls")
+			env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "CALLS=" + calls, "HOME=" + t.TempDir()}
+			if tc.createFails {
+				env = append(env, "CREATE_FAILS=1")
+			}
+			if tc.addFails {
+				env = append(env, "ADD_FAILS=1")
+			}
+			cmd := exec.CommandContext(t.Context(), zsh, "-f", "-i") //nolint:gosec // zsh from LookPath
+			cmd.Dir = t.TempDir()
+			cmd.Env = append(os.Environ(), env...)
+			cmd.Stdin = strings.NewReader(script)
+			out, _ := cmd.CombinedOutput() // a # line may print an error in zsh; only the calls matter
+			recorded, _ := os.ReadFile(calls)
+			if got := strings.Contains(string(recorded), "create-role"); got != tc.wantRole {
+				t.Errorf("create-role ran = %v, want %v\ncalls:\n%s\nzsh output:\n%s", got, tc.wantRole, recorded, out)
+			}
+		})
+	}
+}
+
 // TestConnectorsTrustAWSRunsEachStepOnlyAfterTheOneBefore runs the printed aws script with a
 // fake aws: the role is created only when the provider accepts the audience (created, or the
 // audience added to the existing one) and the policy file was written. A file that cannot
@@ -457,14 +526,7 @@ func TestConnectorsTrustAWSRunsEachStepOnlyAfterTheOneBefore(t *testing.T) {
 	if err != nil {
 		t.Skip("no sh to run the script with")
 	}
-	bin := t.TempDir()
-	fake := "#!/bin/sh\necho \"$*\" >> \"$CALLS\"\ncase \"$*\" in\n" +
-		"  *create-open-id-connect-provider*) [ -z \"$CREATE_FAILS\" ] || exit 1 ;;\n" +
-		"  *add-client-id-to-open-id-connect-provider*) [ -z \"$ADD_FAILS\" ] || exit 1 ;;\n" +
-		"esac\n"
-	if err := os.WriteFile(filepath.Join(bin, "aws"), []byte(fake), 0o755); err != nil { //nolint:gosec // an executable stub in a temp dir
-		t.Fatal(err)
-	}
+	bin := fakeAWSBin(t)
 	const (
 		awsCreateProvider = "create-open-id-connect-provider"
 		awsAddAudience    = "add-client-id-to-open-id-connect-provider"

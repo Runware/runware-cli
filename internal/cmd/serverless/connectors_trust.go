@@ -234,17 +234,19 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 		return err
 	}
 
+	// The commands below form one && chain, and no comment or blank line may sit inside it:
+	// an interactive zsh reads a pasted # line as a command, which would end the chain and
+	// let create-role run after a failed step. So the comments come first, and none of them
+	// holds an apostrophe, which the same shell would read as the start of a quote.
 	b.WriteString("\n# 1. Register the Runware issuer in the AWS account. When the account already trusts the issuer, the\n")
 	b.WriteString("#    create fails and the command after || adds the audience to the existing provider instead.\n")
-	b.WriteString("#    Each step runs only if the one before it worked, so a role is never created without a provider\n")
-	b.WriteString("#    that accepts the audience.\n")
+	b.WriteString("# 2. Create the role the connector names, trusting only the tokens above. Grant it permissions\n")
+	b.WriteString("#    afterwards, for example with aws iam attach-role-policy.\n")
+	b.WriteString("# Each command runs only if the one before it worked: no role is created without a provider that\n")
+	b.WriteString("# accepts the audience, and create-role never reads a policy file that was not written.\n")
 	fmt.Fprintf(b, "aws iam create-open-id-connect-provider --url %s --client-id-list %s ||\n", issuer, in.connector.Audience)
 	fmt.Fprintf(b, "  aws iam add-client-id-to-open-id-connect-provider --open-id-connect-provider-arn %s --client-id %s &&\n",
 		policy.Statement[0].Principal.Federated, in.connector.Audience)
-
-	b.WriteString("\n# 2. Create the role the connector names, trusting only the tokens above.\n")
-	b.WriteString("#    Grant it permissions afterwards, for example with aws iam attach-role-policy.\n")
-	b.WriteString("#    create-role reads the policy file, so it runs only if the file was written.\n")
 	fmt.Fprintf(b, "cat > %s <<'EOF' &&\n", policyFile)
 	b.WriteString(doc.String())
 	b.WriteString("EOF\n")
