@@ -18,6 +18,7 @@ const (
 	fileBody     = "body.md"
 	cleanText    = "clean text"
 	cmdGitPush   = "git push"
+	cmdList      = "ls -la"
 )
 
 // leak is text with one finding, built at run time (see rules_test.go).
@@ -958,6 +959,242 @@ func TestHookForms(t *testing.T) {
 			command: `find . -name x -exec gh pr comment 1 --body-file {} \;`,
 			block:   true,
 		},
+
+		// A definite publication anywhere in a command that may run it.
+		{
+			name:    "uv run",
+			command: `uv run gh pr comment 1 --body x`,
+			block:   true,
+		},
+		{
+			name:    "mise exec",
+			command: `mise exec -- gh pr comment 1 --body-file ` + fileBody,
+			files:   cleanFile,
+			block:   true,
+		},
+		{
+			name:    "op run",
+			command: `op run -- git push`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "direnv exec",
+			command: `direnv exec . git push origin feature`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "ssh with words",
+			command: `ssh host gh pr comment 1 --body x`,
+			block:   true,
+		},
+		{
+			name:    "ssh with a quoted command line",
+			command: `ssh host 'cd /src && gh pr comment 1 --body x'`,
+			block:   true,
+		},
+		{
+			name:    "perl -ne",
+			command: `perl -ne 'system("gh pr comment 1 --body x")' notes.txt`,
+			block:   true,
+		},
+		{
+			name:    "python3 -Ic",
+			command: `python3 -Ic "import os; os.system('gh issue comment 1 --body x')"`,
+			block:   true,
+		},
+		{
+			name:    "node -p",
+			command: `node -p "require('child_process').execSync('git push')"`,
+			block:   true,
+		},
+		{
+			name:    "deno eval",
+			command: `deno eval "new Deno.Command('gh', {args: ['pr', 'comment', '1']}).outputSync()"`,
+			block:   true,
+		},
+		{
+			name:    "gh split across lines in a heredoc script",
+			command: "python3 - <<'EOF'\nimport subprocess\nsubprocess.run([\n    \"gh\",\n    \"pr\",\n    \"comment\",\n    \"1\",\n])\nEOF",
+			block:   true,
+		},
+		{
+			name:    "gh read split across lines in a heredoc script",
+			command: "python3 - <<'EOF'\nimport subprocess\nsubprocess.run([\n    \"gh\",\n    \"pr\",\n    \"view\",\n])\nEOF",
+		},
+		{
+			name:    "git -C with a long path piped into sh",
+			command: `echo "git -C /src/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa push" | sh`,
+			block:   true,
+		},
+		{
+			name:    "gh api with a variable as its arguments",
+			command: `gh api $ARGS`,
+			block:   true,
+		},
+		{
+			name:    "gh api with the script's arguments",
+			command: `gh api "$@"`,
+			block:   true,
+		},
+		{
+			name:    "gh api with a variable endpoint and an explicit GET",
+			command: `gh api "$EP" -X GET`,
+		},
+
+		// git push forms that push refs the check does not enumerate.
+		{
+			name:    "matching refspec",
+			command: `git push origin :`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "glob refspec",
+			command: `git push origin 'refs/heads/*:refs/heads/*'`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "abbreviated --mirror",
+			command: `git push --mirr`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "abbreviated --follow-tags",
+			command: `git push --follow origin feature`,
+			setup:   cleanRepo,
+			block:   true,
+		},
+		{
+			name:    "mirror in the remote's configuration",
+			command: `git push origin feature`,
+			setup:   withConfig("remote.origin.mirror", "true"),
+			block:   true,
+		},
+		{
+			name:    "delete a remote branch",
+			command: `git push origin :old-branch`,
+			setup:   cleanRepo,
+		},
+
+		// gh gist, repo create and the gh writes the check does not model.
+		{
+			name:    "gist file",
+			command: `gh gist create --public ` + fileBody,
+			files:   leakFile,
+			block:   true,
+		},
+		{
+			name:    "clean gist file",
+			command: `gh gist create --public ` + fileBody,
+			files:   cleanFile,
+		},
+		{
+			name:    "gist description",
+			command: `gh gist create -d "` + leak + `" ` + fileBody,
+			files:   cleanFile,
+			block:   true,
+		},
+		{
+			name:    "gist from stdin",
+			command: `gh gist create < ` + fileBody,
+			files:   leakFile,
+			block:   true,
+		},
+		{
+			name:    "gist file from a private checkout",
+			command: `gh gist create ` + fileBody,
+			files:   leakFile,
+			setup:   privateCheckout,
+			block:   true,
+		},
+		{
+			name:    "gist file that does not exist",
+			command: `gh gist create notes.txt`,
+			block:   true,
+		},
+		{
+			name:    "gist file added",
+			command: `gh gist edit abc --add ` + fileBody,
+			files:   leakFile,
+			block:   true,
+		},
+		{
+			name:    "gist edit in an editor",
+			command: `gh gist edit abc`,
+			block:   true,
+		},
+		{
+			name:    "gist description edit",
+			command: `gh gist edit abc -d notes`,
+		},
+		{
+			name:    "repo create description",
+			command: `gh repo create ` + shortRepo + `example --public --description "` + leak + `"`,
+			block:   true,
+		},
+		{
+			name:    "repo create homepage",
+			command: `gh repo create ` + shortRepo + `example --public -h https://` + clusterHost,
+			block:   true,
+		},
+		{
+			name:    "private repo create",
+			command: `gh repo create ` + shortRepo + `example --private --description "` + leak + `"`,
+		},
+		{
+			name:    "repo create that pushes",
+			command: `gh repo create ` + shortRepo + `example --public --source . --push`,
+			block:   true,
+		},
+		{
+			name:    "release upload",
+			command: `gh release upload v1.0.0 dist.zip`,
+			block:   true,
+		},
+		{
+			name:    "secret set",
+			command: `gh secret set TOKEN --body x`,
+			block:   true,
+		},
+		{
+			name:    "label clone",
+			command: `gh label clone ` + shortRepo + `example`,
+			block:   true,
+		},
+		{
+			name:    "deploy key add",
+			command: `gh repo deploy-key add key.pub`,
+			block:   true,
+		},
+		{
+			name:    "deploy key list",
+			command: `gh repo deploy-key list`,
+		},
+		{
+			name:    "project item from a private checkout",
+			command: `gh project item-create 1 --owner example --title "` + leak + `"`,
+			setup:   privateCheckout,
+			block:   true,
+		},
+		{
+			name:    "pr ready",
+			command: `gh pr ready 1`,
+		},
+
+		// A gh read before a gh write.
+		{
+			name:    "gh read before a post",
+			command: `gh pr view 1 >/dev/null && gh pr comment 1 --body hello`,
+		},
+		{
+			name:    "leak after a gh read",
+			command: `gh pr view 1 >/dev/null && gh pr comment 1 --body "` + leak + `"`,
+			block:   true,
+		},
 	}
 	s, err := NewScanner(nil)
 	if err != nil {
@@ -1085,6 +1322,46 @@ func TestHookReadOnlyCommands(t *testing.T) {
 		`cd tools && go test ./...`,
 		`for f in *.go; do echo "$f"; done`,
 		"git commit -m \"$(cat <<'EOF'\nfix: mention gh pr comment and git push\nEOF\n)\"",
+		`git diff --stat origin/main`,
+		`git branch --show-current`,
+		`git rev-parse HEAD`,
+		`git show HEAD~1 --stat`,
+		`git stash list`,
+		`git worktree list`,
+		`git remote -v`,
+		`git ls-remote --heads origin feature`,
+		`go vet ./...`,
+		`go mod tidy`,
+		`go run ./tools/checkpublic range`,
+		`GOTOOLCHAIN=local go version`,
+		`make lint`,
+		`rg -n "git push" AGENTS.md`,
+		`grep -rn "gh pr comment" tools/`,
+		cmdList,
+		`head -50 hook.go`,
+		`cat go.mod | head -5`,
+		`jq '.dependencies' package.json`,
+		`node --version`,
+		`node scripts/build.js`,
+		`npm install`,
+		`npm test -- --watch=false`,
+		`python3 -m pytest -q`,
+		"python3 -I - <<'EOF'\nprint(\"gh is installed\")\nEOF",
+		`docker ps`,
+		`docker build -t example .`,
+		`kubectl get pods -n default`,
+		`kubectl logs deploy/example --tail=50`,
+		`gh pr diff 1`,
+		`gh issue view 2 --comments`,
+		`gh run list --limit 5`,
+		`gh release view v1.0.0`,
+		`gh api repos/o/r/pulls/1/comments --paginate`,
+		`gh api graphql -f query='query{viewer{login}}' -X GET`,
+		`gh repo deploy-key list`,
+		`gh secret list`,
+		`gh workflow view ci.yml`,
+		`curl -s https://example.com | jq .`,
+		`sed -n 1,20p main.go`,
 	}
 	for _, command := range commands {
 		t.Run(command, func(t *testing.T) {
@@ -1096,11 +1373,32 @@ func TestHookReadOnlyCommands(t *testing.T) {
 	}
 }
 
+// TestDefinitePublication checks the search for a gh write or git push in
+// code that the hook cannot parse as a command line.
+func TestDefinitePublication(t *testing.T) {
+	cases := map[string]bool{
+		`subprocess.run(["gh", "api", "repos/o/r/issues/1/comments", "-X", "POST"])`: true,
+		`subprocess.run(["gh", "api", "repos/o/r/pulls", "--jq", ".[].title"])`:      false,
+		`exec("gh api graphql -f query=x")`:                                          true,
+		`gh -R o/r pr comment 1`:                                                     true,
+		`gh pr view 1`:                                                               false,
+		`run(["git", "-C", repo, "push"])`:                                           true,
+		`git log --grep push`:                                                        false,
+		`a.push(1)`:                                                                  false,
+		`echo gh is installed`:                                                       false,
+	}
+	for text, want := range cases {
+		if got := definitePublication(text); got != want {
+			t.Errorf("definitePublication(%q) = %v, want %v", text, got, want)
+		}
+	}
+}
+
 // TestClearlyPublishesNothing checks the test that lets a command run when
 // the check itself fails: only commands with no word that could publish.
 func TestClearlyPublishesNothing(t *testing.T) {
 	cases := map[string]bool{
-		`ls -la`:                       true,
+		cmdList:                        true,
 		`make test && go vet ./...`:    true,
 		`g'h' pr comment 1 --body x`:   false,
 		"g\\\nh pr comment 1 --body x": false,

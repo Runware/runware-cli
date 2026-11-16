@@ -170,6 +170,168 @@ func TestHookFindingsBeforeDenyWarning(t *testing.T) {
 	}
 }
 
+// failingCheck makes hookCheck fail for the rest of the test the way fail
+// does: with an error, a panic, or a finding and an error.
+func failingCheck(t *testing.T, fail string) {
+	t.Helper()
+	saved := hookCheck
+	t.Cleanup(func() {
+		hookCheck = saved
+	})
+	hookCheck = func(_ context.Context, _ *Scanner, _ []byte) ([]Finding, error) {
+		switch fail {
+		case "panic":
+			panic("broken")
+		case "finding":
+			return []Finding{{
+				Where:   "command line",
+				Rule:    "test",
+				Message: "test finding",
+			}}, errors.New("broken")
+		}
+		return nil, errors.New("broken")
+	}
+}
+
+// failOpenCase is a command run through the hook mode while the check
+// fails, and the exit code the hook must give.
+type failOpenCase struct {
+	name    string
+	fail    string
+	command string
+	want    int
+}
+
+// TestHookFailOpen checks the one path that lets a command run unchecked:
+// when the check fails, only a command with no word that could publish runs.
+func TestHookFailOpen(t *testing.T) {
+	cases := []failOpenCase{
+		{
+			name:    "plain command after an error",
+			fail:    "error",
+			command: cmdList,
+			want:    0,
+		},
+		{
+			name:    "post after an error",
+			fail:    "error",
+			command: "gh pr comment 1 --body-file b.md",
+			want:    exitBlock,
+		},
+		{
+			name:    "plain command after a panic",
+			fail:    "panic",
+			command: cmdList,
+			want:    0,
+		},
+		{
+			name:    "post after a panic",
+			fail:    "panic",
+			command: "gh pr comment 1 --body-file b.md",
+			want:    exitBlock,
+		},
+		{
+			name:    "finding and an error",
+			fail:    "finding",
+			command: cmdList,
+			want:    exitBlock,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			failingCheck(t, tc.fail)
+			var stderr bytes.Buffer
+			if code := run(context.Background(), []string{modeHook}, bytes.NewReader(bashPayload(t, tc.command, t.TempDir())), &bytes.Buffer{}, &stderr); code != tc.want {
+				t.Fatalf("exit %d, want %d: %s", code, tc.want, stderr.String())
+			}
+		})
+	}
+}
+
+// modeCase runs a scanning mode with args, in the directory setup makes, on
+// stdin, and expects the exit code want.
+type modeCase struct {
+	name  string
+	args  []string
+	setup func(t *testing.T) string
+	stdin string
+	want  int
+}
+
+// TestScanModes runs the range, text and files modes as make check-public
+// and people run them.
+func TestScanModes(t *testing.T) {
+	leakyFile := func(t *testing.T) string {
+		return gitRepo(t, leak, "feat: add b")
+	}
+	cases := []modeCase{
+		{
+			name:  "range with a leak in a commit message",
+			args:  []string{"range"},
+			setup: leakyCommit,
+			want:  exitFindings,
+		},
+		{
+			name:  "range with a leak in the diff",
+			args:  []string{"range"},
+			setup: leakyFile,
+			want:  exitFindings,
+		},
+		{
+			name:  "clean range",
+			args:  []string{"range"},
+			setup: cleanRepo,
+			want:  0,
+		},
+		{
+			name:  "text with a leak on stdin",
+			args:  []string{"text", "-label", "PR body"},
+			stdin: "Details\n\n" + leak + "\n",
+			want:  exitFindings,
+		},
+		{
+			name:  "clean text on stdin",
+			args:  []string{"text", "-"},
+			stdin: cleanText + "\n",
+			want:  0,
+		},
+		{
+			name:  "files with a leak",
+			args:  []string{wordFiles},
+			setup: leakyFile,
+			want:  exitFindings,
+		},
+		{
+			name:  "named clean file",
+			args:  []string{wordFiles, "a.txt"},
+			setup: leakyFile,
+			want:  0,
+		},
+		{
+			name:  "clean files",
+			args:  []string{wordFiles},
+			setup: cleanRepo,
+			want:  0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.setup != nil {
+				dir = tc.setup(t)
+			}
+			args := append([]string{tc.args[0], "-C", dir, "-redact=false"}, tc.args[1:]...)
+			var stdout, stderr bytes.Buffer
+			if code := run(context.Background(), args, strings.NewReader(tc.stdin), &stdout, &stderr); code != tc.want {
+				t.Fatalf("exit %d, want %d:\n%s%s", code, tc.want, stdout.String(), stderr.String())
+			}
+			if tc.want == exitFindings && !strings.Contains(stdout.String(), "some-private-repo") {
+				t.Errorf("the report does not show the finding:\n%s", stdout.String())
+			}
+		})
+	}
+}
+
 // fakeTool is a stand-in for tools/checkpublic that the wrapper script builds:
 // it copies its stdin to $FAKE_OUT and exits with $FAKE_EXIT.
 const fakeTool = `package main
@@ -250,6 +412,13 @@ func TestWrapperScript(t *testing.T) {
 			payload: quotedName,
 			broken:  true,
 			want:    exitBlock,
+		},
+		{
+			name:    "build failure without a build lets a command that cannot publish run",
+			mode:    modeHook,
+			payload: `{"session_id":"s","cwd":"/src/github","tool_name":"Bash","tool_input":{"command":"ls -la","description":"List files"}}`,
+			broken:  true,
+			want:    0,
 		},
 		{
 			name:     "build failure with a previous build uses it",

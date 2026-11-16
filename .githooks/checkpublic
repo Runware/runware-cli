@@ -21,9 +21,28 @@ gitdir=$(git -C "$root" rev-parse --path-format=absolute --git-dir) || fail "can
 cache=$gitdir/checkpublic
 bin=$cache/checkpublic
 
+# unbuilt handles a hook call when there is no binary at all: a tool call
+# whose payload has no word that could publish (gh, git, hub, push, an
+# expansion, a GitHub tool, an escape that could hide one) runs with a
+# warning, so the agent can still fix the build; anything else is blocked.
+# The fields that only describe the session or the call are left out of the
+# test, and a line continuation is joined first, as the shell would.
+unbuilt() {
+	payload=$(cat)
+	text=$(printf '%s' "$payload" |
+		sed -E -e 's/\\\\\\n//g' -e 's/"(cwd|description|transcript_path|session_id|hook_event_name|permission_mode|tool_use_id|turn_id|model)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"//g' |
+		tr -d "'\"\\\\")
+	if printf '%s' "$payload" | grep -q '\\u' || printf '%s' "$text" | grep -Eiq 'gh|git|hub|push|[$`]'; then
+		fail "could not build tools/checkpublic ($1)"
+	fi
+	echo "checkpublic: warning: could not build tools/checkpublic ($1); this tool call cannot publish, so it runs unchecked. Run make setup to see the error." >&2
+	exit 0
+}
+
 # A source that does not build must not block every agent tool call (the
 # agent could not even run the build to see the error): the previous binary
-# keeps checking, with a warning. Only without any binary is nothing checked.
+# keeps checking, with a warning. Without any binary, only a tool call that
+# could publish is blocked.
 if [ ! -x "$bin" ] || [ -n "$(find "$root/tools/checkpublic" "$root/go.mod" -newer "$bin" 2>/dev/null | head -n 1)" ]; then
 	mkdir -p "$cache" || fail "cannot create $cache"
 	if (cd "$root" && go build -o "$bin.new" ./tools/checkpublic) && mv -f "$bin.new" "$bin"; then
@@ -31,6 +50,8 @@ if [ ! -x "$bin" ] || [ -n "$(find "$root/tools/checkpublic" "$root/go.mod" -new
 	elif [ -x "$bin" ]; then
 		rm -f "$bin.new"
 		echo "checkpublic: warning: tools/checkpublic does not build; checking with the previous build" >&2
+	elif [ "${1:-}" = hook ]; then
+		unbuilt "no previous build"
 	else
 		fail "could not build tools/checkpublic"
 	fi

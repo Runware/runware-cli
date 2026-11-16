@@ -355,6 +355,11 @@ func runHookSafely(ctx context.Context, s *Scanner, payload []byte) (findings []
 			findings, err = nil, fmt.Errorf("internal error: %v", r)
 		}
 	}()
+	return hookCheck(ctx, s, payload)
+}
+
+// hookCheck checks a hook payload. Tests replace it to make the check fail.
+var hookCheck = func(ctx context.Context, s *Scanner, payload []byte) ([]Finding, error) {
 	return s.runHook(ctx, payload, gitRepoOf)
 }
 

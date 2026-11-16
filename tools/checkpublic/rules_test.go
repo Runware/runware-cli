@@ -98,7 +98,7 @@ func TestScanLine(t *testing.T) {
 		},
 		{
 			name: "team mention",
-			line: "* @Runware/dev-admins",
+			line: "* @Runware/example-team",
 			want: nil,
 		},
 		{
@@ -201,7 +201,7 @@ func TestScanLine(t *testing.T) {
 		},
 		{
 			name: "x-runware extension",
-			line: "      x-" + "runware-rollout: beta",
+			line: "      x-runware-example: true", // checkpublic:allow fixture for the x-runware- rule
 			want: []string{ruleSpecMarker},
 		},
 		{

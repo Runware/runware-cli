@@ -248,6 +248,24 @@ func (pc pubContext) push() (pushSpec, error) {
 	if slices.Contains(c.words[i+1:], "--mirror") {
 		return pushSpec{}, uncheckable("`%s` pushes every ref, which the check does not enumerate; push branches and tags by name", c)
 	}
+	pos, opts, _ := pushArgs(c.words[i+1:])
+	for _, o := range opts {
+		name, _, _ := strings.Cut(strings.TrimPrefix(o, "--"), "=")
+		for _, full := range pushLongOptions {
+			if strings.HasPrefix(o, "--") && name != full && strings.HasPrefix(full, name) {
+				return pushSpec{}, uncheckable("`%s` abbreviates the option --%s, which the check does not follow; write it in full", c, full)
+			}
+		}
+	}
+	for _, spec := range pos[min(1, len(pos)):] {
+		src, dst, _ := strings.Cut(strings.TrimPrefix(spec, "+"), ":")
+		switch {
+		case strings.Contains(spec, "*"):
+			return pushSpec{}, uncheckable("`%s` pushes a glob refspec, which the check does not enumerate; push branches and tags by name", c)
+		case src == "" && dst == "":
+			return pushSpec{}, uncheckable("`%s` pushes every matching branch, which the check does not enumerate; push branches by name", c)
+		}
+	}
 	return pushSpec{
 		dir:  dir,
 		args: c.words[i+1:],
@@ -288,7 +306,7 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 	for _, f := range flags {
 		file, key, inline := "", "", ""
 		switch {
-		case f.name == "repo":
+		case f.name == wordRepo:
 			repos = []string{f.value}
 		case strings.HasSuffix(f.name, "-file") || f.name == "input":
 			file = f.value
@@ -335,7 +353,20 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 			}
 		}
 	}
+	if group == "gist" {
+		gist, err := pc.gistTexts(verb, args, flags, pos)
+		if err != nil {
+			return nil, false, err
+		}
+		texts = append(texts, gist...)
+	}
 	switch {
+	case group == "gist" || group == "project":
+		// A gist or a project belongs to an account, not a repository.
+		repos = []string{""}
+	case group == wordRepo && (verb == "fork" || verb == wordCreate && !hasBoolFlag(args, valueFlags, []string{"private", "internal"}, 0)):
+		// A new repository is public unless it is created private.
+		repos = []string{""}
 	case group == wordAPI:
 		// A call outside repos/OWNER/NAME, such as graphql, may go anywhere.
 		endpoint := ""
@@ -347,14 +378,14 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 		} else {
 			repos = apiRepos(m[1], repos)
 		}
-	case group == "repo":
+	case group == wordRepo:
 		// gh repo edit [OWNER/NAME]: the argument names the repository.
 		if len(pos) > 2 {
 			repos = []string{args[pos[2]]}
 		}
 	case group == "label":
 		// A label's name is its argument, not a destination.
-	case verb != "create" && group != wordRelease && len(pos) > 2:
+	case verb != wordCreate && group != wordRelease && len(pos) > 2:
 		// A pull request or issue URL names the destination, whatever -R
 		// says.
 		var dests []string
@@ -370,7 +401,7 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 	if s.allPrivate(repos) {
 		return nil, true, nil
 	}
-	if group == "pr" && verb == "create" && hasBoolFlag(args, valueFlags, fillFlags, 'f') {
+	if group == "pr" && verb == wordCreate && hasBoolFlag(args, valueFlags, fillFlags, 'f') {
 		named := map[string]struct{}{}
 		for _, f := range flags {
 			named[f.name] = struct{}{}
@@ -383,6 +414,53 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 		}
 	}
 	return texts, false, nil
+}
+
+// gistTexts returns the files a gh gist create or edit posts: its file
+// arguments ("-" for stdin, which it reads when it has none) and the file
+// gist edit --add adds. gist edit without one of them opens an editor,
+// unless it only changes the description or removes a file.
+func (pc pubContext) gistTexts(verb string, args []string, flags []flagVal, pos []int) ([]publication, error) {
+	var files []string
+	switch verb {
+	case wordCreate:
+		for _, i := range pos[2:] {
+			files = append(files, args[i])
+		}
+		if len(files) == 0 {
+			files = []string{"-"}
+		}
+	case "edit":
+		if len(pos) > 3 {
+			files = append(files, args[pos[3]])
+		}
+		other := false
+		for _, f := range flags {
+			switch f.name {
+			case "add":
+				files = append(files, f.value)
+			case "desc", "remove":
+				other = true
+			}
+		}
+		if len(files) == 0 && !other {
+			return nil, uncheckable("`%s` opens an editor, which the check cannot read; give the new content as a file argument", pc.cmd)
+		}
+	default:
+		return nil, nil
+	}
+	var out []publication
+	for _, name := range files {
+		text, err := pc.readFile(name)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, publication{
+			label: "gh gist " + verb + " " + name,
+			text:  text,
+		})
+	}
+	return out, nil
 }
 
 // apiRepos returns the repositories a gh api path's OWNER/NAME stands for.
@@ -544,6 +622,19 @@ func pushArgs(args []string) (pos, opts []string, repo string) {
 	return pos, opts, repo
 }
 
+// pushLongOptions are the git push options that change which refs it
+// pushes or where. git accepts any unambiguous prefix of a long option, so a
+// prefix of one of these is refused.
+var pushLongOptions = []string{
+	"all",
+	"branches",
+	"follow-tags",
+	"mirror",
+	"no-follow-tags",
+	wordRepo,
+	"tags",
+}
+
 // pushRemote returns the remote a git push goes to, in git's order: the one
 // it names, --repo, branch.<name>.pushRemote, remote.pushDefault,
 // branch.<name>.remote, then origin.
@@ -586,6 +677,15 @@ func configuredPush(ctx context.Context, g Git, remote string) error {
 	return nil
 }
 
+// mirrorRemote returns an UncheckableError when remote.<name>.mirror makes
+// every git push to remote a mirror push.
+func mirrorRemote(ctx context.Context, g Git, remote string) error {
+	if out, err := g.run(ctx, "config", "--bool", "remote."+remote+".mirror"); err == nil && strings.TrimSpace(out) == "true" {
+		return uncheckable("remote.%s.mirror makes a git push to it push every ref, which the check does not enumerate", remote)
+	}
+	return nil
+}
+
 // scanPush scans what a git push would publish: for each pushed branch, what
 // it has beyond its remote-tracking branch, or beyond its merge-base with main
 // when the remote does not have it yet; and each pushed tag, named directly,
@@ -598,6 +698,9 @@ func (s *Scanner) scanPush(ctx context.Context, p pushSpec) ([]Finding, error) {
 	remote := pushRemote(ctx, g, pos, repo)
 	if s.remoteIsPrivate(ctx, g, remote) {
 		return nil, nil
+	}
+	if err := mirrorRemote(ctx, g, remote); err != nil {
+		return nil, err
 	}
 	current := g.CurrentBranch(ctx)
 	var refspecs []string

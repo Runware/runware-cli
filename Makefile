@@ -68,9 +68,11 @@ docs:
 go-tidy:
 	go mod tidy && go mod verify
 
-# Run once per clone: enables the hooks in .githooks (pre-push runs check-public).
+# Run once per clone: enables the hooks in .githooks (pre-push runs check-public)
+# and builds the checker they run, so a later build failure leaves a working one.
 setup:
 	git config core.hooksPath .githooks
+	.githooks/checkpublic text < /dev/null
 
 # Check what this branch would publish (diff, commit messages and branch name
 # since the merge-base with origin/main) for text that must not be public.
