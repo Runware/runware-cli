@@ -365,6 +365,22 @@ type wrapperCase struct {
 	want     int
 }
 
+// rawBashPayload returns a Bash hook payload as an agent sends it, with no
+// HTML escaping of &, < and >.
+func rawBashPayload(t *testing.T, command, description string) string {
+	t.Helper()
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(hookToolInput{
+		Command: command,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	input := strings.TrimSuffix(strings.TrimSpace(b.String()), "}") + `,"description":"` + description + `"}`
+	return `{"tool_name":"Bash","tool_input":` + input + `}`
+}
+
 // TestWrapperScript checks .githooks/checkpublic: it hands every payload to
 // the tool, and in hook mode it exits 2, the status that blocks a tool call,
 // when the tool fails or does not build.
@@ -470,6 +486,29 @@ func TestWrapperScript(t *testing.T) {
 			want:   exitBlock,
 		},
 	}
+	// With no build, the shell copy of clearlyPublishesNothing answers as it
+	// does, also on a payload with a line continuation or a JSON escape, and
+	// it reads no field that only describes the call.
+	for command, clear := range clearCases {
+		want := exitBlock
+		if clear {
+			want = 0
+		}
+		cases = append(cases, wrapperCase{
+			name:    "no build: " + command,
+			mode:    modeHook,
+			payload: rawBashPayload(t, command, "Check the git status"),
+			broken:  true,
+			want:    want,
+		})
+	}
+	cases = append(cases, wrapperCase{
+		name:    "no build: another tool whose description mentions git",
+		mode:    modeHook,
+		payload: `{"tool_name":"WebFetch","tool_input":{"url":"https://example.com","description":"Read the git docs"}}`,
+		broken:  true,
+		want:    0,
+	})
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

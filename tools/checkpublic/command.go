@@ -207,8 +207,9 @@ var evaluators = wordSet("alias eval trap watch")
 // scriptInterpreters run code in another language. The hook searches the
 // code given inline (-e, -c, --eval or stdin) for a mention of a gh write or
 // git push on one line; hiddenPublication searches all their arguments and
-// stdin for a definite one across lines.
-var scriptInterpreters = wordSet("awk bun deno gawk node osascript perl php python python3 ruby")
+// stdin for one across lines. awk runs a command only through system() or a
+// pipe: see awkRunsCode.
+var scriptInterpreters = wordSet("bun deno node osascript perl php python python3 ruby")
 
 // inlineCodeFlags are the interpreter flags whose value is code to run.
 var inlineCodeFlags = wordSet("-c -e -E -r --command --eval --exec --run")
@@ -218,6 +219,15 @@ var inlineCodeFlags = wordSet("-c -e -E -r --command --eval --exec --run")
 // there that the check cannot classify is blocked too. In the arguments of
 // other commands only a definite publication is blocked.
 var execWrappers = wordSet("caffeinate chrt command doas env exec flock ionice nice nohup parallel setsid stdbuf sudo taskset time timeout unbuffer xargs")
+
+// codeRunners run code or a command given in their arguments or on stdin,
+// besides the shells, interpreters, evaluators and exec wrappers.
+var codeRunners = wordSet("bunx chroot direnv docker expect kubectl mise npx op pipx podman poetry runuser script ssh su tmux unshare uv uvx")
+
+// textTools only read, print or edit text and run nothing they are given,
+// unless a script or an option makes them: sed with the e command, awk with
+// system(), find -exec, xargs and the command it runs. See runsCode.
+var textTools = wordSet("awk column cut find fmt fold gawk mawk nawk nl paste rev sed sort tee tr uniq xargs")
 
 // execFlags make the command they belong to run the words that follow:
 // find -exec, for example.
@@ -232,86 +242,52 @@ var publicationMention = regexp.MustCompile(`\bgh\b[^\n]{0,60}?\b(?:api|gist|iss
 // or a path, without the quotes, commas, brackets and line breaks around it.
 var codeToken = regexp.MustCompile(`[A-Za-z0-9_./=@$%+-]+`)
 
-// definitePublication reports whether text, source code in any language,
-// holds a definite GitHub write or git push: gh followed by a group and a
-// verb that write (or api with a field, an input or a method other than GET),
-// or git followed by push, each word possibly quoted and on its own line, as
-// in ["gh", "pr", "comment"]. A bare gh or push is only a word.
-func definitePublication(text string) bool {
+// codePublishes classifies text, source code in any language, as publishes
+// classifies a command line: the words after each gh or git, each possibly
+// quoted and on its own line as in ["gh", "pr", "comment"], are its
+// arguments, and a word with a $ is a variable. A gh followed by a word that
+// is no gh group is text ("gh is installed"), unless a group follows within
+// a few words, as in Command('gh', {args: ['pr', ...]}).
+func codePublishes(text string) pubKind {
 	toks := codeToken.FindAllString(text, -1)
 	for i, t := range toks {
-		switch filepath.Base(t) {
-		case "gh":
-			if ghTokensWrite(toks[i+1:]) {
-				return true
-			}
-		case wordGit:
-			if gitTokensPush(toks[i+1:]) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// ghTokensWrite reports whether the tokens after gh are a write. The group
-// is the first known one among the next few words, so that a word between
-// them, such as args in Command('gh', {args: ['pr', ...]}), is skipped.
-func ghTokensWrite(toks []string) bool {
-	for i := 0; i < len(toks) && i < 4; i++ {
-		group := toks[i]
-		_, known := ghReads[group]
-		if !known && group != wordAPI {
+		base := filepath.Base(t)
+		if base != "gh" && base != wordGit {
 			continue
 		}
-		rest := toks[i+1:]
-		if group == wordAPI {
-			return apiTokensWrite(rest)
+		if k := tokensPublish(append([]string{base}, toks[i+1:]...)); k != pubNone {
+			return k
 		}
-		for len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
-			rest = rest[1:]
-		}
-		return len(rest) > 0 && ghWrites(group, rest[0])
 	}
-	return false
+	return pubNone
 }
 
-// apiTokensWrite reports whether the tokens of a gh api call, up to the next
-// gh or git, add a field or an input or set a method other than GET.
-func apiTokensWrite(toks []string) bool {
-	for i, t := range toks {
-		switch base := filepath.Base(t); {
-		case base == "gh" || base == wordGit:
-			return false
-		case t == "-X" || t == "--method":
-			if i+1 < len(toks) && !strings.EqualFold(toks[i+1], "GET") {
-				return true
-			}
-		case strings.HasPrefix(t, "-X") || strings.HasPrefix(t, "--method="):
-			v := strings.TrimPrefix(strings.TrimPrefix(t, "--method="), "-X")
-			if !strings.EqualFold(strings.TrimPrefix(v, "="), "GET") {
-				return true
-			}
-		case strings.HasPrefix(t, "-f") || strings.HasPrefix(t, "-F") || strings.HasPrefix(t, "--field") ||
-			strings.HasPrefix(t, "--raw-field") || strings.HasPrefix(t, "--input"):
-			return true
+// tokensPublish runs publishes on words, a gh or git command found in code.
+func tokensPublish(words []string) pubKind {
+	dyn := make([]bool, len(words))
+	for i := 1; i < len(words); i++ {
+		dyn[i] = strings.Contains(words[i], "$")
+	}
+	kind := publishes(words, dyn)
+	if kind != pubUnknown || words[0] != "gh" {
+		return kind
+	}
+	group, _, dynamic := ghCommand(words, dyn)
+	if _, known := ghReads[group]; known || dynamic {
+		return kind
+	}
+	for j := 1; j < len(words) && j <= 4; j++ {
+		if _, known := ghReads[words[j]]; known || words[j] == wordAPI {
+			return tokensPublish(append([]string{"gh"}, words[j:]...))
 		}
 	}
-	return false
+	return pubNone
 }
 
-// gitTokensPush reports whether the tokens after git run git push.
-func gitTokensPush(toks []string) bool {
-	for i := 0; i < len(toks); i++ {
-		t := toks[i]
-		if !strings.HasPrefix(t, "-") {
-			return t == wordPush
-		}
-		if _, ok := gitValueOptions[t]; ok {
-			i++
-		}
-	}
-	return false
+// definitePublication reports whether text, source code in any language,
+// runs or may run a gh write or git push, by the rules of codePublishes.
+func definitePublication(text string) bool {
+	return codePublishes(text) != pubNone
 }
 
 // mentionsPublication reports whether text that runs as code may run a gh
@@ -345,6 +321,9 @@ func containsPublication(src string, depth int) bool {
 // any other command that runs its arguments, or in a string or script that a
 // shell or interpreter runs.
 func hiddenPublication(c command, line []command, depth int) string {
+	if depth > maxNesting {
+		return "nested too deeply to read"
+	}
 	for _, src := range c.nested {
 		if containsPublication(src, depth+1) {
 			return "inside a command substitution"
@@ -353,29 +332,44 @@ func hiddenPublication(c command, line []command, depth int) string {
 	if slices.ContainsFunc(c.opaque, mentionsPublication) {
 		return "inside a here-document that runs commands"
 	}
-	if len(c.words) > 0 {
-		// A command may run a variable set for it: GIT_PAGER, LESSOPEN.
-		for _, a := range c.assigns {
-			if _, v, _ := strings.Cut(a, "="); containsPublication(v, depth+1) || definitePublication(v) {
-				return fmt.Sprintf("in a variable that `%s` may run", c.words[0])
-			}
+	if len(c.words) == 0 {
+		return ""
+	}
+	// A command may run a variable set for it: GIT_PAGER, LESSOPEN.
+	for _, a := range c.assigns {
+		if _, v, _ := strings.Cut(a, "="); containsPublication(v, depth+1) || definitePublication(v) {
+			return fmt.Sprintf("in a variable that `%s` may run", c.words[0])
 		}
 	}
-	runsArgs := false
-	// An inert command (echo, grep) only prints or searches its arguments
-	// and stdin: a gh write or git push there is text. Any other command may
-	// run them as code, as uv run, ssh or perl -ne do, and so may an inert
-	// command or git given an option that runs a command (rg --pre, git -c).
+	// What find -exec or xargs runs is read as a command of its own.
+	subs := executed(c)
+	for i := range subs {
+		if where := hiddenPublication(subs[i], line, depth+1); where != "" {
+			return where
+		}
+	}
+	if where := xargsInput(c, line); where != "" {
+		return where
+	}
+	// A text tool (echo, grep, sed) only prints, searches or edits its
+	// arguments and stdin: a gh write or git push there is text. A command
+	// that runs code (uv run, ssh, perl -e, sed with the e command) may run
+	// them, and so may a text tool or git given an option that runs a
+	// command (rg --pre, git -c). Any other command is blocked only on a gh
+	// write or git push that starts one of its words.
 	runsOption := runsCodeOption(c)
-	_, printsArgs := inertCommands[c.name()]
-	printsArgs = printsArgs && len(c.words) > 0 && !c.wordDyn[0] && !runsOption
+	codeRuns := runsCode(c)
+	_, inertName := inertCommands[c.name()]
+	_, textName := textTools[c.name()]
+	printsArgs := (inertName || textName) && !c.wordDyn[0] && !runsOption && !codeRuns
 	pipedArgs, pipedStdin := pipedInput(c, line)
+	runsArgs := false
 	for k, w := range c.words {
 		base := filepath.Base(w)
 		rest := strings.Join(c.words[k+1:], " ")
 		if k > 0 {
 			kind := publishes(c.words[k:], c.wordDyn[k:])
-			if runsArgs && kind != pubNone || !printsArgs && (kind == pubGH || kind == pubPush) {
+			if (runsArgs || codeRuns) && kind != pubNone || !printsArgs && (kind == pubGH || kind == pubPush) {
 				return fmt.Sprintf("through `%s`", c.words[0])
 			}
 		}
@@ -387,6 +381,9 @@ func hiddenPublication(c command, line []command, depth int) string {
 		}
 		if _, ok := execFlags[w]; ok {
 			runsArgs = true
+		}
+		if printsArgs {
+			continue
 		}
 		if _, ok := shells[base]; ok {
 			piped := mentionsPublication(pipedArgs+pipedStdin) || containsPublication(pipedStdin, depth+1)
@@ -404,28 +401,348 @@ func hiddenPublication(c command, line []command, depth int) string {
 			return fmt.Sprintf("inside a `%s` script", base)
 		}
 	}
-	// gh and git run no argument as code but a later word, checked above,
-	// unless an option makes git run one. For any other command that is not
-	// inert, a definite publication in an argument (or in an option's value
-	// after =) or in stdin is blocked, wherever it is in the code.
-	name := c.name()
-	_, hasCodeOption := codeOptions[name]
-	hasCodeOption = hasCodeOption && runsOption
-	scan := runsOption || !printsArgs && name != "gh" && name != wordGit
-	if name != "" && scan {
-		var code strings.Builder
-		for _, w := range c.words[1:] {
-			code.WriteString(w + "\n")
-			if _, v, ok := strings.Cut(w, "="); ok {
-				code.WriteString(v + "\n")
-			}
-		}
-		code.WriteString(c.stdin + "\n" + pipedStdin)
-		if definitePublication(code.String()) || hasCodeOption && slices.ContainsFunc(c.words[1:], mentionsPublication) {
-			return fmt.Sprintf("in what `%s` runs", c.words[0])
+	if !codeRuns && !runsOption {
+		return ""
+	}
+	// A command that runs code is blocked on a gh or git command that
+	// codePublishes does not clear, anywhere in its arguments (or an
+	// option's value after =) or its stdin. A text tool or git that runs a
+	// command from its script or an option (sed e, awk system(), rg --pre,
+	// git -c) is blocked on any mention of one.
+	var code strings.Builder
+	for _, w := range c.words[1:] {
+		code.WriteString(w + "\n")
+		if _, v, ok := strings.Cut(w, "="); ok {
+			code.WriteString(v + "\n")
 		}
 	}
+	code.WriteString(c.stdin + "\n" + pipedStdin)
+	if stdin, ok := literalStdin(c, line); ok {
+		code.WriteString("\n" + stdin)
+	}
+	_, hasCodeOption := codeOptions[c.name()]
+	loose := hasCodeOption && runsOption || textName && codeRuns
+	if codePublishes(code.String()) != pubNone || loose && mentionsPublication(code.String()) {
+		return fmt.Sprintf("in what `%s` runs", c.words[0])
+	}
 	return ""
+}
+
+// runsCode reports whether c runs code or a command given in its arguments
+// or on stdin: a shell, an interpreter, an evaluator, an exec wrapper, a
+// code runner (ssh, uv run), a command named by a variable, awk with
+// system() or a pipe, or sed with the e command. find and xargs run code
+// only through the command they run, which executed returns.
+func runsCode(c command) bool {
+	if c.wordDyn[0] {
+		return true
+	}
+	name := c.name()
+	switch name {
+	case "xargs", "find":
+		return false
+	case "awk", "gawk", "mawk", "nawk":
+		return awkRunsCode(c.words[1:])
+	case "sed", "gsed":
+		return sedRunsCode(c.words[1:])
+	}
+	for _, set := range []map[string]struct{}{shells, scriptInterpreters, evaluators, stdinRunners, execWrappers, codeRunners} {
+		if _, ok := set[name]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// awkCommand matches awk code that runs a command: system(), or a pipe to or
+// from one.
+var awkCommand = regexp.MustCompile(`\bsystem\s*\(|\|\s*&?\s*getline|\bprintf?\b[^;}\n]*\|`)
+
+// awkRunsCode reports whether awk with args may run a command: its program
+// runs one, or comes from a file the hook does not read.
+func awkRunsCode(args []string) bool {
+	for _, a := range args {
+		if a == "-f" || strings.HasPrefix(a, "--file") || awkCommand.MatchString(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// sedRunsCode reports whether sed with args may run a command: a script has
+// the e command or an s command with the e flag, or comes from a file the
+// hook does not read. Without -e, the script is the first argument that is
+// not an option, after the suffix that a BSD -i takes as its next argument
+// (” or one that starts with a dot).
+func sedRunsCode(args []string) bool {
+	var scripts, rest []string
+	explicit := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-i" && i+1 < len(args) && (args[i+1] == "" || strings.HasPrefix(args[i+1], ".")):
+			i++
+		case a == "--file" || strings.HasPrefix(a, "--file="):
+			return true
+		case a == "--expression":
+			explicit = true
+			if i+1 < len(args) {
+				i++
+				scripts = append(scripts, args[i])
+			}
+		case strings.HasPrefix(a, "--expression="):
+			explicit = true
+			scripts = append(scripts, strings.TrimPrefix(a, "--expression="))
+		case strings.HasPrefix(a, "--"):
+		case strings.HasPrefix(a, "-") && len(a) > 1:
+			script, next, file := sedShortOptions(a, args[i+1:])
+			if file {
+				return true
+			}
+			if script != nil {
+				explicit = true
+				scripts = append(scripts, *script)
+				i += next
+			}
+		default:
+			rest = append(rest, a)
+		}
+	}
+	if !explicit && len(rest) > 0 {
+		scripts = rest[:1]
+	}
+	return slices.ContainsFunc(scripts, sedScriptRuns)
+}
+
+// sedShortOptions reads a group of sed short options, followed by the
+// arguments after it: the script of an -e in it and how many of those
+// arguments it takes, and whether an -f names a script file.
+func sedShortOptions(a string, after []string) (script *string, next int, file bool) {
+	for j := 1; j < len(a); j++ {
+		switch a[j] {
+		case 'f':
+			return nil, 0, true
+		case 'i':
+			return nil, 0, false // -i takes an attached suffix
+		case 'e':
+			if j+1 < len(a) {
+				s := a[j+1:]
+				return &s, 0, false
+			}
+			if len(after) > 0 {
+				return &after[0], 1, false
+			}
+			return nil, 0, false
+		}
+	}
+	return nil, 0, false
+}
+
+// sedScriptRuns reports whether a sed script has the e command or an s
+// command with the e flag.
+func sedScriptRuns(script string) bool {
+	i := 0
+	// field skips past the end of a field delimited by d: an s or y field,
+	// or a /regex/ address. It reports whether the field is closed.
+	field := func(d byte) bool {
+		for ; i < len(script); i++ {
+			switch script[i] {
+			case '\\':
+				i++
+			case d:
+				i++
+				return true
+			}
+		}
+		return false
+	}
+	for i < len(script) {
+		// The address: line numbers, $, /regex/, ranges, steps and !.
+		for i < len(script) {
+			if script[i] == '/' {
+				i++
+				field('/')
+				continue
+			}
+			if !strings.ContainsRune("0123456789$,+~! \t;{}\n", rune(script[i])) {
+				break
+			}
+			i++
+		}
+		if i >= len(script) {
+			return false
+		}
+		cmd := script[i]
+		i++
+		switch cmd {
+		case 'e':
+			return true
+		case 's', 'y':
+			if i >= len(script) {
+				return false
+			}
+			d := script[i]
+			i++
+			if !field(d) {
+				return false
+			}
+			if !field(d) {
+				return false // the replacement
+			}
+			for ; i < len(script) && !strings.ContainsRune(";}\n", rune(script[i])); i++ {
+				if cmd == 's' && script[i] == 'e' {
+					return true
+				}
+				if script[i] == 'w' {
+					break // the rest of the line is a file name
+				}
+			}
+		}
+		// Any other command runs to the end of the line or the next ;.
+		for i < len(script) && script[i] != ';' && script[i] != '\n' {
+			i++
+		}
+	}
+	return false
+}
+
+// xargsValueOptions are the xargs options that take the next word as their
+// value.
+var xargsValueOptions = wordSet("-a -d -E -I -L -n -P -s --arg-file --delimiter --max-args --max-chars --max-procs --process-slot-var")
+
+// executed returns the commands that c runs from its own words: the command
+// xargs runs, and that of each -exec, -execdir, -ok or -okdir of find. Each
+// keeps c's stdin and place in the line.
+func executed(c command) []command {
+	sub := func(i, j int) command {
+		return command{
+			shellCmd: c.shellCmd,
+			words:    c.words[i:j],
+			wordDyn:  c.wordDyn[i:j],
+			wordSubs: c.wordSubs[i:j],
+		}
+	}
+	var out []command
+	switch c.name() {
+	case "xargs":
+		i := 1
+		for i < len(c.words) && strings.HasPrefix(c.words[i], "-") {
+			if c.words[i] == "--" {
+				i++
+				break
+			}
+			if _, ok := xargsValueOptions[c.words[i]]; ok {
+				i++
+			}
+			i++
+		}
+		if i < len(c.words) {
+			out = append(out, sub(i, len(c.words)))
+		}
+	case "find":
+		for i := 1; i < len(c.words); i++ {
+			if _, ok := execFlags[c.words[i]]; !ok {
+				continue
+			}
+			end := i + 1
+			for end < len(c.words) && c.words[end] != ";" && c.words[end] != "+" {
+				end++
+			}
+			if end > i+1 {
+				out = append(out, sub(i+1, end))
+			}
+			i = end
+		}
+	}
+	for n := range out {
+		out[n].nested = nil
+		out[n].opaque = nil
+	}
+	return out
+}
+
+// xargsInput returns why xargs may run a publication from the words it reads
+// on stdin, or "". xargs adds them to the command it runs, so a gh or git
+// that names no command of its own (xargs gh, xargs gh api, xargs git), or a
+// command named by a variable, takes it from stdin, which must then be text
+// the hook reads and classifies as no publication.
+func xargsInput(c command, line []command) string {
+	if c.name() != "xargs" || c.wordDyn[0] {
+		return ""
+	}
+	subs := executed(c)
+	if len(subs) == 0 {
+		return ""
+	}
+	sub := subs[0]
+	if name := sub.name(); !sub.wordDyn[0] && name != "gh" && name != wordGit {
+		return ""
+	}
+	stdin, ok := literalStdin(c, line)
+	for _, w := range c.words[1:] {
+		if w == "-a" || strings.HasPrefix(w, "--arg-file") {
+			ok = false
+		}
+	}
+	if !ok {
+		if commandComplete(sub) {
+			return ""
+		}
+		return "through xargs, with arguments from stdin the check cannot read"
+	}
+	toks := codeToken.FindAllString(stdin, -1)
+	words := append(slices.Clone(sub.words), toks...)
+	dyn := append(slices.Clone(sub.wordDyn), make([]bool, len(toks))...)
+	if publishes(words, dyn) != pubNone {
+		return "through xargs, with arguments from stdin"
+	}
+	return ""
+}
+
+// commandComplete reports whether a gh or git command names its command in
+// literal words, so that arguments added after it cannot make it publish:
+// gh with a group and a verb, other than gh api, or git with a subcommand.
+func commandComplete(c command) bool {
+	if c.wordDyn[0] {
+		return false
+	}
+	if c.name() == wordGit {
+		i := gitSubcommand(c.words)
+		return i < len(c.words) && !anyTrue(c.wordDyn[:i+1])
+	}
+	group, verb, dynamic := ghCommand(c.words, c.wordDyn)
+	return !dynamic && group != "" && group != wordAPI && (verb != "" || ghReads[group] == "*")
+}
+
+// literalStdin returns what c reads on stdin when the hook can read all of
+// it: a here-document or here-string that expands nothing, or the literal
+// arguments of an echo or printf, or a cat here-document, piped straight
+// into it; "" when it has no stdin at all. ok is false for any other stdin:
+// a file, or the output of another command.
+func literalStdin(c command, line []command) (text string, ok bool) {
+	switch {
+	case c.stdinSources > 1:
+		return "", false
+	case c.stdinSources == 1:
+		if c.stdinFile != "" || c.stdinDynamic || c.pipeFrom >= 0 {
+			return "", false
+		}
+		return c.stdin, true
+	case c.pipeFrom < 0:
+		return "", true
+	case c.pipeFrom >= len(line):
+		return "", false
+	}
+	src := line[c.pipeFrom]
+	if src.inlineHeredoc() {
+		return src.stdin, true
+	}
+	name := src.name()
+	if (name == "echo" || name == "printf") && !anyTrue(src.wordDyn) && len(src.nested) == 0 &&
+		len(src.assigns) == 0 && src.pipeFrom < 0 && src.stdinSources == 0 {
+		return strings.Join(src.words[1:], " "), true
+	}
+	return "", false
 }
 
 // pipedInput returns what the commands piped into c, up its pipeline, are
@@ -487,6 +804,7 @@ func stdinFiles(c command, line []command) []redirTarget {
 // with the value attached (-ccore.pager=...), long ones with =.
 var codeOptions = map[string]string{
 	"rg":    "--pre",
+	"tar":   "--to-command --checkpoint-action --use-compress-program -I --info-script --new-volume-script -F --rsh-command",
 	wordGit: "-c --config-env --exec-path --ext-diff --extcmd --exec --upload-pack --receive-pack -O --open-files-in-pager",
 }
 
@@ -718,11 +1036,6 @@ var ghValueFlags = map[string]string{
 	"project item-delete":   "owner id",
 	"project item-edit":     "id title body text number date single-select-option-id iteration-id field-id project-id",
 }
-
-// ghUnreadWrites are gh commands that write to GitHub what the hook cannot
-// read (a binary upload, another repository's content, a secret it must not
-// print) or that it does not model. They are blocked.
-var ghUnreadWrites = wordSet("agent-task:create discussion:comment discussion:create discussion:edit issue:artifact label:clone release:upload repo:autolink repo:deploy-key repo:sync secret:delete secret:set skill:publish variable:delete variable:set")
 
 // Read subcommands that several gh groups share.
 const (
@@ -958,16 +1271,6 @@ func ghPublishes(words []string, dyn []bool) pubKind {
 	return pubUnknown
 }
 
-// ghWrites reports whether group and verb name a gh command known to write
-// to GitHub.
-func ghWrites(group, verb string) bool {
-	if _, ok := ghValueFlags[group+" "+verb]; ok {
-		return true
-	}
-	_, ok := ghUnreadWrites[group+":"+verb]
-	return ok
-}
-
 // ghInert reports whether a gh command changes nothing a later publication
 // reads: a read, or a publication itself.
 func ghInert(words []string, dyn []bool) bool {
@@ -994,10 +1297,19 @@ var apiReadFlags = wordSet("--cache --header -H --hostname --jq -q --preview -p 
 // variable inside an endpoint that starts with a literal path, such as
 // repos/o/r/pulls/$PR/comments, or in the value of a flag such as --jq, is a
 // read; an endpoint that is wholly a variable ($ARGS, "$@") may hold flags
-// too, and is a read only with an explicit GET.
+// too, and is a read only with an explicit GET after it.
 func apiWrites(words []string, dyn []bool) bool {
 	flags, pos := parseFlags(words[1:], apiValueFlags)
 	explicitGET := false
+	// method is the index of the last word that sets the method: a GET
+	// there makes a variable before it a read, but not one after it, which
+	// may set the method again.
+	method := 0
+	for i, w := range words {
+		if strings.HasPrefix(w, "-X") || strings.HasPrefix(w, "--method") {
+			method = i
+		}
+	}
 	for _, f := range flags {
 		switch f.name {
 		case "method":
@@ -1016,7 +1328,7 @@ func apiWrites(words []string, dyn []bool) bool {
 		name, _, inline := strings.Cut(words[i], "=")
 		_, readValue := apiReadFlags[name]
 		_, afterRead := apiReadFlags[words[i-1]]
-		isEndpoint := len(pos) > 1 && i == pos[1]+1 && (literalPath.MatchString(words[i]) || explicitGET)
+		isEndpoint := len(pos) > 1 && i == pos[1]+1 && (literalPath.MatchString(words[i]) || explicitGET && i < method)
 		if !isEndpoint && (!inline || !readValue) && (!afterRead || dyn[i-1]) {
 			return true
 		}

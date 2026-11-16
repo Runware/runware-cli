@@ -148,6 +148,42 @@ var (
 // form that publishes a leak is blocked, by a finding when the hook reads it
 // and otherwise because it cannot; the simple forms people use still pass.
 func TestHookForms(t *testing.T) {
+	cases := hookFormCases()
+	s, err := NewScanner(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.loadDeny = func() []string {
+		return []string{`\bfakevendor\b`}
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.setup != nil {
+				dir = tc.setup(t)
+			}
+			for name, text := range tc.files {
+				path := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f, err := s.runHook(context.Background(), bashPayload(t, tc.command, dir), gitRepoOf)
+			if err != nil && !errors.As(err, new(*UncheckableError)) {
+				t.Fatal(err)
+			}
+			if blocked := err != nil || len(f) > 0; blocked != tc.block {
+				t.Fatalf("blocked = %v (findings %+v, error %v), want %v", blocked, f, err, tc.block)
+			}
+		})
+	}
+}
+
+// hookFormCases are the forms TestHookForms runs through the hook.
+func hookFormCases() []hookCase {
 	hiddenRepo := shortRepo + "some-private-repo"
 	review := `{"event":"COMMENT","body":"ok","comments":[{"path":"a.go","line":1,"body":` + jsonString(leak) + `}]}`
 	mutation := `{"query":"mutation($input: AddCommentInput!){addComment(input:$input){clientMutationId}}","variables":{"input":{"subjectId":"x","note":` + jsonString(leak) + `}}}`
@@ -167,7 +203,7 @@ func TestHookForms(t *testing.T) {
 	cleanScript := map[string]string{
 		"run.sh": "echo hello\n",
 	}
-	cases := []hookCase{
+	return []hookCase{
 		// Text in the command line itself.
 		{
 			name:    "literal title and body",
@@ -1401,37 +1437,87 @@ func TestHookForms(t *testing.T) {
 			command: `gh pr view 1 >/dev/null && gh pr comment 1 --body "` + leak + `"`,
 			block:   true,
 		},
-	}
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.loadDeny = func() []string {
-		return []string{`\bfakevendor\b`}
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			if tc.setup != nil {
-				dir = tc.setup(t)
-			}
-			for name, text := range tc.files {
-				path := filepath.Join(dir, name)
-				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			f, err := s.runHook(context.Background(), bashPayload(t, tc.command, dir), gitRepoOf)
-			if err != nil && !errors.As(err, new(*UncheckableError)) {
-				t.Fatal(err)
-			}
-			if blocked := err != nil || len(f) > 0; blocked != tc.block {
-				t.Fatalf("blocked = %v (findings %+v, error %v), want %v", blocked, f, err, tc.block)
-			}
-		})
+
+		// Commands that run code or other commands, read by the same rules
+		// as a gh or git command line.
+		{
+			name:    "gh group in a variable after uv run",
+			command: `uv run gh "$G" comment 1 --body x`,
+			block:   true,
+		},
+		{
+			name:    "gh -R before the verb inside ssh",
+			command: `ssh host 'gh pr -R o/r comment 1 --body x'`,
+			block:   true,
+		},
+		{
+			name:    "gh arguments from echo through xargs",
+			command: `echo 'pr comment 1 --body x' | xargs gh`,
+			block:   true,
+		},
+		{
+			name:    "git arguments from a here-string through xargs",
+			command: `xargs git <<< 'push origin main'`,
+			block:   true,
+		},
+		{
+			name:    "gh arguments from a command through xargs",
+			command: `cat args.txt | xargs gh`,
+			block:   true,
+		},
+		{
+			name:    "gh read from echo through xargs",
+			command: `echo 'pr view 1' | xargs gh`,
+		},
+		{
+			name:    "gh write through xargs after its options",
+			command: `xargs -n 1 -I {} gh pr comment {} --body x`,
+			block:   true,
+		},
+		{
+			name:    "gh api with a variable after an explicit GET",
+			command: `gh api -X GET $ARGS`,
+			block:   true,
+		},
+		{
+			name:    "gh api with an explicit GET after a variable",
+			command: `gh api $ARGS -X GET`,
+		},
+		{
+			name:    "find -exec runs a shell",
+			command: `find . -name '*.md' -exec sh -c 'gh pr comment 1 --body x' \;`,
+			block:   true,
+		},
+		{
+			name:    "xargs runs a shell",
+			command: `echo x | xargs sh -c 'gh pr comment 1 --body x'`,
+			block:   true,
+		},
+		{
+			name:    "sed e flag runs what it reads",
+			command: `echo 'gh pr comment 1 --body z' | sed 's/z/y/e'`,
+			block:   true,
+		},
+		{
+			name:    "sed e flag runs its replacement",
+			command: `sed 's/.*/gh pr comment 1 --body x/e' notes.txt`,
+			block:   true,
+		},
+		{
+			name:    "sed e command",
+			command: `sed -n '1e gh pr comment 1 --body x' notes.txt`,
+			block:   true,
+		},
+		{
+			name:    "awk system",
+			command: `awk 'BEGIN { system("gh pr comment 1 --body x") }'`,
+			block:   true,
+		},
+		{
+			name:    "tar --to-command",
+			command: `tar xf a.tar --to-command='gh pr comment 1 --body-file -'`,
+			block:   true,
+		},
 	}
 }
 
@@ -1587,6 +1673,25 @@ func TestHookReadOnlyCommands(t *testing.T) {
 		`GOFLAGS=-count=1 go test ./...`,
 		"cat <<'EOF' | sh\necho hello\nEOF",
 		"sh <<'EOF'\necho hello\nEOF",
+		// Text tools that search or edit text naming a gh write or git push.
+		`sed -i 's/gh pr create/gh pr new/' README.md`,
+		`find . -exec grep -n 'gh pr comment' {} +`,
+		`xargs grep -l 'gh pr create'`,
+		"tee doc.md <<'EOF'\nOpen it with gh pr create, then git push.\nEOF",
+		`sed -i '' 's/git push/git push -u origin HEAD/' AGENTS.md`,
+		`perl -pi -e 's/a/b/' README.md`,
+		`awk '/gh pr create|git push/ {print FILENAME": "$0}' README.md`,
+		"cat > doc.md <<EOF\nRun gh pr create --fill, then gh pr comment 1.\nEOF",
+		`grep -rn 'git push' .`,
+		`sed -n '/gh pr comment/,+3p' AGENTS.md`,
+		`sed -n '/gh pr create/p' examples.md`,
+		`rg -l 'gh pr create' | xargs sed -i 's/gh pr create/gh pr new/'`,
+		`find docs -name '*.md' -exec sed -i 's/git push/git push -u/' {} +`,
+		"tee -a notes.md <<< 'gh pr comment 1 --body x'",
+		"cat <<'EOF' | tee doc.md\ngh pr comment 1 --body x\nEOF",
+		`sort -u notes.md | uniq -c | grep 'git push'`,
+		`echo 'gh pr view 1' | xargs -I{} grep -n {} README.md`,
+		`gh api $ARGS -X GET`,
 	}
 	for _, command := range commands {
 		t.Run(command, func(t *testing.T) {
@@ -1619,19 +1724,86 @@ func TestDefinitePublication(t *testing.T) {
 	}
 }
 
+// TestCodeParity runs every gh and git command of TestHookForms through the
+// search of code, as text and inside `ssh host '...'`, and checks that it
+// classifies each one as publishes does. A gh followed by a word that is no
+// gh group, such as an alias, is text in code. A command with another gh or
+// git command in its arguments is left out: in code, that one runs too.
+func TestCodeParity(t *testing.T) {
+	s, err := NewScanner(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote := func(w string) string {
+		return "'" + strings.ReplaceAll(w, "'", `'\''`) + "'"
+	}
+	seen := 0
+	for _, tc := range hookFormCases() {
+		for _, c := range commands(parseShell(tc.command)) {
+			if len(c.words) == 0 || c.wordDyn[0] || c.name() != "gh" && c.name() != wordGit || embedsCommand(c.words[1:]) {
+				continue
+			}
+			seen++
+			want := publishes(c.words, c.wordDyn)
+			if group, _, dynamic := ghCommand(c.words, c.wordDyn); c.name() == "gh" && want == pubUnknown && !dynamic {
+				if _, known := ghReads[group]; !known && group != wordAPI {
+					want = pubNone
+				}
+			}
+			text := strings.Join(c.words, " ")
+			if got := codePublishes(text); (got == pubNone) != (want == pubNone) {
+				t.Errorf("%s: codePublishes(%q) = %v, publishes = %v", tc.name, text, got, want)
+			}
+			quoted := make([]string, len(c.words))
+			for i, w := range c.words {
+				quoted[i] = quote(w)
+			}
+			ssh := "ssh host " + quote(strings.Join(quoted, " "))
+			_, err := s.planCommand(ssh, t.TempDir(), gitRepoOf)
+			if blocked := err != nil; blocked != (want != pubNone) {
+				t.Errorf("%s: %s blocked = %v (%v), want %v", tc.name, ssh, blocked, err, want != pubNone)
+			}
+		}
+	}
+	if seen < 100 {
+		t.Fatalf("only %d gh and git commands checked", seen)
+	}
+}
+
+// embedsCommand reports whether words hold a gh or git word of their own, as
+// a commit message or git -c core.pager=... may: in code that is a command.
+func embedsCommand(words []string) bool {
+	for _, w := range words {
+		for _, t := range codeToken.FindAllString(strings.ReplaceAll(w, "=", " "), -1) {
+			if b := filepath.Base(t); b == "gh" || b == wordGit {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// clearCases are Bash commands and whether clearlyPublishesNothing lets them
+// run. TestWrapperScript runs them through the shell copy of it too.
+var clearCases = map[string]bool{
+	cmdList:                           true,
+	`make test && go vet ./...`:       true,
+	`sed -n '1,5p' a.txt > b.txt`:     true,
+	`g'h' pr comment 1 --body x`:      false,
+	"g\\\nh pr comment 1 --body x":    false,
+	"echo a \\\n  b":                  true,
+	`git status`:                      false,
+	`echo $X`:                         false,
+	"echo `date`":                     false,
+	`echo "push"`:                     false,
+	`echo G"H" pr comment 1 --body x`: false,
+	`cat ~/.config/HUB`:               false,
+}
+
 // TestClearlyPublishesNothing checks the test that lets a command run when
 // the check itself fails: only commands with no word that could publish.
 func TestClearlyPublishesNothing(t *testing.T) {
-	cases := map[string]bool{
-		cmdList:                        true,
-		`make test && go vet ./...`:    true,
-		`g'h' pr comment 1 --body x`:   false,
-		"g\\\nh pr comment 1 --body x": false,
-		`git status`:                   false,
-		`echo $X`:                      false,
-		`echo "push"`:                  false,
-	}
-	for command, want := range cases {
+	for command, want := range clearCases {
 		if got := clearlyPublishesNothing(bashPayload(t, command, "")); got != want {
 			t.Errorf("clearlyPublishesNothing(%q) = %v, want %v", command, got, want)
 		}
