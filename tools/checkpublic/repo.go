@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"regexp"
-	"slices"
 	"strings"
 )
 
@@ -30,63 +29,21 @@ func githubRepo(url string) string {
 	return m[2]
 }
 
-// gitRepoOf returns the GitHub repository of dir whose variables hold the
-// deny list: origin's when it is a Runware repository, else that of
-// another remote that is one (upstream first), as when origin is a
-// personal fork, else origin's.
+// gitRepoOf returns the GitHub repository of dir's origin remote, whose
+// variables hold the deny list, or "".
 func gitRepoOf(dir string) string {
-	ctx := context.Background()
-	g := Git{
-		Dir: dir,
-	}
-	url := func(remote string) string {
-		out, err := g.run(ctx, "remote", "get-url", remote)
-		if err != nil {
-			return ""
-		}
-		return githubRepo(out)
-	}
-	origin := url(remoteOriginName)
-	if isRunwareRepo(origin) {
-		return origin
-	}
-	list, err := g.run(ctx, "remote")
+	out, err := Git{Dir: dir}.run(context.Background(), "remote", "get-url", remoteOriginName)
 	if err != nil {
-		return origin
+		return ""
 	}
-	remotes := strings.Fields(list)
-	if i := slices.Index(remotes, remoteUpstreamName); i > 0 {
-		remotes = slices.Concat([]string{remoteUpstreamName}, slices.Delete(remotes, i, i+1))
-	}
-	for _, remote := range remotes {
-		if remote == remoteOriginName {
-			continue
-		}
-		if repo := url(remote); isRunwareRepo(repo) {
-			return repo
-		}
-	}
-	return origin
+	return githubRepo(out)
 }
 
-const (
-	remoteOriginName   = "origin"
-	remoteUpstreamName = "upstream"
-)
+const remoteOriginName = "origin"
 
 // isRunwareRepo reports whether repo, an owner/name from githubRepo, belongs
 // to the Runware organization.
 func isRunwareRepo(repo string) bool {
 	owner, _, ok := strings.Cut(repo, "/")
 	return ok && strings.EqualFold(owner, "runware")
-}
-
-// gitCommonDir returns the common git directory of dir's clone, which every
-// worktree of the clone shares, or "".
-func gitCommonDir(dir string) string {
-	out, err := Git{Dir: dir}.run(context.Background(), "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(out)
 }

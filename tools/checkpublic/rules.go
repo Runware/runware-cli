@@ -131,15 +131,13 @@ func builtinRules() []rule {
 			check: checkRepo,
 		},
 		{
-			// The short forms (owner/name#123, owner/name/pull/1, or a bare
-			// owner/name in prose) are case sensitive: the lowercase form
-			// is the Go module path, and it is always followed by an
-			// allowlisted name anyway. @Runware/name is a team, not a
+			// The short forms: owner/name#123, owner/name/pull/1, or a bare
+			// owner/name in prose. @Runware/name is a team, not a
 			// repository.
 			name:    ruleRepo,
 			message: repoMessage,
-			re:      regexp.MustCompile(`(?:^|[^A-Za-z0-9_./@-])Runware/([A-Za-z0-9_.-]+)`),
-			check:   checkRepo,
+			re:      regexp.MustCompile(`(?i)(?:^|[^a-z0-9_./@-])runware/([a-z0-9_.-]+)`),
+			check:   checkShortRepo,
 		},
 		{
 			name:    ruleInternalLink,
@@ -218,6 +216,12 @@ func builtinRules() []rule {
 func checkRepo(s *Scanner, m []string, _ string) bool {
 	name := strings.TrimSuffix(strings.TrimRight(m[1], "."), ".git")
 	return name != "" && !s.IsPublicRepo(name)
+}
+
+// checkShortRepo is checkRepo that also reads owner/name as Homebrew does,
+// for the tap in the homebrew-name repository: brew install runware/tap/x.
+func checkShortRepo(s *Scanner, m []string, file string) bool {
+	return checkRepo(s, m, file) && !s.IsPublicRepo("homebrew-"+m[1])
 }
 
 // publicInternalHosts are .internal names that are public knowledge and
@@ -343,16 +347,15 @@ func checkPublicIP(_ *Scanner, m []string, _ string) bool {
 	return true
 }
 
-// excludedFile reports whether a file is skipped entirely: checksums and
-// generated code, whose content comes from files that are scanned themselves,
-// and binary files, whose bytes the diff prints as text only to match by
-// chance.
+// excludedFile reports whether a file is skipped entirely: go.sum, whose
+// hashes match the credential rules by chance, and binary files, whose bytes
+// the diff prints as text only to match by chance.
 func excludedFile(file string) bool {
 	base := path.Base(file)
 	if _, ok := binaryExtensions[strings.ToLower(path.Ext(base))]; ok {
 		return true
 	}
-	return base == "go.sum" || strings.HasSuffix(base, ".gen.go")
+	return base == "go.sum"
 }
 
 // binaryExtensions are the extensions of files that are binary by format:

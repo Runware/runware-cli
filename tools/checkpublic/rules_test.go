@@ -85,6 +85,16 @@ func TestScanLine(t *testing.T) {
 			want: []string{ruleRepo},
 		},
 		{
+			name: "private repo short issue form in lowercase",
+			line: "fixed in " + "runware/" + "some-private-repo#12",
+			want: []string{ruleRepo},
+		},
+		{
+			name: "homebrew tap",
+			line: "brew install runware/tap/runware, or Runware/tap",
+			want: nil,
+		},
+		{
 			name: "public repo",
 			line: "https://github.com/Runware/runware-cli/pull/1 and Runware/sdk-go#2",
 			want: nil,
@@ -436,13 +446,19 @@ func TestExcludedFiles(t *testing.T) {
 	diff := func(file string) string {
 		return "diff --git a/" + file + " b/" + file + "\n--- /dev/null\n+++ b/" + file + "\n@@ -0,0 +1 @@\n+" + specMarker + "\n"
 	}
-	for _, file := range []string{"go.sum", "internal/api/gen/client.gen.go"} {
-		if f, err := s.ScanDiff(diff(file)); err != nil || len(f) != 0 {
-			t.Errorf("ScanDiff(%s) = %+v, %v, want no findings", file, f, err)
+	if f, err := s.ScanDiff(diff("go.sum")); err != nil || len(f) != 0 {
+		t.Errorf("ScanDiff(go.sum) = %+v, %v, want no findings", f, err)
+	}
+	// Generated code is scanned like any other file: a generator copies
+	// comments and examples from its input.
+	for _, file := range []string{"api/openapi.yaml", "internal/api/gen/client.gen.go"} {
+		if f, err := s.ScanDiff(diff(file)); err != nil || len(f) != 1 || f[0].Where != file+":1" {
+			t.Errorf("ScanDiff(%s) = %+v, %v, want one finding on line 1", file, f, err)
 		}
 	}
-	if f, err := s.ScanDiff(diff("api/openapi.yaml")); err != nil || len(f) != 1 || f[0].Where != "api/openapi.yaml:1" {
-		t.Errorf("ScanDiff(api/openapi.yaml) = %+v, %v, want one finding on line 1", f, err)
+	gen := "diff --git a/x.gen.go b/x.gen.go\n--- /dev/null\n+++ b/x.gen.go\n@@ -0,0 +1 @@\n+// See " + leak + "\n"
+	if f, err := s.ScanDiff(gen); err != nil || len(f) != 1 || f[0].Rule != ruleRepo {
+		t.Errorf("ScanDiff of a private link in a generated comment = %+v, %v, want one %s", f, err, ruleRepo)
 	}
 }
 

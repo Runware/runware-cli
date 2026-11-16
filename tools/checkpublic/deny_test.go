@@ -240,54 +240,6 @@ func TestDenyFetchFailureWithoutCacheWarns(t *testing.T) {
 	}
 }
 
-// TestDenyWarnsOnceADay checks that the warning about an unavailable list
-// is printed once a day for a repository, not on every push.
-func TestDenyWarnsOnceADay(t *testing.T) {
-	var stderr bytes.Buffer
-	gh := &fakeGH{
-		err: errors.New("gh: not logged in"),
-	}
-	d := newTestDeny(t, gh, &stderr)
-	d.patterns(context.Background())
-	if strings.Count(stderr.String(), "warning") != 1 {
-		t.Fatalf("first run: stderr = %q, want one warning", stderr.String())
-	}
-	stderr.Reset()
-	d.patterns(context.Background())
-	if stderr.Len() != 0 {
-		t.Errorf("second run: stderr = %q, want nothing", stderr.String())
-	}
-	d.now = func() time.Time { return testNow.Add(denyWarnEvery) }
-	d.patterns(context.Background())
-	if strings.Count(stderr.String(), "warning") != 1 {
-		t.Errorf("a day later: stderr = %q, want the warning again", stderr.String())
-	}
-}
-
-// TestDenyFailureSkipsGhForAWhile checks that after a failed fetch the next
-// runs do not wait on gh again until denyRetryAfter has passed.
-func TestDenyFailureSkipsGhForAWhile(t *testing.T) {
-	var stderr bytes.Buffer
-	gh := &fakeGH{
-		err: errors.New("network unreachable"),
-	}
-	d := newTestDeny(t, gh, &stderr)
-	d.patterns(context.Background())
-	d.patterns(context.Background())
-	if gh.calls != 1 {
-		t.Fatalf("gh called %d times right after a failure, want 1", gh.calls)
-	}
-	gh.err = nil
-	gh.out = fetchedList
-	d.now = func() time.Time { return testNow.Add(denyRetryAfter) }
-	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{fetchedPattern}) || gh.calls != 2 {
-		t.Errorf("after the retry delay: patterns = %q, gh calls = %d", got, gh.calls)
-	}
-	if _, err := os.Stat(d.markerPath("failed")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("a successful fetch left the failure marker: %v", err)
-	}
-}
-
 func TestDenyInvalidPatternWarnsWithoutShowingIt(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{
@@ -371,45 +323,15 @@ func TestGitHubRepoHostAlias(t *testing.T) {
 	}
 }
 
-// TestDenyUnknownRepoWarnsOnceADay checks the warning when the repository
-// cannot be told from the remote: it says so, and it is printed once a day
-// for the clone.
-func TestDenyUnknownRepoWarnsOnceADay(t *testing.T) {
+// TestDenyUnknownRepoWarns checks the warning when the repository cannot be
+// told from the origin remote: it says so, and gh is not called.
+func TestDenyUnknownRepoWarns(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{}
 	d := newTestDeny(t, gh, &stderr)
 	d.repo = ""
-	d.gitDir = gitCommonDir(cleanRepo(t))
 	d.patterns(context.Background())
-	if !strings.Contains(stderr.String(), "could not tell the GitHub repository") || strings.Count(stderr.String(), "\n") != 1 {
-		t.Fatalf("first run: stderr = %q, want one warning that the repository is unknown", stderr.String())
-	}
-	stderr.Reset()
-	d.patterns(context.Background())
-	if stderr.Len() != 0 || gh.calls != 0 {
-		t.Errorf("second run: stderr = %q, gh calls = %d, want neither", stderr.String(), gh.calls)
-	}
-}
-
-// TestGitRepoOfFork checks that when origin is not a Runware repository,
-// such as a personal fork, the deny list is read from a remote that is one,
-// upstream first, and that origin is used when no remote is.
-func TestGitRepoOfFork(t *testing.T) {
-	runware := func(name string) string {
-		return "https://github.com/" + shortRepo + name + ".git"
-	}
-	dir := cleanRepo(t)
-	gitIn(t, dir, "remote", "add", "origin", "git@github.com:someone/"+repoCLI+".git")
-	if got := gitRepoOf(dir); got != "someone/"+repoCLI {
-		t.Fatalf("fork alone: gitRepoOf = %q, want origin's", got)
-	}
-	gitIn(t, dir, "remote", "add", "another", runware("other"))
-	gitIn(t, dir, "remote", "add", "upstream", runware(repoCLI))
-	if got := gitRepoOf(dir); got != shortRepo+repoCLI {
-		t.Fatalf("fork with upstream: gitRepoOf = %q, want %q", got, shortRepo+repoCLI)
-	}
-	gitIn(t, dir, "remote", "set-url", "origin", runware("origin-repo"))
-	if got := gitRepoOf(dir); got != shortRepo+"origin-repo" {
-		t.Fatalf("Runware origin: gitRepoOf = %q, want origin's", got)
+	if !strings.Contains(stderr.String(), "could not tell the GitHub repository") || strings.Count(stderr.String(), "\n") != 1 || gh.calls != 0 {
+		t.Fatalf("stderr = %q, gh calls = %d, want one warning that the repository is unknown", stderr.String(), gh.calls)
 	}
 }

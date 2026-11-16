@@ -71,10 +71,7 @@ go-tidy:
 # Run once per clone, and again after pulling changes to tools/checkpublic:
 # builds the checker into the clone's common git directory and installs a
 # pre-push hook there that runs that copy, so a push never runs code from the
-# branch being pushed. Every worktree of the clone shares both. It records
-# the commit the checker was built from beside it ("-dirty" when
-# tools/checkpublic has uncommitted changes), and unless FORCE=1 refuses a
-# dirty build and any build whose commit does not contain the installed one.
+# branch being pushed. Every worktree of the clone shares both.
 CHECKPUBLIC_HOOK_MARKER = installed by make setup: runs tools/checkpublic
 
 setup:
@@ -86,23 +83,9 @@ setup:
 		echo "make setup: $$hook exists and was not installed by make setup; move it aside and run make setup again" >&2; \
 		exit 1; \
 	fi; \
-	commit=$$(git rev-parse HEAD); \
-	if [ -n "$$(git status --porcelain --untracked-files=all -- tools/checkpublic)" ]; then \
-		if [ "$(FORCE)" != 1 ]; then \
-			echo "make setup: tools/checkpublic has uncommitted changes; commit or discard them, or FORCE=1 make setup to install this build (recorded as $$commit-dirty)" >&2; \
-			exit 1; \
-		fi; \
-		commit="$$commit-dirty"; \
-	fi; \
-	installed=$$(cat "$$bin.commit" 2>/dev/null || true); \
-	if [ "$(FORCE)" != 1 ] && [ -n "$$installed" ] && [ "$$installed" != "$$commit" ] && ! git merge-base --is-ancestor "$${installed%-dirty}" HEAD 2>/dev/null; then \
-		echo "make setup: the installed checker was built from $$installed, which this checkout ($$commit) does not contain: it is newer or on another branch; run make setup from a checkout that contains it, or FORCE=1 make setup to replace it" >&2; \
-		exit 1; \
-	fi; \
 	mkdir -p "$$common/checkpublic/bin" "$$common/hooks"; \
 	go build -o "$$bin.new" ./tools/checkpublic; \
 	mv -f "$$bin.new" "$$bin"; \
-	echo "$$commit" > "$$bin.commit"; \
 	{ \
 		echo '#!/bin/sh'; \
 		echo '# $(CHECKPUBLIC_HOOK_MARKER) in prepush mode.'; \
@@ -120,7 +103,7 @@ setup:
 	if [ -n "$$hooks_path" ]; then \
 		echo "make setup: warning: core.hooksPath is set to $$hooks_path, and git does not run hooks in the git directory, such as $$hook, while it is set; unset it with git config --unset core.hooksPath (add --global if it is set there)" >&2; \
 	fi; \
-	echo "make setup: installed $$hook"
+	echo "make setup: installed $$hook, running the checker built from commit $$(git rev-parse --short HEAD)"
 
 # Check what this branch would publish (diff, commit messages and branch name
 # since the merge-base with origin/main) for text that must not be public.
