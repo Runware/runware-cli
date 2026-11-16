@@ -80,6 +80,15 @@ type requestRecorder struct {
 	handler  http.HandlerFunc
 }
 
+// recorded returns a copy of the requests received so far. A handler that
+// never answers leaves no response to order its record before the caller's
+// read, so the read takes the lock too.
+func (r *requestRecorder) recorded() []recordedRequest {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]recordedRequest(nil), r.requests...)
+}
+
 func (r *requestRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mu.Lock()
 	r.requests = append(r.requests, recordedRequest{
@@ -150,6 +159,14 @@ func runServerlessAnswering(t *testing.T, stdin string, args ...string) serverle
 
 func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, args ...string) serverlessRun {
 	t.Helper()
+	return runServerlessFormatted(t, handler, stdin, "", args...)
+}
+
+// runServerlessFormatted runs `serverless <args>` as runServerlessWith does,
+// with the root --format flag set to format when it is not empty. A formatted
+// run silences Cobra's own error and usage output, as the real root does.
+func runServerlessFormatted(t *testing.T, handler http.HandlerFunc, stdin io.Reader, format output.Format, args ...string) serverlessRun {
+	t.Helper()
 	rec := &requestRecorder{
 		handler: handler,
 	}
@@ -159,8 +176,15 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
 
 	cmd := NewCmd(log.New(io.Discard))
-	// The root command owns --format; stand in for it so a test can pass it.
-	cmd.PersistentFlags().String("format", "", "")
+	// The root command owns --format; stand in for it so a test can pass it
+	// as an argument or preset it through format.
+	cmd.PersistentFlags().String("format", string(format), "")
+	if format != "" {
+		// Silenced as the real root is, so cobraOutput holds only what the
+		// command wrote beside the error the CLI prints.
+		cmd.SilenceErrors = true
+		cmd.SilenceUsage = true
+	}
 	var cobraOutput bytes.Buffer
 	cmd.SetOut(&cobraOutput)
 	cmd.SetErr(&cobraOutput)
@@ -180,8 +204,10 @@ func runServerlessWith(t *testing.T, handler http.HandlerFunc, stdin io.Reader, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Close waits for every handler, so the record holds every request.
+	srv.Close()
 	return serverlessRun{
-		requests:    rec.requests,
+		requests:    rec.recorded(),
 		cobraOutput: cobraOutput.String(),
 		stdout:      string(out),
 		err:         execErr,

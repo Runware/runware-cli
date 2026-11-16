@@ -51,6 +51,11 @@ func runArgs(args []string) int {
 		return 0
 	}
 	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+		// The status alone reports an interrupt, unless the error carries
+		// what the user needs to resume the work it cut short.
+		if cmdutil.IsResumable(err) {
+			cmdutil.PrintError(logger, cmdutil.FormatFor(rootCmd), err)
+		}
 		return exitInterrupted
 	}
 	cmdutil.PrintError(logger, cmdutil.FormatFor(rootCmd), err)
