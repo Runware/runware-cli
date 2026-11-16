@@ -1,0 +1,242 @@
+package put
+
+import (
+	"context"
+	"crypto/sha256"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+	"time"
+)
+
+func TestHashCacheKey(t *testing.T) {
+	c := loadHashCache(t.TempDir())
+	mod := time.Date(2026, time.November, 16, 9, 0, 0, 123, time.UTC)
+	sum := sha256.Sum256([]byte("content"))
+	c.store("/data/a.bin", 7, mod, sum)
+
+	if got, ok := c.lookup("/data/a.bin", 7, mod); !ok || got != sum {
+		t.Errorf("lookup of the same path, size and time = %x, %v", got, ok)
+	}
+	for name, miss := range map[string]func() bool{
+		"another size":   func() bool { _, ok := c.lookup("/data/a.bin", 8, mod); return ok },
+		"a later time":   func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(time.Nanosecond)); return ok },
+		"an earlier one": func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(-time.Second)); return ok },
+		"another path":   func() bool { _, ok := c.lookup("/data/b.bin", 7, mod); return ok },
+	} {
+		if miss() {
+			t.Errorf("the cache answered for %s", name)
+		}
+	}
+
+	c.forget("/data/a.bin")
+	if _, ok := c.lookup("/data/a.bin", 7, mod); ok {
+		t.Error("the cache answered for a forgotten file")
+	}
+}
+
+func TestHashCacheRoundTrip(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "volumes")
+	c := loadHashCache(dir)
+	mod := time.Date(2026, time.November, 16, 9, 0, 0, 0, time.UTC)
+	sum := sha256.Sum256([]byte("content"))
+	c.store("/data/a.bin", 7, mod, sum)
+	if err := c.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, ok := loadHashCache(dir).lookup("/data/a.bin", 7, mod); !ok || got != sum {
+		t.Errorf("a saved entry reads back as %x, %v", got, ok)
+	}
+}
+
+func TestHashCacheCorruptFileIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, hashCacheFile), []byte("{not json"))
+
+	c := loadHashCache(dir)
+
+	if len(c.entries) != 0 {
+		t.Fatalf("a corrupt cache holds %d entries", len(c.entries))
+	}
+	c.store("/data/a.bin", 1, time.Unix(1, 0), [32]byte{1})
+	if err := c.save(); err != nil {
+		t.Errorf("a corrupt cache could not be replaced: %v", err)
+	}
+}
+
+func TestHashCacheFilePerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no permission bits")
+	}
+	dir := filepath.Join(t.TempDir(), "volumes")
+	c := loadHashCache(dir)
+	c.store("/data/a.bin", 1, time.Unix(1, 0), [32]byte{1})
+	if err := c.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileInfo, err := os.Stat(filepath.Join(dir, hashCacheFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 || fileInfo.Mode().Perm() != 0o600 {
+		t.Errorf("cache modes: directory %o, file %o, want 700 and 600", dirInfo.Mode().Perm(), fileInfo.Mode().Perm())
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Errorf("the directory holds %d entries (%v), want the cache only, no temp file", len(entries), err)
+	}
+}
+
+func TestHashFileSetsDigestAndIdentity(t *testing.T) {
+	content := patterned(3<<20+5, 1)
+	file := filepath.Join(t.TempDir(), "a.bin")
+	writeFile(t, file, content)
+	src := Source{
+		Abs:  file,
+		Size: 1,
+	}
+
+	if err := hashFile(t.Context(), &src, make([]byte, hashBufBytes), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if want := sha256.Sum256(content); src.SHA256 != want {
+		t.Errorf("digest = %x, want %x", src.SHA256, want)
+	}
+	if src.Size != int64(len(content)) || src.ModTime.IsZero() {
+		t.Errorf("identity = size %d, time %v, want the size and time the file had when read", src.Size, src.ModTime)
+	}
+}
+
+func TestHashFileHonorsContext(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "a.bin")
+	writeFile(t, file, patterned(1<<20, 1))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	src := Source{Abs: file}
+
+	err := hashFile(ctx, &src, make([]byte, hashBufBytes), nil)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("error = %v, want the cancellation", err)
+	}
+}
+
+// changingContext changes a file the second time hashing asks whether it was cancelled, which is between two reads.
+type changingContext struct {
+	context.Context
+	asked  int
+	change func()
+}
+
+func (c *changingContext) Err() error {
+	if c.asked++; c.asked == 2 {
+		c.change()
+	}
+	return c.Context.Err()
+}
+
+type changedWhileReadCase struct {
+	name   string
+	change func(t *testing.T, file string)
+}
+
+// TestHashFileRefusesAFileThatChangesWhileItIsRead: a file that grows, shrinks or is touched during the read is not hashed.
+func TestHashFileRefusesAFileThatChangesWhileItIsRead(t *testing.T) {
+	cases := []changedWhileReadCase{
+		{
+			name:   "grows",
+			change: func(t *testing.T, file string) { appendTo(t, file, patterned(100, 2)) },
+		},
+		{
+			name: "shrinks",
+			change: func(t *testing.T, file string) {
+				if err := os.Truncate(file, 3<<19); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "is touched",
+			change: func(t *testing.T, file string) {
+				info, err := os.Stat(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				later := info.ModTime().Add(2 * time.Second)
+				if err := os.Chtimes(file, later, later); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.bin")
+			writeFile(t, file, patterned(3<<20, 1))
+			ctx := &changingContext{
+				Context: t.Context(),
+				change:  func() { tc.change(t, file) },
+			}
+			src := Source{Abs: file}
+
+			err := hashFile(ctx, &src, make([]byte, hashBufBytes), nil)
+
+			if !errors.Is(err, ErrSourceChanged) {
+				t.Fatalf("error = %v, want ErrSourceChanged", err)
+			}
+			if fe, ok := errors.AsType[*FileError](err); !ok || fe.Path != file {
+				t.Errorf("error %v does not name %s", err, file)
+			}
+			if src.SHA256 != [32]byte{} {
+				t.Error("the digest of a file that changed was recorded")
+			}
+		})
+	}
+}
+
+func TestUnchanged(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "a.bin")
+	writeFile(t, file, patterned(10, 1))
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := Source{
+		Abs:     file,
+		Size:    info.Size(),
+		ModTime: info.ModTime(),
+	}
+	if err := unchanged(&src); err != nil {
+		t.Fatalf("an untouched file is changed: %v", err)
+	}
+
+	later := info.ModTime().Add(time.Second)
+	if err := os.Chtimes(file, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := unchanged(&src); !errors.Is(err, ErrSourceChanged) {
+		t.Errorf("a touched file: error = %v, want ErrSourceChanged", err)
+	}
+
+	writeFile(t, file, patterned(11, 1))
+	src.ModTime = later
+	if err := unchanged(&src); !errors.Is(err, ErrSourceChanged) {
+		t.Errorf("a file of another size: error = %v, want ErrSourceChanged", err)
+	}
+
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if err := unchanged(&src); !errors.Is(err, ErrSourceChanged) {
+		t.Errorf("a removed file: error = %v, want ErrSourceChanged", err)
+	}
+}
