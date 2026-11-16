@@ -40,6 +40,10 @@ var (
 	subjectPrefixPattern = regexp.MustCompile(`^worker:org:([A-Za-z0-9-]+):env:([A-Za-z0-9-]+):$`)
 	// gcpProviderPattern is a workload identity provider resource name.
 	gcpProviderPattern = regexp.MustCompile(`^(projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+)/providers/[a-z0-9-]+$`)
+	// gcpServiceAccountPattern is a service account created in a project:
+	// <name>@<project id>.iam.gserviceaccount.com. gcloud cannot resolve the account
+	// without a project, so the binding names the one the email carries.
+	gcpServiceAccountPattern = regexp.MustCompile(`^[^@]+@([a-z][a-z0-9-]*)\.iam\.gserviceaccount\.com$`)
 	// awsRolePattern is an IAM role ARN: partition, account, optional path, name.
 	awsRolePattern = regexp.MustCompile(`^arn:(aws[a-z-]*):iam::([0-9]{12}):role/(.+)$`)
 )
@@ -298,11 +302,13 @@ func renderGCP(b *strings.Builder, in trustInput, issuer, prefix, envID string) 
 		}
 		b.WriteString("\n# 2. Let the workers impersonate the connector's service account.\n")
 		b.WriteString("#    Grant the service account the access it needs on your resources separately.\n")
-		writeGCPGuardedBinding(b, provider, issuer, prefix, in.scope, []string{
-			fmt.Sprintf("gcloud iam service-accounts add-iam-policy-binding %s \\", sa),
-			"  --role=roles/iam.workloadIdentityUser \\",
-			"  --member=" + member,
-		})
+		binding := []string{fmt.Sprintf("gcloud iam service-accounts add-iam-policy-binding %s \\", sa)}
+		// Without a default project gcloud stops with "Failed to find attribute [project]".
+		if pm := gcpServiceAccountPattern.FindStringSubmatch(sa); pm != nil {
+			binding = append(binding, "  --project="+pm[1]+" \\")
+		}
+		binding = append(binding, "  --role=roles/iam.workloadIdentityUser \\", "  --member="+member)
+		writeGCPGuardedBinding(b, provider, issuer, prefix, in.scope, binding)
 		return nil
 	}
 

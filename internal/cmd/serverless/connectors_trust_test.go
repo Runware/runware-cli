@@ -125,7 +125,7 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 					` --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('` + trustPrefix + `')\"" >&2` + "\n",
 				`  echo "then add the entry to it. --attribute-mapping replaces the whole mapping, so keep every entry it has: gcloud iam workload-identity-pools providers update-oidc ` + testWIP +
 					` --attribute-mapping=\"<every existing entry>,google.subject=assertion.sub\"" >&2` + "\n",
-				"else\n  unset runware_condition runware_provider\n  gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n",
+				"else\n  unset runware_condition runware_provider\n  gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n    --project=my-project \\\n",
 				"  --issuer-uri=" + trustIssuer + " \\\n",
 				"attribute.environment_id=assertion.environment_id",
 				`  --attribute-condition="assertion.sub.startsWith('` + trustPrefix + `')"` + "\n",
@@ -337,9 +337,9 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 		printed  func(member string) []string // the binding lines printed for a run by hand
 	}{
 		{"with a service account", trustAttachmentGCP(), func(member string) []string {
-			return []string{"service-accounts add-iam-policy-binding " + testServiceAccount, "--role=roles/iam.workloadIdentityUser", "--member=" + member}
+			return []string{"service-accounts add-iam-policy-binding " + testServiceAccount, "--project=my-project", "--role=roles/iam.workloadIdentityUser", "--member=" + member}
 		}, func(member string) []string {
-			return []string{"gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + ` \`, `  --role=roles/iam.workloadIdentityUser \`, "  --member=" + member}
+			return []string{"gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + ` \`, `  --project=my-project \`, `  --role=roles/iam.workloadIdentityUser \`, "  --member=" + member}
 		}},
 		{"without a service account", withoutSA, func(member string) []string {
 			return []string{"storage buckets add-iam-policy-binding gs://inputs", "--role=roles/storage.objectViewer", "--member=" + member}
