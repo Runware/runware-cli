@@ -6,13 +6,9 @@ import (
 	"strings"
 )
 
-// isPrivateTarget reports whether owner/name is a Runware repository that is
-// not public. Publishing there is not this check's concern.
+// isPrivateTarget reports whether repo, an owner/name from githubRepo, is a
+// Runware repository that is not public. Publishing there is not this check's concern.
 func (s *Scanner) isPrivateTarget(repo string) bool {
-	repo = strings.TrimSuffix(repo, ".git")
-	if i := strings.LastIndex(repo, "github.com/"); i >= 0 {
-		repo = repo[i+len("github.com/"):]
-	}
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || !strings.EqualFold(owner, "runware") {
 		return false
@@ -20,15 +16,20 @@ func (s *Scanner) isPrivateTarget(repo string) bool {
 	return !s.IsPublicRepo(name)
 }
 
-var remoteURL = regexp.MustCompile(`github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$`)
+// remoteURL matches a remote URL with a host: scheme://[user@]host[:port]/path
+// or the scp-like [user@]host:path. Its groups are the host and the
+// owner/name.
+var remoteURL = regexp.MustCompile(`^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/]+@)?([^@/:]+)(?::[0-9]*)?[:/]([^/]+/[^/]+?)(?:\.git)?/?$`)
 
-// githubRepo returns the owner/name of a GitHub remote URL, or "".
+// githubRepo returns the owner/name of a GitHub remote URL, or "". A host
+// whose name contains "github" counts as GitHub, so an SSH host alias such
+// as github-work (a Host entry in ~/.ssh/config) is recognized too.
 func githubRepo(url string) string {
 	m := remoteURL.FindStringSubmatch(strings.TrimSpace(url))
-	if m == nil {
+	if len(m) < 3 || !strings.Contains(strings.ToLower(m[1]), "github") {
 		return ""
 	}
-	return m[1]
+	return m[2]
 }
 
 // gitRepoOf reads the GitHub repository of dir from its origin remote.
@@ -38,4 +39,14 @@ func gitRepoOf(dir string) string {
 		return ""
 	}
 	return githubRepo(out)
+}
+
+// gitCommonDir returns the common git directory of dir's clone, which every
+// worktree of the clone shares, or "".
+func gitCommonDir(dir string) string {
+	out, err := Git{Dir: dir}.run(context.Background(), "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }

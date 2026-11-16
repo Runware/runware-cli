@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -49,8 +51,12 @@ type denySource struct {
 	// in its public log, and the matched text in a finding would too.
 	inCI bool
 	// repo is the owner/name the variable belongs to, from the origin
-	// remote of the scanned repository.
+	// remote of the scanned repository, or "" when that is not a GitHub
+	// remote.
 	repo string
+	// gitDir is the clone's common git directory. It keys the warning
+	// marker when repo is "".
+	gitDir string
 	// extra is more patterns from the CHECKPUBLIC_DENY environment variable.
 	extra    string
 	run      commandRunner
@@ -69,6 +75,7 @@ var newDenySource = func(inCI bool, dir string, stderr io.Writer) denySource {
 	return denySource{
 		inCI:     inCI,
 		repo:     gitRepoOf(dir),
+		gitDir:   gitCommonDir(dir),
 		extra:    os.Getenv(denyVariable),
 		run:      execRunner,
 		now:      time.Now,
@@ -80,16 +87,19 @@ var newDenySource = func(inCI bool, dir string, stderr io.Writer) denySource {
 // patterns returns the deny list. It never fails: when the list cannot be
 // read the other rules still apply, with a warning at most once a day for
 // the repository. It never prints the patterns.
-func (d denySource) patterns(ctx context.Context) []string {
+func (d denySource) patterns(ctx context.Context) []*regexp.Regexp {
 	if d.inCI {
 		return nil
 	}
 	text, age, ok := d.variable(ctx)
 	stale := ok && age >= denyCacheTTL
 	if (!ok || stale) && d.shouldWarn() {
-		if ok {
+		switch {
+		case ok:
 			logf(d.stderr, "checkpublic: warning: could not refresh the repository deny list with gh; using the copy saved %s ago, which misses names added since.\n", age.Round(time.Hour))
-		} else {
+		case d.repo == "":
+			logf(d.stderr, "checkpublic: warning: the repository deny list is unavailable: could not tell the GitHub repository from the origin remote, so the %s variable was not read; the other rules still apply.\n", denyVariable)
+		default:
 			logf(d.stderr, "checkpublic: warning: the repository deny list is unavailable (could not read the %s variable with gh); the other rules still apply.\n", denyVariable)
 		}
 	}
@@ -134,14 +144,20 @@ func (d denySource) shouldWarn() bool {
 	return true
 }
 
-// markerPath returns the path of an empty file in the cache directory whose
-// modification time records when kind last happened for the repository, or
-// "" when there is no cache directory or repository.
+// markerPath returns the path of a file in the cache directory for kind and
+// the repository, or for the clone when the repository is unknown, or ""
+// when there is neither or no cache directory. An empty marker's
+// modification time records when kind last happened.
 func (d denySource) markerPath(kind string) string {
-	if d.cacheDir == "" || d.repo == "" {
+	key := strings.ToLower(d.repo)
+	if key == "" && d.gitDir != "" {
+		sum := sha256.Sum256([]byte(d.gitDir))
+		key = "clone-" + hex.EncodeToString(sum[:8])
+	}
+	if d.cacheDir == "" || key == "" {
 		return ""
 	}
-	return filepath.Join(d.cacheDir, kind+"-"+unsafePathChars.ReplaceAllString(strings.ToLower(d.repo), "_"))
+	return filepath.Join(d.cacheDir, kind+"-"+unsafePathChars.ReplaceAllString(key, "_"))
 }
 
 // markedWithin reports whether the marker at path was set less than ttl ago.
@@ -214,19 +230,16 @@ func (d denySource) writeCache(path string, b []byte) {
 
 // parse returns the patterns in text, dropping comments, blank lines and
 // patterns that do not compile (with a warning that does not show them).
-func (d denySource) parse(text string) []string {
-	var out []string
+func (d denySource) parse(text string) []*regexp.Regexp {
+	var out []*regexp.Regexp
 	bad := 0
-	for line := range strings.SplitSeq(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if _, err := regexp.Compile(line); err != nil {
+	for _, line := range listLines(text) {
+		re, err := regexp.Compile(line)
+		if err != nil {
 			bad++
 			continue
 		}
-		out = append(out, line)
+		out = append(out, re)
 	}
 	if bad > 0 {
 		logf(d.stderr, "checkpublic: warning: skipped %d deny list pattern(s) that are not valid regular expressions.\n", bad)

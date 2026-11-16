@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -399,10 +402,7 @@ func TestScanLine(t *testing.T) {
 			want: nil,
 		},
 	}
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewScanner()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var got []string
@@ -417,43 +417,37 @@ func TestScanLine(t *testing.T) {
 }
 
 func TestLocalDenyList(t *testing.T) {
-	s, err := NewScanner([]string{`(?i)\bacme storage\b`})
-	if err != nil {
-		t.Fatal(err)
+	d := denySource{
+		extra:  `(?i)\bacme storage\b`,
+		stderr: io.Discard,
+	}
+	s := NewScanner()
+	s.loadDeny = func() []*regexp.Regexp {
+		return d.patterns(context.Background())
 	}
 	hits := s.ScanLine("", "objects live in ACME Storage")
 	if len(hits) != 1 || hits[0].rule != ruleDenyList {
 		t.Fatalf("hits = %+v, want one %s", hits, ruleDenyList)
 	}
-	if _, err := NewScanner([]string{"("}); err == nil {
-		t.Fatal("an invalid deny pattern was accepted")
-	}
 }
 
 func TestExcludedFiles(t *testing.T) {
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
+	s := NewScanner()
+	diff := func(file string) string {
+		return "diff --git a/" + file + " b/" + file + "\n--- /dev/null\n+++ b/" + file + "\n@@ -0,0 +1 @@\n+" + specMarker + "\n"
 	}
-	content := []byte(specMarker + "\n")
 	for _, file := range []string{"go.sum", "internal/api/gen/client.gen.go"} {
-		if f := s.ScanFile(file, content); len(f) != 0 {
-			t.Errorf("ScanFile(%s) = %+v, want no findings", file, f)
+		if f := s.ScanDiff(diff(file)); len(f) != 0 {
+			t.Errorf("ScanDiff(%s) = %+v, want no findings", file, f)
 		}
 	}
-	if f := s.ScanFile("api/openapi.yaml", content); len(f) != 1 || f[0].Where != "api/openapi.yaml:1" {
-		t.Errorf("ScanFile(api/openapi.yaml) = %+v, want one finding on line 1", f)
-	}
-	if f := s.ScanFile("bin/x", []byte("\x00"+specMarker)); len(f) != 0 {
-		t.Errorf("binary file findings = %+v", f)
+	if f := s.ScanDiff(diff("api/openapi.yaml")); len(f) != 1 || f[0].Where != "api/openapi.yaml:1" {
+		t.Errorf("ScanDiff(api/openapi.yaml) = %+v, want one finding on line 1", f)
 	}
 }
 
 func TestPublicReposAllowlist(t *testing.T) {
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewScanner()
 	for _, name := range []string{repoCLI, "Runware-CLI", "homebrew-tap", "runware-serverless"} {
 		if !s.IsPublicRepo(name) {
 			t.Errorf("%s is not in the allowlist", name)
@@ -465,10 +459,7 @@ func TestPublicReposAllowlist(t *testing.T) {
 }
 
 func TestScanDiff(t *testing.T) {
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewScanner()
 	diff := strings.Join([]string{
 		commitMarker + "0123456789abcdef",
 		"diff --git a/a.yaml b/a.yaml",
@@ -503,10 +494,7 @@ func TestScanDiff(t *testing.T) {
 }
 
 func TestScanText(t *testing.T) {
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewScanner()
 	f := s.ScanText("PR body", "first line\nsee "+ghRepo+"some-private-repo")
 	if len(f) != 1 || f[0].Where != "PR body line 2" || f[0].Match != "some-private-repo" {
 		t.Fatalf("ScanText = %+v", f)

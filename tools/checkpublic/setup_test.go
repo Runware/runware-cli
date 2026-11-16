@@ -11,6 +11,8 @@ import (
 	"testing"
 )
 
+const goosWindows = "windows"
+
 // setupRun runs name with args in dir, with the user's git configuration
 // ignored, and returns its combined output and whether it succeeded.
 func setupRun(t *testing.T, dir, name string, args ...string) (string, bool) {
@@ -85,16 +87,15 @@ func setupClone(t *testing.T) string {
 // TestMakeSetup checks what make setup installs: the checker built into the
 // common git directory and a pre-push hook there that runs it, so a linked
 // worktree is covered and a push runs no code from the pushed branch. It
-// also drops core.hooksPath=.githooks and can run again.
+// can run again.
 func TestMakeSetup(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("make setup writes a POSIX shell hook")
 	}
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make is not installed")
 	}
 	dir := setupClone(t)
-	mustRun(t, dir, "git", "config", "core.hooksPath", ".githooks")
 	worktree := filepath.Join(filepath.Dir(dir), "worktree")
 	mustRun(t, dir, "git", "worktree", "add", "-q", "-b", "feature", worktree)
 
@@ -111,10 +112,6 @@ func TestMakeSetup(t *testing.T) {
 	if info, err := os.Stat(filepath.Join(common, "checkpublic", "bin", "checkpublic")); err != nil || info.Mode().Perm()&0o100 == 0 {
 		t.Fatalf("installed checker missing or not executable: %v", err)
 	}
-	if out, ok := setupRun(t, dir, "git", "config", "--get", "core.hooksPath"); ok {
-		t.Fatalf("core.hooksPath is still set: %s", out)
-	}
-
 	// Running it again is fine and leaves the same hook.
 	mustRun(t, dir, "make", "setup")
 	if again, err := os.ReadFile(hook); err != nil || !bytes.Equal(again, script) { //nolint:gosec // the hook make setup wrote
@@ -153,7 +150,7 @@ func TestMakeSetup(t *testing.T) {
 // TestMakeSetupKeepsOtherHook checks that make setup refuses to replace a
 // pre-push hook it did not install.
 func TestMakeSetupKeepsOtherHook(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == goosWindows {
 		t.Skip("make setup writes a POSIX shell hook")
 	}
 	if _, err := exec.LookPath("make"); err != nil {
@@ -170,5 +167,26 @@ func TestMakeSetupKeepsOtherHook(t *testing.T) {
 	}
 	if b, err := os.ReadFile(hook); err != nil || string(b) != own { //nolint:gosec // the hook this test wrote
 		t.Fatalf("the other hook changed (%v): %q", err, b)
+	}
+}
+
+// TestMakeSetupWarnsAboutHooksPath checks that make setup warns when
+// core.hooksPath is set, since git then does not run the hook it installs,
+// and leaves the setting to the user.
+func TestMakeSetupWarnsAboutHooksPath(t *testing.T) {
+	if runtime.GOOS == goosWindows {
+		t.Skip("make setup writes a POSIX shell hook")
+	}
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make is not installed")
+	}
+	dir := setupClone(t)
+	mustRun(t, dir, "git", "config", "core.hooksPath", ".hooks")
+	out, ok := setupRun(t, dir, "make", "setup")
+	if !ok || !strings.Contains(out, "while it is set") || !strings.Contains(out, "git config --unset core.hooksPath") {
+		t.Fatalf("make setup with core.hooksPath set: ok=%v\n%s", ok, out)
+	}
+	if got, ok := setupRun(t, dir, "git", "config", "--get", "core.hooksPath"); !ok || strings.TrimSpace(got) != ".hooks" {
+		t.Fatalf("core.hooksPath = %q, want it left as set", got)
 	}
 }

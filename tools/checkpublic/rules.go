@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	_ "embed"
-	"fmt"
 	"net/netip"
 	"path"
 	"regexp"
@@ -59,62 +57,55 @@ type rule struct {
 type Scanner struct {
 	publicRepos map[string]struct{}
 	rules       []rule
-	// loadDeny, when set, returns more deny patterns. It runs once, before
-	// the first line is scanned, so a run that scans nothing (a push of a
-	// deletion, or to a private repository) never fetches the deny list.
-	loadDeny func() []string
+	// loadDeny, when set, returns the deny list: names that must not be
+	// published but cannot be written down here either (see deny.go). It
+	// runs once, before the first line is scanned, so a run that scans
+	// nothing (a push of a deletion, or to a private repository) never
+	// fetches the deny list.
+	loadDeny func() []*regexp.Regexp
 	denyOnce sync.Once
 }
 
-// NewScanner builds a scanner with the built-in rules plus deny, a list of
-// extra regular expressions kept outside the repository (for example names
-// that must not be published but cannot be written down here either).
-func NewScanner(deny []string) (*Scanner, error) {
-	s := &Scanner{
+// NewScanner builds a scanner with the built-in rules.
+func NewScanner() *Scanner {
+	return &Scanner{
 		publicRepos: parsePublicRepos(publicReposFile),
 		rules:       builtinRules(),
 	}
-	for _, d := range deny {
-		re, err := regexp.Compile(d)
-		if err != nil {
-			return nil, fmt.Errorf("deny pattern %q: %w", d, err)
-		}
-		s.addDeny(re)
-	}
-	return s, nil
 }
 
-func (s *Scanner) addDeny(re *regexp.Regexp) {
-	s.rules = append(s.rules, rule{
-		name:    ruleDenyList,
-		message: "matches a pattern from the deny list",
-		re:      re,
-	})
-}
-
-// denyRules runs loadDeny once. Patterns that do not compile are skipped:
-// the loader has already warned about them.
+// denyRules adds the rules of the deny list, once.
 func (s *Scanner) denyRules() {
 	s.denyOnce.Do(func() {
 		if s.loadDeny == nil {
 			return
 		}
-		for _, d := range s.loadDeny() {
-			if re, err := regexp.Compile(d); err == nil {
-				s.addDeny(re)
-			}
+		for _, re := range s.loadDeny() {
+			s.rules = append(s.rules, rule{
+				name:    ruleDenyList,
+				message: "matches a pattern from the deny list",
+				re:      re,
+			})
 		}
 	})
 }
 
+// listLines returns the entries of a list file: one per line, with blank
+// lines and lines starting with # left out.
+func listLines(text string) []string {
+	var out []string
+	for line := range strings.SplitSeq(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
 func parsePublicRepos(text string) map[string]struct{} {
 	repos := map[string]struct{}{}
-	sc := bufio.NewScanner(strings.NewReader(text))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
+	for _, line := range listLines(text) {
 		repos[strings.ToLower(line)] = struct{}{}
 	}
 	return repos

@@ -134,7 +134,7 @@ type modeCase struct {
 	want  int
 }
 
-// TestScanModes runs the range, text and files modes as make check-public
+// TestScanModes runs the range and text modes as make check-public
 // and people run them.
 func TestScanModes(t *testing.T) {
 	leakyFile := func(t *testing.T) string {
@@ -169,24 +169,6 @@ func TestScanModes(t *testing.T) {
 			name:  "clean text on stdin",
 			args:  []string{"text", "-"},
 			stdin: cleanText + "\n",
-			want:  0,
-		},
-		{
-			name:  "files with a leak",
-			args:  []string{modeFiles},
-			setup: leakyFile,
-			want:  exitFindings,
-		},
-		{
-			name:  "named clean file",
-			args:  []string{modeFiles, "a.txt"},
-			setup: leakyFile,
-			want:  0,
-		},
-		{
-			name:  "clean files",
-			args:  []string{modeFiles},
-			setup: cleanRepo,
 			want:  0,
 		},
 	}

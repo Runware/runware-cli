@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -56,8 +57,20 @@ func runLoggedOut(m *testing.M) int {
 
 const testRepo = "owner/repo"
 
+// patternStrings returns the source text of each pattern.
+func patternStrings(res []*regexp.Regexp) []string {
+	var out []string
+	for _, re := range res {
+		out = append(out, re.String())
+	}
+	return out
+}
+
 // fetchedList is the deny list the fake gh returns.
-const fetchedList = "fetched\n"
+const (
+	fetchedPattern = "fetched"
+	fetchedList    = fetchedPattern + "\n"
+)
 
 // fakeGH records gh calls and answers with out or err.
 type fakeGH struct {
@@ -111,7 +124,7 @@ func TestDenyFreshCache(t *testing.T) {
 	}
 	d := newTestDeny(t, gh, &stderr)
 	writeTestCache(t, d, "# comment\ncached\n\n", time.Hour)
-	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"cached"}) {
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{"cached"}) {
 		t.Errorf("patterns = %q, want the cached list", got)
 	}
 	if gh.calls != 0 {
@@ -129,7 +142,7 @@ func TestDenyExpiredCacheRefetches(t *testing.T) {
 	}
 	d := newTestDeny(t, gh, &stderr)
 	writeTestCache(t, d, "cached\n", 25*time.Hour)
-	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"fetched"}) {
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{fetchedPattern}) {
 		t.Errorf("patterns = %q, want the fetched list", got)
 	}
 	if gh.calls != 1 {
@@ -146,7 +159,7 @@ func TestDenyExpiredCacheRefetches(t *testing.T) {
 		t.Errorf("cache time = %v, want %v", info.ModTime(), testNow)
 	}
 	// The refreshed cache is fresh: the next run does not call gh.
-	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"fetched"}) || gh.calls != 1 {
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{fetchedPattern}) || gh.calls != 1 {
 		t.Errorf("second run: patterns = %q, gh calls = %d", got, gh.calls)
 	}
 }
@@ -158,7 +171,7 @@ func TestDenyFetchFailureUsesStaleCache(t *testing.T) {
 	}
 	d := newTestDeny(t, gh, &stderr)
 	writeTestCache(t, d, "cached\n", 72*time.Hour)
-	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"cached"}) {
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{"cached"}) {
 		t.Errorf("patterns = %q, want the stale list", got)
 	}
 	if !strings.Contains(stderr.String(), "72h0m0s ago") || strings.Contains(stderr.String(), "cached") {
@@ -173,7 +186,7 @@ func TestDenyFetchFailureWithoutCacheWarns(t *testing.T) {
 	}
 	d := newTestDeny(t, gh, &stderr)
 	d.extra = "from-env"
-	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"from-env"}) {
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{"from-env"}) {
 		t.Errorf("patterns = %q, want only the environment's", got)
 	}
 	if !strings.Contains(stderr.String(), "deny list is unavailable") || strings.Count(stderr.String(), "\n") != 1 {
@@ -184,11 +197,8 @@ func TestDenyFetchFailureWithoutCacheWarns(t *testing.T) {
 	}
 
 	// The scan goes on with every other rule.
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.loadDeny = func() []string {
+	s := NewScanner()
+	s.loadDeny = func() []*regexp.Regexp {
 		return d.patterns(context.Background())
 	}
 	if f := s.ScanText("PR title", "fix: "+clusterHost); len(f) != 1 || f[0].Rule != ruleInternalHost {
@@ -236,7 +246,7 @@ func TestDenyFailureSkipsGhForAWhile(t *testing.T) {
 	gh.err = nil
 	gh.out = fetchedList
 	d.now = func() time.Time { return testNow.Add(denyRetryAfter) }
-	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"fetched"}) || gh.calls != 2 {
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{fetchedPattern}) || gh.calls != 2 {
 		t.Errorf("after the retry delay: patterns = %q, gh calls = %d", got, gh.calls)
 	}
 	if _, err := os.Stat(d.markerPath("failed")); !errors.Is(err, os.ErrNotExist) {
@@ -250,7 +260,7 @@ func TestDenyInvalidPatternWarnsWithoutShowingIt(t *testing.T) {
 		out: "secret-name(\nok\n",
 	}
 	d := newTestDeny(t, gh, &stderr)
-	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"ok"}) {
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{"ok"}) {
 		t.Errorf("patterns = %q, want the valid one", got)
 	}
 	if strings.Contains(stderr.String(), "secret-name") || !strings.Contains(stderr.String(), "skipped 1") {
@@ -279,11 +289,8 @@ func TestDenyCISkips(t *testing.T) {
 // here, a deletion or a push to a private repository, never loads the deny
 // list, so it never waits on gh.
 func TestDenyNotLoadedWithoutScan(t *testing.T) {
-	s, err := NewScanner(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.loadDeny = func() []string {
+	s := NewScanner()
+	s.loadDeny = func() []*regexp.Regexp {
 		t.Error("the deny list was loaded")
 		return nil
 	}
@@ -298,5 +305,54 @@ func TestDenyNotLoadedWithoutScan(t *testing.T) {
 	private := "https://github.com/" + shortRepo + "some-private-repo.git"
 	if f, err := s.prePush(context.Background(), g, []string{remoteOrigin, private}, strings.NewReader("refs/heads/a b refs/heads/a "+zero+"\n")); err != nil || len(f) != 0 {
 		t.Fatalf("prePush to a private repository = %+v, %v", f, err)
+	}
+}
+
+// TestGitHubRepoHostAlias checks that an SSH host alias for GitHub, such as
+// a Host entry in ~/.ssh/config, still gives the repository, so the deny
+// list is read from it.
+func TestGitHubRepoHostAlias(t *testing.T) {
+	for url, want := range map[string]string{
+		"git@github-work:owner/repo.git":         testRepo,
+		"ssh://git@github.com:22/owner/repo.git": testRepo,
+		"https://github.com/owner/repo":          testRepo,
+		"git@gitlab.example.com:owner/repo.git":  "",
+		"/srv/git/repo.git":                      "",
+	} {
+		if got := githubRepo(url); got != want {
+			t.Errorf("githubRepo(%q) = %q, want %q", url, got, want)
+		}
+	}
+
+	dir := cleanRepo(t)
+	gitIn(t, dir, "remote", "add", "origin", "git@github-work:owner/repo.git")
+	var stderr bytes.Buffer
+	gh := &fakeGH{
+		out: fetchedList,
+	}
+	d := newTestDeny(t, gh, &stderr)
+	d.repo = gitRepoOf(dir)
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{fetchedPattern}) || gh.calls != 1 {
+		t.Errorf("patterns = %q, gh calls = %d, want the list fetched with -R %s", got, gh.calls, testRepo)
+	}
+}
+
+// TestDenyUnknownRepoWarnsOnceADay checks the warning when the repository
+// cannot be told from the remote: it says so, and it is printed once a day
+// for the clone.
+func TestDenyUnknownRepoWarnsOnceADay(t *testing.T) {
+	var stderr bytes.Buffer
+	gh := &fakeGH{}
+	d := newTestDeny(t, gh, &stderr)
+	d.repo = ""
+	d.gitDir = gitCommonDir(cleanRepo(t))
+	d.patterns(context.Background())
+	if !strings.Contains(stderr.String(), "could not tell the GitHub repository") || strings.Count(stderr.String(), "\n") != 1 {
+		t.Fatalf("first run: stderr = %q, want one warning that the repository is unknown", stderr.String())
+	}
+	stderr.Reset()
+	d.patterns(context.Background())
+	if stderr.Len() != 0 || gh.calls != 0 {
+		t.Errorf("second run: stderr = %q, gh calls = %d, want neither", stderr.String(), gh.calls)
 	}
 }

@@ -7,11 +7,13 @@
 //	checkpublic range [-base REV] [-head REV] [-branch NAME]
 //	checkpublic text [-label LABEL] [FILE|-]...
 //	checkpublic pr [-event FILE]
-//	checkpublic files [PATH]...
 //	checkpublic prepush REMOTE URL   < git pre-push ref lines
 //
 // It prints each finding with where it was found and the rule that fired, and
 // exits 1 when there are findings.
+//
+// The text mode checks a PR description or comment before it is posted:
+// go run ./tools/checkpublic text < body.md
 //
 // The prepush mode is the git pre-push hook that make setup installs: it
 // scans each pushed branch beyond what the remote already has, and each
@@ -34,12 +36,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -47,9 +48,6 @@ const (
 	exitFindings = 1
 	exitError    = 3
 )
-
-// modeFiles is the mode that scans files as they are in the working tree.
-const modeFiles = "files"
 
 // options are the flags every mode accepts.
 type options struct {
@@ -64,7 +62,7 @@ func main() {
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		logln(stderr, "usage: checkpublic range|text|files|pr|prepush [flags]")
+		logln(stderr, "usage: checkpublic range|text|pr|prepush [flags]")
 		return exitError
 	}
 	mode := args[0]
@@ -88,18 +86,14 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return exitError
 	}
 
-	s, err := NewScanner(nil)
-	if err != nil {
-		logln(stderr, "checkpublic:", err)
-		return exitError
-	}
+	s := NewScanner()
 	// Deny list warnings are held until the report is out, so a blocked
 	// push leads with its findings rather than with a warning.
 	var warnings bytes.Buffer
 	defer func() {
 		_, _ = stderr.Write(warnings.Bytes())
 	}()
-	s.loadDeny = func() []string {
+	s.loadDeny = func() []*regexp.Regexp {
 		return newDenySource(inCI, o.dir, &warnings).patterns(ctx)
 	}
 	g := Git{
@@ -107,13 +101,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	var findings []Finding
+	var err error
 	switch mode {
 	case "range":
 		findings, err = scanRangeMode(ctx, s, g, *base, *head, *branch)
 	case "text":
 		findings, err = scanTextMode(s, *label, fs.Args(), stdin)
-	case modeFiles:
-		findings, err = scanFilesMode(ctx, s, g, fs.Args())
 	case "prepush":
 		findings, err = s.prePush(ctx, g, fs.Args(), stdin)
 	case "pr":
@@ -127,11 +120,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return exitError
 	}
 	heading := "diff, commit messages and branch name"
-	switch mode {
-	case "text":
+	if mode == "text" {
 		heading = *label
-	case modeFiles:
-		heading = modeFiles
 	}
 	return finish(o, []section{{
 		heading:  heading,
@@ -273,32 +263,6 @@ func scanTextMode(s *Scanner, label string, files []string, stdin io.Reader) ([]
 	return out, nil
 }
 
-func scanFilesMode(ctx context.Context, s *Scanner, g Git, paths []string) ([]Finding, error) {
-	if len(paths) == 0 {
-		out, err := g.run(ctx, "ls-files", "-z")
-		if err != nil {
-			return nil, err
-		}
-		for p := range strings.SplitSeq(out, "\x00") {
-			if p != "" {
-				paths = append(paths, p)
-			}
-		}
-	}
-	var out []Finding
-	for _, p := range paths {
-		b, err := os.ReadFile(filepath.Join(g.Dir, p)) //nolint:gosec // a tracked file, or one named on the command line
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return nil, err
-		}
-		out = append(out, s.ScanFile(filepath.ToSlash(p), b)...)
-	}
-	return out, nil
-}
-
 // prePush reads git's pre-push ref lines and scans each pushed range and tag.
 func (s *Scanner) prePush(ctx context.Context, g Git, args []string, stdin io.Reader) ([]Finding, error) {
 	remote := ""
@@ -355,36 +319,32 @@ func isZeroSHA(sha string) bool {
 	return strings.Trim(sha, "0") == ""
 }
 
-// redactor hides the matched text, and the file paths and tag names in
-// where a finding is, for a public log: a path can itself be the text that
-// must not be published. It numbers each file and tag in the order it first
-// meets them, the same way in the log and in the summary.
+// redactor hides the matched text, and the file path in where a finding
+// is, for a public log: a path can itself be the text that must not be
+// published. It numbers each file in the order it first meets them, the
+// same way in the log and in the summary.
 type redactor struct {
-	ids    map[string]int
-	counts map[string]int
+	ids map[string]int
 }
 
 func newRedactor() *redactor {
 	return &redactor{
-		ids:    map[string]int{},
-		counts: map[string]int{},
+		ids: map[string]int{},
 	}
 }
 
-// where returns the location of f to print: as found, or with its file or
-// tag replaced by a number such as "file #2".
+// where returns the location of f to print: as found, or with its file
+// replaced by a number such as "file #2".
 func (r *redactor) where(f Finding) string {
-	if r == nil || f.Subject == "" {
+	if r == nil || f.File == "" {
 		return f.Where
 	}
-	key := f.SubjectKind + "\x00" + f.Subject
-	n, ok := r.ids[key]
+	n, ok := r.ids[f.File]
 	if !ok {
-		r.counts[f.SubjectKind]++
-		n = r.counts[f.SubjectKind]
-		r.ids[key] = n
+		n = len(r.ids) + 1
+		r.ids[f.File] = n
 	}
-	return strings.Replace(f.Where, f.Subject, fmt.Sprintf("%s #%d", f.SubjectKind, n), 1)
+	return strings.Replace(f.Where, f.File, fmt.Sprintf("file #%d", n), 1)
 }
 
 // report prints the findings, redacted when r is not nil.
@@ -400,7 +360,7 @@ func report(w io.Writer, findings []Finding, r *redactor) {
 
 // writeSummary appends a Markdown report. It never includes the matched text:
 // the summary of a public repository's workflow run is public. With r, it
-// hides file paths and tag names too.
+// hides file paths too.
 func writeSummary(path, heading string, findings []Finding, r *redactor) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {

@@ -71,8 +71,7 @@ go-tidy:
 # Run once per clone, and again after pulling changes to tools/checkpublic:
 # builds the checker into the clone's common git directory and installs a
 # pre-push hook there that runs that copy, so a push never runs code from the
-# branch being pushed. Every worktree of the clone shares both. It drops
-# core.hooksPath=.githooks, which earlier versions of this target set.
+# branch being pushed. Every worktree of the clone shares both.
 CHECKPUBLIC_HOOK_MARKER = installed by make setup: runs tools/checkpublic
 
 setup:
@@ -100,12 +99,9 @@ setup:
 	} > "$$hook.new"; \
 	chmod 755 "$$hook.new"; \
 	mv -f "$$hook.new" "$$hook"; \
-	if [ "$$(git config --get core.hooksPath || true)" = .githooks ]; then \
-		git config --unset core.hooksPath; \
-	fi; \
 	hooks_path=$$(git config --get core.hooksPath || true); \
 	if [ -n "$$hooks_path" ]; then \
-		echo "make setup: warning: core.hooksPath is $$hooks_path, so git does not run $$hook" >&2; \
+		echo "make setup: warning: core.hooksPath is set to $$hooks_path, and git does not run hooks in the git directory, such as $$hook, while it is set; unset it with git config --unset core.hooksPath (add --global if it is set there)" >&2; \
 	fi; \
 	echo "make setup: installed $$hook"
 

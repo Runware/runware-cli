@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -17,11 +18,9 @@ type Finding struct {
 	Rule    string
 	Message string
 	Match   string
-	// Subject is the part of Where that names a file or a tag, which a
-	// public log must not show either (see redactor); SubjectKind is
-	// "file" or "tag".
-	Subject     string
-	SubjectKind string
+	// File is the file named in Where, which a public log must not show
+	// either (see redactor).
+	File string
 }
 
 // ScanText scans free text (a PR title, body or comment). label names it in
@@ -39,36 +38,16 @@ func (s *Scanner) ScanText(label, text string) []Finding {
 	return out
 }
 
-// ScanFile scans the content of one file, reported as file:line.
-func (s *Scanner) ScanFile(file string, content []byte) []Finding {
-	if excludedFile(file) || isBinary(content) {
-		return nil
-	}
-	var out []Finding
-	for i, line := range strings.Split(string(content), "\n") {
-		out = append(out, s.findings(fmt.Sprintf("%s:%d", file, i+1), file, line)...)
-	}
-	return out
-}
-
-func isBinary(content []byte) bool {
-	return bytes.IndexByte(content[:min(len(content), 8000)], 0) >= 0
-}
-
 func (s *Scanner) findings(where, file, line string) []Finding {
 	var out []Finding
 	for _, h := range s.ScanLine(file, line) {
-		f := Finding{
+		out = append(out, Finding{
 			Where:   where,
 			Rule:    h.rule,
 			Message: h.message,
 			Match:   h.match,
-		}
-		if file != "" {
-			f.Subject = file
-			f.SubjectKind = "file"
-		}
-		out = append(out, f)
+			File:    file,
+		})
 	}
 	return out
 }
@@ -264,17 +243,24 @@ func (r Range) notOnRemote() []string {
 	return []string{"--not", "--remotes=" + r.Remote}
 }
 
+// patchFlags make git print plain patches: no colour, no external diff
+// driver and no textconv filter (both are commands a branch can configure in
+// .gitattributes), and a rename as a deletion and an addition.
+var patchFlags = []string{"--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "-U0"}
+
 // ScanRange scans what a range would publish: the added lines of the range's
 // diff, the added lines of every commit in it (a line added and removed again
 // is still published in the history), the path of every added file, every
-// commit message, and the branch name.
+// commit message, and the branch name. For a merge commit, what its
+// resolution adds beyond the automatic merge of its parents counts as added
+// (git's remerge diff); a clean merge adds nothing.
 func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, error) {
 	var out []Finding
 	if r.Branch != "" {
 		out = append(out, s.ScanText("branch name", r.Branch)...)
 	}
 
-	diff, err := g.run(ctx, "diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", r.Base+"..."+r.Head)
+	diff, err := g.run(ctx, slices.Concat([]string{"diff"}, patchFlags, []string{r.Base + "..." + r.Head})...)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +270,7 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		out = append(out, f)
 	}
 
-	patches, err := g.run(ctx, append([]string{"log", "--no-merges", "-p", "--no-color", "--no-ext-diff", "--no-renames", "-U0", "--format=%x00commit %H", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
+	patches, err := g.run(ctx, slices.Concat([]string{"log", "--remerge-diff", "-p", "--format=%x00commit %H"}, patchFlags, []string{r.Base + ".." + r.Head}, r.notOnRemote())...)
 	if err != nil {
 		return nil, err
 	}
@@ -298,8 +284,9 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 	}
 
 	// The path of each file added in the range, or renamed (with
-	// --no-renames a rename is an addition), once.
-	paths, err := g.run(ctx, append([]string{"log", "--no-merges", "--no-renames", "--diff-filter=A", "--name-only", "--format=", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
+	// --no-renames a rename is an addition), or added by a merge
+	// resolution, once.
+	paths, err := g.run(ctx, append([]string{"log", "--remerge-diff", "--no-renames", "--diff-filter=A", "--name-only", "--format=", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -337,8 +324,7 @@ func fileKey(f Finding) string {
 	return file + "\x00" + f.Rule + "\x00" + strings.ToLower(f.Match)
 }
 
-// objectTag is git's type of an annotated tag object, and the kind of
-// subject a finding in its message has.
+// objectTag is git's type of an annotated tag object.
 const objectTag = "tag"
 
 // ScanTag scans what pushing a tag to remote would publish: its name, the
@@ -353,11 +339,7 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 			return nil, err
 		}
 		if _, msg, ok := strings.Cut(raw, "\n\n"); ok {
-			for _, f := range s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n")) {
-				f.Subject = "tag " + name
-				f.SubjectKind = objectTag
-				out = append(out, f)
-			}
+			out = append(out, s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n"))...)
 		}
 	}
 	commit, err := g.revParse(ctx, object)
