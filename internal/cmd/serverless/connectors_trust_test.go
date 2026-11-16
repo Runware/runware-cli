@@ -853,16 +853,30 @@ func TestConnectorsTrustCommandRefusals(t *testing.T) {
 
 // gcloud cannot resolve a service account without a project, so the binding names the one
 // the email carries. An email that carries no project id gets no flag.
+type bindingProjectCase struct {
+	email   string
+	project string // the --project value printed, empty when none is
+}
+
 func TestConnectorsTrustGCPBindingNamesTheProjectOfTheServiceAccount(t *testing.T) {
-	cases := []struct {
-		email   string
-		project string // the --project value printed, empty when none is
-	}{
-		{"worker@my-project.iam.gserviceaccount.com", "my-project"},
-		{"first.last@proj-2-x.iam.gserviceaccount.com", "proj-2-x"},
-		{"worker@example.com", ""},
-		{"worker@proj.example.com.iam.gserviceaccount.com", ""}, // domain-scoped project
-		{"worker@My-Project.iam.gserviceaccount.com", ""},
+	cases := []bindingProjectCase{
+		{
+			email:   "worker@my-project.iam.gserviceaccount.com",
+			project: "my-project",
+		},
+		{
+			email:   "first.last@proj-2-x.iam.gserviceaccount.com",
+			project: "proj-2-x",
+		},
+		{
+			email: "worker@example.com",
+		},
+		{
+			email: "worker@proj.example.com.iam.gserviceaccount.com", // domain-scoped project
+		},
+		{
+			email: "worker@My-Project.iam.gserviceaccount.com",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.email, func(t *testing.T) {
