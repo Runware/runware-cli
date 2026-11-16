@@ -20,6 +20,7 @@ const (
 	flagRoleARN                  = "role-arn"
 	flagWorkloadIdentityProvider = "workload-identity-provider"
 	flagServiceAccountEmail      = "service-account-email"
+	flagClearServiceAccountEmail = "clear-service-account-email"
 )
 
 // connectorKinds are the --kind values, as the API names them.
@@ -39,6 +40,10 @@ type connectorFlags struct {
 	roleARN                  string
 	workloadIdentityProvider string
 	serviceAccountEmail      string
+	// clearServiceAccountEmail removes a gcp connector's service account on update.
+	// --service-account-email "" is refused instead, so an empty value never reads
+	// as a removal by accident.
+	clearServiceAccountEmail bool
 }
 
 func (f *connectorFlags) add(cmd *cobra.Command) {
@@ -65,6 +70,9 @@ func (f *connectorFlags) foreignFlags(kind serverlessapi.OidcConnectorKind) []st
 		}
 		if f.serviceAccountEmail != "" {
 			foreign = append(foreign, "--"+flagServiceAccountEmail)
+		}
+		if f.clearServiceAccountEmail {
+			foreign = append(foreign, "--"+flagClearServiceAccountEmail)
 		}
 	}
 	return foreign
@@ -167,6 +175,14 @@ func (f *connectorFlags) updateBody(current *serverlessapi.OidcConnector) (serve
 		}
 		if f.serviceAccountEmail != "" {
 			gcp.ServiceAccountEmail = &f.serviceAccountEmail
+		}
+		if f.clearServiceAccountEmail {
+			// Nothing to remove would still roll every application that attaches it.
+			if gcp.ServiceAccountEmail == nil || *gcp.ServiceAccountEmail == "" {
+				return body, errors.New("--" + flagClearServiceAccountEmail + ": the connector has no service account")
+			}
+			// The API replaces the whole configuration, so leaving it out removes it.
+			gcp.ServiceAccountEmail = nil
 		}
 		body.Gcp = &gcp
 		// The audience follows the provider, so a changed provider needs a new one.
@@ -343,11 +359,17 @@ func newConnectorsUpdateCmd(logger *log.Logger) *cobra.Command {
 		Long: `Change a connector's audience or provider fields. Fields you do not name keep
 their current value. The name and kind cannot change.
 
+--clear-service-account-email removes a gcp connector's service account, so its
+workers use the federated principal directly instead of impersonating one.
+
 Updating rolls every live application that attaches the connector, so its
 workers get the new configuration. Running workers keep the old configuration
 until they roll.`,
 		Example: `  runware serverless connectors update aws-prod \
-    --role-arn arn:aws:iam::123456789012:role/runware-worker-v2`,
+    --role-arn arn:aws:iam::123456789012:role/runware-worker-v2
+
+  # stop impersonating a service account
+  runware serverless connectors update gcp-prod --clear-service-account-email`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -379,7 +401,9 @@ until they roll.`,
 	}
 
 	flags.add(cmd)
-	cmd.MarkFlagsOneRequired(flagAudience, flagRoleARN, flagWorkloadIdentityProvider, flagServiceAccountEmail)
+	cmd.Flags().BoolVar(&flags.clearServiceAccountEmail, flagClearServiceAccountEmail, false, "gcp: remove the service account, so workers use the federated principal directly")
+	cmd.MarkFlagsOneRequired(flagAudience, flagRoleARN, flagWorkloadIdentityProvider, flagServiceAccountEmail, flagClearServiceAccountEmail)
+	cmd.MarkFlagsMutuallyExclusive(flagServiceAccountEmail, flagClearServiceAccountEmail)
 	return cmd
 }
 
