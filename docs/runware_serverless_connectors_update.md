@@ -8,7 +8,9 @@ Change a connector's audience or provider fields. Fields you do not name keep
 their current value. The name and kind cannot change.
 
 --clear-service-account-email removes a gcp connector's service account, so its
-workers use the federated principal directly instead of impersonating one.
+workers use the federated principal directly instead of impersonating one. It is
+refused when the connector has none, since that update would roll every live
+application for nothing.
 
 Updating rolls every live application that attaches the connector, so its
 workers get the new configuration. Running workers keep the old configuration

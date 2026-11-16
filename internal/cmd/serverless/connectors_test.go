@@ -35,6 +35,7 @@ const (
 	testRoleARN         = "arn:aws:iam::123456789012:role/runware-worker"
 	testNewRoleARN      = "arn:aws:iam::123456789012:role/runware-worker-v2"
 	testWIP             = "projects/123456789/locations/global/workloadIdentityPools/runware/providers/runware"
+	testNewWIP          = "projects/123456789/locations/global/workloadIdentityPools/runware/providers/runware-v2"
 	testServiceAccount  = "worker@my-project.iam.gserviceaccount.com"
 	testSubject         = "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:app:my-app"
 	testSubjectPattern  = "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:*"
@@ -719,6 +720,13 @@ func TestConnectorsUpdateClearsTheServiceAccount(t *testing.T) {
 			wantBody: `{"audience":"//iam.googleapis.com/` + testWIP + `","gcp":{"workloadIdentityProvider":"` + testWIP + `"}}`,
 		},
 		{
+			name:    "with a new provider it clears the service account and recomputes the audience",
+			current: testGCPConnector,
+			args:    []string{testConnectorName, clearSAFlag, wipFlag, testNewWIP},
+			wantBody: `{"audience":"//iam.googleapis.com/` + testNewWIP + `","gcp":{"workloadIdentityProvider":"` + testNewWIP +
+				`"}}`,
+		},
+		{
 			name:     "gcp connector without one",
 			current:  gcpWithoutSA,
 			args:     []string{testConnectorName, clearSAFlag},
@@ -743,7 +751,7 @@ func TestConnectorsUpdateClearsTheServiceAccount(t *testing.T) {
 			name:    "with --service-account-email",
 			current: testGCPConnector,
 			args:    []string{testConnectorName, clearSAFlag, serviceAccountFlag, testServiceAccount},
-			wantErr: "none of the others can be",
+			wantErr: "service-account-email",
 		},
 	}
 	for _, tc := range cases {
