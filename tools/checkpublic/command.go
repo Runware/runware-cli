@@ -353,12 +353,23 @@ func hiddenPublication(c command, line []command, depth int) string {
 	if slices.ContainsFunc(c.opaque, mentionsPublication) {
 		return "inside a here-document that runs commands"
 	}
+	if len(c.words) > 0 {
+		// A command may run a variable set for it: GIT_PAGER, LESSOPEN.
+		for _, a := range c.assigns {
+			if _, v, _ := strings.Cut(a, "="); containsPublication(v, depth+1) || definitePublication(v) {
+				return fmt.Sprintf("in a variable that `%s` may run", c.words[0])
+			}
+		}
+	}
 	runsArgs := false
 	// An inert command (echo, grep) only prints or searches its arguments
 	// and stdin: a gh write or git push there is text. Any other command may
-	// run them as code, as uv run, ssh or perl -ne do.
+	// run them as code, as uv run, ssh or perl -ne do, and so may an inert
+	// command or git given an option that runs a command (rg --pre, git -c).
+	runsOption := runsCodeOption(c)
 	_, printsArgs := inertCommands[c.name()]
-	printsArgs = printsArgs && len(c.words) > 0 && !c.wordDyn[0]
+	printsArgs = printsArgs && len(c.words) > 0 && !c.wordDyn[0] && !runsOption
+	pipedArgs, pipedStdin := pipedInput(c, line)
 	for k, w := range c.words {
 		base := filepath.Base(w)
 		rest := strings.Join(c.words[k+1:], " ")
@@ -378,7 +389,7 @@ func hiddenPublication(c command, line []command, depth int) string {
 			runsArgs = true
 		}
 		if _, ok := shells[base]; ok {
-			piped := c.pipeFrom >= 0 && c.pipeFrom < len(line) && mentionsPublication(strings.Join(line[c.pipeFrom].args, " "))
+			piped := mentionsPublication(pipedArgs+pipedStdin) || containsPublication(pipedStdin, depth+1)
 			script := slices.ContainsFunc(c.words[k+1:], func(w string) bool {
 				return containsPublication(w, depth+1)
 			})
@@ -389,18 +400,120 @@ func hiddenPublication(c command, line []command, depth int) string {
 		if _, ok := evaluators[base]; ok && containsPublication(rest, depth+1) {
 			return fmt.Sprintf("inside `%s`", base)
 		}
-		if _, ok := scriptInterpreters[base]; ok && publicationMention.MatchString(inlineCode(c.words[k+1:], c.stdin)) {
+		if _, ok := scriptInterpreters[base]; ok && publicationMention.MatchString(inlineCode(c.words[k+1:], c.stdin+pipedStdin)) {
 			return fmt.Sprintf("inside a `%s` script", base)
 		}
 	}
-	// gh and git run no argument as code but a later word, checked above.
-	// For any other command that is not inert, a definite publication in an
-	// argument or in stdin is blocked, wherever it is in the code.
-	if name := c.name(); !printsArgs && name != "" && name != "gh" && name != wordGit &&
-		definitePublication(strings.Join(c.words[1:], "\n")+"\n"+c.stdin) {
-		return fmt.Sprintf("in what `%s` runs", c.words[0])
+	// gh and git run no argument as code but a later word, checked above,
+	// unless an option makes git run one. For any other command that is not
+	// inert, a definite publication in an argument (or in an option's value
+	// after =) or in stdin is blocked, wherever it is in the code.
+	name := c.name()
+	_, hasCodeOption := codeOptions[name]
+	hasCodeOption = hasCodeOption && runsOption
+	scan := runsOption || !printsArgs && name != "gh" && name != wordGit
+	if name != "" && scan {
+		var code strings.Builder
+		for _, w := range c.words[1:] {
+			code.WriteString(w + "\n")
+			if _, v, ok := strings.Cut(w, "="); ok {
+				code.WriteString(v + "\n")
+			}
+		}
+		code.WriteString(c.stdin + "\n" + pipedStdin)
+		if definitePublication(code.String()) || hasCodeOption && slices.ContainsFunc(c.words[1:], mentionsPublication) {
+			return fmt.Sprintf("in what `%s` runs", c.words[0])
+		}
 	}
 	return ""
+}
+
+// pipedInput returns what the commands piped into c, up its pipeline, are
+// given: their arguments, which echo or printf print into c, and their
+// here-documents, here-strings, which cat passes on.
+func pipedInput(c command, line []command) (args, stdin string) {
+	var a, s strings.Builder
+	for j, prev := c.pipeFrom, len(line); j >= 0 && j < prev; prev, j = j, line[j].pipeFrom {
+		a.WriteString("\n" + strings.Join(line[j].args, " "))
+		s.WriteString("\n" + line[j].stdin)
+	}
+	return a.String(), s.String()
+}
+
+// stdinRunners run the commands they read on stdin, besides the shells and
+// script interpreters.
+var stdinRunners = wordSet(". source xargs")
+
+// runsStdin reports whether c, or a command it wraps, runs what it reads on
+// stdin.
+func runsStdin(c command) bool {
+	for _, w := range c.words {
+		base := filepath.Base(w)
+		_, shell := shells[base]
+		_, interpreter := scriptInterpreters[base]
+		_, runner := stdinRunners[base]
+		if shell || interpreter || runner {
+			return true
+		}
+	}
+	return false
+}
+
+// stdinFiles returns the files of the `< file` redirections that feed c's
+// stdin: its own and those of the commands piped into it.
+func stdinFiles(c command, line []command) []redirTarget {
+	var out []redirTarget
+	if c.stdinFile != "" {
+		out = append(out, redirTarget{
+			path:    c.stdinFile,
+			dynamic: c.stdinFileDynamic,
+		})
+	}
+	for j, prev := c.pipeFrom, len(line); j >= 0 && j < prev; prev, j = j, line[j].pipeFrom {
+		if line[j].stdinFile != "" {
+			out = append(out, redirTarget{
+				path:    line[j].stdinFile,
+				dynamic: line[j].stdinFileDynamic,
+			})
+		}
+	}
+	return out
+}
+
+// codeOptions are, for each command that is otherwise inert or that runs no
+// argument as code (git), the options that make it run a command given on
+// the command line or in configuration set there: rg --pre, git -c
+// core.pager=... or alias.x=!..., git --ext-diff. Short options also match
+// with the value attached (-ccore.pager=...), long ones with =.
+var codeOptions = map[string]string{
+	"rg":    "--pre",
+	wordGit: "-c --config-env --exec-path --ext-diff --extcmd --exec --upload-pack --receive-pack -O --open-files-in-pager",
+}
+
+// subscriptBuiltins evaluate an array subscript in their arguments as
+// arithmetic, which runs any $( ) in it, even quoted: test -v 'a[$(cmd)]'.
+// printf does so only with -v.
+var subscriptBuiltins = wordSet("[ [[ declare export local printf readonly test")
+
+// runsCodeOption reports whether c is given an option that runs a command,
+// or is a builtin that may run one from its arguments.
+func runsCodeOption(c command) bool {
+	name := c.name()
+	if len(c.words) == 0 || c.wordDyn[0] {
+		return false
+	}
+	if _, ok := subscriptBuiltins[name]; ok && (name != "printf" || slices.Contains(c.words[1:], "-v")) {
+		return true
+	}
+	for _, w := range c.words[1:] {
+		for o := range strings.FieldsSeq(codeOptions[name]) {
+			long := strings.HasPrefix(o, "--")
+			if w == o || long && strings.HasPrefix(w, o+"=") || !long && strings.HasPrefix(w, o) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // inlineCode returns the code an interpreter is given inline: the values of
@@ -491,12 +604,12 @@ func inert(c command) bool {
 	}
 	switch c.name() {
 	case wordGit:
-		return gitInert(c.words, c.wordDyn)
+		return gitInert(c.words, c.wordDyn) && !runsCodeOption(c)
 	case "gh":
 		return ghInert(c.words, c.wordDyn)
 	}
 	_, ok := inertCommands[c.name()]
-	return ok
+	return ok && !runsCodeOption(c)
 }
 
 // gitReadSubcommands change no file in the working tree and no ref a push

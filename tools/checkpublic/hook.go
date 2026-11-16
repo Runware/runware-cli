@@ -66,6 +66,9 @@ func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, e
 		if where := hiddenPublication(*c, cmds, 0); where != "" {
 			return plan{}, uncheckable("it runs a GitHub write or git push %s", where)
 		}
+		if err := stdinScript(cmds, i, dir); err != nil {
+			return plan{}, err
+		}
 		kinds[i] = publishes(c.words, c.wordDyn)
 		switch kinds[i] {
 		case pubUnknown:
@@ -131,6 +134,34 @@ func (s *Scanner) planCommand(command, dir string, repoOf repoResolver) (plan, e
 		p.texts = append(p.texts, texts...)
 	}
 	return p, nil
+}
+
+// stdinScript refuses a command that runs what it reads on stdin (a shell,
+// an interpreter, xargs) from a file, by its own `< file` or through a
+// pipeline, when the file mentions a GitHub write or git push or the same
+// command line may write it first.
+func stdinScript(line []command, i int, dir string) error {
+	c := line[i]
+	if !runsStdin(c) {
+		return nil
+	}
+	for _, f := range stdinFiles(c, line) {
+		if f.dynamic {
+			continue // like a script named by a variable, sh "$f"
+		}
+		for j := range line {
+			for _, w := range line[j].writes {
+				if w.dynamic || filepath.Base(w.path) == filepath.Base(f.path) {
+					return uncheckable("`%s` runs %s, which the same command line may write first", c, f.path)
+				}
+			}
+		}
+		b, err := os.ReadFile(resolvePath(dir, f.path)) //nolint:gosec // the script the command runs
+		if err == nil && mentionsPublication(string(b)) {
+			return uncheckable("`%s` runs %s, which holds a GitHub write or git push", c, f.path)
+		}
+	}
+	return nil
 }
 
 // pubContext is a publication with what runs before it or alongside it in
@@ -317,6 +348,14 @@ func (s *Scanner) ghTexts(pc pubContext, repoOf repoResolver) ([]publication, bo
 			}
 		}
 		where := label + " " + f.name
+		if f.name != wordRepo && file == "" {
+			// Scanned on its own: in the line, an attached value such as
+			// -bTEXT has no word boundary before it.
+			texts = append(texts, publication{
+				label: where,
+				text:  f.value,
+			})
+		}
 		if key == fieldContent && inline != "" {
 			// The line is scanned whole; a Contents API write sends the
 			// file base64-encoded.

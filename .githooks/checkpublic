@@ -21,21 +21,40 @@ gitdir=$(git -C "$root" rev-parse --path-format=absolute --git-dir) || fail "can
 cache=$gitdir/checkpublic
 bin=$cache/checkpublic
 
-# unbuilt handles a hook call when there is no binary at all: a tool call
-# whose payload has no word that could publish (gh, git, hub, push, an
-# expansion, a GitHub tool, an escape that could hide one) runs with a
-# warning, so the agent can still fix the build; anything else is blocked.
-# The fields that only describe the session or the call are left out of the
-# test, and a line continuation is joined first, as the shell would.
+# unbuilt handles a hook call when there is no binary at all, so the agent
+# can still fix the build. It tests only what a tool call could publish: the
+# command of a Bash call, or the name and arguments of any other tool, less
+# the fields that only describe the session or the call. A file tool (Edit,
+# Read, ...) is let through by name: its path may well hold "github". A call
+# with a word that could publish (gh, git, hub, push, an expansion, a GitHub
+# tool, an escape that could hide one) is blocked; any other runs with a
+# warning. JSON strings hold no raw line break, so the payload is joined into
+# one line first, and a line continuation is joined as the shell would.
 unbuilt() {
-	payload=$(cat)
-	text=$(printf '%s' "$payload" |
-		sed -E -e 's/\\\\\\n//g' -e 's/"(cwd|description|transcript_path|session_id|hook_event_name|permission_mode|tool_use_id|turn_id|model)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"//g' |
-		tr -d "'\"\\\\")
-	if printf '%s' "$payload" | grep -q '\\u' || printf '%s' "$text" | grep -Eiq 'gh|git|hub|push|[$`]'; then
+	payload=$(tr '\n' ' ')
+	tool=$(printf '%s' "$payload" | sed -n -E 's/.*"tool_name"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p')
+	case $tool in
+	Edit | MultiEdit | NotebookEdit | Read | Write | Glob | Grep)
+		echo "checkpublic: warning: could not build tools/checkpublic ($1); $tool publishes nothing, so it runs unchecked. Run make setup to see the error." >&2
+		exit 0
+		;;
+	Bash)
+		text=$(printf '%s' "$payload" | sed -n -E 's/.*"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p')
+		[ -n "$text" ] || fail "could not build tools/checkpublic ($1), and found no command in the Bash call"
+		;;
+	*)
+		text=$(printf '%s' "$payload" |
+			sed -E 's/"(cwd|description|transcript_path|session_id|hook_event_name|permission_mode|tool_use_id|turn_id|model)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"//g')
+		;;
+	esac
+	if printf '%s' "$text" | grep -q '\\u'; then
 		fail "could not build tools/checkpublic ($1)"
 	fi
-	echo "checkpublic: warning: could not build tools/checkpublic ($1); this tool call cannot publish, so it runs unchecked. Run make setup to see the error." >&2
+	text=$(printf '%s' "$text" | sed -e 's/\\\\\\n//g' | tr -d "'\"\\\\")
+	if printf '%s' "$text" | grep -Eiq 'gh|git|hub|push|[$`]'; then
+		fail "could not build tools/checkpublic ($1)"
+	fi
+	echo "checkpublic: warning: could not build tools/checkpublic ($1), so this tool call was not checked; it runs because no GitHub write or git push was recognised in it. Run make setup to see the error." >&2
 	exit 0
 }
 

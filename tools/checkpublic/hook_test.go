@@ -161,6 +161,12 @@ func TestHookForms(t *testing.T) {
 	cleanFile := map[string]string{
 		fileBody: cleanText,
 	}
+	scriptFile := map[string]string{
+		"run.sh": "gh pr comment 1 --body x\n",
+	}
+	cleanScript := map[string]string{
+		"run.sh": "echo hello\n",
+	}
 	cases := []hookCase{
 		// Text in the command line itself.
 		{
@@ -180,6 +186,76 @@ func TestHookForms(t *testing.T) {
 		{
 			name:    "body attached to its short flag",
 			command: `gh pr comment 1 -b"` + leak + `"`,
+			block:   true,
+		},
+		{
+			name:    "body attached to -b unquoted",
+			command: `gh pr comment 1 -b` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "title attached to -t",
+			command: `gh pr create -t` + awsKey + ` -b x`,
+			block:   true,
+		},
+		{
+			name:    "body in --body=",
+			command: `gh pr comment 1 --body=` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "deny name attached to -b",
+			command: `gh pr comment 1 -bfakevendor`,
+			block:   true,
+		},
+		{
+			name:    "clean body attached to -b",
+			command: `gh pr comment 1 -bclean`,
+		},
+		{
+			name:    "issue title attached",
+			command: `gh issue create -t` + awsKey + ` -b x`,
+			block:   true,
+		},
+		{
+			name:    "issue close comment attached",
+			command: `gh issue close 1 -c` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "pr merge subject attached",
+			command: `gh pr merge 1 -t` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "release notes attached",
+			command: `gh release create v1.0.0 -n` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "repo description attached",
+			command: `gh repo edit -d` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "repo homepage in --homepage=",
+			command: `gh repo edit --homepage=https://x.example/` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "gist description attached",
+			command: `gh gist create -d` + awsKey + ` body.md`,
+			files:   cleanFile,
+			block:   true,
+		},
+		{
+			name:    "label description attached",
+			command: `gh label create bug -d` + awsKey,
+			block:   true,
+		},
+		{
+			name:    "project item body in --body=",
+			command: `gh project item-create 1 --owner o --title x --body=` + awsKey,
 			block:   true,
 		},
 		{
@@ -1029,6 +1105,136 @@ func TestHookForms(t *testing.T) {
 			block:   true,
 		},
 		{
+			name:    "here-document piped into sh",
+			command: "cat <<EOF | sh\ngh pr comment 1 --body x\nEOF",
+			block:   true,
+		},
+		{
+			name:    "quoted here-document piped into bash",
+			command: "cat <<'EOF' | bash\ngh pr comment 1 --body x\nEOF",
+			block:   true,
+		},
+		{
+			name:    "here-document piped into python3",
+			command: "cat <<'EOF' | python3\nimport os\nos.system('gh pr comment 1 --body x')\nEOF",
+			block:   true,
+		},
+		{
+			name:    "here-document piped into node",
+			command: "cat <<'EOF' | node\nrequire('child_process').execSync('gh pr comment 1 --body x')\nEOF",
+			block:   true,
+		},
+		{
+			name:    "here-document piped through tee into zsh",
+			command: "cat <<'EOF' | tee /dev/null | zsh\ngh pr comment 1 --body x\nEOF",
+			block:   true,
+		},
+		{
+			name:    "here-document piped into xargs",
+			command: "cat <<'EOF' | xargs -I{} sh -c {}\ngh pr comment 1 --body x\nEOF",
+			block:   true,
+		},
+		{
+			name:    "here-string piped into dash",
+			command: "cat <<< 'gh pr comment 1 --body x' | dash",
+			block:   true,
+		},
+		{
+			name:    "here-document straight into sh",
+			command: "sh <<'EOF'\ngh pr comment 1 --body x\nEOF",
+			block:   true,
+		},
+		{
+			name:    "script file on the stdin of sh",
+			command: `sh < run.sh`,
+			files:   scriptFile,
+			block:   true,
+		},
+		{
+			name:    "script file piped into bash",
+			command: `cat < run.sh | bash`,
+			files:   scriptFile,
+			block:   true,
+		},
+		{
+			name:    "script file written in the same call",
+			command: `echo hi > run.sh; sh < run.sh`,
+			block:   true,
+		},
+		{
+			name:    "clean here-document piped into sh",
+			command: "cat <<'EOF' | sh\necho hello\nEOF",
+		},
+		{
+			name:    "clean script file on the stdin of sh",
+			command: `sh < run.sh`,
+			files:   cleanScript,
+		},
+		{
+			name:    "rg --pre",
+			command: `rg --pre "gh pr comment 1 --body x" x .`,
+			block:   true,
+		},
+		{
+			name:    "rg --pre=",
+			command: `rg '--pre=gh pr comment 1 --body x' x .`,
+			block:   true,
+		},
+		{
+			name:    "git -c core.pager",
+			command: `git -c core.pager='gh pr comment 1 --body x' log`,
+			block:   true,
+		},
+		{
+			name:    "git -c attached",
+			command: `git '-ccore.pager=gh pr comment 1 --body x' log`,
+			block:   true,
+		},
+		{
+			name:    "git -c alias",
+			command: `git -c alias.x='!gh pr comment 1 --body x' x`,
+			block:   true,
+		},
+		{
+			name:    "git --config-env",
+			command: `git --config-env=core.pager=X log`,
+		},
+		{
+			name:    "git difftool --extcmd",
+			command: `git difftool --extcmd='gh pr comment 1 --body x'`,
+			block:   true,
+		},
+		{
+			name:    "git log --ext-diff after a pager variable",
+			command: `GIT_PAGER='gh pr comment 1 --body x' git log --ext-diff`,
+			block:   true,
+		},
+		{
+			name:    "variable a command may run",
+			command: `LESSOPEN='|gh pr comment 1 --body x' less x`,
+			block:   true,
+		},
+		{
+			name:    "test -v runs a subscript",
+			command: `test -v 'a[$(gh pr comment 1 --body x)]'`,
+			block:   true,
+		},
+		{
+			name:    "[[ -v runs a subscript",
+			command: `[[ -v 'a[$(gh pr comment 1 --body x)]' ]]`,
+			block:   true,
+		},
+		{
+			name:    "printf -v runs a subscript",
+			command: `printf -v 'a[$(gh pr comment 1 --body x)]' x`,
+			block:   true,
+		},
+		{
+			name:    "export of a pager",
+			command: `export GIT_PAGER='gh pr comment 1 --body x'`,
+			block:   true,
+		},
+		{
 			name:    "gh api with a variable as its arguments",
 			command: `gh api $ARGS`,
 			block:   true,
@@ -1362,6 +1568,25 @@ func TestHookReadOnlyCommands(t *testing.T) {
 		`gh workflow view ci.yml`,
 		`curl -s https://example.com | jq .`,
 		`sed -n 1,20p main.go`,
+		`rg -n pattern`,
+		`rg --files`,
+		`rg --pre-glob '*.gz' -z pattern .`,
+		`find . -name x`,
+		`git log -p`,
+		`git diff HEAD~1`,
+		`sed -n 1,5p f`,
+		`awk '{print $1}' f`,
+		`tar tf x.tar`,
+		`sort f`,
+		`git -c color.ui=never log -1`,
+		`test -f go.mod && echo yes`,
+		`[ -d tools ] && echo yes`,
+		`[[ -n "$HOME" ]] && echo yes`,
+		`export FOO=bar`,
+		`printf '%s\n' gh`,
+		`GOFLAGS=-count=1 go test ./...`,
+		"cat <<'EOF' | sh\necho hello\nEOF",
+		"sh <<'EOF'\necho hello\nEOF",
 	}
 	for _, command := range commands {
 		t.Run(command, func(t *testing.T) {
