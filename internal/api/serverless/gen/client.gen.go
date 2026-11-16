@@ -1467,6 +1467,12 @@ type Environment struct {
 	BudgetAlertPercents []int     `json:"budgetAlertPercents"`
 	CreatedAt           time.Time `json:"createdAt"`
 
+	// Id The environment's immutable identifier, the `<environment uuid>` in an OIDC subject. It belongs to the environment, not to its name: an environment deleted and created again under the same name gets a new `id`, and so a new `oidcSubjectPrefix`.
+	//
+	//
+	// Example: 0190a6a8-0000-7000-8000-0000000000e1
+	Id openapi_types.UUID `json:"id"`
+
 	// IsDefault True for `production`, the environment an operation targets when none is named. It cannot be deleted.
 	IsDefault bool `json:"isDefault"`
 
@@ -1484,6 +1490,12 @@ type Environment struct {
 	//
 	// Example: staging
 	Name EnvironmentName `json:"name"`
+
+	// OidcSubjectPrefix What the `sub` of every worker token in this environment starts with: `worker:org:<organization uuid>:env:<environment uuid>:`. It is the start of `subject` on every connector attached in the environment, so a trust rule can trust the environment before any app or connector exists. The value has no trailing `*`: for an AWS `StringLike` condition append `*`, and for a GCP attribute condition use it as is, with `assertion.sub.startsWith(...)`.
+	//
+	//
+	// Example: worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:
+	OidcSubjectPrefix string `json:"oidcSubjectPrefix"`
 
 	// PauseAtBudget Whether the environment is paused once its spend this UTC month reaches the budget: its apps are stopped, and invocation and requests that add capacity are refused until the budget is raised past the spend or the month turns. A budget of zero pauses at the first spend.
 	PauseAtBudget bool `json:"pauseAtBudget"`
@@ -2522,6 +2534,9 @@ type Cursor = string
 // Limit defines model for Limit.
 type Limit = int32
 
+// LogLimit defines model for LogLimit.
+type LogLimit = int32
+
 // MetricWindow defines model for MetricWindow.
 type MetricWindow string
 
@@ -2993,8 +3008,8 @@ type GetLogEntriesParams struct {
 	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalog can be asked of it.
 	Window GetLogEntriesParamsWindow `form:"window" json:"window"`
 
-	// Limit Maximum number of items to return.
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	// Limit Maximum number of log entries to return in one page. A worker that is still loading writes hundreds of lines before the one that says why it failed, so a log page may be larger than other lists. The ceiling is the one the log store accepts.
+	Limit *LogLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -14392,6 +14407,8 @@ func (r ListAppOidcConnectorsResponse) ContentType() string {
 type AttachAppOidcConnectorResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *AppOidcConnector
 	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
@@ -14414,6 +14431,11 @@ type AttachAppOidcConnectorResponse struct {
 	ApplicationproblemJSON501 *OidcConnectorsUnavailable
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r AttachAppOidcConnectorResponse) GetJSON201() *AppOidcConnector {
+	return r.JSON201
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
@@ -22381,8 +22403,12 @@ func ParseAttachAppOidcConnectorResponse(rsp *http.Response) (*AttachAppOidcConn
 	}
 
 	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AppOidcConnector
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest BadRequest

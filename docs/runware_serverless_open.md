@@ -19,8 +19,9 @@ runware serverless open <appId> [flags]
 ### Options
 
 ```
-  -e, --env name   Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
-  -h, --help       help for open
+  -e, --env name           Environment the app runs in (default RUNWARE_ENV, else the config's environment, else production)
+      --environment name   Alias for --env
+  -h, --help               help for open
 ```
 
 ### Options inherited from parent commands

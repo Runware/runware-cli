@@ -47,6 +47,16 @@ func TestLogEntriesParams_MapsFlags(t *testing.T) {
 	}
 }
 
+func TestLogEntriesParams_AcceptsTheStoreCeiling(t *testing.T) {
+	params, err := logEntriesParams(testAppID, logsFlags{window: "1h", limit: 1000})
+	if err != nil {
+		t.Fatalf("logEntriesParams: %v", err)
+	}
+	if params.Limit == nil || *params.Limit != 1000 {
+		t.Fatalf("limit = %v, want 1000", params.Limit)
+	}
+}
+
 func TestLogEntriesParams_OmitsUnsetOptionalFlags(t *testing.T) {
 	params, err := logEntriesParams(testAppID, logsFlags{window: "1h"})
 	if err != nil {
@@ -72,9 +82,9 @@ func TestLogEntriesParams_RejectsBadFlags(t *testing.T) {
 		"limit": {
 			flags: logsFlags{
 				window: "1h",
-				limit:  101,
+				limit:  1001,
 			},
-			want: "--limit must be between 1 and 100",
+			want: "--limit must be between 1 and 1000",
 		},
 		"nowindow": {
 			flags: logsFlags{window: ""},

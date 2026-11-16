@@ -67,6 +67,7 @@ runware serverless usage [flags]
 
 ```
   -e, --env name           Report only this environment (default every environment)
+      --environment name   Alias for --env
       --for string         UTC calendar range instead of --from/--to (today, yesterday, this-month, or last-month)
       --from string        Inclusive start of the window (RFC 3339 or YYYY-MM-DD UTC; default 24h before --to)
       --gpu-type string    Report only this GPU type (see 'serverless gpus')

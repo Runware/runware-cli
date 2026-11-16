@@ -39,13 +39,14 @@ runware serverless usage events [flags]
 ### Options
 
 ```
-      --app string      Report only this app's transitions
-      --cursor string   Pagination cursor from a previous nextCursor (reuse the same --env/--app/--from/--to/--limit)
-  -e, --env name        Environment of the --app copy (default RUNWARE_ENV, else the config's environment, else production)
-      --from string     Inclusive start on event time (RFC 3339 or YYYY-MM-DD UTC)
-  -h, --help            help for events
-      --limit int       Maximum number of events to return (1-100)
-      --to string       Exclusive end on event time (RFC 3339 or YYYY-MM-DD UTC)
+      --app string         Report only this app's transitions
+      --cursor string      Pagination cursor from a previous nextCursor (reuse the same --env/--app/--from/--to/--limit)
+  -e, --env name           Environment of the --app copy (default RUNWARE_ENV, else the config's environment, else production)
+      --environment name   Alias for --env
+      --from string        Inclusive start on event time (RFC 3339 or YYYY-MM-DD UTC)
+  -h, --help               help for events
+      --limit int          Maximum number of events to return (1-100)
+      --to string          Exclusive end on event time (RFC 3339 or YYYY-MM-DD UTC)
 ```
 
 ### Options inherited from parent commands

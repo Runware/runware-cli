@@ -231,6 +231,26 @@ func environmentScopedCalls() []environmentCall {
 			},
 		},
 		{
+			operation: "ListAppOidcConnectors",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.ListAppOidcConnectors(ctx, testAppID)
+				return err
+			},
+		},
+		{
+			operation: "AttachAppOidcConnector",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.AttachAppOidcConnector(ctx, testAppID, "aws-prod")
+				return err
+			},
+		},
+		{
+			operation: "DetachAppOidcConnector",
+			call: func(ctx context.Context, c *Client) error {
+				return c.DetachAppOidcConnector(ctx, testAppID, "aws-prod")
+			},
+		},
+		{
 			operation: "AttachAppSecret",
 			call: func(ctx context.Context, c *Client) error {
 				return c.AttachAppSecret(ctx, testAppID, SecretAttach{
@@ -319,6 +339,40 @@ func orgScopedCalls() []environmentCall {
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListGpuTypes(ctx)
 				return err
+			},
+		},
+		{
+			operation: "ListOidcConnectors",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.ListOidcConnectors(ctx, ListOidcConnectorsParams{})
+				return err
+			},
+		},
+		{
+			operation: "GetOidcConnector",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.GetOidcConnector(ctx, "aws-prod")
+				return err
+			},
+		},
+		{
+			operation: "CreateOidcConnector",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.CreateOidcConnector(ctx, OidcConnectorCreate{Name: "aws-prod", Kind: OidcConnectorKindGeneric})
+				return err
+			},
+		},
+		{
+			operation: "UpdateOidcConnector",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.UpdateOidcConnector(ctx, "aws-prod", OidcConnectorUpdate{})
+				return err
+			},
+		},
+		{
+			operation: "DeleteOidcConnector",
+			call: func(ctx context.Context, c *Client) error {
+				return c.DeleteOidcConnector(ctx, "aws-prod")
 			},
 		},
 		{
@@ -472,14 +526,11 @@ func TestWithEnvironmentLeavesTheOriginalClientUnscoped(t *testing.T) {
 // unwrappedOperations take an environment in the spec but have no client
 // wrapper, so no command can send them.
 var unwrappedOperations = []string{
-	"AttachAppOidcConnector",
 	"CopySecret",
 	"CreateSecretBatch",
-	"DetachAppOidcConnector",
 	"FavoriteApp",
 	"GetAppSummary",
 	"GetMetricSeries",
-	"ListAppOidcConnectors",
 	"StartDefaultAsyncTask",
 	"StartDefaultSyncTask",
 	"UnfavoriteApp",
