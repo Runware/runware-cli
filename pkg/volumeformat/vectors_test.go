@@ -15,8 +15,7 @@ import (
 )
 
 // The golden vectors are testdata/format-vectors.json, the format's shared vector
-// file, whose output an independent TypeScript implementation also matched.
-// Only its two about notes differ. Every consumer of the format runs them.
+// file. Only its two about notes differ. Every consumer of the format runs them.
 
 type vectorFile struct {
 	Constants vectorConstants `json:"constants"`
@@ -191,7 +190,7 @@ func TestVectorConstants(t *testing.T) {
 	}
 }
 
-// TestVectorKeyPair: X-Wing key generation as the provisioner does it, from the
+// TestVectorKeyPair: X-Wing key generation as the key-pair issuer does it, from the
 // vectors' fixed input key material.
 func TestVectorKeyPair(t *testing.T) {
 	kp := loadVectors(t).file.KeyPair
