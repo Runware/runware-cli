@@ -20,7 +20,7 @@ func leakyEvent(t *testing.T, dir string) string {
 			Body:  "Details\n\n" + leak,
 			Base: prRef{
 				Ref: "main",
-				SHA: gitIn(t, dir, "rev-parse", "origin/main"),
+				SHA: gitIn(t, dir, "rev-parse", originMain),
 			},
 			Head: prRef{
 				Ref: "fix/" + clusterHost,

@@ -13,6 +13,7 @@ const (
 	remoteOrigin = "origin"
 	cleanText    = "clean text"
 	headRef      = "HEAD"
+	originMain   = "origin/main"
 )
 
 // leak is text with one finding, built at run time (see rules_test.go).
@@ -68,8 +69,8 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 func tagRepo(t *testing.T, text string) string {
 	t.Helper()
 	dir := gitRepo(t, text, "feat: add b")
-	gitIn(t, dir, "tag", "-a", "v1.0.0", "-m", "release\n\n"+leak, "origin/main")
-	gitIn(t, dir, "tag", "v0.9.0", "origin/main")
+	gitIn(t, dir, "tag", "-a", "v1.0.0", "-m", "release\n\n"+leak, originMain)
+	gitIn(t, dir, "tag", "v0.9.0", originMain)
 	gitIn(t, dir, "tag", "v1.1.0", headRef)
 	return dir
 }
@@ -163,7 +164,7 @@ func TestScanRangeHistory(t *testing.T) {
 	gitIn(t, dir, "commit", "-q", "-am", "fix: remove it")
 	s := NewScanner()
 	f, err := s.ScanRange(context.Background(), Git{Dir: dir}, Range{
-		Base: "origin/main",
+		Base: originMain,
 		Head: headRef,
 	})
 	if err != nil {
@@ -181,7 +182,7 @@ func TestPrePushAfterRebase(t *testing.T) {
 	dir := gitRepo(t, cleanText, "feat: add b")
 	old := gitIn(t, dir, "rev-parse", headRef)
 	gitIn(t, dir, "update-ref", "refs/remotes/origin/feature", old)
-	gitIn(t, dir, "checkout", "-q", "-b", "newmain", "origin/main")
+	gitIn(t, dir, "checkout", "-q", "-b", "newmain", originMain)
 	if err := os.WriteFile(filepath.Join(dir, "m.txt"), []byte(leak+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +223,7 @@ func TestAddedPathIsScanned(t *testing.T) {
 	s := NewScanner()
 	for _, dir := range []string{added, renamed} {
 		f, err := s.ScanRange(context.Background(), Git{Dir: dir}, Range{
-			Base: "origin/main",
+			Base: originMain,
 			Head: headRef,
 		})
 		if err != nil {
@@ -242,7 +243,7 @@ func TestBranchNameIsScanned(t *testing.T) {
 		Dir: dir,
 	}
 	f, err := s.ScanRange(context.Background(), g, Range{
-		Base:   "origin/main",
+		Base:   originMain,
 		Head:   headRef,
 		Branch: "fix/" + clusterHost,
 	})
@@ -270,7 +271,7 @@ func cleanRepo(t *testing.T) string {
 // would. It returns the merge commit.
 func mergeMain(t *testing.T, dir, mainText string, resolve func()) string {
 	t.Helper()
-	gitIn(t, dir, "checkout", "-q", "-b", "newmain", "origin/main")
+	gitIn(t, dir, "checkout", "-q", "-b", "newmain", originMain)
 	if err := os.WriteFile(filepath.Join(dir, "m.txt"), []byte(mainText+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +279,7 @@ func mergeMain(t *testing.T, dir, mainText string, resolve func()) string {
 	gitIn(t, dir, "commit", "-q", "-m", "feat: main work")
 	gitIn(t, dir, "update-ref", "refs/remotes/origin/main", headRef)
 	gitIn(t, dir, "checkout", "-q", "feature")
-	gitIn(t, dir, "merge", "-q", "--no-ff", "--no-commit", "origin/main")
+	gitIn(t, dir, "merge", "-q", "--no-ff", "--no-commit", originMain)
 	if resolve != nil {
 		resolve()
 		gitIn(t, dir, "add", "-A")
@@ -489,5 +490,60 @@ func TestPrePushTagOnBlobFails(t *testing.T) {
 	line := "refs/tags/blob-tag " + gitIn(t, dir, "rev-parse", "refs/tags/blob-tag") + " refs/tags/blob-tag " + strings.Repeat("0", 40) + "\n"
 	if _, err := NewScanner().prePush(context.Background(), Git{Dir: dir}, []string{remoteOrigin}, strings.NewReader(line)); err == nil {
 		t.Fatal("prePush of a tag on a blob succeeded, want an error")
+	}
+}
+
+// TestScanTagNested checks that a tag pointing to another annotated tag fails
+// the scan instead of leaving the inner tag's message unchecked, while a
+// plain annotated tag still passes.
+func TestScanTagNested(t *testing.T) {
+	dir := cleanRepo(t)
+	gitIn(t, dir, "tag", "-a", "inner", "-m", "release\n\n"+leak, headRef)
+	gitIn(t, dir, "tag", "-a", "outer", "-m", "release", "inner")
+	gitIn(t, dir, "tag", "-a", "plain", "-m", "release", headRef)
+	g := Git{
+		Dir: dir,
+	}
+	ctx := context.Background()
+	s := NewScanner()
+	outer := gitIn(t, dir, "rev-parse", "refs/tags/outer")
+	if _, err := s.ScanTag(ctx, g, remoteOrigin, "outer", outer); err == nil || !strings.Contains(err.Error(), "nested annotated tags") {
+		t.Fatalf("ScanTag of a nested tag: err = %v, want nested annotated tags", err)
+	}
+	plain := gitIn(t, dir, "rev-parse", "refs/tags/plain")
+	if f, err := s.ScanTag(ctx, g, remoteOrigin, "plain", plain); err != nil || len(f) != 0 {
+		t.Fatalf("ScanTag of a plain annotated tag = %+v, %v", f, err)
+	}
+}
+
+// TestScanRangeOctopusMerge checks that a merge of more than two parents
+// fails the scan, and that a merge of two does not.
+func TestScanRangeOctopusMerge(t *testing.T) {
+	dir := cleanRepo(t)
+	for _, side := range []string{"side1", "side2"} {
+		gitIn(t, dir, "checkout", "-q", "-b", side, originMain)
+		if err := os.WriteFile(filepath.Join(dir, side+".txt"), []byte(cleanText+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, dir, "add", ".")
+		gitIn(t, dir, "commit", "-q", "-m", "feat: "+side)
+	}
+	gitIn(t, dir, "checkout", "-q", "feature")
+	gitIn(t, dir, "merge", "-q", "--no-ff", "-m", "Merge side1", "side1")
+	g := Git{
+		Dir: dir,
+	}
+	r := Range{
+		Base: originMain,
+		Head: headRef,
+	}
+	ctx := context.Background()
+	if f, err := NewScanner().ScanRange(ctx, g, r); err != nil || len(f) != 0 {
+		t.Fatalf("ScanRange with a two-parent merge = %+v, %v", f, err)
+	}
+	gitIn(t, dir, "reset", "-q", "--hard", "HEAD^")
+	gitIn(t, dir, "merge", "-q", "--no-ff", "-m", "Merge sides", "side1", "side2")
+	if _, err := NewScanner().ScanRange(ctx, g, r); err == nil || !strings.Contains(err.Error(), "more than two parents") {
+		t.Fatalf("ScanRange with an octopus merge: err = %v, want more than two parents", err)
 	}
 }

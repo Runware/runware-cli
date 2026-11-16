@@ -295,7 +295,8 @@ var patchFlags = []string{"--no-color", "--no-ext-diff", "--no-textconv", "--no-
 // is still published in the history), the path of every added file, every
 // commit message, and the branch name. For a merge commit, what its
 // resolution adds beyond the automatic merge of its parents counts as added
-// (git's remerge diff); a clean merge adds nothing.
+// (git's remerge diff); a clean merge adds nothing. A merge of more than two
+// parents fails the scan.
 func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, error) {
 	var out []Finding
 	if r.Branch != "" {
@@ -315,6 +316,16 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		logRange = []string{r.Head}
 	}
 	logRange = append(logRange, r.notOnRemote()...)
+
+	// The remerge diff covers merges of two parents only, so an octopus
+	// merge fails the scan rather than going unchecked.
+	octopus, err := g.run(ctx, slices.Concat([]string{"rev-list", "--min-parents=3", "-n", "1"}, logRange)...)
+	if err != nil {
+		return nil, err
+	}
+	if sha := strings.TrimSpace(octopus); sha != "" {
+		return nil, fmt.Errorf("commit %s merges more than two parents, and such merges are not checked; merge the branches one at a time", short(sha))
+	}
 
 	diff, err := g.run(ctx, slices.Concat([]string{"diff"}, patchFlags, diffRange)...)
 	if err != nil {
@@ -392,7 +403,8 @@ func fileKey(f Finding) string {
 // message of an annotated tag, and the commits it points to when remote does
 // not have them yet. Those are scanned like a new branch, from the
 // merge-base with main; a tag on a commit remote already has adds none. A
-// tag that does not lead to a commit fails the scan.
+// tag that does not lead to a commit, or that points to another annotated
+// tag, fails the scan.
 func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object string) ([]Finding, error) {
 	out := s.ScanText("tag name", name)
 	typ, err := g.run(ctx, "cat-file", "-t", object)
@@ -404,7 +416,11 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 		if err != nil {
 			return nil, err
 		}
-		if _, msg, _ := strings.Cut(raw, "\n\n"); msg != "" {
+		header, msg, _ := strings.Cut(raw, "\n\n")
+		if slices.Contains(strings.Split(header, "\n"), "type tag") {
+			return nil, fmt.Errorf("tag %s points to another annotated tag, and nested annotated tags are not checked; push the inner tag on its own first", name)
+		}
+		if msg != "" {
 			out = append(out, s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n"))...)
 		}
 	}
