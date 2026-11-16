@@ -121,7 +121,6 @@ func emitRaw(format output.Format, parsed map[string]any) error {
 type jsonMapValue map[string]any
 
 func (v jsonMapValue) MarshalJSON() ([]byte, error) { return json.Marshal(map[string]any(v)) }
-func (v jsonMapValue) MarshalYAML() (any, error)    { return map[string]any(v), nil }
 
 // extractOutputFileURLs extracts URL strings from the nested outputs.files[]
 // structure used by 3D inference responses:

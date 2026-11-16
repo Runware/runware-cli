@@ -39,12 +39,36 @@ func printJSON(w io.Writer, data any) error {
 	return enc.Encode(data)
 }
 
+// printYAML prints data with the same keys and values as printJSON. A YAML encoder
+// ignores json tags and lowercases a field's Go name (createdAt becomes createdat),
+// so the value goes through its JSON encoding first: JSON is YAML, and what
+// MarshalJSON and the json tags decide is what the YAML shows.
 func printYAML(w io.Writer, data any) error {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return err
+	}
+	blockStyle(&doc)
+
 	enc := yaml.NewEncoder(w)
 	defer enc.Close() //nolint:errcheck,gosec
 
 	enc.SetIndent(2)
-	return enc.Encode(data)
+	return enc.Encode(&doc)
+}
+
+// blockStyle drops the flow and double-quoted styles a JSON document parses with, so
+// the output reads as block YAML. A string that would read as another type, such as
+// "123" or "yes", is still quoted by the encoder.
+func blockStyle(n *yaml.Node) {
+	n.Style = 0
+	for _, c := range n.Content {
+		blockStyle(c)
+	}
 }
 
 func printTable(w io.Writer, t Tabular) {

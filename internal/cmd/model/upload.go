@@ -34,11 +34,6 @@ func (d modelUploadDetail) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.r)
 }
 
-// MarshalYAML delegates to the underlying result so YAML output contains the raw data.
-func (d modelUploadDetail) MarshalYAML() (any, error) {
-	return d.r, nil
-}
-
 func newUploadCmd(logger *log.Logger) *cobra.Command {
 	var flags struct {
 		category             string

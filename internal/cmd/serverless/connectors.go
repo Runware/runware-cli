@@ -230,7 +230,7 @@ func newConnectorsListCmd(logger *log.Logger) *cobra.Command {
 
 			format := cmdutil.FormatFor(cmd)
 			if format == output.FormatYAML {
-				return output.Print(format, camelKeys{V: page})
+				return output.Print(format, page)
 			}
 			return printPage(format, page, oidcConnectorsResult(page.Data), cmd.ErrOrStderr(), "")
 		},
@@ -259,7 +259,7 @@ func newConnectorsShowCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), camelKeysTable{oidcConnectorResult(*connector)})
+			return output.Print(cmdutil.FormatFor(cmd), oidcConnectorResult(*connector))
 		},
 	}
 }
@@ -319,7 +319,7 @@ Creating a connector does not give any application a token. Attach it with
 				return err
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), camelKeysTable{oidcConnectorResult(*connector)})
+			return output.Print(cmdutil.FormatFor(cmd), oidcConnectorResult(*connector))
 		},
 	}
 
@@ -374,7 +374,7 @@ until they roll.`,
 			}
 			spin.Stop()
 
-			return output.Print(cmdutil.FormatFor(cmd), camelKeysTable{oidcConnectorResult(*connector)})
+			return output.Print(cmdutil.FormatFor(cmd), oidcConnectorResult(*connector))
 		},
 	}
 
