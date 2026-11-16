@@ -11,7 +11,7 @@ GOFLAGS = -trimpath
 
 BINARY=runware
 
-.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix check-go-fix clean install snapshot docs go-tidy generate-serverless sync-serverless-spec
+.PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix check-go-fix clean install snapshot docs go-tidy generate-serverless sync-serverless-spec setup check-public
 
 build:
 	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
@@ -67,6 +67,48 @@ docs:
 
 go-tidy:
 	go mod tidy && go mod verify
+
+# Run once per clone, and again after pulling changes to tools/checkpublic:
+# builds the checker into the clone's common git directory and installs a
+# pre-push hook there that runs that copy, so a push never runs code from the
+# branch being pushed. Every worktree of the clone shares both.
+CHECKPUBLIC_HOOK_MARKER = installed by make setup: runs tools/checkpublic
+
+setup:
+	@set -e; \
+	common=$$(git rev-parse --path-format=absolute --git-common-dir); \
+	bin="$$common/checkpublic/bin/checkpublic"; \
+	hook="$$common/hooks/pre-push"; \
+	if [ -e "$$hook" ] && ! grep -q '$(CHECKPUBLIC_HOOK_MARKER)' "$$hook"; then \
+		echo "make setup: $$hook exists and was not installed by make setup; move it aside and run make setup again" >&2; \
+		exit 1; \
+	fi; \
+	mkdir -p "$$common/checkpublic/bin" "$$common/hooks"; \
+	go build -o "$$bin.new" ./tools/checkpublic; \
+	mv -f "$$bin.new" "$$bin"; \
+	{ \
+		echo '#!/bin/sh'; \
+		echo '# $(CHECKPUBLIC_HOOK_MARKER) in prepush mode.'; \
+		echo '# Run make setup again after pulling changes to the checker.'; \
+		echo 'bin="$$(git rev-parse --path-format=absolute --git-common-dir)/checkpublic/bin/checkpublic"'; \
+		echo 'if [ ! -x "$$bin" ]; then'; \
+		echo '	echo "checkpublic: $$bin is missing; run make setup" >&2'; \
+		echo '	exit 1'; \
+		echo 'fi'; \
+		echo 'exec "$$bin" prepush "$$@"'; \
+	} > "$$hook.new"; \
+	chmod 755 "$$hook.new"; \
+	mv -f "$$hook.new" "$$hook"; \
+	hooks_path=$$(git config --get core.hooksPath || true); \
+	if [ -n "$$hooks_path" ]; then \
+		echo "make setup: warning: core.hooksPath is set to $$hooks_path, and git does not run hooks in the git directory, such as $$hook, while it is set; unset it with git config --unset core.hooksPath (add --global if it is set there)" >&2; \
+	fi; \
+	echo "make setup: installed $$hook, running the checker built from commit $$(git rev-parse --short HEAD)"
+
+# Check what this branch would publish (diff, commit messages and branch name
+# since the merge-base with origin/main) for text that must not be public.
+check-public:
+	go run ./tools/checkpublic range
 
 # Regenerate the Serverless API client from api/serverless/openapi.yaml.
 generate-serverless:
