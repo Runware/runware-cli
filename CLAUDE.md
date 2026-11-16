@@ -33,6 +33,7 @@ make run ARGS="..."  # Run without building
 - `internal/config/` — Config loading/saving (~/.runware/config.yaml)
 - `internal/output/` — Output formatting (table/json/yaml)
 - `internal/cache/` — Caching layer
+- `pkg/volumeformat/` - Shared Volumes encrypted file format, standard library only and importable by other consumers
 
 ## Spec
 
