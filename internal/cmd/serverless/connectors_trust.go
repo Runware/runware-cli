@@ -184,11 +184,12 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 		return fmt.Errorf("roleArn %q: the role name cannot be printed safely in a shell command", in.connector.Aws.RoleArn)
 	}
 	// The policy file is named after the connector so a run cannot overwrite a
-	// trust-policy.json of the customer's own.
+	// trust-policy.json of the customer's own, and after the scope so that a run for one
+	// scope can never pick up the file another scope left behind.
 	if !shellSafePattern.MatchString(in.connector.Name) {
 		return fmt.Errorf("connector name %q cannot be printed safely in a shell command", in.connector.Name)
 	}
-	policyFile := "runware-" + in.connector.Name + "-trust-policy.json"
+	policyFile := "runware-" + in.connector.Name + "-" + in.scope + "-trust-policy.json"
 	// The condition keys and the provider ARN name the issuer without its scheme.
 	host, ok := strings.CutPrefix(issuer, "https://")
 	if !ok {
@@ -233,15 +234,18 @@ func renderAWS(b *strings.Builder, in trustInput, issuer string) error {
 		return err
 	}
 
-	b.WriteString("\n# 1. Register the Runware issuer once per AWS account. It fails with EntityAlreadyExists when\n")
-	b.WriteString("#    the account already trusts the issuer; then add the audience to the existing provider instead:\n")
-	fmt.Fprintf(b, "#    aws iam add-client-id-to-open-id-connect-provider --open-id-connect-provider-arn %s --client-id %s\n",
+	b.WriteString("\n# 1. Register the Runware issuer in the AWS account. When the account already trusts the issuer, the\n")
+	b.WriteString("#    create fails and the command after || adds the audience to the existing provider instead.\n")
+	b.WriteString("#    Each step runs only if the one before it worked, so a role is never created without a provider\n")
+	b.WriteString("#    that accepts the audience.\n")
+	fmt.Fprintf(b, "aws iam create-open-id-connect-provider --url %s --client-id-list %s ||\n", issuer, in.connector.Audience)
+	fmt.Fprintf(b, "  aws iam add-client-id-to-open-id-connect-provider --open-id-connect-provider-arn %s --client-id %s &&\n",
 		policy.Statement[0].Principal.Federated, in.connector.Audience)
-	fmt.Fprintf(b, "aws iam create-open-id-connect-provider --url %s --client-id-list %s\n", issuer, in.connector.Audience)
 
 	b.WriteString("\n# 2. Create the role the connector names, trusting only the tokens above.\n")
 	b.WriteString("#    Grant it permissions afterwards, for example with aws iam attach-role-policy.\n")
-	fmt.Fprintf(b, "cat > %s <<'EOF'\n", policyFile)
+	b.WriteString("#    create-role reads the policy file, so it runs only if the file was written.\n")
+	fmt.Fprintf(b, "cat > %s <<'EOF' &&\n", policyFile)
 	b.WriteString(doc.String())
 	b.WriteString("EOF\n")
 	fmt.Fprintf(b, "aws iam create-role --role-name %s", roleName)
@@ -371,6 +375,10 @@ func writeGCPGuardedBinding(b *strings.Builder, provider, issuer, prefix, scope 
 	fmt.Fprintf(b, "  echo \"the provider's attribute condition is not only assertion.sub.startsWith terms joined by || with one of them %s, so this cannot confirm that it admits the tokens.\" >&2\n", admits)
 	fmt.Fprintf(b, "  echo \"Show the condition with: %s --format='value(attributeCondition)'\" >&2\n", describe)
 	fmt.Fprintf(b, "  echo \"then set it to that condition OR-ed with this one: %s\" >&2\n", updateCondition)
+	b.WriteString("  echo \"A condition with other terms, such as == for one application, needs a review by hand: this check accepts only startsWith terms, so it will stop again after you change the condition. Once the condition admits the tokens, run the binding yourself:\" >&2\n")
+	for _, line := range binding {
+		fmt.Fprintf(b, "  printf '%%s\\n' %s >&2\n", shellQuote(line))
+	}
 	b.WriteString("  false\n")
 	fmt.Fprintf(b, "elif ! printf '%%s' \"$runware_provider\" | grep -Eq -- %s; then\n", shellQuote(mapped))
 	b.WriteString(unset)

@@ -86,17 +86,18 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 			conn: "aws-prod",
 			base: trustAWSBase,
 			want: []string{
-				"aws iam create-open-id-connect-provider --url " + trustIssuer + " --client-id-list runware:org-1\n",
+				"aws iam create-open-id-connect-provider --url " + trustIssuer + " --client-id-list runware:org-1 ||\n",
+				"  aws iam add-client-id-to-open-id-connect-provider --open-id-connect-provider-arn arn:aws:iam::123456789012:oidc-provider/oidc.runware.example --client-id runware:org-1 &&\n",
 				`"StringEquals": {`,
 				`"oidc.runware.example:aud": "runware:org-1"`,
 				`"oidc.runware.example:sub": "` + testSubject + `"`,
 				`"Federated": "arn:aws:iam::123456789012:oidc-provider/oidc.runware.example"`,
-				"cat > runware-aws-prod-trust-policy.json <<'EOF'\n",
-				"aws iam create-role --role-name runware-worker --path /ci/ --assume-role-policy-document file://runware-aws-prod-trust-policy.json\n",
-				"#    aws iam update-assume-role-policy --role-name runware-worker --policy-document file://runware-aws-prod-trust-policy.json\n",
+				"cat > runware-aws-prod-app-trust-policy.json <<'EOF' &&\n",
+				"aws iam create-role --role-name runware-worker --path /ci/ --assume-role-policy-document file://runware-aws-prod-app-trust-policy.json\n",
+				"#    aws iam update-assume-role-policy --role-name runware-worker --policy-document file://runware-aws-prod-app-trust-policy.json\n",
 				"REPLACES the existing trust policy and does not merge",
 			},
-			deny: []string{"StringLike", testSubjectPattern, "file://trust-policy.json", "cat > trust-policy.json"},
+			deny: []string{"StringLike", testSubjectPattern, "file://trust-policy.json", "cat > trust-policy.json", "-environment-trust-policy.json"},
 		},
 		{
 			name: "aws environment",
@@ -107,8 +108,10 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 				`"StringLike": {`,
 				`"oidc.runware.example:sub": "` + testSubjectPattern + `"`,
 				`"oidc.runware.example:aud": "runware:org-1"`,
+				"cat > runware-aws-prod-environment-trust-policy.json <<'EOF' &&\n",
+				"--assume-role-policy-document file://runware-aws-prod-environment-trust-policy.json\n",
 			},
-			deny: []string{testSubject + `"`},
+			deny: []string{testSubject + `"`, "-app-trust-policy.json"},
 		},
 		{
 			name: "gcp app with a service account",
@@ -360,7 +363,11 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 	}
 	const conditionStopped = "is not only assertion.sub.startsWith terms joined by || with one of them "
 	for _, scope := range trustScopes {
-		attribute, claim := gcpRequiredMapping(scope)
+		// The pairs are literals, so a change to the code cannot move the expectation with it.
+		attribute, claim := "google.subject", "assertion.sub"
+		if scope == trustScopeEnvironment {
+			attribute, claim = "attribute.environment_id", "assertion.environment_id"
+		}
 		member := "principal://iam.googleapis.com/" + trustPool + "/subject/" + testSubject
 		if scope == trustScopeEnvironment {
 			member = "principalSet://iam.googleapis.com/" + trustPool + "/attribute.environment_id/" + trustEnvUUID
@@ -385,6 +392,15 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 					}
 				} else if !strings.Contains(got.stderr, wantStderr) {
 					t.Errorf("stderr does not say what is missing (%q):\n%s", wantStderr, got.stderr)
+				}
+				if !binds && strings.Contains(wantStderr, conditionStopped) {
+					// A condition the check cannot read is the customer's to review, so the binding
+					// is printed for a run by hand, with the member of this scope.
+					for _, want := range []string{"run the binding yourself", "--member=" + member, "--role=roles/"} {
+						if !strings.Contains(got.stderr, want) {
+							t.Errorf("stderr lacks %q for a run by hand:\n%s", want, got.stderr)
+						}
+					}
 				}
 				if got.left != "" {
 					t.Errorf("the script left provider data in the shell: %q", got.left)
@@ -432,13 +448,107 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 	}
 }
 
+// TestConnectorsTrustAWSRunsEachStepOnlyAfterTheOneBefore runs the printed aws script with a
+// fake aws: the role is created only when the provider accepts the audience (created, or the
+// audience added to the existing one) and the policy file was written. A file that cannot
+// be written must not let create-role read one an earlier run of another scope left.
+func TestConnectorsTrustAWSRunsEachStepOnlyAfterTheOneBefore(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh to run the script with")
+	}
+	bin := t.TempDir()
+	fake := "#!/bin/sh\necho \"$*\" >> \"$CALLS\"\ncase \"$*\" in\n" +
+		"  *create-open-id-connect-provider*) [ -z \"$CREATE_FAILS\" ] || exit 1 ;;\n" +
+		"  *add-client-id-to-open-id-connect-provider*) [ -z \"$ADD_FAILS\" ] || exit 1 ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(filepath.Join(bin, "aws"), []byte(fake), 0o755); err != nil { //nolint:gosec // an executable stub in a temp dir
+		t.Fatal(err)
+	}
+	const (
+		awsCreateProvider = "create-open-id-connect-provider"
+		awsAddAudience    = "add-client-id-to-open-id-connect-provider"
+		awsCreateRole     = "create-role"
+	)
+	name := trustAttachmentAWS().Name
+	appFile := "runware-" + name + "-app-trust-policy.json"
+	envFile := "runware-" + name + "-environment-trust-policy.json"
+	for _, tc := range []struct {
+		name                  string
+		scope                 string
+		createFails, addFails bool
+		blockFile             string // a directory of this name, so writing the file fails
+		staleFile             string // a file an earlier run of another scope left
+		wantCalls             []string
+		denyCalls             []string
+		wantOK                bool
+	}{
+		{name: "provider created", scope: trustScopeApp, wantOK: true,
+			wantCalls: []string{awsCreateProvider, awsCreateRole}, denyCalls: []string{"add-client-id"}},
+		{name: "provider exists, audience added", scope: trustScopeApp, createFails: true, wantOK: true,
+			wantCalls: []string{awsCreateProvider, awsAddAudience, awsCreateRole}},
+		{name: "provider exists and the audience cannot be added", scope: trustScopeApp, createFails: true, addFails: true,
+			wantCalls: []string{awsAddAudience}, denyCalls: []string{awsCreateRole}},
+		{name: "the policy file cannot be written", scope: trustScopeApp, blockFile: appFile,
+			wantCalls: []string{awsCreateProvider}, denyCalls: []string{awsCreateRole}},
+		{name: "the environment file cannot be written next to an app file", scope: trustScopeEnvironment, blockFile: envFile, staleFile: appFile,
+			wantCalls: []string{awsCreateProvider}, denyCalls: []string{awsCreateRole}},
+		{name: "the environment run writes its own file", scope: trustScopeEnvironment, staleFile: appFile, wantOK: true,
+			wantCalls: []string{awsCreateRole, "file://" + envFile}, denyCalls: []string{"file://" + appFile}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script, err := renderTrust(trustInput{connector: trustAttachmentAWS(), app: testAppID, environment: testProductionEnvironment, scope: tc.scope})
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			if tc.blockFile != "" {
+				if err := os.Mkdir(filepath.Join(dir, tc.blockFile), 0o755); err != nil { //nolint:gosec // a directory in a temp dir
+					t.Fatal(err)
+				}
+			}
+			if tc.staleFile != "" {
+				if err := os.WriteFile(filepath.Join(dir, tc.staleFile), []byte("STALE"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := filepath.Join(t.TempDir(), "calls")
+			env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "CALLS=" + calls}
+			if tc.createFails {
+				env = append(env, "CREATE_FAILS=1")
+			}
+			if tc.addFails {
+				env = append(env, "ADD_FAILS=1")
+			}
+			cmd := exec.CommandContext(t.Context(), sh, "-c", script) //nolint:gosec // sh from LookPath, the script is the command under test
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), env...)
+			out, runErr := cmd.CombinedOutput()
+			recorded, _ := os.ReadFile(calls)
+			if (runErr == nil) != tc.wantOK {
+				t.Errorf("exit error = %v, want ok = %v\n%s", runErr, tc.wantOK, out)
+			}
+			for _, want := range tc.wantCalls {
+				if !strings.Contains(string(recorded), want) {
+					t.Errorf("aws was not called with %q:\n%s", want, recorded)
+				}
+			}
+			for _, deny := range tc.denyCalls {
+				if strings.Contains(string(recorded), deny) {
+					t.Errorf("aws was called with %q, which must not run:\n%s", deny, recorded)
+				}
+			}
+		})
+	}
+}
+
 func TestConnectorsTrustAwsPolicyIsValidJSONWithTheTrustedSubject(t *testing.T) {
 	for scope, wantOperator := range map[string]string{trustScopeApp: "StringEquals", trustScopeEnvironment: "StringLike"} {
 		run := runTrust(t, testConnectorName, trustAWSBase, scopeFlag, scope)
 		if run.err != nil {
 			t.Fatal(run.err)
 		}
-		_, doc, _ := strings.Cut(run.cobraOutput, "<<'EOF'\n")
+		_, doc, _ := strings.Cut(run.cobraOutput, "<<'EOF' &&\n")
 		doc, _, _ = strings.Cut(doc, "EOF\n")
 		var policy awsTrustPolicy
 		if err := json.Unmarshal([]byte(doc), &policy); err != nil {
