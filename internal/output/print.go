@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"regexp"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"gopkg.in/yaml.v3"
@@ -62,13 +63,32 @@ func printYAML(w io.Writer, data any) error {
 }
 
 // blockStyle drops the flow and double-quoted styles a JSON document parses with, so
-// the output reads as block YAML. A string that would read as another type, such as
-// "123" or "yes", is still quoted by the encoder.
+// the output reads as block YAML. yaml.v3 keeps a string quoted when YAML 1.2 would read
+// it as another type ("123", "true", a timestamp); misreadByYAML11 adds the strings that
+// only YAML 1.1 readers (PyYAML, Ruby, yq v3) misread.
 func blockStyle(n *yaml.Node) {
 	n.Style = 0
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!str" && misreadByYAML11(n.Value) {
+		n.Style = yaml.DoubleQuotedStyle
+	}
 	for _, c := range n.Content {
 		blockStyle(c)
 	}
+}
+
+// yaml11Words are the plain scalars YAML 1.1 reads as booleans, plus the merge key.
+var yaml11Words = map[string]bool{
+	"y": true, "Y": true, "yes": true, "Yes": true, "YES": true,
+	"n": true, "N": true, "no": true, "No": true, "NO": true,
+	"on": true, "On": true, "ON": true, "off": true, "Off": true, "OFF": true,
+	"<<": true, "=": true,
+}
+
+// yaml11Sexagesimal matches base-60 numbers such as 1:30:00, which YAML 1.1 reads as an integer or float.
+var yaml11Sexagesimal = regexp.MustCompile(`^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+(\.[0-9_]*)?$`)
+
+func misreadByYAML11(s string) bool {
+	return yaml11Words[s] || yaml11Sexagesimal.MatchString(s)
 }
 
 func printTable(w io.Writer, t Tabular) {

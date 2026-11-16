@@ -230,3 +230,20 @@ func TestPrintYAMLKeepsLargeIntegersExact(t *testing.T) {
 		t.Fatalf("YAML output lost the integer:\n%s", got)
 	}
 }
+
+// YAML 1.1 readers (PyYAML, Ruby, yq v3) read yes/no/on/off, 1:30:00 and << as a
+// boolean, a number and a merge key unless they are quoted; the test reads the text,
+// because a YAML 1.2 parser reads them back as strings either way.
+func TestPrintYAMLQuotesWhatYAML11Misreads(t *testing.T) {
+	var buf bytes.Buffer
+	data := map[string]any{"a": "yes", "b": "NO", "c": "on", "d": "y", "e": "1:30:00", "<<": "x", "plain": "hello", "k": "1h"}
+	if err := printYAML(&buf, data); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	for _, want := range []string{`a: "yes"`, `b: "NO"`, `c: "on"`, `d: "y"`, `e: "1:30:00"`, `"<<": x`, "plain: hello", "k: 1h"} {
+		if !strings.Contains(got, want+"\n") {
+			t.Errorf("output lacks %q:\n%s", want, got)
+		}
+	}
+}
