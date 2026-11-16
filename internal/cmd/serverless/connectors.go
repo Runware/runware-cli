@@ -193,6 +193,7 @@ application with 'apps connectors attach'.`
 		newConnectorsCreateCmd(logger),
 		newConnectorsUpdateCmd(logger),
 		newConnectorsDeleteCmd(logger),
+		newConnectorsTrustCmd(logger),
 	)
 	return cmd
 }
