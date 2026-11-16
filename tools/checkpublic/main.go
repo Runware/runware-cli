@@ -36,6 +36,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -48,6 +49,9 @@ const (
 	exitFindings = 1
 	exitError    = 3
 )
+
+// modeRange is the mode that checks a range of the repository's history.
+const modeRange = "range"
 
 // options are the flags every mode accepts.
 type options struct {
@@ -103,7 +107,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	var findings []Finding
 	var err error
 	switch mode {
-	case "range":
+	case modeRange:
 		findings, err = scanRangeMode(ctx, s, g, *base, *head, *branch)
 	case "text":
 		findings, err = scanTextMode(s, *label, fs.Args(), stdin)
@@ -226,9 +230,14 @@ func scanRangeMode(ctx context.Context, s *Scanner, g Git, base, head, branch st
 	if err != nil {
 		return nil, err
 	}
+	remote := ""
 	if base == "" {
 		base, err = g.DefaultBase(ctx, "", headSHA)
-		if err != nil {
+		switch {
+		case errors.Is(err, ErrNoMergeBase):
+			// Unrelated to main: everything origin does not have is new.
+			remote = remoteOriginName
+		case err != nil:
 			return nil, err
 		}
 	}
@@ -239,6 +248,7 @@ func scanRangeMode(ctx context.Context, s *Scanner, g Git, base, head, branch st
 		Base:   base,
 		Head:   headSHA,
 		Branch: branch,
+		Remote: remote,
 	})
 }
 

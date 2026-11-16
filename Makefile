@@ -72,8 +72,9 @@ go-tidy:
 # builds the checker into the clone's common git directory and installs a
 # pre-push hook there that runs that copy, so a push never runs code from the
 # branch being pushed. Every worktree of the clone shares both. It records
-# the commit the checker was built from beside it, and refuses to replace it
-# with a build from an older commit unless FORCE=1.
+# the commit the checker was built from beside it ("-dirty" when
+# tools/checkpublic has uncommitted changes), and unless FORCE=1 refuses a
+# dirty build and any build whose commit does not contain the installed one.
 CHECKPUBLIC_HOOK_MARKER = installed by make setup: runs tools/checkpublic
 
 setup:
@@ -86,9 +87,16 @@ setup:
 		exit 1; \
 	fi; \
 	commit=$$(git rev-parse HEAD); \
+	if [ -n "$$(git status --porcelain --untracked-files=all -- tools/checkpublic)" ]; then \
+		if [ "$(FORCE)" != 1 ]; then \
+			echo "make setup: tools/checkpublic has uncommitted changes; commit or discard them, or FORCE=1 make setup to install this build (recorded as $$commit-dirty)" >&2; \
+			exit 1; \
+		fi; \
+		commit="$$commit-dirty"; \
+	fi; \
 	installed=$$(cat "$$bin.commit" 2>/dev/null || true); \
-	if [ "$(FORCE)" != 1 ] && [ -n "$$installed" ] && [ "$$installed" != "$$commit" ] && git merge-base --is-ancestor "$$commit" "$$installed" 2>/dev/null; then \
-		echo "make setup: the installed checker was built from $$installed, which is newer than this checkout ($$commit); run make setup from an up-to-date checkout, or FORCE=1 make setup to install the older one" >&2; \
+	if [ "$(FORCE)" != 1 ] && [ -n "$$installed" ] && [ "$$installed" != "$$commit" ] && ! git merge-base --is-ancestor "$${installed%-dirty}" HEAD 2>/dev/null; then \
+		echo "make setup: the installed checker was built from $$installed, which this checkout ($$commit) does not contain: it is newer or on another branch; run make setup from a checkout that contains it, or FORCE=1 make setup to replace it" >&2; \
 		exit 1; \
 	fi; \
 	mkdir -p "$$common/checkpublic/bin" "$$common/hooks"; \

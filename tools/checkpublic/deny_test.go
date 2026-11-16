@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -52,10 +54,42 @@ func runLoggedOut(m *testing.M) int {
 	}
 	_ = os.Setenv("GH_CONFIG_DIR", dir)
 	_ = os.Setenv("GH_PROMPT_DISABLED", "1")
+	// git reads no configuration of the user or the system, so a test
+	// sees the same git everywhere, and nothing writes the user's cache.
+	_ = os.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	_ = os.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	cache := filepath.Join(dir, "cache")
+	if os.Getenv("GOCACHE") == "" {
+		// Keep go's build cache, which make setup's go build uses, where
+		// it was: it moves with XDG_CACHE_HOME otherwise.
+		if out, err := exec.CommandContext(context.Background(), "go", "env", "GOCACHE").Output(); err == nil {
+			_ = os.Setenv("GOCACHE", strings.TrimSpace(string(out)))
+		}
+	}
+	_ = os.Setenv("XDG_CACHE_HOME", cache)
 	return m.Run()
 }
 
 const testRepo = "owner/repo"
+
+// TestHermeticEnvironment checks that TestMain keeps the tests away from
+// the user's git configuration and cache.
+func TestHermeticEnvironment(t *testing.T) {
+	if got := os.Getenv("GIT_CONFIG_GLOBAL"); got != os.DevNull {
+		t.Errorf("GIT_CONFIG_GLOBAL = %q, want %q", got, os.DevNull)
+	}
+	if got := os.Getenv("GIT_CONFIG_NOSYSTEM"); got != "1" {
+		t.Errorf("GIT_CONFIG_NOSYSTEM = %q, want 1", got)
+	}
+	if got := os.Getenv("XDG_CACHE_HOME"); !strings.HasPrefix(got, os.Getenv("GH_CONFIG_DIR")) || os.Getenv("GH_CONFIG_DIR") == "" {
+		t.Errorf("XDG_CACHE_HOME = %q, want it under the tests' temporary directory", got)
+	}
+	// The hook a setup test pushes with runs the real deny source, which
+	// must cache under XDG_CACHE_HOME on every system.
+	if got, want := userCacheDir(), filepath.Join(os.Getenv("XDG_CACHE_HOME"), "checkpublic"); got != want {
+		t.Errorf("userCacheDir() = %q, want %q", got, want)
+	}
+}
 
 // patternStrings returns the source text of each pattern.
 func patternStrings(res []*regexp.Regexp) []string {

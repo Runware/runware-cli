@@ -14,18 +14,47 @@ jobs:
   check-public:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
+      # A plain fetch instead of actions/checkout, whose log lists the
+      # branch and the commit message the author wrote. The base and head
+      # come from the event file, never from author text, and the step
+      # prints nothing but a fixed message on failure. Fetching both commits
+      # in full gives the merge-base the range scan needs.
+      - name: Fetch the base and head commits
+        run: |
+          base=$(jq -r .pull_request.base.sha "$GITHUB_EVENT_PATH")
+          head=$(jq -r .pull_request.head.sha "$GITHUB_EVENT_PATH")
+          for sha in "$base" "$head"; do
+            if ! printf '%s\n' "$sha" | grep -Eqx '[0-9a-f]{40}|[0-9a-f]{64}'; then
+              echo "The event has no pull request base and head commit."
+              exit 1
+            fi
+          done
+          git init -q -b checkpublic
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git fetch -q --no-tags origin "$base" "$head" > /dev/null 2>&1 || {
+            echo "Fetching the base and head commits failed (git fetch exit $?)."
+            exit 1
+          }
+          git -c advice.detachedHead=false checkout -q --detach "$head" > /dev/null 2>&1 || {
+            echo "Checking out the head commit failed (git checkout exit $?)."
+            exit 1
+          }
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
+      # The checker is built from the base commit when it exists there, so
+      # a pull request cannot weaken the checker that judges it.
       - name: Build checkpublic
-        run: go build -o "$RUNNER_TEMP/checkpublic" ./tools/checkpublic
+        run: |
+          src=.
+          if git cat-file -e "$BASE_SHA:tools/checkpublic/main.go" 2>/dev/null; then
+            src="$RUNNER_TEMP/checker-source"
+            git worktree add -q --detach "$src" "$BASE_SHA"
+          fi
+          (cd "$src" && go build -o "$RUNNER_TEMP/checkpublic" ./tools/checkpublic)
 
       # The title, body and branch name are written by the PR author. The
       # runner prints a step's env in the public log, so they reach the tool

@@ -570,3 +570,150 @@ func TestGitVersionAtLeast(t *testing.T) {
 		}
 	}
 }
+
+// TestScanRangeRunsNoConfiguredMergeDriver checks that re-merging a merge
+// for the scan runs no merge driver from the repository's configuration
+// (merge.default applies to paths without a merge attribute), here a script
+// the branch itself holds, nor one an attributes file of the user selects.
+func TestScanRangeRunsNoConfiguredMergeDriver(t *testing.T) {
+	if runtime.GOOS == goosWindows {
+		t.Skip("the driver is a POSIX shell script")
+	}
+	dir := gitRepo(t, cleanText, "feat: add b")
+	sentinel := filepath.Join(t.TempDir(), "driver-ran")
+	write := func(name, text string, mode os.FileMode) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("tools/merge.sh", "#!/bin/sh\ntouch '"+sentinel+"'\nexit 0\n", 0o700)
+	write("a.txt", "feature\n", 0o600)
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "commit", "-q", "-m", "feat: edit a")
+	gitIn(t, dir, "checkout", "-q", "-b", "newmain", "origin/main")
+	write("a.txt", "main\n", 0o600)
+	gitIn(t, dir, "commit", "-q", "-am", "feat: main edits a")
+	gitIn(t, dir, "update-ref", "refs/remotes/origin/main", headRef)
+	gitIn(t, dir, "checkout", "-q", "feature")
+	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "merge", "-q", "--no-commit", "origin/main") //nolint:gosec // test arguments
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	_ = cmd.Run() // conflicts, resolved below
+	write("a.txt", "feature and main\n", 0o600)
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-q", "-m", "Merge main into feature")
+
+	gitIn(t, dir, "config", "merge.default", "custom")
+	gitIn(t, dir, "config", "merge.custom.driver", "./tools/merge.sh %A %O %B")
+	scanToMain(t, dir)
+	if _, err := os.Stat(sentinel); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the scan ran the configured default merge driver: %v", err)
+	}
+
+	userAttributes := filepath.Join(t.TempDir(), "attributes")
+	if err := os.WriteFile(userAttributes, []byte("*.txt merge=other\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "config", "core.attributesFile", userAttributes)
+	gitIn(t, dir, "config", "merge.other.driver", "./tools/merge.sh %A %O %B")
+	write(".git/info/attributes", "*.txt merge=other\n", 0o600)
+	scanToMain(t, dir)
+	if _, err := os.Stat(sentinel); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the scan ran a merge driver an attributes file selects: %v", err)
+	}
+}
+
+// TestScanFailsOnTooLongLine checks that a line of git output longer than
+// the scanner reads fails the run, rather than leave what follows it
+// unscanned.
+func TestScanFailsOnTooLongLine(t *testing.T) {
+	old := maxLineBytes
+	maxLineBytes = 1 << 10
+	t.Cleanup(func() {
+		maxLineBytes = old
+	})
+	dir := gitRepo(t, strings.Repeat("x", 2<<10)+"\n"+leak, "feat: add b")
+	var stdout, stderr strings.Builder
+	code := run(context.Background(), []string{modeRange, "-C", dir}, strings.NewReader(""), &stdout, &stderr)
+	if code != exitError || !strings.Contains(stderr.String(), "too long to scan") {
+		t.Fatalf("exit %d, want %d with a clear message:\n%s%s", code, exitError, stdout.String(), stderr.String())
+	}
+}
+
+// orphanBranch adds a branch with no history in common with main, whose one
+// commit holds text in o.txt.
+func orphanBranch(t *testing.T, dir, name, text string) string {
+	t.Helper()
+	gitIn(t, dir, "checkout", "-q", "--orphan", name)
+	gitIn(t, dir, "rm", "-rqf", ".")
+	if err := os.WriteFile(filepath.Join(dir, "o.txt"), []byte(text+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "o.txt")
+	gitIn(t, dir, "commit", "-q", "-m", "docs: start "+name)
+	return gitIn(t, dir, "rev-parse", headRef)
+}
+
+// TestPrePushUnrelatedHistory checks that a pushed branch with no history
+// in common with main, such as an orphan branch, has every commit the
+// remote does not have scanned, instead of failing.
+func TestPrePushUnrelatedHistory(t *testing.T) {
+	dir := cleanRepo(t)
+	zero := strings.Repeat("0", 40)
+	s := NewScanner()
+	g := Git{
+		Dir: dir,
+	}
+	leaky := orphanBranch(t, dir, "leaky", leak)
+	f, err := s.prePush(context.Background(), g, []string{remoteOrigin}, strings.NewReader("refs/heads/leaky "+leaky+" refs/heads/leaky "+zero+"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || f[0].Where != "o.txt:1" {
+		t.Fatalf("findings = %+v, want one at o.txt:1", f)
+	}
+	gitIn(t, dir, "checkout", "-q", "feature")
+	clean := orphanBranch(t, dir, "clean", cleanText)
+	if f, err := s.prePush(context.Background(), g, []string{remoteOrigin}, strings.NewReader("refs/heads/clean "+clean+" refs/heads/clean "+zero+"\n")); err != nil || len(f) != 0 {
+		t.Fatalf("findings for a clean orphan branch = %+v, %v", f, err)
+	}
+}
+
+// TestPrePushTagOnBlobOrTree checks that a tag on a blob has the blob
+// scanned, and a tag on a tree the path and content of each file in it.
+func TestPrePushTagOnBlobOrTree(t *testing.T) {
+	dir := cleanRepo(t)
+	name := "notes-" + clusterHost + ".md"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(cleanText+"\n"+leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", name)
+	blob := gitIn(t, dir, "rev-parse", ":"+name)
+	tree := gitIn(t, dir, "write-tree")
+	gitIn(t, dir, "tag", "blob-tag", blob)
+	gitIn(t, dir, "tag", "-a", "-m", "release", "tree-tag", tree)
+	zero := strings.Repeat("0", 40)
+	scan := func(tag string) []string {
+		t.Helper()
+		line := "refs/tags/" + tag + " " + gitIn(t, dir, "rev-parse", "refs/tags/"+tag) + " refs/tags/" + tag + " " + zero + "\n"
+		f, err := NewScanner().prePush(context.Background(), Git{Dir: dir}, []string{remoteOrigin}, strings.NewReader(line))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var where []string
+		for _, x := range f {
+			where = append(where, x.Where)
+		}
+		slices.Sort(where)
+		return where
+	}
+	if got, want := scan("blob-tag"), []string{"blob of tag blob-tag line 2"}; !slices.Equal(got, want) {
+		t.Errorf("blob tag findings at %q, want %q", got, want)
+	}
+	if got, want := scan("tree-tag"), []string{name + ":2", "path in tree of tag tree-tag"}; !slices.Equal(got, want) {
+		t.Errorf("tree tag findings at %q, want %q", got, want)
+	}
+}

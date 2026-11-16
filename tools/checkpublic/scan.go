@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -53,17 +54,24 @@ func (s *Scanner) findings(where, file, line string) []Finding {
 	return out
 }
 
+// maxLineBytes is the longest line of git output ScanDiff reads. A longer
+// line fails the scan rather than leave the rest of the diff unread.
+var maxLineBytes = 64 << 20
+
+// ErrLineTooLong means a line of git output was too long to scan.
+var ErrLineTooLong = errors.New("a line of the diff is too long to scan, so the scan stopped; the change cannot be checked")
+
 // ScanDiff scans the added lines of a unified diff. A diff from git log -p
 // has lines starting with commitMarker; their findings are reported as
-// "commit <sha> file:line".
-func (s *Scanner) ScanDiff(diff string) []Finding {
+// "commit <sha> file:line". It fails when it cannot read the whole diff.
+func (s *Scanner) ScanDiff(diff string) ([]Finding, error) {
 	var out []Finding
 	var file, commit string
 	// The line counts left in the current hunk, so an added line that
 	// starts with "++ " is not taken for a file header.
 	newLine, oldLeft, newLeft := 0, 0, 0
 	sc := bufio.NewScanner(strings.NewReader(diff))
-	sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+	sc.Buffer(make([]byte, 0, min(1<<20, maxLineBytes)), maxLineBytes)
 	for sc.Scan() {
 		line := sc.Text()
 		if oldLeft > 0 || newLeft > 0 {
@@ -102,7 +110,13 @@ func (s *Scanner) ScanDiff(diff string) []Finding {
 			newLine, oldLeft, newLeft = parseHunk(line)
 		}
 	}
-	return out
+	if err := sc.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return nil, fmt.Errorf("%w (limit %d bytes)", ErrLineTooLong, maxLineBytes)
+		}
+		return nil, err
+	}
+	return out, nil
 }
 
 // parseHunk returns the first new-file line number and the old and new line
@@ -159,10 +173,38 @@ func (g Git) run(ctx context.Context, args ...string) (string, error) {
 	return g.exec(ctx, slices.Concat([]string{"--attr-source=" + tree}, args)...)
 }
 
-// exec runs git in g.Dir without the attribute source run sets.
+// exec runs git in g.Dir without the attribute source run sets, but with
+// every configured merge driver replaced (see mergeDriverOverrides).
 func (g Git) exec(ctx context.Context, args ...string) (string, error) {
-	full := append([]string{"-C", g.Dir, "-c", "core.quotePath=false"}, args...)
+	overrides, err := mergeDriverOverrides(ctx, g.Dir)
+	if err != nil {
+		return "", err
+	}
+	return g.execRaw(ctx, slices.Concat(overrides, args)...)
+}
+
+// safeConfig is configuration every scanner git call runs with, so that no
+// configured command runs and nothing rewrites the content scanned. The
+// repository's configuration can name a script inside the work tree, which
+// the branch being scanned writes: a merge driver for paths without a merge
+// attribute (merge.default), a user attributes file selecting one, a
+// filesystem monitor, or gpg for signatures.
+var safeConfig = []string{
+	"-c", "core.quotePath=false",
+	"-c", "core.attributesFile=",
+	"-c", "core.fsmonitor=false",
+	"-c", "merge.default=text",
+	"-c", "merge.renormalize=false",
+	"-c", "diff.external=",
+	"-c", "log.showSignature=false",
+}
+
+// execRaw runs git in g.Dir with safeConfig and the system attributes file
+// ignored.
+func (g Git) execRaw(ctx context.Context, args ...string) (string, error) {
+	full := slices.Concat([]string{"-C", g.Dir}, safeConfig, args)
 	cmd := exec.CommandContext(ctx, "git", full...) //nolint:gosec // git with arguments built by this tool, no shell
+	cmd.Env = append(os.Environ(), "GIT_ATTR_NOSYSTEM=1")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -170,6 +212,26 @@ func (g Git) exec(ctx context.Context, args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return string(out), nil
+}
+
+// mergeDriverOverrides returns the git arguments that replace the command of
+// every merge driver configured for dir with the shell no-op ":". The
+// repository's own attributes file ($GIT_DIR/info/attributes) still applies
+// with --attr-source, and it can select such a driver. A replaced driver
+// keeps its side of the merge, so the resolution counts as added. It is
+// read for every call, so a configuration changed between calls applies.
+func mergeDriverOverrides(ctx context.Context, dir string) ([]string, error) {
+	// Exit status 1 means no driver is configured; outside a repository
+	// the command run fails on its own.
+	names, _ := Git{Dir: dir}.execRaw(ctx, "config", "--name-only", "--get-regexp", `^merge\..+\.driver$`)
+	var out []string
+	for key := range strings.FieldsSeq(names) {
+		if strings.Contains(key, "=") {
+			return nil, fmt.Errorf("cannot disable the merge driver %q configured in %s", key, dir)
+		}
+		out = append(out, "-c", key+"=:")
+	}
+	return out, nil
 }
 
 // Empty tree object IDs, which every repository of the object format has.
@@ -195,7 +257,7 @@ func emptyTree(ctx context.Context, dir string) (string, error) {
 }
 
 func readEmptyTree(ctx context.Context, dir string) (string, error) {
-	out, err := Git{Dir: dir}.exec(ctx, "rev-parse", "--show-object-format")
+	out, err := Git{Dir: dir}.execRaw(ctx, "rev-parse", "--show-object-format")
 	if err != nil {
 		return emptyTreeSHA1, nil //nolint:nilerr // not a repository: the command run then fails on its own
 	}
@@ -251,10 +313,26 @@ func (g Git) revParse(ctx context.Context, rev string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
-// MergeBase returns the merge-base of a and b.
+// ErrNoMergeBase means two commits have no common history, as an orphan
+// branch or a notes ref has with main.
+var ErrNoMergeBase = errors.New("no common history")
+
+// MergeBase returns the merge-base of a and b, or ErrNoMergeBase.
 func (g Git) MergeBase(ctx context.Context, a, b string) (string, error) {
 	out, err := g.run(ctx, "merge-base", a, b)
+	if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		// Both are commits (rev-parse checked) without a merge-base.
+		if g.isCommit(ctx, a) && g.isCommit(ctx, b) {
+			return "", fmt.Errorf("%s and %s: %w", short(a), short(b), ErrNoMergeBase)
+		}
+	}
 	return strings.TrimSpace(out), err
+}
+
+// isCommit reports whether rev names a commit.
+func (g Git) isCommit(ctx context.Context, rev string) bool {
+	_, err := g.revParse(ctx, rev)
+	return err == nil
 }
 
 // ErrNoMainRef means no remote main branch to compare against was found.
@@ -299,19 +377,23 @@ type Range struct {
 // what the remote branch points to, "" for a new branch. The base is the
 // merge-base with that commit, or with remote/main when that is newer: after
 // a rebase onto a newer main and a force-push, the old fork point would
-// bring in main's commits that others wrote.
+// bring in main's commits that others wrote. It is "" when head shares no
+// history with either (an orphan branch or a notes ref): then everything
+// head has that the remote does not is new.
 func (g Git) PushBase(ctx context.Context, remote, remoteSHA, head string) (string, error) {
 	base := ""
 	if remoteSHA != "" {
 		mb, err := g.MergeBase(ctx, remoteSHA, head)
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrNoMergeBase) {
 			return "", err
 		}
 		base = mb
 	}
 	mainBase, err := g.DefaultBase(ctx, remote, head)
 	switch {
-	case err != nil && base == "":
+	case errors.Is(err, ErrNoMergeBase):
+		return base, nil
+	case err != nil && remoteSHA == "":
 		return "", err
 	case err != nil:
 		return base, nil //nolint:nilerr // without remote/main, the remote branch alone gives the base
@@ -355,21 +437,43 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		out = append(out, s.ScanText("branch name", r.Branch)...)
 	}
 
-	diff, err := g.run(ctx, slices.Concat([]string{"diff"}, patchFlags, []string{r.Base + "..." + r.Head})...)
+	// Without a base, the history is unrelated to what the remote has: the
+	// whole tree is new, and so is every commit the remote does not have.
+	diffRange := []string{r.Base + "..." + r.Head}
+	logRange := []string{r.Base + ".." + r.Head}
+	if r.Base == "" {
+		tree, err := emptyTree(ctx, g.Dir)
+		if err != nil {
+			return nil, err
+		}
+		diffRange = []string{tree, r.Head}
+		logRange = []string{r.Head}
+	}
+	logRange = append(logRange, r.notOnRemote()...)
+
+	diff, err := g.run(ctx, slices.Concat([]string{"diff"}, patchFlags, diffRange)...)
+	if err != nil {
+		return nil, err
+	}
+	diffFindings, err := s.ScanDiff(diff)
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]struct{}{}
-	for _, f := range s.ScanDiff(diff) {
+	for _, f := range diffFindings {
 		seen[fileKey(f)] = struct{}{}
 		out = append(out, f)
 	}
 
-	patches, err := g.run(ctx, slices.Concat([]string{"log", "--remerge-diff", "-p", "--format=%x00commit %H"}, patchFlags, []string{r.Base + ".." + r.Head}, r.notOnRemote())...)
+	patches, err := g.run(ctx, slices.Concat([]string{"log", "--remerge-diff", "-p", "--format=%x00commit %H"}, patchFlags, logRange)...)
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range s.ScanDiff(patches) {
+	patchFindings, err := s.ScanDiff(patches)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range patchFindings {
 		key := fileKey(f)
 		if _, ok := seen[key]; ok {
 			continue
@@ -381,7 +485,7 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 	// git's remerge diff covers merges of two parents only. An octopus
 	// merge is diffed against its first parent instead, which counts
 	// everything its other parents bring in as added.
-	octopus, err := g.run(ctx, append([]string{"rev-list", "--min-parents=3", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
+	octopus, err := g.run(ctx, slices.Concat([]string{"rev-list", "--min-parents=3"}, logRange)...)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +495,11 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		if err != nil {
 			return nil, err
 		}
-		for _, f := range s.ScanDiff(commitMarker + sha + "\n" + d) {
+		octopusFindings, err := s.ScanDiff(commitMarker + sha + "\n" + d)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range octopusFindings {
 			key := fileKey(f)
 			if _, ok := seen[key]; ok {
 				continue
@@ -409,7 +517,7 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 	// The path of each file added in the range, or renamed (with
 	// --no-renames a rename is an addition), or added by a merge
 	// resolution, once.
-	paths, err := g.run(ctx, append([]string{"log", "--remerge-diff", "--no-renames", "--diff-filter=A", "--name-only", "--format=", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
+	paths, err := g.run(ctx, slices.Concat([]string{"log", "--remerge-diff", "--no-renames", "--diff-filter=A", "--name-only", "--format="}, logRange)...)
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +529,7 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		}
 	}
 
-	msgs, err := g.run(ctx, append([]string{"log", "--format=%H%x1f%B%x1e", r.Base + ".." + r.Head}, r.notOnRemote()...)...)
+	msgs, err := g.run(ctx, slices.Concat([]string{"log", "--format=%H%x1f%B%x1e"}, logRange)...)
 	if err != nil {
 		return nil, err
 	}
@@ -493,9 +601,21 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 		}
 		object = target
 	}
+	typ, err := g.run(ctx, "cat-file", "-t", object)
+	if err != nil {
+		return nil, err
+	}
+	switch strings.TrimSpace(typ) {
+	case "blob", "tree":
+		f, err := s.scanObject(ctx, g, name, object, strings.TrimSpace(typ))
+		if err != nil {
+			return nil, err
+		}
+		return append(out, f...), nil
+	}
 	commit, err := g.revParse(ctx, object)
 	if err != nil {
-		return out, nil //nolint:nilerr // a tag on a tree or a blob carries no commits
+		return nil, err
 	}
 	remotes := "--remotes"
 	if remote != "" {
@@ -510,16 +630,56 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 	if strings.TrimSpace(unpublished) == "" {
 		return out, nil
 	}
-	base, err := g.DefaultBase(ctx, remote, commit)
-	if err != nil {
+	r := Range{
+		Head: commit,
+	}
+	r.Base, err = g.DefaultBase(ctx, remote, commit)
+	switch {
+	case errors.Is(err, ErrNoMergeBase):
+		// Unrelated to main: scan every commit the remote does not have
+		// (every commit, when remote is not a configured remote).
+		r.Remote = strings.TrimPrefix(remotes, "--remotes")
+		r.Remote = strings.TrimPrefix(r.Remote, "=")
+	case err != nil:
 		return nil, err
 	}
-	f, err := s.ScanRange(ctx, g, Range{
-		Base: base,
-		Head: commit,
-	})
+	f, err := s.ScanRange(ctx, g, r)
 	if err != nil {
 		return nil, err
 	}
 	return append(out, f...), nil
+}
+
+// scanObject scans what a tag on a blob or a tree publishes: the blob's
+// content, or the path and content of every file in the tree.
+func (s *Scanner) scanObject(ctx context.Context, g Git, tag, object, typ string) ([]Finding, error) {
+	if typ == "blob" {
+		content, err := g.run(ctx, "cat-file", "blob", object)
+		if err != nil {
+			return nil, err
+		}
+		return s.ScanText("blob of tag "+tag, strings.TrimRight(content, "\n")), nil
+	}
+	tree, err := emptyTree(ctx, g.Dir)
+	if err != nil {
+		return nil, err
+	}
+	diff, err := g.run(ctx, slices.Concat([]string{"diff"}, patchFlags, []string{tree, object})...)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.ScanDiff(diff)
+	if err != nil {
+		return nil, err
+	}
+	paths, err := g.run(ctx, "diff", "--no-renames", "--name-only", tree, object)
+	if err != nil {
+		return nil, err
+	}
+	for p := range strings.SplitSeq(paths, "\n") {
+		if p != "" {
+			out = append(out, s.ScanText("path in tree of tag "+tag, p)...)
+		}
+	}
+	return out, nil
 }

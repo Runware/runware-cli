@@ -437,12 +437,12 @@ func TestExcludedFiles(t *testing.T) {
 		return "diff --git a/" + file + " b/" + file + "\n--- /dev/null\n+++ b/" + file + "\n@@ -0,0 +1 @@\n+" + specMarker + "\n"
 	}
 	for _, file := range []string{"go.sum", "internal/api/gen/client.gen.go"} {
-		if f := s.ScanDiff(diff(file)); len(f) != 0 {
-			t.Errorf("ScanDiff(%s) = %+v, want no findings", file, f)
+		if f, err := s.ScanDiff(diff(file)); err != nil || len(f) != 0 {
+			t.Errorf("ScanDiff(%s) = %+v, %v, want no findings", file, f, err)
 		}
 	}
-	if f := s.ScanDiff(diff("api/openapi.yaml")); len(f) != 1 || f[0].Where != "api/openapi.yaml:1" {
-		t.Errorf("ScanDiff(api/openapi.yaml) = %+v, want one finding on line 1", f)
+	if f, err := s.ScanDiff(diff("api/openapi.yaml")); err != nil || len(f) != 1 || f[0].Where != "api/openapi.yaml:1" {
+		t.Errorf("ScanDiff(api/openapi.yaml) = %+v, %v, want one finding on line 1", f, err)
 	}
 }
 
@@ -482,7 +482,10 @@ func TestScanDiff(t *testing.T) {
 		"+ok",
 		"",
 	}, "\n")
-	f := s.ScanDiff(diff)
+	f, err := s.ScanDiff(diff)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var where []string
 	for _, fd := range f {
 		where = append(where, fd.Where)

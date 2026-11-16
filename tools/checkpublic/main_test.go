@@ -143,19 +143,19 @@ func TestScanModes(t *testing.T) {
 	cases := []modeCase{
 		{
 			name:  "range with a leak in a commit message",
-			args:  []string{"range"},
+			args:  []string{modeRange},
 			setup: leakyCommit,
 			want:  exitFindings,
 		},
 		{
 			name:  "range with a leak in the diff",
-			args:  []string{"range"},
+			args:  []string{modeRange},
 			setup: leakyFile,
 			want:  exitFindings,
 		},
 		{
 			name:  "clean range",
-			args:  []string{"range"},
+			args:  []string{modeRange},
 			setup: cleanRepo,
 			want:  0,
 		},

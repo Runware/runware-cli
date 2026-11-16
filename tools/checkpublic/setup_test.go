@@ -225,7 +225,7 @@ func TestMakeSetupRefusesDowngrade(t *testing.T) {
 
 	mustRun(t, dir, "git", "checkout", "-q", old)
 	out, ok := setupRun(t, dir, "make", "setup")
-	if ok || !strings.Contains(out, "newer than this checkout") || !strings.Contains(out, "FORCE=1") {
+	if ok || !strings.Contains(out, "does not contain") || !strings.Contains(out, "FORCE=1") {
 		t.Fatalf("make setup from an older commit: ok=%v\n%s", ok, out)
 	}
 	if got := installedFrom(); got != newer {
@@ -234,5 +234,64 @@ func TestMakeSetupRefusesDowngrade(t *testing.T) {
 	mustRun(t, dir, "make", "setup", "FORCE=1")
 	if got := installedFrom(); got != old {
 		t.Fatalf("FORCE=1: recorded commit = %q, want %q", got, old)
+	}
+}
+
+// TestMakeSetupRefusesOtherBranchOrDirtyBuild checks that make setup does
+// not replace the installed checker with a build from a commit that does
+// not contain the installed one (another branch), nor with a build of
+// uncommitted changes, unless FORCE=1, and records a dirty build as such.
+func TestMakeSetupRefusesOtherBranchOrDirtyBuild(t *testing.T) {
+	if runtime.GOOS == goosWindows {
+		t.Skip("make setup writes a POSIX shell hook")
+	}
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make is not installed")
+	}
+	dir := setupClone(t)
+	recorded := filepath.Join(dir, ".git", "checkpublic", "bin", "checkpublic.commit")
+	installedFrom := func() string {
+		t.Helper()
+		b, err := os.ReadFile(recorded) //nolint:gosec // the file make setup wrote
+		if err != nil {
+			t.Fatalf("no recorded commit: %v", err)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	mustRun(t, dir, "git", "checkout", "-q", "-b", "one")
+	mustRun(t, dir, "git", "commit", "-q", "--allow-empty", "-m", "chore: one")
+	one := gitIn(t, dir, "rev-parse", headRef)
+	mustRun(t, dir, "make", "setup")
+
+	mustRun(t, dir, "git", "checkout", "-q", "-b", "two", "main")
+	mustRun(t, dir, "git", "commit", "-q", "--allow-empty", "-m", "chore: two")
+	if out, ok := setupRun(t, dir, "make", "setup"); ok || !strings.Contains(out, "does not contain") {
+		t.Fatalf("make setup from another branch: ok=%v\n%s", ok, out)
+	}
+	if got := installedFrom(); got != one {
+		t.Fatalf("a refused setup changed the recorded commit to %q", got)
+	}
+
+	mustRun(t, dir, "git", "checkout", "-q", "one")
+	if err := os.WriteFile(filepath.Join(dir, "tools", "checkpublic", "extra.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, ok := setupRun(t, dir, "make", "setup"); ok || !strings.Contains(out, "uncommitted changes") {
+		t.Fatalf("make setup with uncommitted changes: ok=%v\n%s", ok, out)
+	}
+	if got := installedFrom(); got != one {
+		t.Fatalf("a refused setup changed the recorded commit to %q", got)
+	}
+	mustRun(t, dir, "make", "setup", "FORCE=1")
+	if got := installedFrom(); got != one+"-dirty" {
+		t.Fatalf("FORCE=1 with uncommitted changes: recorded commit = %q, want %q", got, one+"-dirty")
+	}
+	// A clean build of the same commit contains the dirty one's base.
+	if err := os.Remove(filepath.Join(dir, "tools", "checkpublic", "extra.go")); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, dir, "make", "setup")
+	if got := installedFrom(); got != one {
+		t.Fatalf("clean build after a dirty one: recorded commit = %q, want %q", got, one)
 	}
 }

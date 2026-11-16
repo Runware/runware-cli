@@ -68,10 +68,6 @@ type denySource struct {
 // newDenySource reads the environment of a real run. Tests replace it so
 // they never call gh.
 var newDenySource = func(inCI bool, dir string, stderr io.Writer) denySource {
-	cacheDir := ""
-	if d, err := os.UserCacheDir(); err == nil {
-		cacheDir = filepath.Join(d, "checkpublic")
-	}
 	return denySource{
 		inCI:     inCI,
 		repo:     gitRepoOf(dir),
@@ -79,9 +75,23 @@ var newDenySource = func(inCI bool, dir string, stderr io.Writer) denySource {
 		extra:    os.Getenv(denyVariable),
 		run:      execRunner,
 		now:      time.Now,
-		cacheDir: cacheDir,
+		cacheDir: userCacheDir(),
 		stderr:   stderr,
 	}
+}
+
+// userCacheDir returns the directory the deny list is cached in, or "".
+// XDG_CACHE_HOME applies on every system, not only where os.UserCacheDir
+// reads it, so a test run keeps the hook it runs out of the user's cache.
+func userCacheDir() string {
+	d := os.Getenv("XDG_CACHE_HOME")
+	if !filepath.IsAbs(d) {
+		var err error
+		if d, err = os.UserCacheDir(); err != nil {
+			return ""
+		}
+	}
+	return filepath.Join(d, "checkpublic")
 }
 
 // patterns returns the deny list. It never fails: when the list cannot be
