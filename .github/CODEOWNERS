@@ -4,8 +4,5 @@
 # check for every later pull request, so it needs a maintainer's review even
 # if the default owner above changes.
 /tools/checkpublic/ @Runware/dev-admins
-/.githooks/ @Runware/dev-admins
 /.github/workflows/ @Runware/dev-admins
 /.github/CODEOWNERS @Runware/dev-admins
-/.claude/ @Runware/dev-admins
-/.codex/ @Runware/dev-admins

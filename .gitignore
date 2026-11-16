@@ -85,9 +85,8 @@ bin
 # Test outputs.
 outputs/
 
-# Agent config, except the shared project hooks
-.claude/*
-!.claude/settings.json
+# Agent config
+.claude/
 
 # Generated changelog, we're using GitHub releases for this.
 CHANGELOG.md

@@ -8,12 +8,14 @@
 //	checkpublic text [-label LABEL] [FILE|-]...
 //	checkpublic pr [-event FILE]
 //	checkpublic files [PATH]...
-//	checkpublic hook      < Claude Code PreToolUse payload
 //	checkpublic prepush REMOTE URL   < git pre-push ref lines
 //
 // It prints each finding with where it was found and the rule that fired, and
-// exits 1 when there are findings. In hook mode it exits 2, which blocks the
-// tool call, on a finding and on any error.
+// exits 1 when there are findings.
+//
+// The prepush mode is the git pre-push hook that make setup installs: it
+// scans each pushed branch beyond what the remote already has, and each
+// pushed tag.
 //
 // The pr mode checks a pull request in GitHub Actions: its range, branch name,
 // title and body, all read from the event file at GITHUB_EVENT_PATH. The
@@ -38,17 +40,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
 const (
 	exitFindings = 1
 	exitError    = 3
-	// exitBlock is the exit code that makes Claude Code and Codex block a tool call
-	// and show stderr to the model.
-	exitBlock = 2
 )
+
+// modeFiles is the mode that scans files as they are in the working tree.
+const modeFiles = "files"
 
 // options are the flags every mode accepts.
 type options struct {
@@ -57,27 +58,13 @@ type options struct {
 	summary string
 }
 
-// modeHook is the mode agent hooks run: it reads a PreToolUse payload.
-const modeHook = "hook"
-
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	code := runMode(ctx, args, stdin, stdout, stderr)
-	// An agent hook lets a tool call run on any status but exitBlock, so in
-	// hook mode an error blocks: nothing was checked.
-	if len(args) > 0 && args[0] == modeHook && code != 0 && code != exitBlock {
-		logln(stderr, "checkpublic hook: blocked because the check failed")
-		return exitBlock
-	}
-	return code
-}
-
-func runMode(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		logln(stderr, "usage: checkpublic range|text|files|pr|hook|prepush [flags]")
+		logln(stderr, "usage: checkpublic range|text|files|pr|prepush [flags]")
 		return exitError
 	}
 	mode := args[0]
@@ -107,7 +94,7 @@ func runMode(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return exitError
 	}
 	// Deny list warnings are held until the report is out, so a blocked
-	// hook leads with its findings rather than with a warning.
+	// push leads with its findings rather than with a warning.
 	var warnings bytes.Buffer
 	defer func() {
 		_, _ = stderr.Write(warnings.Bytes())
@@ -125,14 +112,12 @@ func runMode(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		findings, err = scanRangeMode(ctx, s, g, *base, *head, *branch)
 	case "text":
 		findings, err = scanTextMode(s, *label, fs.Args(), stdin)
-	case wordFiles:
+	case modeFiles:
 		findings, err = scanFilesMode(ctx, s, g, fs.Args())
 	case "prepush":
 		findings, err = s.prePush(ctx, g, fs.Args(), stdin)
 	case "pr":
 		return runPRMode(ctx, s, g, *event, o, stdout, stderr)
-	case modeHook:
-		return runHookMode(ctx, s, stdin, stderr)
 	default:
 		logf(stderr, "checkpublic: unknown mode %q\n", mode)
 		return exitError
@@ -145,8 +130,8 @@ func runMode(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	switch mode {
 	case "text":
 		heading = *label
-	case wordFiles:
-		heading = wordFiles
+	case modeFiles:
+		heading = modeFiles
 	}
 	return finish(o, []section{{
 		heading:  heading,
@@ -312,73 +297,6 @@ func scanFilesMode(ctx context.Context, s *Scanner, g Git, paths []string) ([]Fi
 		out = append(out, s.ScanFile(filepath.ToSlash(p), b)...)
 	}
 	return out, nil
-}
-
-func runHookMode(ctx context.Context, s *Scanner, stdin io.Reader, stderr io.Writer) int {
-	payload, err := io.ReadAll(stdin)
-	if err != nil {
-		logln(stderr, "checkpublic hook:", err)
-		return exitBlock
-	}
-	findings, err := runHookSafely(ctx, s, payload)
-	if ue, ok := errors.AsType[*UncheckableError](err); ok {
-		logf(stderr, "checkpublic: blocked. This command publishes to GitHub, or may, in a form the check cannot read completely: %s.\n", ue.Reason)
-		logln(stderr, "Write the body to a file in a separate call, then post with a simple `gh ... --body-file <file>` (no $( ), no cd, no variables). Run a git push in its own call.")
-		return exitBlock
-	}
-	if err != nil && len(findings) == 0 && clearlyPublishesNothing(payload) {
-		// A failure of the check must not block every tool call: a command
-		// with no word that could publish runs, with a warning.
-		logln(stderr, "checkpublic hook: warning: the check failed, but this command cannot publish:", err)
-		return 0
-	}
-	if err != nil {
-		// Nothing after the error was checked, so it blocks too.
-		logln(stderr, "checkpublic hook: blocked because the check failed:", err)
-		if len(findings) == 0 {
-			return exitBlock
-		}
-	}
-	if len(findings) == 0 {
-		return 0
-	}
-	logln(stderr, "checkpublic: blocked. This repository is public, and this command or tool call would publish:")
-	report(stderr, findings, nil)
-	logf(stderr, "Rewrite the text (or the commits, with neutral messages) and run the command again. A reference to a repository is allowed only when the repository is public (tools/checkpublic/public-repos.txt). For a false positive in a file, add `%s` to the line with the reason.\n", allowMarker)
-	return exitBlock
-}
-
-// runHookSafely runs the hook, turning a panic into an error.
-func runHookSafely(ctx context.Context, s *Scanner, payload []byte) (findings []Finding, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			findings, err = nil, fmt.Errorf("internal error: %v", r)
-		}
-	}()
-	return hookCheck(ctx, s, payload)
-}
-
-// hookCheck checks a hook payload. Tests replace it to make the check fail.
-var hookCheck = func(ctx context.Context, s *Scanner, payload []byte) ([]Finding, error) {
-	return s.runHook(ctx, payload, gitRepoOf)
-}
-
-// mayPublishText matches what may run a gh write or git push once quotes and
-// backslashes are gone, and the expansions that may build one.
-var mayPublishText = regexp.MustCompile("(?i)gh|git|hub|push|[$`]")
-
-// clearlyPublishesNothing reports whether a hook payload is a Bash command
-// that cannot publish whatever the shell makes of it: no gh, git, push or
-// GitHub, even with its quotes removed, and no expansion. It does not parse
-// the command, so it holds when the parser is what failed.
-func clearlyPublishesNothing(payload []byte) bool {
-	var in hookInput
-	var bash hookToolInput
-	if json.Unmarshal(payload, &in) != nil || in.ToolName != "Bash" || json.Unmarshal(in.ToolInput, &bash) != nil {
-		return false
-	}
-	text := strings.NewReplacer("\\\n", "", "'", "", `"`, "", `\`, "", "\n", " ").Replace(bash.Command)
-	return !mayPublishText.MatchString(text)
 }
 
 // prePush reads git's pre-push ref lines and scans each pushed range and tag.

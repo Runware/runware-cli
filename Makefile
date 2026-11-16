@@ -68,11 +68,46 @@ docs:
 go-tidy:
 	go mod tidy && go mod verify
 
-# Run once per clone: enables the hooks in .githooks (pre-push runs check-public)
-# and builds the checker they run, so a later build failure leaves a working one.
+# Run once per clone, and again after pulling changes to tools/checkpublic:
+# builds the checker into the clone's common git directory and installs a
+# pre-push hook there that runs that copy, so a push never runs code from the
+# branch being pushed. Every worktree of the clone shares both. It drops
+# core.hooksPath=.githooks, which earlier versions of this target set.
+CHECKPUBLIC_HOOK_MARKER = installed by make setup: runs tools/checkpublic
+
 setup:
-	git config core.hooksPath .githooks
-	.githooks/checkpublic text < /dev/null
+	@set -e; \
+	common=$$(git rev-parse --path-format=absolute --git-common-dir); \
+	bin="$$common/checkpublic/bin/checkpublic"; \
+	hook="$$common/hooks/pre-push"; \
+	if [ -e "$$hook" ] && ! grep -q '$(CHECKPUBLIC_HOOK_MARKER)' "$$hook"; then \
+		echo "make setup: $$hook exists and was not installed by make setup; move it aside and run make setup again" >&2; \
+		exit 1; \
+	fi; \
+	mkdir -p "$$common/checkpublic/bin" "$$common/hooks"; \
+	go build -o "$$bin.new" ./tools/checkpublic; \
+	mv -f "$$bin.new" "$$bin"; \
+	{ \
+		echo '#!/bin/sh'; \
+		echo '# $(CHECKPUBLIC_HOOK_MARKER) in prepush mode.'; \
+		echo '# Run make setup again after pulling changes to the checker.'; \
+		echo 'bin="$$(git rev-parse --path-format=absolute --git-common-dir)/checkpublic/bin/checkpublic"'; \
+		echo 'if [ ! -x "$$bin" ]; then'; \
+		echo '	echo "checkpublic: $$bin is missing; run make setup" >&2'; \
+		echo '	exit 1'; \
+		echo 'fi'; \
+		echo 'exec "$$bin" prepush "$$@"'; \
+	} > "$$hook.new"; \
+	chmod 755 "$$hook.new"; \
+	mv -f "$$hook.new" "$$hook"; \
+	if [ "$$(git config --get core.hooksPath || true)" = .githooks ]; then \
+		git config --unset core.hooksPath; \
+	fi; \
+	hooks_path=$$(git config --get core.hooksPath || true); \
+	if [ -n "$$hooks_path" ]; then \
+		echo "make setup: warning: core.hooksPath is $$hooks_path, so git does not run $$hook" >&2; \
+	fi; \
+	echo "make setup: installed $$hook"
 
 # Check what this branch would publish (diff, commit messages and branch name
 # since the merge-base with origin/main) for text that must not be public.

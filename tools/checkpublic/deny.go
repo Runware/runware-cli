@@ -24,6 +24,12 @@ const (
 	denyCacheTTL = 24 * time.Hour
 	// denyFetchTimeout keeps a push from hanging on a slow network.
 	denyFetchTimeout = 5 * time.Second
+	// denyRetryAfter is how long after a failed fetch the next run skips
+	// gh, so that pushes without access or offline do not each wait on it.
+	denyRetryAfter = 10 * time.Minute
+	// denyWarnEvery is how often the same warning about the deny list is
+	// printed for a repository: once a day is enough to notice it.
+	denyWarnEvery = 24 * time.Hour
 )
 
 // commandRunner runs a program and returns its standard output.
@@ -72,49 +78,95 @@ var newDenySource = func(inCI bool, dir string, stderr io.Writer) denySource {
 }
 
 // patterns returns the deny list. It never fails: when the list cannot be
-// read it warns once and the other rules still apply. It never prints the
-// patterns.
+// read the other rules still apply, with a warning at most once a day for
+// the repository. It never prints the patterns.
 func (d denySource) patterns(ctx context.Context) []string {
 	if d.inCI {
 		return nil
 	}
 	text, age, ok := d.variable(ctx)
-	switch {
-	case !ok:
-		logf(d.stderr, "checkpublic: warning: the repository deny list is unavailable (could not read the %s variable with gh); the other rules still apply.\n", denyVariable)
-	case age >= denyCacheTTL:
-		logf(d.stderr, "checkpublic: warning: could not refresh the repository deny list with gh; using the copy saved %s ago, which misses names added since.\n", age.Round(time.Hour))
+	stale := ok && age >= denyCacheTTL
+	if (!ok || stale) && d.shouldWarn() {
+		if ok {
+			logf(d.stderr, "checkpublic: warning: could not refresh the repository deny list with gh; using the copy saved %s ago, which misses names added since.\n", age.Round(time.Hour))
+		} else {
+			logf(d.stderr, "checkpublic: warning: the repository deny list is unavailable (could not read the %s variable with gh); the other rules still apply.\n", denyVariable)
+		}
 	}
 	return d.parse(text + "\n" + d.extra)
 }
 
 // variable returns the variable's value from a fresh cache, from gh, or from a
-// stale cache when gh fails, with the age of the cache it used.
+// stale cache when gh fails, with the age of the cache it used. After a
+// failed fetch it does not call gh again for denyRetryAfter.
 func (d denySource) variable(ctx context.Context) (string, time.Duration, bool) {
 	cache := d.cachePath()
 	cached, age, haveCache := d.readCache(cache)
 	if haveCache && age < denyCacheTTL {
 		return cached, age, true
 	}
-	if d.repo != "" {
+	failed := d.markerPath("failed")
+	if d.repo != "" && !d.markedWithin(failed, denyRetryAfter) {
 		ctx, cancel := context.WithTimeout(ctx, denyFetchTimeout)
 		defer cancel()
 		out, err := d.run(ctx, "gh", "variable", "get", denyVariable, "-R", d.repo)
 		if err == nil {
 			d.writeCache(cache, out)
+			if failed != "" {
+				_ = os.Remove(failed)
+			}
 			return string(out), 0, true
 		}
+		d.mark(failed)
 	}
 	return cached, age, haveCache
+}
+
+// shouldWarn reports whether to print a deny list warning now: unless one
+// was printed for the repository within denyWarnEvery. It records the
+// warning it allows.
+func (d denySource) shouldWarn() bool {
+	warned := d.markerPath("warned")
+	if d.markedWithin(warned, denyWarnEvery) {
+		return false
+	}
+	d.mark(warned)
+	return true
+}
+
+// markerPath returns the path of an empty file in the cache directory whose
+// modification time records when kind last happened for the repository, or
+// "" when there is no cache directory or repository.
+func (d denySource) markerPath(kind string) string {
+	if d.cacheDir == "" || d.repo == "" {
+		return ""
+	}
+	return filepath.Join(d.cacheDir, kind+"-"+unsafePathChars.ReplaceAllString(strings.ToLower(d.repo), "_"))
+}
+
+// markedWithin reports whether the marker at path was set less than ttl ago.
+func (d denySource) markedWithin(path string, ttl time.Duration) bool {
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && d.now().Sub(info.ModTime()) < ttl
+}
+
+// mark sets the marker at path to now. A failed write only means the next
+// run warns or fetches again.
+func (d denySource) mark(path string) {
+	if path == "" || os.MkdirAll(filepath.Dir(path), 0o700) != nil || os.WriteFile(path, nil, 0o600) != nil {
+		return
+	}
+	now := d.now()
+	_ = os.Chtimes(path, now, now)
 }
 
 var unsafePathChars = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
 func (d denySource) cachePath() string {
-	if d.cacheDir == "" || d.repo == "" {
-		return ""
-	}
-	return filepath.Join(d.cacheDir, "deny-"+unsafePathChars.ReplaceAllString(strings.ToLower(d.repo), "_"))
+	return d.markerPath("deny")
 }
 
 // readCache returns the cached list and its age.

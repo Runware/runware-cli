@@ -4,15 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 // leakyEvent writes a pull_request event whose title, body and branch name
@@ -129,125 +124,6 @@ func TestPRModeReadsEventFile(t *testing.T) {
 	}
 }
 
-// TestHookFindingsBeforeDenyWarning checks that a blocked hook leads with its
-// findings: an agent shows the first line of the hook's stderr as the reason.
-func TestHookFindingsBeforeDenyWarning(t *testing.T) {
-	saved := newDenySource
-	t.Cleanup(func() {
-		newDenySource = saved
-	})
-	newDenySource = func(_ bool, _ string, stderr io.Writer) denySource {
-		gh := &fakeGH{
-			err: errors.New("no access"),
-		}
-		return denySource{
-			repo:     testRepo,
-			run:      gh.run,
-			now:      func() time.Time { return testNow },
-			cacheDir: t.TempDir(),
-			stderr:   stderr,
-		}
-	}
-	payload, err := json.Marshal(map[string]any{
-		"tool_name": "Bash",
-		"tool_input": map[string]any{
-			"command": "gh pr comment 1 -R Runware/runware-cli --body '" + leak + "'",
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stdout, stderr bytes.Buffer
-	if code := run(context.Background(), []string{modeHook}, bytes.NewReader(payload), &stdout, &stderr); code != exitBlock {
-		t.Fatalf("exit %d, want %d; stderr:\n%s", code, exitBlock, stderr.String())
-	}
-	out := stderr.String()
-	if !strings.HasPrefix(out, "checkpublic: blocked") {
-		t.Fatalf("stderr does not lead with the block:\n%s", out)
-	}
-	if !strings.Contains(out, "warning: the repository deny list is unavailable") {
-		t.Fatalf("deny list warning missing:\n%s", out)
-	}
-}
-
-// failingCheck makes hookCheck fail for the rest of the test the way fail
-// does: with an error, a panic, or a finding and an error.
-func failingCheck(t *testing.T, fail string) {
-	t.Helper()
-	saved := hookCheck
-	t.Cleanup(func() {
-		hookCheck = saved
-	})
-	hookCheck = func(_ context.Context, _ *Scanner, _ []byte) ([]Finding, error) {
-		switch fail {
-		case "panic":
-			panic("broken")
-		case "finding":
-			return []Finding{{
-				Where:   "command line",
-				Rule:    "test",
-				Message: "test finding",
-			}}, errors.New("broken")
-		}
-		return nil, errors.New("broken")
-	}
-}
-
-// failOpenCase is a command run through the hook mode while the check
-// fails, and the exit code the hook must give.
-type failOpenCase struct {
-	name    string
-	fail    string
-	command string
-	want    int
-}
-
-// TestHookFailOpen checks the one path that lets a command run unchecked:
-// when the check fails, only a command with no word that could publish runs.
-func TestHookFailOpen(t *testing.T) {
-	cases := []failOpenCase{
-		{
-			name:    "plain command after an error",
-			fail:    "error",
-			command: cmdList,
-			want:    0,
-		},
-		{
-			name:    "post after an error",
-			fail:    "error",
-			command: "gh pr comment 1 --body-file b.md",
-			want:    exitBlock,
-		},
-		{
-			name:    "plain command after a panic",
-			fail:    "panic",
-			command: cmdList,
-			want:    0,
-		},
-		{
-			name:    "post after a panic",
-			fail:    "panic",
-			command: "gh pr comment 1 --body-file b.md",
-			want:    exitBlock,
-		},
-		{
-			name:    "finding and an error",
-			fail:    "finding",
-			command: cmdList,
-			want:    exitBlock,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			failingCheck(t, tc.fail)
-			var stderr bytes.Buffer
-			if code := run(context.Background(), []string{modeHook}, bytes.NewReader(bashPayload(t, tc.command, t.TempDir())), &bytes.Buffer{}, &stderr); code != tc.want {
-				t.Fatalf("exit %d, want %d: %s", code, tc.want, stderr.String())
-			}
-		})
-	}
-}
-
 // modeCase runs a scanning mode with args, in the directory setup makes, on
 // stdin, and expects the exit code want.
 type modeCase struct {
@@ -297,19 +173,19 @@ func TestScanModes(t *testing.T) {
 		},
 		{
 			name:  "files with a leak",
-			args:  []string{wordFiles},
+			args:  []string{modeFiles},
 			setup: leakyFile,
 			want:  exitFindings,
 		},
 		{
 			name:  "named clean file",
-			args:  []string{wordFiles, "a.txt"},
+			args:  []string{modeFiles, "a.txt"},
 			setup: leakyFile,
 			want:  0,
 		},
 		{
 			name:  "clean files",
-			args:  []string{wordFiles},
+			args:  []string{modeFiles},
 			setup: cleanRepo,
 			want:  0,
 		},
@@ -327,248 +203,6 @@ func TestScanModes(t *testing.T) {
 			}
 			if tc.want == exitFindings && !strings.Contains(stdout.String(), "some-private-repo") {
 				t.Errorf("the report does not show the finding:\n%s", stdout.String())
-			}
-		})
-	}
-}
-
-// fakeTool is a stand-in for tools/checkpublic that the wrapper script builds:
-// it copies its stdin to $FAKE_OUT and exits with $FAKE_EXIT.
-const fakeTool = `package main
-
-import (
-	"io"
-	"os"
-	"strconv"
-)
-
-func main() {
-	b, _ := io.ReadAll(os.Stdin)
-	_ = os.WriteFile(os.Getenv("FAKE_OUT"), b, 0o600)
-	code, _ := strconv.Atoi(os.Getenv("FAKE_EXIT"))
-	os.Exit(code)
-}
-`
-
-// wrapperCase runs the wrapper script in mode with a fake tool that exits
-// with toolExit (or does not build, when broken) and expects it to exit with
-// want.
-type wrapperCase struct {
-	name     string
-	mode     string
-	payload  string
-	toolExit string
-	broken   bool
-	// prebuilt runs the wrapper once with a tool that builds before the
-	// source breaks.
-	prebuilt bool
-	want     int
-}
-
-// rawBashPayload returns a Bash hook payload as an agent sends it, with no
-// HTML escaping of &, < and >.
-func rawBashPayload(t *testing.T, command, description string) string {
-	t.Helper()
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(hookToolInput{
-		Command: command,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	input := strings.TrimSuffix(strings.TrimSpace(b.String()), "}") + `,"description":"` + description + `"}`
-	return `{"tool_name":"Bash","tool_input":` + input + `}`
-}
-
-// TestWrapperScript checks .githooks/checkpublic: it hands every payload to
-// the tool, and in hook mode it exits 2, the status that blocks a tool call,
-// when the tool fails or does not build.
-func TestWrapperScript(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the wrapper is a POSIX shell script")
-	}
-	script, err := os.ReadFile(filepath.Join("..", "..", ".githooks", "checkpublic"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	quotedName := `{"tool_name":"Bash","tool_input":{"command":"g'h' pr comment 1 --body x"}}`
-	cases := []wrapperCase{
-		{
-			name:     "quoted command name reaches the tool",
-			mode:     modeHook,
-			payload:  quotedName,
-			toolExit: "0",
-			want:     0,
-		},
-		{
-			name:     "tool blocks",
-			mode:     modeHook,
-			payload:  quotedName,
-			toolExit: "2",
-			want:     exitBlock,
-		},
-		{
-			name:     "tool error in hook mode blocks",
-			mode:     modeHook,
-			payload:  quotedName,
-			toolExit: "3",
-			want:     exitBlock,
-		},
-		{
-			name:     "tool exit 1 in hook mode blocks",
-			mode:     modeHook,
-			payload:  quotedName,
-			toolExit: "1",
-			want:     exitBlock,
-		},
-		{
-			name:    "build failure in hook mode blocks",
-			mode:    modeHook,
-			payload: quotedName,
-			broken:  true,
-			want:    exitBlock,
-		},
-		{
-			name:    "build failure without a build lets a command that cannot publish run",
-			mode:    modeHook,
-			payload: `{"session_id":"s","cwd":"/src/github","tool_name":"Bash","tool_input":{"command":"ls -la","description":"List files"}}`,
-			broken:  true,
-			want:    0,
-		},
-		{
-			name:    "build failure without a build blocks a JSON-escaped publication",
-			mode:    modeHook,
-			payload: `{"tool_name":"Bash","tool_input":{"command":"\u0067h pr comment 1 --body x"}}`,
-			broken:  true,
-			want:    exitBlock,
-		},
-		{
-			name:    "build failure without a build lets a file tool run under a github.com path",
-			mode:    modeHook,
-			payload: `{"session_id":"s","cwd":"/src/github.com/o/r","tool_name":"Edit","tool_input":{"file_path":"/src/github.com/o/r/tools/checkpublic/x.go","old_string":"gh pr comment","new_string":"git push"}}`,
-			broken:  true,
-			want:    0,
-		},
-		{
-			name:    "build failure without a build blocks a Bash publication beside a github.com path",
-			mode:    modeHook,
-			payload: `{"cwd":"/src/github.com/o/r","tool_name":"Bash","tool_input":{"command":"gh pr comment 1 --body x","description":"Post"}}`,
-			broken:  true,
-			want:    exitBlock,
-		},
-		{
-			name:    "build failure without a build lets an opaque launcher run",
-			mode:    modeHook,
-			payload: `{"cwd":"/src/github.com/o/r","tool_name":"Bash","tool_input":{"command":"./deploy.sh","description":"Run the gh script"}}`,
-			broken:  true,
-			want:    0,
-		},
-		{
-			name:     "build failure with a previous build uses it",
-			mode:     modeHook,
-			payload:  quotedName,
-			toolExit: "0",
-			broken:   true,
-			prebuilt: true,
-			want:     0,
-		},
-		{
-			name:     "findings in pre-push mode",
-			mode:     "prepush",
-			toolExit: "1",
-			want:     exitFindings,
-		},
-		{
-			name:   "build failure in pre-push mode blocks",
-			mode:   "prepush",
-			broken: true,
-			want:   exitBlock,
-		},
-	}
-	// With no build, the shell copy of clearlyPublishesNothing answers as it
-	// does, also on a payload with a line continuation or a JSON escape, and
-	// it reads no field that only describes the call.
-	for command, clear := range clearCases {
-		want := exitBlock
-		if clear {
-			want = 0
-		}
-		cases = append(cases, wrapperCase{
-			name:    "no build: " + command,
-			mode:    modeHook,
-			payload: rawBashPayload(t, command, "Check the git status"),
-			broken:  true,
-			want:    want,
-		})
-	}
-	cases = append(cases, wrapperCase{
-		name:    "no build: another tool whose description mentions git",
-		mode:    modeHook,
-		payload: `{"tool_name":"WebFetch","tool_input":{"url":"https://example.com","description":"Read the git docs"}}`,
-		broken:  true,
-		want:    0,
-	})
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			gitIn(t, dir, "init", "-q")
-			src := fakeTool
-			if tc.broken && !tc.prebuilt {
-				src = "package main\n\nfunc main() {"
-			}
-			files := map[string]string{
-				".githooks/checkpublic":     string(script),
-				"go.mod":                    "module fake\n\ngo 1.22\n",
-				"tools/checkpublic/main.go": src,
-			}
-			for name, text := range files {
-				path := filepath.Join(dir, name)
-				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, []byte(text), 0o700); err != nil { //nolint:gosec // the script must be executable
-					t.Fatal(err)
-				}
-			}
-			out := filepath.Join(dir, "stdin.txt")
-			if tc.prebuilt {
-				build := exec.CommandContext(context.Background(), filepath.Join(dir, ".githooks", "checkpublic"), tc.mode) //nolint:gosec // test script
-				build.Stdin = strings.NewReader(tc.payload)
-				build.Env = append(os.Environ(), "FAKE_OUT="+out, "FAKE_EXIT=0")
-				if b, err := build.CombinedOutput(); err != nil {
-					t.Fatalf("first run: %v: %s", err, b)
-				}
-				source := filepath.Join(dir, "tools", "checkpublic", "main.go")
-				if err := os.WriteFile(source, []byte("package main\n\nfunc main() {"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				later := time.Now().Add(time.Hour)
-				if err := os.Chtimes(source, later, later); err != nil {
-					t.Fatal(err)
-				}
-			}
-			cmd := exec.CommandContext(context.Background(), filepath.Join(dir, ".githooks", "checkpublic"), tc.mode) //nolint:gosec // test script
-			cmd.Stdin = strings.NewReader(tc.payload)
-			cmd.Env = append(os.Environ(), "FAKE_OUT="+out, "FAKE_EXIT="+tc.toolExit)
-			b, err := cmd.CombinedOutput()
-			code := 0
-			if ee, ok := errors.AsType[*exec.ExitError](err); ok {
-				code = ee.ExitCode()
-			} else if err != nil {
-				t.Fatal(err)
-			}
-			if code != tc.want {
-				t.Fatalf("exit %d, want %d: %s", code, tc.want, b)
-			}
-			if tc.prebuilt && !strings.Contains(string(b), "previous build") {
-				t.Errorf("no warning that the previous build checked: %s", b)
-			}
-			if tc.broken && !tc.prebuilt {
-				return
-			}
-			if got, err := os.ReadFile(out); err != nil || string(got) != tc.payload {
-				t.Errorf("tool read %q (%v), want the payload %q", got, err, tc.payload)
 			}
 		})
 	}

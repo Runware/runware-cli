@@ -60,8 +60,8 @@ type Scanner struct {
 	publicRepos map[string]struct{}
 	rules       []rule
 	// loadDeny, when set, returns more deny patterns. It runs once, before
-	// the first line is scanned, so a run that scans nothing (a hook call
-	// for a command that publishes nothing) never fetches the deny list.
+	// the first line is scanned, so a run that scans nothing (a push of a
+	// deletion, or to a private repository) never fetches the deny list.
 	loadDeny func() []string
 	denyOnce sync.Once
 }

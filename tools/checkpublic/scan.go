@@ -337,21 +337,25 @@ func fileKey(f Finding) string {
 	return file + "\x00" + f.Rule + "\x00" + strings.ToLower(f.Match)
 }
 
+// objectTag is git's type of an annotated tag object, and the kind of
+// subject a finding in its message has.
+const objectTag = "tag"
+
 // ScanTag scans what pushing a tag to remote would publish: its name, the
 // message of an annotated tag, and the commits it points to when remote does
 // not have them yet. Those are scanned like a new branch, from the
 // merge-base with main; a tag on a commit remote already has adds none.
 func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object string) ([]Finding, error) {
 	out := s.ScanText("tag name", name)
-	if typ, err := g.run(ctx, "cat-file", "-t", object); err == nil && strings.TrimSpace(typ) == wordTag {
-		raw, err := g.run(ctx, "cat-file", wordTag, object)
+	if typ, err := g.run(ctx, "cat-file", "-t", object); err == nil && strings.TrimSpace(typ) == objectTag {
+		raw, err := g.run(ctx, "cat-file", objectTag, object)
 		if err != nil {
 			return nil, err
 		}
 		if _, msg, ok := strings.Cut(raw, "\n\n"); ok {
 			for _, f := range s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n")) {
 				f.Subject = "tag " + name
-				f.SubjectKind = wordTag
+				f.SubjectKind = objectTag
 				out = append(out, f)
 			}
 		}
@@ -385,10 +389,4 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 		return nil, err
 	}
 	return append(out, f...), nil
-}
-
-// hasRef reports whether a full ref name exists.
-func (g Git) hasRef(ctx context.Context, ref string) bool {
-	_, err := g.run(ctx, "show-ref", "--verify", "--quiet", ref)
-	return err == nil
 }

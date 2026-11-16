@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -14,7 +13,10 @@ import (
 )
 
 // TestMain keeps every test from calling gh: run() loads the deny list
-// through newDenySource.
+// through newDenySource. It also runs the tests logged out of gh and outside
+// GitHub Actions, so a test that reaches a real gh by mistake fails to
+// authenticate instead of acting as the developer, and a CI environment
+// does not change the defaults the tests expect.
 func TestMain(m *testing.M) {
 	newDenySource = func(_ bool, _ string, stderr io.Writer) denySource {
 		return denySource{
@@ -22,10 +24,40 @@ func TestMain(m *testing.M) {
 			stderr: stderr,
 		}
 	}
-	os.Exit(m.Run())
+	os.Exit(runLoggedOut(m))
+}
+
+func runLoggedOut(m *testing.M) int {
+	dir, err := os.MkdirTemp("", "checkpublic-gh-config-")
+	if err != nil {
+		logln(os.Stderr, "TestMain:", err)
+		return 1
+	}
+	defer func() {
+		_ = os.RemoveAll(dir)
+	}()
+	for _, k := range []string{
+		"GH_TOKEN",
+		"GITHUB_TOKEN",
+		"GH_ENTERPRISE_TOKEN",
+		"GITHUB_ENTERPRISE_TOKEN",
+		"GH_REPO",
+		"GITHUB_ACTIONS",
+		"GITHUB_STEP_SUMMARY",
+		"GITHUB_EVENT_PATH",
+		denyVariable,
+	} {
+		_ = os.Unsetenv(k)
+	}
+	_ = os.Setenv("GH_CONFIG_DIR", dir)
+	_ = os.Setenv("GH_PROMPT_DISABLED", "1")
+	return m.Run()
 }
 
 const testRepo = "owner/repo"
+
+// fetchedList is the deny list the fake gh returns.
+const fetchedList = "fetched\n"
 
 // fakeGH records gh calls and answers with out or err.
 type fakeGH struct {
@@ -75,7 +107,7 @@ func writeTestCache(t *testing.T, d denySource, text string, age time.Duration) 
 func TestDenyFreshCache(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{
-		out: "fetched\n",
+		out: fetchedList,
 	}
 	d := newTestDeny(t, gh, &stderr)
 	writeTestCache(t, d, "# comment\ncached\n\n", time.Hour)
@@ -93,7 +125,7 @@ func TestDenyFreshCache(t *testing.T) {
 func TestDenyExpiredCacheRefetches(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{
-		out: "fetched\n",
+		out: fetchedList,
 	}
 	d := newTestDeny(t, gh, &stderr)
 	writeTestCache(t, d, "cached\n", 25*time.Hour)
@@ -164,6 +196,54 @@ func TestDenyFetchFailureWithoutCacheWarns(t *testing.T) {
 	}
 }
 
+// TestDenyWarnsOnceADay checks that the warning about an unavailable list
+// is printed once a day for a repository, not on every push.
+func TestDenyWarnsOnceADay(t *testing.T) {
+	var stderr bytes.Buffer
+	gh := &fakeGH{
+		err: errors.New("gh: not logged in"),
+	}
+	d := newTestDeny(t, gh, &stderr)
+	d.patterns(context.Background())
+	if strings.Count(stderr.String(), "warning") != 1 {
+		t.Fatalf("first run: stderr = %q, want one warning", stderr.String())
+	}
+	stderr.Reset()
+	d.patterns(context.Background())
+	if stderr.Len() != 0 {
+		t.Errorf("second run: stderr = %q, want nothing", stderr.String())
+	}
+	d.now = func() time.Time { return testNow.Add(denyWarnEvery) }
+	d.patterns(context.Background())
+	if strings.Count(stderr.String(), "warning") != 1 {
+		t.Errorf("a day later: stderr = %q, want the warning again", stderr.String())
+	}
+}
+
+// TestDenyFailureSkipsGhForAWhile checks that after a failed fetch the next
+// runs do not wait on gh again until denyRetryAfter has passed.
+func TestDenyFailureSkipsGhForAWhile(t *testing.T) {
+	var stderr bytes.Buffer
+	gh := &fakeGH{
+		err: errors.New("network unreachable"),
+	}
+	d := newTestDeny(t, gh, &stderr)
+	d.patterns(context.Background())
+	d.patterns(context.Background())
+	if gh.calls != 1 {
+		t.Fatalf("gh called %d times right after a failure, want 1", gh.calls)
+	}
+	gh.err = nil
+	gh.out = fetchedList
+	d.now = func() time.Time { return testNow.Add(denyRetryAfter) }
+	if got := d.patterns(context.Background()); !slices.Equal(got, []string{"fetched"}) || gh.calls != 2 {
+		t.Errorf("after the retry delay: patterns = %q, gh calls = %d", got, gh.calls)
+	}
+	if _, err := os.Stat(d.markerPath("failed")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a successful fetch left the failure marker: %v", err)
+	}
+}
+
 func TestDenyInvalidPatternWarnsWithoutShowingIt(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{
@@ -181,7 +261,7 @@ func TestDenyInvalidPatternWarnsWithoutShowingIt(t *testing.T) {
 func TestDenyCISkips(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{
-		out: "fetched\n",
+		out: fetchedList,
 	}
 	d := newTestDeny(t, gh, &stderr)
 	d.inCI = true
@@ -195,8 +275,9 @@ func TestDenyCISkips(t *testing.T) {
 	}
 }
 
-// TestDenyNotLoadedWithoutScan checks that a hook call for a command that
-// publishes nothing never loads the deny list.
+// TestDenyNotLoadedWithoutScan checks that a push that publishes nothing
+// here, a deletion or a push to a private repository, never loads the deny
+// list, so it never waits on gh.
 func TestDenyNotLoadedWithoutScan(t *testing.T) {
 	s, err := NewScanner(nil)
 	if err != nil {
@@ -206,8 +287,16 @@ func TestDenyNotLoadedWithoutScan(t *testing.T) {
 		t.Error("the deny list was loaded")
 		return nil
 	}
-	payload := []byte(`{"tool_name":"Bash","tool_input":{"command":"git log --grep push"},"cwd":"` + filepath.ToSlash(t.TempDir()) + `"}`)
-	if f, err := s.runHook(context.Background(), payload, gitRepoOf); err != nil || len(f) != 0 {
-		t.Fatalf("runHook = %+v, %v", f, err)
+	zero := strings.Repeat("0", 40)
+	g := Git{
+		Dir: t.TempDir(),
+	}
+	deletion := "(delete) " + zero + " refs/heads/feature " + strings.Repeat("1", 40) + "\n"
+	if f, err := s.prePush(context.Background(), g, []string{remoteOrigin}, strings.NewReader(deletion)); err != nil || len(f) != 0 {
+		t.Fatalf("prePush of a deletion = %+v, %v", f, err)
+	}
+	private := "https://github.com/" + shortRepo + "some-private-repo.git"
+	if f, err := s.prePush(context.Background(), g, []string{remoteOrigin, private}, strings.NewReader("refs/heads/a b refs/heads/a "+zero+"\n")); err != nil || len(f) != 0 {
+		t.Fatalf("prePush to a private repository = %+v, %v", f, err)
 	}
 }

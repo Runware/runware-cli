@@ -16,8 +16,6 @@ var (
 	specMarker  = "x-" + "internal"
 	pemHeader   = "-----BEGIN " + "PRIVATE KEY-----"
 	longSecret  = strings.Repeat("a1B2", 8)
-	// awsKey is the documentation example access key ID.
-	awsKey = "AKIA" + "IOSFODNN7" + "EXAMPLE"
 )
 
 // repoCLI is a public repository of the organization.

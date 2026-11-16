@@ -17,7 +17,7 @@ make snapshot        # GoReleaser snapshot build
 make docs            # Generate command reference docs
 make install         # go install for current platform
 make run ARGS="..."  # Run without building
-make setup           # Once per clone: build the checker and enable the git hooks in .githooks
+make setup           # Once per clone: install the pre-push check (again after pulling checker changes)
 make check-public    # Check this branch for text that must not be public
 ```
 
@@ -35,20 +35,20 @@ make check-public    # Check this branch for text that must not be public
 - `internal/config/`: Config loading/saving (~/.runware/config.yaml)
 - `internal/output/`: Output formatting (table/json/yaml)
 - `internal/cache/`: Caching layer
+- `pkg/volumeformat/` - Shared Volumes encrypted file format, standard library only and importable by other consumers
 
 ## This repository is public
 
 - Everything written here is public and permanent: code, tests and fixtures, commit messages, branch names, PR titles and descriptions, review comments and replies. GitHub keeps every earlier revision of an edited description or comment readable by anyone, and force-pushed commits stay reachable by SHA until GitHub Support purges them. Write everything as if it will be quoted.
 - Never put in: links to or names of private repositories, their documents, PR numbers or paths; Jira, Notion, Slack or Google Docs links (bare ticket keys are fine); internal hostnames; infrastructure and provider names the product does not publish; environment, rollout or beta state; unpublished API operations; credentials, real IPs, real customer or organization identifiers.
 - Sync the serverless spec only with `make sync-serverless-spec` (the published bundle), never by copying the source file. Unreleased commands built on unpublished operations stay on a local branch.
-- Before pushing or posting: the hooks run `tools/checkpublic` automatically (the git pre-push hook, and Claude Code and Codex hooks on `git push`, `gh` writes and GitHub MCP or connector tools that post a title, body, review or comment; Codex runs `.codex/hooks.json` only in a trusted project, after you approve the hook once in `/hooks` and again whenever the file changes); run `make check-public` before opening a PR. Also read every description and comment before posting it: a pattern cannot tell that a sentence describes internal state.
-- The Bash hook fails closed: it blocks a `gh` write or `git push` it cannot read completely: a variable, a substitution other than `$(cat <<'EOF' ... EOF)`, stdin from anything but a file or a quoted here-document, a file written in the same call, `cd` before a relative body file, `git fetch` or `git diff --output` before a post, a here-document delimiter it cannot read, a write inside `$( )`, `bash -c`, xargs, a loop or any other command that runs its arguments or stdin (`uv run`, `ssh`, `perl -ne`, a heredoc fed or piped to `sh` or `python3`), an option or variable that runs a command (`rg --pre`, `git -c core.pager=...`, `GIT_PAGER=...`), `gh api` with a wholly variable endpoint (`$ARGS`, `"$@"`) and no `-X GET` after it, a `gh` write it does not model (`gh release upload`, `gh secret set`, `gh repo create --push`, an alias or extension), a gist whose content it cannot read, and a push after a commit in the same call, with `--mirror` or an abbreviated option, a matching (`:`) or glob refspec, or one set by `remote.<name>.push`, `remote.<name>.mirror` or `push.default=matching`. A text tool that only searches or edits text naming one (`grep`, `tee`, `sed` without the `e` command, `find -exec grep`, `xargs grep`) runs. Write the body to a file in one call, then post with a plain `gh ... --body-file <file>` in another, and run `git push` in its own call. When the checker does not build, a file tool runs, and so does a command with no word that could publish (no gh, git, hub, push or expansion), with a warning that it was not checked; anything else is blocked.
+- Run `make setup` once per clone, and again after pulling changes to `tools/checkpublic`. It builds the checker into the clone's git directory and installs a git pre-push hook there that runs that copy, so every worktree of the clone is covered and a push never runs code from the branch being pushed. It replaces the old `core.hooksPath=.githooks` setting.
+- The pre-push hook checks each pushed branch (the diff, file paths added, commit messages and the branch name, beyond what the remote has) and each pushed tag (its name, an annotated tag's message, and commits the remote does not have). The public-content CI check runs the same rules on every pull request, plus its title and description, with the matched text hidden because the log is public. Run `make check-public` before opening a PR.
+- Nothing checks a description, comment or review you post with `gh` or a GitHub tool: read every one before posting it. A pattern also cannot tell that a sentence describes internal state.
 - Reviewers: apply the same rule to the PR title, description, commit messages and your own review comments, not only the code. The public-content CI check must pass.
 - A reference to a Runware repository is allowed only when the repository is public: add it to `tools/checkpublic/public-repos.txt` only then. For a false positive in a file, add `checkpublic:allow` to the line with the reason.
-- Names that must not be published but cannot be written here either live in the `CHECKPUBLIC_DENY` repository variable (one regular expression per line, `#` comments), which only collaborators can read. The local hooks and `make check-public` read it with your `gh` login and cache it for a day; without access they warn and apply the other rules. CI does not check these names, because its log is public.
-- Codex does not load `.codex/hooks.json` in a git worktree: there only the pre-push hook checks, so `gh` posts and GitHub tool calls are not blocked. Post from a regular clone.
+- Names that must not be published but cannot be written here either live in the `CHECKPUBLIC_DENY` repository variable (one regular expression per line, `#` comments), which only collaborators can read. The pre-push hook and `make check-public` read it with your `gh` login and cache it for a day; without access they warn at most once a day and apply the other rules. CI does not check these names, because its log is public.
 - If something private was pushed or posted: do not add a cleanup commit (it republishes the text and advertises it). Rewrite the branch with neutral messages and force-push, edit the text, delete every old revision in the GitHub UI ("edited" menu, open a revision, "Delete revision from history"), and ask a maintainer about a GitHub Support purge of the unreachable commits.
-- Run `make setup` once per clone.
 
 ## Spec
 
