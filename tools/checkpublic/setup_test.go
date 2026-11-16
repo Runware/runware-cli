@@ -190,3 +190,49 @@ func TestMakeSetupWarnsAboutHooksPath(t *testing.T) {
 		t.Fatalf("core.hooksPath = %q, want it left as set", got)
 	}
 }
+
+// TestMakeSetupRefusesDowngrade checks that make setup records the commit
+// the installed checker was built from and does not replace it with a
+// build from an older commit, unless FORCE=1.
+func TestMakeSetupRefusesDowngrade(t *testing.T) {
+	if runtime.GOOS == goosWindows {
+		t.Skip("make setup writes a POSIX shell hook")
+	}
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make is not installed")
+	}
+	dir := setupClone(t)
+	recorded := filepath.Join(dir, ".git", "checkpublic", "bin", "checkpublic.commit")
+	installedFrom := func() string {
+		t.Helper()
+		b, err := os.ReadFile(recorded) //nolint:gosec // the file make setup wrote
+		if err != nil {
+			t.Fatalf("no recorded commit: %v", err)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	old := gitIn(t, dir, "rev-parse", headRef)
+	mustRun(t, dir, "make", "setup")
+	if got := installedFrom(); got != old {
+		t.Fatalf("recorded commit = %q, want %q", got, old)
+	}
+	mustRun(t, dir, "git", "commit", "-q", "--allow-empty", "-m", "chore: newer checker")
+	newer := gitIn(t, dir, "rev-parse", headRef)
+	mustRun(t, dir, "make", "setup")
+	if got := installedFrom(); got != newer {
+		t.Fatalf("recorded commit = %q, want %q", got, newer)
+	}
+
+	mustRun(t, dir, "git", "checkout", "-q", old)
+	out, ok := setupRun(t, dir, "make", "setup")
+	if ok || !strings.Contains(out, "newer than this checkout") || !strings.Contains(out, "FORCE=1") {
+		t.Fatalf("make setup from an older commit: ok=%v\n%s", ok, out)
+	}
+	if got := installedFrom(); got != newer {
+		t.Fatalf("a refused setup changed the recorded commit to %q", got)
+	}
+	mustRun(t, dir, "make", "setup", "FORCE=1")
+	if got := installedFrom(); got != old {
+		t.Fatalf("FORCE=1: recorded commit = %q, want %q", got, old)
+	}
+}

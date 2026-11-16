@@ -71,7 +71,9 @@ go-tidy:
 # Run once per clone, and again after pulling changes to tools/checkpublic:
 # builds the checker into the clone's common git directory and installs a
 # pre-push hook there that runs that copy, so a push never runs code from the
-# branch being pushed. Every worktree of the clone shares both.
+# branch being pushed. Every worktree of the clone shares both. It records
+# the commit the checker was built from beside it, and refuses to replace it
+# with a build from an older commit unless FORCE=1.
 CHECKPUBLIC_HOOK_MARKER = installed by make setup: runs tools/checkpublic
 
 setup:
@@ -83,9 +85,16 @@ setup:
 		echo "make setup: $$hook exists and was not installed by make setup; move it aside and run make setup again" >&2; \
 		exit 1; \
 	fi; \
+	commit=$$(git rev-parse HEAD); \
+	installed=$$(cat "$$bin.commit" 2>/dev/null || true); \
+	if [ "$(FORCE)" != 1 ] && [ -n "$$installed" ] && [ "$$installed" != "$$commit" ] && git merge-base --is-ancestor "$$commit" "$$installed" 2>/dev/null; then \
+		echo "make setup: the installed checker was built from $$installed, which is newer than this checkout ($$commit); run make setup from an up-to-date checkout, or FORCE=1 make setup to install the older one" >&2; \
+		exit 1; \
+	fi; \
 	mkdir -p "$$common/checkpublic/bin" "$$common/hooks"; \
 	go build -o "$$bin.new" ./tools/checkpublic; \
 	mv -f "$$bin.new" "$$bin"; \
+	echo "$$commit" > "$$bin.commit"; \
 	{ \
 		echo '#!/bin/sh'; \
 		echo '# $(CHECKPUBLIC_HOOK_MARKER) in prepush mode.'; \

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -406,6 +407,166 @@ func TestPrePushToPublicRepo(t *testing.T) {
 		}
 		if len(f) != 1 || f[0].Where != "b.txt:1" {
 			t.Errorf("push to %s: findings = %+v, want one at b.txt:1", url, f)
+		}
+	}
+}
+
+// TestScanRangeIgnoresDiffAttribute checks that a branch's .gitattributes
+// cannot hide a file from the scan by marking it -diff: a leak is found
+// at the tip and in an earlier commit that a later one removes it from.
+func TestScanRangeIgnoresDiffAttribute(t *testing.T) {
+	commit := func(dir, notes, message string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("*.md -diff\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(notes), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, dir, "add", ".")
+		gitIn(t, dir, "commit", "-q", "-m", message)
+	}
+	tip := gitRepo(t, cleanText, "feat: add b")
+	commit(tip, cleanText+"\n"+leak+"\n", "docs: add notes")
+	if f := scanToMain(t, tip); len(f) != 1 || f[0].Where != "notes.md:2" {
+		t.Fatalf("at the tip: findings = %+v, want one at notes.md:2", f)
+	}
+
+	earlier := gitRepo(t, cleanText, "feat: add b")
+	commit(earlier, cleanText+"\n"+leak+"\n", "docs: add notes")
+	added := gitIn(t, earlier, "rev-parse", headRef)
+	commit(earlier, cleanText+"\n", "docs: trim notes")
+	if f := scanToMain(t, earlier); len(f) != 1 || f[0].Where != "commit "+short(added)+" notes.md:2" {
+		t.Fatalf("in an earlier commit: findings = %+v, want one in %s", f, short(added))
+	}
+}
+
+// TestScanRangeRunsNoMergeDriver checks that re-merging a merge for the
+// scan does not run a merge driver that the branch's .gitattributes
+// selects: it would run a command on the pusher's machine.
+func TestScanRangeRunsNoMergeDriver(t *testing.T) {
+	if runtime.GOOS == goosWindows {
+		t.Skip("the driver is a POSIX shell script")
+	}
+	dir := gitRepo(t, cleanText, "feat: add b")
+	write := func(name, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".gitattributes", "*.txt merge=evil\n")
+	write("a.txt", "feature\n")
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "commit", "-q", "-m", "feat: edit a")
+	gitIn(t, dir, "checkout", "-q", "-b", "newmain", "origin/main")
+	write("a.txt", "main\n")
+	gitIn(t, dir, "commit", "-q", "-am", "feat: main edits a")
+	gitIn(t, dir, "update-ref", "refs/remotes/origin/main", headRef)
+	gitIn(t, dir, "checkout", "-q", "feature")
+	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "merge", "-q", "--no-commit", "origin/main") //nolint:gosec // test arguments
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	_ = cmd.Run() // conflicts, resolved below
+	write("a.txt", "feature and main\n")
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-q", "-m", "Merge main into feature")
+
+	sentinel := filepath.Join(t.TempDir(), "driver-ran")
+	script := filepath.Join(dir, "driver.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch '"+sentinel+"'\nexit 0\n"), 0o700); err != nil { //nolint:gosec // a driver must be executable
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "config", "merge.evil.driver", script+" %A %O %B")
+	scanToMain(t, dir)
+	if _, err := os.Stat(sentinel); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the scan ran the merge driver: %v", err)
+	}
+}
+
+// TestScanRangeTextWithNUL checks that a text file holding a NUL byte is
+// scanned as text, and that a file binary by its extension is skipped.
+func TestScanRangeTextWithNUL(t *testing.T) {
+	dir := gitRepo(t, cleanText, "feat: add b")
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("a\x00b\n"+leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "logo.png"), []byte("\x89PNG\x00\n"+leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "commit", "-q", "-m", "docs: add notes and a logo")
+	if f := scanToMain(t, dir); len(f) != 1 || f[0].Where != "notes.txt:2" {
+		t.Fatalf("findings = %+v, want one at notes.txt:2", f)
+	}
+}
+
+// TestScanRangeOctopusMerge checks that what an octopus merge adds, its
+// content and the paths of its files, is scanned even when a later commit
+// removes it: git's remerge diff covers two parents only.
+func TestScanRangeOctopusMerge(t *testing.T) {
+	dir := gitRepo(t, cleanText, "feat: add b")
+	for _, name := range []string{"one", "two"} {
+		gitIn(t, dir, "checkout", "-q", "-b", name, "feature")
+		if err := os.WriteFile(filepath.Join(dir, name+".txt"), []byte(cleanText+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, dir, "add", ".")
+		gitIn(t, dir, "commit", "-q", "-m", "feat: add "+name)
+	}
+	gitIn(t, dir, "checkout", "-q", "feature")
+	gitIn(t, dir, "merge", "-q", "--no-ff", "--no-commit", "one", "two")
+	name := "notes-" + clusterHost + ".md"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-q", "-m", "Merge one and two")
+	merge := gitIn(t, dir, "rev-parse", headRef)
+	gitIn(t, dir, "rm", "-q", name)
+	gitIn(t, dir, "commit", "-q", "-m", "chore: remove notes")
+	f := scanToMain(t, dir)
+	var where []string
+	for _, x := range f {
+		where = append(where, x.Where)
+	}
+	slices.Sort(where)
+	want := []string{
+		"commit " + short(merge) + " " + name + ":1",
+		"path of an added file",
+	}
+	if !slices.Equal(where, want) {
+		t.Fatalf("findings = %+v, want %q", f, want)
+	}
+}
+
+// TestPrePushNestedTag checks that a pushed tag pointing to another tag
+// object has the inner tag's name and message scanned too.
+func TestPrePushNestedTag(t *testing.T) {
+	dir := gitRepo(t, cleanText, "feat: add b")
+	gitIn(t, dir, "tag", "-a", "inner", "-m", "release\n\n"+leak, "origin/main")
+	gitIn(t, dir, "tag", "-a", "outer", "-m", "release", "inner")
+	line := "refs/tags/outer " + gitIn(t, dir, "rev-parse", "refs/tags/outer") + " refs/tags/outer " + strings.Repeat("0", 40) + "\n"
+	f, err := NewScanner().prePush(context.Background(), Git{Dir: dir}, []string{remoteOrigin}, strings.NewReader(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || f[0].Where != "tag inner message line 3" {
+		t.Fatalf("findings = %+v, want one in the inner tag's message", f)
+	}
+}
+
+// TestGitVersionAtLeast checks the git version the scan requires.
+func TestGitVersionAtLeast(t *testing.T) {
+	for out, ok := range map[string]bool{
+		"git version 2.54.0 (Apple Git-157)\n": true,
+		"git version 2.40.0":                   true,
+		"git version 3.0.1":                    true,
+		"git version 2.39.5 (Apple Git-154)":   false,
+		"git version 1.9":                      false,
+		"not git":                              false,
+	} {
+		if err := gitVersionAtLeast(out, minGitVersion); (err == nil) != ok {
+			t.Errorf("gitVersionAtLeast(%q) = %v, want ok=%v", out, err, ok)
 		}
 	}
 }

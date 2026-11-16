@@ -344,10 +344,40 @@ func checkPublicIP(_ *Scanner, m []string, _ string) bool {
 }
 
 // excludedFile reports whether a file is skipped entirely: checksums and
-// generated code, whose content comes from files that are scanned themselves.
+// generated code, whose content comes from files that are scanned themselves,
+// and binary files, whose bytes the diff prints as text only to match by
+// chance.
 func excludedFile(file string) bool {
 	base := path.Base(file)
+	if _, ok := binaryExtensions[strings.ToLower(path.Ext(base))]; ok {
+		return true
+	}
 	return base == "go.sum" || strings.HasSuffix(base, ".gen.go")
+}
+
+// binaryExtensions are the extensions of files that are binary by format:
+// images, archives, fonts and compiled objects.
+var binaryExtensions = map[string]struct{}{
+	".png":   {},
+	".jpg":   {},
+	".jpeg":  {},
+	".gif":   {},
+	".webp":  {},
+	".ico":   {},
+	".zip":   {},
+	".gz":    {},
+	".tgz":   {},
+	".zst":   {},
+	".woff":  {},
+	".woff2": {},
+	".ttf":   {},
+	".otf":   {},
+	".o":     {},
+	".a":     {},
+	".so":    {},
+	".dylib": {},
+	".dll":   {},
+	".exe":   {},
 }
 
 // mergeSubject is the subject GitHub writes for a merge commit. Its

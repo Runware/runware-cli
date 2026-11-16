@@ -356,3 +356,26 @@ func TestDenyUnknownRepoWarnsOnceADay(t *testing.T) {
 		t.Errorf("second run: stderr = %q, gh calls = %d, want neither", stderr.String(), gh.calls)
 	}
 }
+
+// TestGitRepoOfFork checks that when origin is not a Runware repository,
+// such as a personal fork, the deny list is read from a remote that is one,
+// upstream first, and that origin is used when no remote is.
+func TestGitRepoOfFork(t *testing.T) {
+	runware := func(name string) string {
+		return "https://github.com/" + shortRepo + name + ".git"
+	}
+	dir := cleanRepo(t)
+	gitIn(t, dir, "remote", "add", "origin", "git@github.com:someone/"+repoCLI+".git")
+	if got := gitRepoOf(dir); got != "someone/"+repoCLI {
+		t.Fatalf("fork alone: gitRepoOf = %q, want origin's", got)
+	}
+	gitIn(t, dir, "remote", "add", "another", runware("other"))
+	gitIn(t, dir, "remote", "add", "upstream", runware(repoCLI))
+	if got := gitRepoOf(dir); got != shortRepo+repoCLI {
+		t.Fatalf("fork with upstream: gitRepoOf = %q, want %q", got, shortRepo+repoCLI)
+	}
+	gitIn(t, dir, "remote", "set-url", "origin", runware("origin-repo"))
+	if got := gitRepoOf(dir); got != shortRepo+"origin-repo" {
+		t.Fatalf("Runware origin: gitRepoOf = %q, want origin's", got)
+	}
+}
