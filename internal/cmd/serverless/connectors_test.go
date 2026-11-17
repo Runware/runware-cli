@@ -827,8 +827,8 @@ func TestConnectorsUpdateRefusedWhenTheConnectorChangedSinceItWasRead(t *testing
 		t.Fatalf("err = %v, want %q", run.err, want)
 	}
 	re, ok := errors.AsType[*transport.RunwareError](run.err)
-	if !ok || re.StatusCode != http.StatusPreconditionFailed || re.Retryable {
-		t.Fatalf("err = %#v, want a non-retryable *transport.RunwareError with status 412 so --format json keeps code and status", run.err)
+	if !ok || re.StatusCode != http.StatusPreconditionFailed || re.Retryable || !strings.HasSuffix(re.ProblemType, "#precondition-failed") {
+		t.Fatalf("err = %#v, want a non-retryable *transport.RunwareError for the 412 so --format json keeps the code and the precondition-failed problem type", run.err)
 	}
 	if run.stdout != "" {
 		t.Fatalf("stdout = %q, want no connector printed", run.stdout)

@@ -414,7 +414,7 @@ until they roll.`,
 			// did before.
 			connector, err := client.UpdateOidcConnector(cmd.Context(), name, etag, body)
 			if re, ok := errors.AsType[*transport.RunwareError](err); ok && re.StatusCode == http.StatusPreconditionFailed {
-				// A copy keeps the code and status for --format json.
+				// A copy keeps the code and problem type for --format json.
 				changed := *re
 				changed.Message = fmt.Sprintf("connector %s was changed by someone else since it was read; nothing was changed. Run the command again", name)
 				return &changed
