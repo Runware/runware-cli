@@ -218,6 +218,24 @@ func TestPutChangedFile(t *testing.T) {
 	}
 }
 
+// AC 3: a file rewritten at the same size with its modification time put back uploads its new content.
+func TestPutReusedFileWithRestoredMtimeUploadsNewContent(t *testing.T) {
+	e := newTestEnv(t)
+	dir := filepath.Join(e.srcDir, "weights")
+	file := filepath.Join(dir, "model.bin")
+	writeFile(t, file, patterned(64, 1))
+	vol := e.cloud.newVolume("model-weights", "")
+	e.mustPut(vol, dir)
+	swapKeepingStat(t, file, patterned(64, 2))
+
+	sum := e.mustPut(vol, dir)
+
+	requireFiles(t, e, vol, expectedFiles(t, dir, ""))
+	if sum.Replaced != 1 || sum.Reused != 0 {
+		t.Errorf("%d replaced, %d reused, want the rewritten file replaced", sum.Replaced, sum.Reused)
+	}
+}
+
 type statementRefusal struct {
 	name         string
 	organization string
@@ -497,18 +515,29 @@ type changeCase struct {
 	noDeclare bool
 }
 
-// swapKeepingStat changes a file's content, not its size or modification time.
+// swapKeepingStat changes a file's content, not its size or modification time, until a coarse file clock moves its change time.
 func swapKeepingStat(t *testing.T, p string, content []byte) {
 	t.Helper()
 	info, err := os.Stat(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, content, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chtimes(p, info.ModTime(), info.ModTime()); err != nil {
-		t.Fatal(err)
+	before := changeTime(p, info)
+	for {
+		if err := os.WriteFile(p, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, info.ModTime(), info.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+		now, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if before == 0 || changeTime(p, now) != before {
+			return
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

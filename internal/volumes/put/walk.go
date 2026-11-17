@@ -40,6 +40,7 @@ type Source struct {
 	Target  string    // the file's path in the Volume
 	Size    int64     // the size when it was hashed
 	ModTime time.Time // the modification time when it was hashed
+	Change  int64     // the change time when it was hashed, in Unix nanoseconds; zero when it cannot be read
 	Mode    uint32    // the Volume mode: the file's read and execute bits
 	SHA256  [32]byte  // the plaintext digest, set by hashing
 }
@@ -175,6 +176,7 @@ func newSource(abs, target string, info fs.FileInfo) (Source, error) {
 		Target:  target,
 		Size:    info.Size(),
 		ModTime: info.ModTime(),
+		Change:  changeTime(abs, info),
 		Mode:    uint32(info.Mode().Perm() & modeMask),
 	}, nil
 }

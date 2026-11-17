@@ -15,13 +15,14 @@ import (
 const (
 	stateDirName  = "volumes"
 	hashCacheFile = "hashes.json"
-	hashCacheForm = 1
+	hashCacheForm = 2
 	hashBufBytes  = 1 << 20
 )
 
 type cacheEntry struct {
 	Size    int64  `json:"size"`
 	ModTime int64  `json:"modTimeUnixNano"`
+	Change  int64  `json:"changeTimeUnixNano"`
 	SHA256  string `json:"sha256"`
 }
 
@@ -30,7 +31,7 @@ type cacheFile struct {
 	Files   map[string]cacheEntry `json:"files"`
 }
 
-// hashCache remembers file digests by path, size and modification time; it is only a hint.
+// hashCache remembers file digests by path, size, modification time and change time; a zero change time is never trusted.
 type hashCache struct {
 	path    string
 	entries map[string]cacheEntry
@@ -55,9 +56,9 @@ func loadHashCache(stateDir string) *hashCache {
 	return c
 }
 
-func (c *hashCache) lookup(abs string, size int64, modTime time.Time) ([32]byte, bool) {
+func (c *hashCache) lookup(abs string, size int64, modTime time.Time, change int64) ([32]byte, bool) {
 	e, ok := c.entries[abs]
-	if !ok || e.Size != size || e.ModTime != modTime.UnixNano() {
+	if !ok || change == 0 || e.Size != size || e.ModTime != modTime.UnixNano() || e.Change != change {
 		return [32]byte{}, false
 	}
 	raw, err := hex.DecodeString(e.SHA256)
@@ -67,10 +68,11 @@ func (c *hashCache) lookup(abs string, size int64, modTime time.Time) ([32]byte,
 	return [32]byte(raw), true
 }
 
-func (c *hashCache) store(abs string, size int64, modTime time.Time, sum [32]byte) {
+func (c *hashCache) store(abs string, size int64, modTime time.Time, change int64, sum [32]byte) {
 	c.entries[abs] = cacheEntry{
 		Size:    size,
 		ModTime: modTime.UnixNano(),
+		Change:  change,
 		SHA256:  hex.EncodeToString(sum[:]),
 	}
 	c.dirty = true
@@ -139,7 +141,7 @@ func hashSources(ctx context.Context, sources []Source, cache *hashCache, p *pro
 	buf := make([]byte, hashBufBytes)
 	for i := range sources {
 		s := &sources[i]
-		if sum, ok := cache.lookup(s.Abs, s.Size, s.ModTime); ok {
+		if sum, ok := cache.lookup(s.Abs, s.Size, s.ModTime, s.Change); ok {
 			s.SHA256 = sum
 			p.addBytes(s.Size)
 			p.fileDone()
@@ -151,7 +153,7 @@ func hashSources(ctx context.Context, sources []Source, cache *hashCache, p *pro
 		if err := hashFile(ctx, s, buf, p); err != nil {
 			return err
 		}
-		cache.store(s.Abs, s.Size, s.ModTime, s.SHA256)
+		cache.store(s.Abs, s.Size, s.ModTime, s.Change, s.SHA256)
 		p.fileDone()
 	}
 	return nil
@@ -168,6 +170,7 @@ func hashFile(ctx context.Context, s *Source, buf []byte, p *progress) error {
 	if err != nil {
 		return fileErr(s.Abs, err)
 	}
+	change := changeTime(s.Abs, before)
 	h := sha256.New()
 	n, err := io.CopyBuffer(h, &hashReader{
 		ctx: ctx,
@@ -181,10 +184,10 @@ func hashFile(ctx context.Context, s *Source, buf []byte, p *progress) error {
 	if err != nil {
 		return fileErr(s.Abs, err)
 	}
-	if n != before.Size() || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+	if n != before.Size() || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) || changeTime(s.Abs, after) != change {
 		return fileErr(s.Abs, ErrSourceChanged)
 	}
-	s.Size, s.ModTime = before.Size(), before.ModTime()
+	s.Size, s.ModTime, s.Change = before.Size(), before.ModTime(), change
 	copy(s.SHA256[:], h.Sum(nil))
 	return nil
 }
@@ -205,13 +208,13 @@ func (h *hashReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// unchanged returns ErrSourceChanged when the file's size or modification time moved since hashing.
+// unchanged returns ErrSourceChanged when the file's size, modification time or change time moved since hashing.
 func unchanged(s *Source) error {
 	info, err := os.Stat(s.Abs)
 	if err != nil {
 		return fileErr(s.Abs, fmt.Errorf("%w: %w", ErrSourceChanged, err))
 	}
-	if info.Size() != s.Size || !info.ModTime().Equal(s.ModTime) {
+	if info.Size() != s.Size || !info.ModTime().Equal(s.ModTime) || changeTime(s.Abs, info) != s.Change {
 		return fileErr(s.Abs, ErrSourceChanged)
 	}
 	return nil

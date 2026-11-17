@@ -15,24 +15,30 @@ func TestHashCacheKey(t *testing.T) {
 	c := loadHashCache(t.TempDir())
 	mod := time.Date(2026, time.November, 16, 9, 0, 0, 123, time.UTC)
 	sum := sha256.Sum256([]byte("content"))
-	c.store("/data/a.bin", 7, mod, sum)
+	c.store("/data/a.bin", 7, mod, 42, sum)
 
-	if got, ok := c.lookup("/data/a.bin", 7, mod); !ok || got != sum {
-		t.Errorf("lookup of the same path, size and time = %x, %v", got, ok)
+	if got, ok := c.lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
+		t.Errorf("lookup of the same path, size and times = %x, %v", got, ok)
 	}
 	for name, miss := range map[string]func() bool{
-		"another size":   func() bool { _, ok := c.lookup("/data/a.bin", 8, mod); return ok },
-		"a later time":   func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(time.Nanosecond)); return ok },
-		"an earlier one": func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(-time.Second)); return ok },
-		"another path":   func() bool { _, ok := c.lookup("/data/b.bin", 7, mod); return ok },
+		"another size":        func() bool { _, ok := c.lookup("/data/a.bin", 8, mod, 42); return ok },
+		"a later time":        func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(time.Nanosecond), 42); return ok },
+		"an earlier one":      func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(-time.Second), 42); return ok },
+		"another change time": func() bool { _, ok := c.lookup("/data/a.bin", 7, mod, 43); return ok },
+		"another path":        func() bool { _, ok := c.lookup("/data/b.bin", 7, mod, 42); return ok },
 	} {
 		if miss() {
 			t.Errorf("the cache answered for %s", name)
 		}
 	}
 
+	c.store("/data/c.bin", 7, mod, 0, sum)
+	if _, ok := c.lookup("/data/c.bin", 7, mod, 0); ok {
+		t.Error("the cache answered for a file with no change time")
+	}
+
 	c.forget("/data/a.bin")
-	if _, ok := c.lookup("/data/a.bin", 7, mod); ok {
+	if _, ok := c.lookup("/data/a.bin", 7, mod, 42); ok {
 		t.Error("the cache answered for a forgotten file")
 	}
 }
@@ -42,12 +48,12 @@ func TestHashCacheRoundTrip(t *testing.T) {
 	c := loadHashCache(dir)
 	mod := time.Date(2026, time.November, 16, 9, 0, 0, 0, time.UTC)
 	sum := sha256.Sum256([]byte("content"))
-	c.store("/data/a.bin", 7, mod, sum)
+	c.store("/data/a.bin", 7, mod, 42, sum)
 	if err := c.save(); err != nil {
 		t.Fatal(err)
 	}
 
-	if got, ok := loadHashCache(dir).lookup("/data/a.bin", 7, mod); !ok || got != sum {
+	if got, ok := loadHashCache(dir).lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
 		t.Errorf("a saved entry reads back as %x, %v", got, ok)
 	}
 }
@@ -61,7 +67,7 @@ func TestHashCacheCorruptFileIsEmpty(t *testing.T) {
 	if len(c.entries) != 0 {
 		t.Fatalf("a corrupt cache holds %d entries", len(c.entries))
 	}
-	c.store("/data/a.bin", 1, time.Unix(1, 0), [32]byte{1})
+	c.store("/data/a.bin", 1, time.Unix(1, 0), 1, [32]byte{1})
 	if err := c.save(); err != nil {
 		t.Errorf("a corrupt cache could not be replaced: %v", err)
 	}
@@ -73,7 +79,7 @@ func TestHashCacheFilePerms(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "volumes")
 	c := loadHashCache(dir)
-	c.store("/data/a.bin", 1, time.Unix(1, 0), [32]byte{1})
+	c.store("/data/a.bin", 1, time.Unix(1, 0), 1, [32]byte{1})
 	if err := c.save(); err != nil {
 		t.Fatal(err)
 	}
@@ -145,8 +151,9 @@ func (c *changingContext) Err() error {
 }
 
 type changedWhileReadCase struct {
-	name   string
-	change func(t *testing.T, file string)
+	name            string
+	change          func(t *testing.T, file string)
+	needsChangeTime bool
 }
 
 // TestHashFileRefusesAFileThatChangesWhileItIsRead: a file that grows, shrinks or is touched during the read is not hashed.
@@ -177,11 +184,25 @@ func TestHashFileRefusesAFileThatChangesWhileItIsRead(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:            "is rewritten keeping its size and time",
+			change:          func(t *testing.T, file string) { swapKeepingStat(t, file, patterned(3<<20, 2)) },
+			needsChangeTime: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.bin")
 			writeFile(t, file, patterned(3<<20, 1))
+			if tc.needsChangeTime {
+				info, err := os.Stat(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if changeTime(file, info) == 0 {
+					t.Skip("this platform reports no change time")
+				}
+			}
 			ctx := &changingContext{
 				Context: t.Context(),
 				change:  func() { tc.change(t, file) },
@@ -214,9 +235,17 @@ func TestUnchanged(t *testing.T) {
 		Abs:     file,
 		Size:    info.Size(),
 		ModTime: info.ModTime(),
+		Change:  changeTime(file, info),
 	}
 	if err := unchanged(&src); err != nil {
 		t.Fatalf("an untouched file is changed: %v", err)
+	}
+
+	if src.Change != 0 {
+		swapKeepingStat(t, file, patterned(10, 2))
+		if err := unchanged(&src); !errors.Is(err, ErrSourceChanged) {
+			t.Errorf("a file rewritten at the same size and time: error = %v, want ErrSourceChanged", err)
+		}
 	}
 
 	later := info.ModTime().Add(time.Second)
