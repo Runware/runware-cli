@@ -1,6 +1,7 @@
 package keypair
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -229,7 +230,7 @@ func (v *vectors) spec() statementSpec {
 	}
 }
 
-// readMarks returns the sequence record in dir, or nil when there is none.
+// readMarks returns the highest sequence per mark in the record in dir, or nil when there is none.
 func readMarks(t *testing.T, dir string) map[string]uint64 {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(dir, sequenceFile))
@@ -239,9 +240,17 @@ func readMarks(t *testing.T, dir string) map[string]uint64 {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var marks map[string]uint64
-	if err := json.Unmarshal(data, &marks); err != nil {
-		t.Fatal(err)
+	marks := map[string]uint64{}
+	for line := range bytes.Lines(data) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var m sequenceMark
+		if err := json.Unmarshal(line, &m); err != nil || !bytes.HasSuffix(line, []byte("\n")) {
+			t.Fatalf("record line %q is not a whole JSON line: %v", line, err)
+		}
+		key := markKey(m.Host, m.Organization)
+		marks[key] = max(marks[key], m.Sequence)
 	}
 	return marks
 }
