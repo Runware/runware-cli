@@ -193,6 +193,16 @@ func TestScanLine(t *testing.T) {
 			want: []string{ruleInternalHost},
 		},
 		{
+			name: "short cluster service in upper case",
+			line: "http://API.NS" + ".SVC:8080",
+			want: []string{ruleInternalHost},
+		},
+		{
+			name: "short cluster service after the user of a URL",
+			line: "postgres://user:pw@db.ns" + ".svc/app",
+			want: []string{ruleInternalHost},
+		},
+		{
 			name: "go selector ending a line",
 			line: "return h.app.svc",
 			want: nil,
@@ -502,6 +512,11 @@ func TestScanLine(t *testing.T) {
 			line: "Authorization: " + "Bearer " + longSecret + " # " + "checkpublic:" + "allow: a fixture",
 			want: []string{ruleBearer},
 		},
+		{
+			name: "allow marker on a masked key",
+			line: "API Key " + "abcdEF1234ghIJ56-" + strings.Repeat("•", 5) + " # " + "checkpublic:" + "allow: a fixture",
+			want: []string{ruleMaskedKey},
+		},
 	}
 	s := NewScanner()
 	for _, tc := range cases {
@@ -526,9 +541,14 @@ func TestLocalDenyList(t *testing.T) {
 	s.loadDeny = func() []*regexp.Regexp {
 		return d.patterns(context.Background())
 	}
-	hits := s.ScanLine("", "objects live in ACME Storage")
-	if len(hits) != 1 || hits[0].rule != ruleDenyList {
-		t.Fatalf("hits = %+v, want one %s", hits, ruleDenyList)
+	for _, line := range []string{
+		"objects live in ACME Storage",
+		"objects live in ACME Storage # " + "checkpublic:" + "allow: a fixture",
+	} {
+		hits := s.ScanLine("", line)
+		if len(hits) != 1 || hits[0].rule != ruleDenyList {
+			t.Fatalf("ScanLine(%q) = %+v, want one %s", line, hits, ruleDenyList)
+		}
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 // allowMarker, followed by a reason on the same line, exempts that line from
-// every rule except the credential rules (see neverAllowed). Use it for a
+// every rule except the credential and deny-list rules (see neverAllowed). Use it for a
 // line that has to name a pattern, such as a test of a rule or a guard like
 // the published-spec test. A marker without a reason exempts nothing.
 const allowMarker = "checkpublic:allow"
@@ -20,12 +20,15 @@ const allowMarker = "checkpublic:allow"
 var allowed = regexp.MustCompile(regexp.QuoteMeta(allowMarker) + `:?[ \t]+\S`)
 
 // neverAllowed are the rules the allow marker does not exempt: a pasted
-// key or token is a leak whatever the line says about it.
+// key or token, or a name from the deny list, is a leak whatever the line
+// says about it.
 var neverAllowed = map[string]struct{}{
 	rulePrivateKey:  {},
 	ruleTokenPrefix: {},
 	ruleCredential:  {},
 	ruleBearer:      {},
+	ruleMaskedKey:   {},
+	ruleDenyList:    {},
 }
 
 //go:embed public-repos.txt
@@ -171,7 +174,7 @@ func builtinRules() []rule {
 			// selector such as a.b.svc out.
 			name:    ruleInternalHost,
 			message: hostMessage,
-			re:      regexp.MustCompile(`[a-z0-9-]+(?:\.[a-z0-9-]+)+\.svc`),
+			re:      regexp.MustCompile(`(?i)[a-z0-9-]+(?:\.[a-z0-9-]+)+\.svc`),
 			bounded: svcBounded,
 		},
 		{
@@ -346,7 +349,8 @@ func ipBounded(line string, start, end int) bool {
 }
 
 // svcBounded reports whether the short service host at line[start:end] is
-// used as a host: inside a URL (after //) or followed by a port. A bare
+// used as a host: inside a URL (after // or after the user@ of a URL) or
+// followed by a port. A bare
 // name.namespace.svc is left alone, because it reads the same as a Go
 // selector such as h.app.svc.
 func svcBounded(line string, start, end int) bool {
@@ -356,7 +360,10 @@ func svcBounded(line string, start, end int) bool {
 	if end+1 < len(line) && line[end] == ':' && isDigit(line[end+1]) {
 		return true
 	}
-	if !strings.HasSuffix(line[:start], "//") {
+	before := line[:start]
+	inURL := strings.HasSuffix(before, "//") ||
+		(strings.HasSuffix(before, "@") && strings.Contains(before, "//"))
+	if !inURL {
 		return false
 	}
 	if end == len(line) {
