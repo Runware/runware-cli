@@ -365,6 +365,9 @@ application that attaches the connector, and the new workers get a permission
 error on any resource only the service account could read. Clearing a service
 account the connector does not have is refused when nothing else changes.
 
+The update fails rather than overwrite a change someone else made to the
+connector after it was read.
+
 Updating rolls every live application that attaches the connector, so its
 workers get the new configuration. Running workers keep the old configuration
 until they roll.`,
@@ -393,7 +396,7 @@ until they roll.`,
 			spin.Start()
 			defer spin.Stop()
 
-			current, err := client.GetOidcConnector(cmd.Context(), name)
+			current, etag, err := client.GetOidcConnectorWithETag(cmd.Context(), name)
 			if err != nil {
 				return err
 			}
@@ -401,7 +404,16 @@ until they roll.`,
 			if err != nil {
 				return err
 			}
-			connector, err := client.UpdateOidcConnector(cmd.Context(), name, body)
+			// The update carries over the fields the user did not name, so it
+			// is a read-modify-write: send the ETag from the read as If-Match
+			// and the API refuses it when someone changed the connector
+			// since. An older API sends no ETag; then etag is empty, no
+			// header goes out and the update applies unconditionally as it
+			// did before.
+			connector, err := client.UpdateOidcConnector(cmd.Context(), name, etag, body)
+			if errors.Is(err, serverlessapi.ErrPreconditionFailed) {
+				return fmt.Errorf("connector %s was changed by someone else since it was read; nothing was changed. Run the command again", name)
+			}
 			if err != nil {
 				return err
 			}

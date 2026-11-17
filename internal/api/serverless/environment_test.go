@@ -365,7 +365,7 @@ func orgScopedCalls() []environmentCall {
 		{
 			operation: "UpdateOidcConnector",
 			call: func(ctx context.Context, c *Client) error {
-				_, err := c.UpdateOidcConnector(ctx, "aws-prod", OidcConnectorUpdate{})
+				_, err := c.UpdateOidcConnector(ctx, "aws-prod", "", OidcConnectorUpdate{})
 				return err
 			},
 		},

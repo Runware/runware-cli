@@ -2,9 +2,11 @@ package serverless
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -748,5 +750,94 @@ func assertYAMLEqualsJSON(t *testing.T, handler http.HandlerFunc, args ...string
 	}
 	if !reflect.DeepEqual(fromJSON, normalized) {
 		t.Errorf("%v: YAML document differs from JSON\nJSON: %v\nYAML: %v", args, fromJSON, normalized)
+	}
+}
+
+const testConnectorETag = `"1763337600000123"`
+
+// etagConnectorAPI answers GET with the connector and etag (no header when etag
+// is empty) and PUT with putStatus. It keeps the If-Match header of every PUT,
+// and whether one was present at all.
+type etagConnectorAPI struct {
+	etag      string
+	putStatus int
+	putBody   string
+
+	mu       sync.Mutex
+	ifMatch  []string
+	hasMatch []bool
+}
+
+func (a *etagConnectorAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		if a.etag != "" {
+			w.Header().Set("ETag", a.etag)
+		}
+		_, _ = io.WriteString(w, testAWSConnector)
+	case http.MethodPut:
+		a.mu.Lock()
+		_, has := r.Header["If-Match"]
+		a.hasMatch = append(a.hasMatch, has)
+		a.ifMatch = append(a.ifMatch, r.Header.Get("If-Match"))
+		a.mu.Unlock()
+		contentType := "application/json"
+		if a.putStatus >= http.StatusBadRequest {
+			contentType = "application/problem+json"
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(a.putStatus)
+		_, _ = io.WriteString(w, a.putBody)
+	default:
+		http.Error(w, "unexpected", http.StatusMethodNotAllowed)
+	}
+}
+
+func TestConnectorsUpdateSendsTheETagItReadAsIfMatch(t *testing.T) {
+	api := &etagConnectorAPI{etag: testConnectorETag, putStatus: http.StatusOK, putBody: testAWSConnector}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.ifMatch, []string{testConnectorETag}) {
+		t.Fatalf("If-Match on the PUTs = %q, want exactly the GET's ETag %s", api.ifMatch, testConnectorETag)
+	}
+}
+
+func TestConnectorsUpdateRefusedWhenTheConnectorChangedSinceItWasRead(t *testing.T) {
+	api := &etagConnectorAPI{
+		etag:      testConnectorETag,
+		putStatus: http.StatusPreconditionFailed,
+		putBody:   `{"type":"https://docs.runware.ai/serverless/errors#precondition-failed","title":"Precondition Failed","status":412,"detail":"the OIDC connector changed since the ETag in If-Match; read it again and retry"}`,
+	}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	want := "connector aws-prod was changed by someone else since it was read; nothing was changed. Run the command again"
+	if run.err == nil || run.err.Error() != want {
+		t.Fatalf("err = %v, want %q", run.err, want)
+	}
+	if run.stdout != "" {
+		t.Fatalf("stdout = %q, want no connector printed", run.stdout)
+	}
+	if len(api.ifMatch) != 1 {
+		t.Fatalf("PUTs = %d, want exactly one and no retry", len(api.ifMatch))
+	}
+}
+
+func TestConnectorsUpdateSendsNoIfMatchWhenTheAPIGaveNoETag(t *testing.T) {
+	api := &etagConnectorAPI{putStatus: http.StatusOK, putBody: testAWSConnector}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.hasMatch, []bool{false}) {
+		t.Fatalf("PUT carried an If-Match header = %v, want one PUT without it", api.hasMatch)
 	}
 }
