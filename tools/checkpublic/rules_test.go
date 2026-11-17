@@ -598,6 +598,12 @@ func TestCredentialByFileType(t *testing.T) {
 			want: []string{ruleCredential},
 		},
 		{
+			name: "shell script assignment",
+			file: "scripts/deploy.sh",
+			line: "SERVICE_TOKEN=" + correctHorse,
+			want: []string{ruleCredential},
+		},
+		{
 			name: "dotenv export",
 			file: "deploy/.env.local",
 			line: "export PASSWORD=" + correctHorse,
