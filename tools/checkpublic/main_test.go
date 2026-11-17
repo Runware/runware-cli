@@ -82,6 +82,37 @@ func TestPRModeRedactsInCI(t *testing.T) {
 	}
 }
 
+// TestPrePushRedactsTagName checks that a redacted report does not show
+// the name of a tag whose message has a finding, and keeps the line number.
+func TestPrePushRedactsTagName(t *testing.T) {
+	dir := cleanRepo(t)
+	tag := "v1-" + clusterHost
+	gitIn(t, dir, "tag", "-a", tag, "-m", "release\n\n"+leak, originMain)
+	line := "refs/tags/" + tag + " " + gitIn(t, dir, "rev-parse", "refs/tags/"+tag) + " refs/tags/" + tag + " " + strings.Repeat("0", 40) + "\n"
+	summary := filepath.Join(t.TempDir(), "summary.md")
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"prepush", "-C", dir, "-redact", "-summary", summary, remoteOrigin}, strings.NewReader(line), &stdout, &stderr); code != exitFindings {
+		t.Fatalf("exit %d, want %d: %s", code, exitFindings, stderr.String())
+	}
+	got, err := os.ReadFile(summary) //nolint:gosec // a test file
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, where := range []string{"tag name:", "tag #1 message line 3:"} {
+		if !strings.Contains(stdout.String(), where) {
+			t.Errorf("no finding at %q in:\n%s", where, stdout.String())
+		}
+	}
+	for name, text := range map[string]string{
+		"log":     stdout.String() + stderr.String(),
+		"summary": string(got),
+	} {
+		if strings.Contains(text, clusterHost) || strings.Contains(text, "some-private-repo") {
+			t.Errorf("the %s shows the tag name or matched text:\n%s", name, text)
+		}
+	}
+}
+
 // TestPRModeReadsEventFile checks that the pr mode reads the title, body and
 // branch name from the event file, so the workflow passes no author text
 // through env, and that it hides the matched text.

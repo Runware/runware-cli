@@ -156,7 +156,7 @@ func finish(o options, sections []section, stdout, stderr io.Writer) int {
 		}
 	}
 	if total > 0 {
-		logf(stderr, "checkpublic: %d finding(s). This repository is public: rewrite the text, or for a false positive add `%s` to the line with the reason.\n", total, allowMarker)
+		logf(stderr, "checkpublic: %d finding(s). This repository is public: rewrite the text, or for a false positive add `%s <reason>` to the line (it does not exempt a key, token or credential).\n", total, allowMarker)
 		return exitFindings
 	}
 	return 0
@@ -329,32 +329,46 @@ func isZeroSHA(sha string) bool {
 	return strings.Trim(sha, "0") == ""
 }
 
-// redactor hides the matched text, and the file path in where a finding
-// is, for a public log: a path can itself be the text that must not be
-// published. It numbers each file in the order it first meets them, the
-// same way in the log and in the summary.
+// redactor hides the matched text, and the file path or tag name in where a
+// finding is, for a public log: a path or a tag name can itself be the text
+// that must not be published. It numbers each file, and each tag, in the
+// order it first meets them, the same way in the log and in the summary.
 type redactor struct {
-	ids map[string]int
+	files map[string]int
+	tags  map[string]int
 }
 
 func newRedactor() *redactor {
 	return &redactor{
-		ids: map[string]int{},
+		files: map[string]int{},
+		tags:  map[string]int{},
 	}
 }
 
 // where returns the location of f to print: as found, or with its file
-// replaced by a number such as "file #2".
+// replaced by a number such as "file #2", or its tag by one such as
+// "tag #1".
 func (r *redactor) where(f Finding) string {
-	if r == nil || f.File == "" {
+	switch {
+	case r == nil:
 		return f.Where
+	case f.File != "":
+		return strings.Replace(f.Where, f.File, fmt.Sprintf("file #%d", number(r.files, f.File)), 1)
+	case f.Tag != "":
+		return strings.Replace(f.Where, "tag "+f.Tag+" ", fmt.Sprintf("tag #%d ", number(r.tags, f.Tag)), 1)
 	}
-	n, ok := r.ids[f.File]
+	return f.Where
+}
+
+// number returns the number of name in ids, giving it the next one when it
+// has none yet.
+func number(ids map[string]int, name string) int {
+	n, ok := ids[name]
 	if !ok {
-		n = len(r.ids) + 1
-		r.ids[f.File] = n
+		n = len(ids) + 1
+		ids[name] = n
 	}
-	return strings.Replace(f.Where, f.File, fmt.Sprintf("file #%d", n), 1)
+	return n
 }
 
 // report prints the findings, redacted when r is not nil.

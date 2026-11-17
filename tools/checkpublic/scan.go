@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,6 +22,9 @@ type Finding struct {
 	// File is the file named in Where, which a public log must not show
 	// either (see redactor).
 	File string
+	// Tag is the tag named in Where, for a finding in a tag's message,
+	// which a public log must not show either.
+	Tag string
 }
 
 // ScanText scans free text (a PR title, body or comment). label names it in
@@ -335,12 +339,6 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]struct{}{}
-	for _, f := range diffFindings {
-		seen[fileKey(f)] = struct{}{}
-		out = append(out, f)
-	}
-
 	patches, err := g.run(ctx, slices.Concat([]string{"log", "--remerge-diff", "-p", "--format=%x00commit %H"}, patchFlags, logRange)...)
 	if err != nil {
 		return nil, err
@@ -348,6 +346,26 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 	patchFindings, err := s.ScanDiff(patches)
 	if err != nil {
 		return nil, err
+	}
+	// With the remote's commits left out of the history, a line of the
+	// range diff counts only when a commit the remote does not have adds
+	// it: a branch started from a published branch does not answer for
+	// what that branch already published.
+	var unpublished map[string]struct{}
+	if r.notOnRemote() != nil {
+		unpublished = map[string]struct{}{}
+		for _, f := range patchFindings {
+			unpublished[fileKey(f)] = struct{}{}
+		}
+	}
+	seen := map[string]struct{}{}
+	for _, f := range diffFindings {
+		key := fileKey(f)
+		if _, ok := unpublished[key]; unpublished != nil && !ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, f)
 	}
 	for _, f := range patchFindings {
 		key := fileKey(f)
@@ -373,19 +391,32 @@ func (s *Scanner) ScanRange(ctx context.Context, g Git, r Range) ([]Finding, err
 		}
 	}
 
-	msgs, err := g.run(ctx, slices.Concat([]string{"log", "--format=%H%x1f%B%x1e"}, logRange)...)
+	// git log -z ends each commit with a NUL, which a commit message made
+	// with git commit cannot hold. A record that does not start with a
+	// commit ID (a message written with a NUL by other means) is still
+	// scanned, as a whole.
+	msgs, err := g.run(ctx, slices.Concat([]string{"log", "-z", "--format=%H%n%B"}, logRange)...)
 	if err != nil {
 		return nil, err
 	}
-	for rec := range strings.SplitSeq(msgs, "\x1e") {
-		sha, body, ok := strings.Cut(strings.TrimLeft(rec, "\n"), "\x1f")
-		if !ok {
+	for rec := range strings.SplitSeq(msgs, "\x00") {
+		rec = strings.TrimLeft(rec, "\n")
+		if rec == "" {
 			continue
 		}
-		out = append(out, s.ScanText("commit "+short(sha)+" message", strings.TrimRight(body, "\n"))...)
+		label := "commit message"
+		sha, body, ok := strings.Cut(rec, "\n")
+		if ok && commitID.MatchString(sha) {
+			label = "commit " + short(sha) + " message"
+			rec = body
+		}
+		out = append(out, s.ScanText(label, strings.TrimRight(rec, "\n"))...)
 	}
 	return out, nil
 }
+
+// commitID matches a full commit ID, SHA-1 or SHA-256.
+var commitID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // fileKey identifies a diff finding by file, rule and match, so a line found in
 // the range diff is not reported again for the commit that added it.
@@ -402,7 +433,8 @@ func fileKey(f Finding) string {
 // ScanTag scans what pushing a tag to remote would publish: its name, the
 // message of an annotated tag, and the commits it points to when remote does
 // not have them yet. Those are scanned like a new branch, from the
-// merge-base with main; a tag on a commit remote already has adds none. A
+// merge-base with main, leaving out what remote has; a tag on a commit
+// remote already has adds none. A
 // tag that does not lead to a commit, or that points to another annotated
 // tag, fails the scan.
 func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object string) ([]Finding, error) {
@@ -421,7 +453,10 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 			return nil, fmt.Errorf("tag %s points to another annotated tag, and nested annotated tags are not checked; push the inner tag on its own first", name)
 		}
 		if msg != "" {
-			out = append(out, s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n"))...)
+			for _, f := range s.ScanText("tag "+name+" message", strings.TrimRight(msg, "\n")) {
+				f.Tag = name
+				out = append(out, f)
+			}
 		}
 	}
 	commit, err := g.revParse(ctx, object)
@@ -441,17 +476,16 @@ func (s *Scanner) ScanTag(ctx context.Context, g Git, remote, name, object strin
 	if strings.TrimSpace(unpublished) == "" {
 		return out, nil
 	}
+	// The commits remote has already are not scanned again, on either
+	// path (every commit is, when remote is not a configured remote).
 	r := Range{
-		Head: commit,
+		Head:   commit,
+		Remote: strings.TrimPrefix(strings.TrimPrefix(remotes, "--remotes"), "="),
 	}
 	r.Base, err = g.DefaultBase(ctx, remote, commit)
-	switch {
-	case errors.Is(err, ErrNoMergeBase):
-		// Unrelated to main: scan every commit the remote does not have
-		// (every commit, when remote is not a configured remote).
-		r.Remote = strings.TrimPrefix(remotes, "--remotes")
-		r.Remote = strings.TrimPrefix(r.Remote, "=")
-	case err != nil:
+	if err != nil && !errors.Is(err, ErrNoMergeBase) {
+		// Unrelated to main leaves Base empty: then everything the
+		// remote does not have is new.
 		return nil, err
 	}
 	f, err := s.ScanRange(ctx, g, r)

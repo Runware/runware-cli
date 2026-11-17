@@ -9,10 +9,24 @@ import (
 	"sync"
 )
 
-// allowMarker on a line exempts that line from every rule. Use it for a line
-// that has to name a pattern, such as a test of a rule or a guard like the
-// published-spec test, and say why in the same comment.
+// allowMarker, followed by a reason on the same line, exempts that line from
+// every rule except the credential rules (see neverAllowed). Use it for a
+// line that has to name a pattern, such as a test of a rule or a guard like
+// the published-spec test. A marker without a reason exempts nothing.
 const allowMarker = "checkpublic:allow"
+
+// allowed matches the marker followed by a reason: optionally a colon, then
+// a space and at least one more character.
+var allowed = regexp.MustCompile(regexp.QuoteMeta(allowMarker) + `:?[ \t]+\S`)
+
+// neverAllowed are the rules the allow marker does not exempt: a pasted
+// key or token is a leak whatever the line says about it.
+var neverAllowed = map[string]struct{}{
+	rulePrivateKey:  {},
+	ruleTokenPrefix: {},
+	ruleCredential:  {},
+	ruleBearer:      {},
+}
 
 //go:embed public-repos.txt
 var publicReposFile string
@@ -117,7 +131,9 @@ func (s *Scanner) IsPublicRepo(name string) bool {
 	return ok
 }
 
-const repoMessage = "names a Runware repository that is not in tools/checkpublic/public-repos.txt; add it there only if the repository is public"
+const repoMessage = "names a Runware repository that is not in tools/checkpublic/public-repos.txt; add it there only if the repository is public, in a change of its own: a new entry takes effect only after that change is merged (CI builds the checker from the base) and make setup is run again"
+
+const hostMessage = "names an internal host"
 
 func builtinRules() []rule {
 	return []rule{
@@ -141,17 +157,26 @@ func builtinRules() []rule {
 		},
 		{
 			name:    ruleInternalLink,
-			message: "links to an internal tool (Jira, Notion, Slack or Google Docs); bare ticket keys are fine, links are not",
-			re:      regexp.MustCompile(`(?i)\b(?:[a-z0-9-]+\.)*(?:atlassian\.net|notion\.so|notion\.site|slack\.com|docs\.google\.com)\b`),
+			message: "links to an internal tool (Jira, Notion, Slack, Google Docs or Google Drive); bare ticket keys are fine, links are not",
+			re:      regexp.MustCompile(`(?i)\b(?:[a-z0-9-]+\.)*(?:atlassian\.net|notion\.so|notion\.site|slack\.com|docs\.google\.com|drive\.google\.com)\b`),
 		},
 		{
 			name:    ruleInternalHost,
-			message: "names an internal host",
+			message: hostMessage,
 			re:      regexp.MustCompile(`(?i)\b(?:[a-z0-9-]+\.)*svc\.cluster\.local\b`),
 		},
 		{
+			// The short form of a Kubernetes service host, service.namespace.svc,
+			// in a URL or followed by a port. svcBounded keeps a Go
+			// selector such as a.b.svc out.
 			name:    ruleInternalHost,
-			message: "names an internal host",
+			message: hostMessage,
+			re:      regexp.MustCompile(`[a-z0-9-]+(?:\.[a-z0-9-]+)+\.svc`),
+			bounded: svcBounded,
+		},
+		{
+			name:    ruleInternalHost,
+			message: hostMessage,
 			re:      regexp.MustCompile(`(?i)\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\.internal\b`),
 			check:   checkInternalTLD,
 		},
@@ -159,7 +184,7 @@ func builtinRules() []rule {
 			// A single-label .internal host only in a URL context: after
 			// // or user@, or before a port. s.internal is a field.
 			name:    ruleInternalHost,
-			message: "names an internal host",
+			message: hostMessage,
 			re:      regexp.MustCompile(`(?i)(?://|@)[a-z0-9-]+\.internal(?:[:/?#"'\s)\]>]|$)|(?:^|[^a-z0-9.-])[a-z0-9-]+\.internal:[0-9]`),
 		},
 		{
@@ -320,6 +345,32 @@ func ipBounded(line string, start, end int) bool {
 	return !isWordOrDot(line[end])
 }
 
+// svcBounded reports whether the short service host at line[start:end] is
+// used as a host: inside a URL (after //) or followed by a port. A bare
+// name.namespace.svc is left alone, because it reads the same as a Go
+// selector such as h.app.svc.
+func svcBounded(line string, start, end int) bool {
+	if start > 0 && (isWordOrDot(line[start-1]) || line[start-1] == '-' || line[start-1] == '_') {
+		return false
+	}
+	if end+1 < len(line) && line[end] == ':' && isDigit(line[end+1]) {
+		return true
+	}
+	if !strings.HasSuffix(line[:start], "//") {
+		return false
+	}
+	if end == len(line) {
+		return true
+	}
+	switch line[end] {
+	case ' ', '\t', '"', '\'', '`', '/', '>', ']', ')', ',', ';', '?', '#':
+		return true
+	case '.':
+		return end+1 == len(line) || line[end+1] == ' '
+	}
+	return false
+}
+
 func isDigit(c byte) bool {
 	return c >= '0' && c <= '9'
 }
@@ -384,8 +435,8 @@ var binaryExtensions = map[string]struct{}{
 }
 
 // mergeSubject is the subject GitHub writes for a merge commit. Its
-// owner/branch names a branch, not a repository, and the branch name is
-// checked on its own when it is pushed.
+// owner/branch names a branch, not a repository, so the repository rules
+// read the line without it; every other rule reads the line as written.
 var mergeSubject = regexp.MustCompile(`^Merge pull request #[0-9]+ from \S+`)
 
 // submatches turns the indexes of one FindAllStringSubmatchIndex match into
@@ -402,14 +453,20 @@ func submatches(line string, idx []int) []string {
 
 // ScanLine returns the rule matches on one line of file ("" for free text).
 func (s *Scanner) ScanLine(file, line string) []hit {
-	if strings.Contains(line, allowMarker) {
-		return nil
-	}
+	allow := allowed.MatchString(line)
 	s.denyRules()
-	line = mergeSubject.ReplaceAllLiteralString(line, "Merge pull request")
+	original := line
+	repoLine := mergeSubject.ReplaceAllLiteralString(line, "Merge pull request")
 	var hits []hit
 	seen := map[string]struct{}{}
 	for _, r := range s.rules {
+		if _, never := neverAllowed[r.name]; allow && !never {
+			continue
+		}
+		line := original
+		if r.name == ruleRepo {
+			line = repoLine
+		}
 		for _, idx := range r.re.FindAllStringSubmatchIndex(line, -1) {
 			if r.bounded != nil && !r.bounded(line, idx[0], idx[1]) {
 				continue

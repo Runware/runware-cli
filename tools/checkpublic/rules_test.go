@@ -16,6 +16,7 @@ var (
 	shortRepo   = "Runware" + "/"
 	jiraHost    = "example.atlassian" + ".net"
 	clusterHost = "api.ns.svc.cluster" + ".local"
+	shortSvc    = "api.ns" + ".svc"
 	specMarker  = "x-" + "internal"
 	pemHeader   = "-----BEGIN " + "PRIVATE KEY-----"
 	longSecret  = strings.Repeat("a1B2", 8)
@@ -119,6 +120,11 @@ func TestScanLine(t *testing.T) {
 			line: "Merge pull request #4 from " + shortRepo + "fix/some-branch",
 			want: nil,
 		},
+		{
+			name: "merge commit subject from a branch named with an internal host",
+			line: "Merge pull request #4 from " + shortRepo + "fix-" + clusterHost,
+			want: []string{ruleInternalHost},
+		},
 		// internal-link
 		{
 			name: "jira link",
@@ -146,6 +152,16 @@ func TestScanLine(t *testing.T) {
 			want: []string{ruleInternalLink},
 		},
 		{
+			name: "google drive link",
+			line: "https://drive.google" + ".com/file/d/abc/view",
+			want: []string{ruleInternalLink},
+		},
+		{
+			name: "google drive folder link",
+			line: "(https://drive.google" + ".com/drive/folders/abc)",
+			want: []string{ruleInternalLink},
+		},
+		{
 			name: "bare jira key",
 			line: "feat(serverless): add the thing (ABC-1234)",
 			want: nil,
@@ -160,6 +176,46 @@ func TestScanLine(t *testing.T) {
 			name: "cluster service",
 			line: "http://api.ns.svc.cluster" + ".local:8080",
 			want: []string{ruleInternalHost},
+		},
+		{
+			name: "short cluster service with a port",
+			line: "API_HOST=" + shortSvc + ":8080",
+			want: []string{ruleInternalHost},
+		},
+		{
+			name: "short cluster service in a URL",
+			line: "see (http://" + shortSvc + ")",
+			want: []string{ruleInternalHost},
+		},
+		{
+			name: "short cluster service at the end of a URL",
+			line: "It moved to http://" + shortSvc + ".",
+			want: []string{ruleInternalHost},
+		},
+		{
+			name: "go selector ending a line",
+			line: "return h.app.svc",
+			want: nil,
+		},
+		{
+			name: "go selector before a comment",
+			line: "svc := h.app.svc // the service",
+			want: nil,
+		},
+		{
+			name: "bare short name in prose",
+			line: "the service answers at " + shortSvc + " in the cluster",
+			want: nil,
+		},
+		{
+			name: "go selector ending in svc",
+			line: "if err := s.deps.svc.Do(ctx); err != nil { return h.app.svc, nil }",
+			want: nil,
+		},
+		{
+			name: "svc as a word",
+			line: "the svc package and api.svc and ns.svc:",
+			want: nil,
 		},
 		{
 			name: "internal tld",
@@ -411,6 +467,41 @@ func TestScanLine(t *testing.T) {
 			line: specMarker + " // " + "checkpublic:" + "allow: the guard names it",
 			want: nil,
 		},
+		{
+			name: "allow marker with a reason and no colon",
+			line: specMarker + " // " + "checkpublic:" + "allow the guard names it",
+			want: nil,
+		},
+		{
+			name: "allow marker without a reason",
+			line: specMarker + " // " + "checkpublic:" + "allow",
+			want: []string{ruleSpecMarker},
+		},
+		{
+			name: "allow marker with a colon and no reason",
+			line: specMarker + " // " + "checkpublic:" + "allow:  ",
+			want: []string{ruleSpecMarker},
+		},
+		{
+			name: "allow marker on a private key",
+			line: pemHeader + " # " + "checkpublic:" + "allow: a fixture",
+			want: []string{rulePrivateKey},
+		},
+		{
+			name: "allow marker on a token with a known prefix",
+			line: "gh" + "p_" + strings.Repeat("A1b2", 9) + " # " + "checkpublic:" + "allow: a fixture",
+			want: []string{ruleTokenPrefix},
+		},
+		{
+			name: "allow marker on a credential",
+			line: "api_key" + ": " + longSecret + " # " + "checkpublic:" + "allow: a fixture",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "allow marker on a bearer token",
+			line: "Authorization: " + "Bearer " + longSecret + " # " + "checkpublic:" + "allow: a fixture",
+			want: []string{ruleBearer},
+		},
 	}
 	s := NewScanner()
 	for _, tc := range cases {
@@ -459,6 +550,15 @@ func TestExcludedFiles(t *testing.T) {
 	gen := "diff --git a/x.gen.go b/x.gen.go\n--- /dev/null\n+++ b/x.gen.go\n@@ -0,0 +1 @@\n+// See " + leak + "\n"
 	if f, err := s.ScanDiff(gen); err != nil || len(f) != 1 || f[0].Rule != ruleRepo {
 		t.Errorf("ScanDiff of a private link in a generated comment = %+v, %v, want one %s", f, err, ruleRepo)
+	}
+}
+
+// TestRepoMessageSaysWhenAnEntryCounts checks that the private-repo finding
+// says a new entry in public-repos.txt does not clear it in the same change.
+func TestRepoMessageSaysWhenAnEntryCounts(t *testing.T) {
+	h := NewScanner().ScanLine("", "see "+ghRepo+"some-private-repo")
+	if len(h) != 1 || !strings.Contains(h[0].message, "merged") || !strings.Contains(h[0].message, "make setup") {
+		t.Fatalf("hits = %+v, want one that says the entry counts once merged and after make setup", h)
 	}
 }
 

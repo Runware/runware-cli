@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -109,8 +110,109 @@ func TestPrePushTag(t *testing.T) {
 		t.Fatalf("findings for a tag on a new commit = %+v, want one at b.txt:1", f)
 	}
 
-	if f := s.ScanText("tag name", "v1-"+clusterHost); len(f) != 1 {
-		t.Fatalf("tag name findings = %+v", f)
+	hostTag := "v1-" + clusterHost
+	gitIn(t, dir, "tag", hostTag, originMain)
+	f, err = s.prePush(ctx, g, []string{remoteOrigin}, strings.NewReader(line(hostTag)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || f[0].Where != "tag name" {
+		t.Fatalf("findings for a tag named with an internal host = %+v, want one in the name", f)
+	}
+}
+
+// TestPrePushBranchName checks that the name a branch is pushed to is
+// scanned, even when its content is clean.
+func TestPrePushBranchName(t *testing.T) {
+	dir := cleanRepo(t)
+	head := gitIn(t, dir, "rev-parse", headRef)
+	line := "refs/heads/feature " + head + " refs/heads/fix/" + clusterHost + " " + strings.Repeat("0", 40) + "\n"
+	f, err := NewScanner().prePush(context.Background(), Git{Dir: dir}, []string{remoteOrigin}, strings.NewReader(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || f[0].Where != "branch name" {
+		t.Fatalf("findings = %+v, want one in the branch name", f)
+	}
+}
+
+// fromPublishedBranch makes a repository whose feature branch, with a leak
+// in b.txt and in its commit message, is on origin already, and whose next
+// branch adds one commit to it, with text in c.txt. origin is a configured
+// remote, as in a clone.
+func fromPublishedBranch(t *testing.T, text string) string {
+	t.Helper()
+	dir := gitRepo(t, leak, "feat: add b\n\n"+leak)
+	gitIn(t, dir, "remote", "add", remoteOrigin, "https://example.com/owner/repo.git")
+	gitIn(t, dir, "update-ref", "refs/remotes/origin/feature", headRef)
+	gitIn(t, dir, "checkout", "-q", "-b", "next")
+	if err := os.WriteFile(filepath.Join(dir, "c.txt"), []byte(text+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "commit", "-q", "-m", "feat: add c")
+	return dir
+}
+
+// publishedCase is the text a commit on a published branch adds, and where
+// a push of it should have findings.
+type publishedCase struct {
+	text string
+	want []string
+}
+
+// TestPrePushFromPublishedBranch checks a branch and a tag on a commit made
+// on top of a branch the remote has: what that branch published is not
+// the push's to fix, and what the new commit adds is still found.
+func TestPrePushFromPublishedBranch(t *testing.T) {
+	zero := strings.Repeat("0", 40)
+	for _, tc := range []publishedCase{
+		{
+			text: cleanText,
+			want: nil,
+		},
+		{
+			text: leak,
+			want: []string{"c.txt:1"},
+		},
+	} {
+		dir := fromPublishedBranch(t, tc.text)
+		gitIn(t, dir, "tag", "v2.0.0", headRef)
+		head := gitIn(t, dir, "rev-parse", headRef)
+		for _, line := range []string{
+			"refs/heads/next " + head + " refs/heads/next " + zero + "\n",
+			"refs/tags/v2.0.0 " + head + " refs/tags/v2.0.0 " + zero + "\n",
+		} {
+			f, err := NewScanner().prePush(context.Background(), Git{Dir: dir}, []string{remoteOrigin}, strings.NewReader(line))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, fd := range f {
+				got = append(got, fd.Where)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("push %q with c.txt %q: findings = %+v, want %v", strings.Fields(line)[0], tc.text, f, tc.want)
+			}
+		}
+	}
+}
+
+// TestScanRangeMessageSeparators checks that a commit message holding the
+// control characters a record format might use cannot hide text after them.
+func TestScanRangeMessageSeparators(t *testing.T) {
+	for _, sep := range []string{"\x1e", "\x1f", "\x1f\x1e"} {
+		dir := gitRepo(t, cleanText, "feat: add b\n\nnote "+sep+leak)
+		f, err := NewScanner().ScanRange(context.Background(), Git{Dir: dir}, Range{
+			Base: originMain,
+			Head: headRef,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(f) != 1 || !strings.HasSuffix(f[0].Where, " message line 3") {
+			t.Errorf("separator %q: findings = %+v, want one in the message", sep, f)
+		}
 	}
 }
 
