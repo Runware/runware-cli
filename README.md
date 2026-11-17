@@ -159,10 +159,10 @@ runware run alibaba:qwen@3-tts-1.7b-voicedesign positivePrompt="A calm, friendly
 
 ```shell
 # Single message
-runware run google:gemma@4-31b messages.0.role=user messages.0.content="Explain quantum computing"
+runware run openai:gpt@5.5 messages.0.role=user messages.0.content="Explain quantum computing"
 
 # Multi-turn conversation
-runware run google:gemma@4-31b \
+runware run openai:gpt@5.5 \
   messages.0.role=user    messages.0.content="What is Go?" \
   messages.1.role=assistant messages.1.content="A compiled language." \
   messages.2.role=user    messages.2.content="How do I install it?"
@@ -488,7 +488,6 @@ serverless  upload      version
 # Complete model AIR identifiers for `run`
 $ runware run <Tab>
 runware:400@1       -- FLUX.2 [dev] image generation
-google:gemma@4-31b  -- Gemma text model
 google:3@3          -- Veo 3.1 video generation
 ...
 
@@ -501,12 +500,10 @@ steps=           -- Number of diffusion steps
 ...
 
 # Array fields use dot-notation with auto-advancing indices
-$ runware run google:gemma@4-31b <Tab>
-messages.0.role=     -- Role of the message sender
-messages.0.content=  -- Content of the message
+$ runware run tencent:hunyuan-3d@3.1-pro inputs.<Tab>
+inputs.images.0=  -- Input images (UUID, URL, Data URI, or Base64)
 
-# After messages.0.* are filled, next Tab suggests index 1
-$ runware run google:gemma@4-31b messages.0.role=user messages.0.content="What is Go?" <Tab>
-messages.1.role=     -- Role of the message sender
-messages.1.content=  -- Content of the message
+# After inputs.images.0 is filled, next Tab suggests index 1
+$ runware run tencent:hunyuan-3d@3.1-pro inputs.images.0="https://example.com/front.jpg" inputs.<Tab>
+inputs.images.1=  -- Input images (UUID, URL, Data URI, or Base64)
 ```
