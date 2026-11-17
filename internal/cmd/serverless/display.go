@@ -55,6 +55,7 @@ const (
 	colMonthlyBudget  = "Monthly budget"
 	colBudgetAlerts   = "Budget alerts"
 	colPauseAtBudget  = "Pause at budget"
+	colOIDCPrefix     = "OIDC subject prefix"
 
 	colKind                     = "Kind"
 	colAudience                 = "Audience"
@@ -793,6 +794,7 @@ func (r environmentResult) Rows() [][]any {
 	return [][]any{
 		{colName, r.Name},
 		{colProduction, formatYesNo(r.IsDefault)},
+		{colOIDCPrefix, r.OidcSubjectPrefix},
 		{colMaxWorkers, formatEnvironmentCap(r.MaxConcurrentWorkers, r.Resolved.MaxConcurrentWorkers)},
 		{colMaxGPUs, formatEnvironmentCap(r.MaxConcurrentGpus, r.Resolved.MaxConcurrentGpus)},
 		{colMonthlyBudget, formatBudget(r.MonthlyBudget)},

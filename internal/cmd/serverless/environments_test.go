@@ -175,6 +175,7 @@ func TestEnvironmentsShowListsEverySetting(t *testing.T) {
 	want := [][]any{
 		{"Name", testEnvironment},
 		{"Production", "no"},
+		{"OIDC subject prefix", "worker:org:11111111-1111-1111-1111-111111111111:env:00000000-0000-0000-0000-000000000000:"},
 		{"Max workers", "2"},
 		{colMaxGPUs, testInheritedGPUs},
 		{"Monthly budget", "50.00 USD"},
@@ -232,7 +233,7 @@ func TestEnvironmentsListAndShowRunAgainstTheAPI(t *testing.T) {
 					body:   testStagingEnvironment,
 				},
 			},
-			want: []string{colMaxGPUs, testInheritedGPUs, "Pause at budget"},
+			want: []string{colMaxGPUs, testInheritedGPUs, "Pause at budget", "OIDC subject prefix", "worker:org:11111111-1111-1111-1111-111111111111:env:00000000-0000-0000-0000-000000000000:"},
 		},
 	}
 	for _, tc := range cases {
