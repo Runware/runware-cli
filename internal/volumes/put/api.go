@@ -53,7 +53,7 @@ type API interface {
 	AbortUpload(ctx context.Context, upload UploadRef) error
 }
 
-// Transport sends one ciphertext part to the upload endpoint and returns its acknowledgement.
+// Transport sends one ciphertext part to the upload endpoint and returns its acknowledgement; PutPart never reads body after it returns.
 type Transport interface {
 	PutPart(ctx context.Context, target Target, body io.Reader, length int64) (Secret, error)
 }

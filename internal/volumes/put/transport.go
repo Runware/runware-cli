@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/runware/runware-cli/internal/buildinfo"
@@ -17,11 +18,16 @@ import (
 const (
 	maxAnswerBytes = 64 << 10
 	maxAckBytes    = 1024
+	partStall      = 2 * time.Minute
 )
+
+// errPartStalled is a part exchange that made no progress for too long.
+var errPartStalled = errors.New("the part upload made no progress")
 
 // HTTPTransport sends parts over HTTPS with the part token as a bearer token and never follows a redirect.
 type HTTPTransport struct {
 	client *http.Client
+	stall  time.Duration
 }
 
 // NewHTTPTransport returns a transport on client, or on an HTTP/1.1 client that keeps a connection for each part in flight when client is nil.
@@ -46,7 +52,10 @@ func NewHTTPTransport(client *http.Client) *HTTPTransport {
 	}
 	c := *client
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &HTTPTransport{client: &c}
+	return &HTTPTransport{
+		client: &c,
+		stall:  partStall,
+	}
 }
 
 type ackBody struct {
@@ -60,7 +69,15 @@ func (t *HTTPTransport) PutPart(ctx context.Context, target Target, body io.Read
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return "", fmt.Errorf("%w: part %d has no https upload address", ErrProtocol, target.PartNumber)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), body)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	guard := &partBody{
+		r:     body,
+		stall: t.stall,
+		timer: time.AfterFunc(t.stall, func() { cancel(errPartStalled) }),
+	}
+	defer guard.stop()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), guard)
 	if err != nil {
 		return "", fmt.Errorf("%w: part %d request is malformed", ErrProtocol, target.PartNumber)
 	}
@@ -88,4 +105,31 @@ func (t *HTTPTransport) PutPart(ctx context.Context, target Target, body io.Read
 		return "", fmt.Errorf("%w: part %d was not acknowledged as sent", ErrProtocol, target.PartNumber)
 	}
 	return Secret(a.Ack), nil
+}
+
+// partBody forwards reads of a part's body until stopped and restarts the stall timer on each.
+type partBody struct {
+	mu      sync.Mutex
+	r       io.Reader
+	timer   *time.Timer
+	stall   time.Duration
+	stopped bool
+}
+
+func (b *partBody) Read(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.stopped {
+		return 0, io.EOF
+	}
+	b.timer.Reset(b.stall)
+	return b.r.Read(p)
+}
+
+// stop waits for a read in progress, then ends the reads and the timer.
+func (b *partBody) stop() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stopped = true
+	b.timer.Stop()
 }

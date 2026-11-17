@@ -357,6 +357,11 @@ func TestRetryable(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "a stalled part",
+			err:  errPartStalled,
+			want: true,
+		},
+		{
 			name: "token invalid",
 			err:  ErrPartTokenInvalid,
 		},
@@ -391,5 +396,131 @@ func TestDefaultTransportBoundsAStalledAnswer(t *testing.T) {
 	}
 	if tr.ResponseHeaderTimeout != 2*time.Minute {
 		t.Fatalf("ResponseHeaderTimeout = %v, want 2m0s", tr.ResponseHeaderTimeout)
+	}
+}
+
+// TestHTTPTransportStopsReadingTheBodyOnReturn: a refusal that comes before the body is sent leaves no read of it running.
+func TestHTTPTransportStopsReadingTheBodyOnReturn(t *testing.T) {
+	tr, target := newWorker(t, problemHandler(http.StatusRequestEntityTooLarge, "<html>too large</html>"))
+	body := &inFlightReader{r: bytes.NewReader(patterned(1<<20, 1))}
+
+	_, err := tr.PutPart(t.Context(), target, body, 1<<20)
+
+	if n := body.running.Load(); n != 0 {
+		t.Errorf("%d reads of the body still running when PutPart returned", n)
+	}
+	if p, ok := errors.AsType[*ProblemError](err); !ok || p.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("error = %v, want the refusal", err)
+	}
+}
+
+type stallCase struct {
+	name    string
+	size    int
+	handler http.HandlerFunc
+}
+
+func TestHTTPTransportEndsAStalledPart(t *testing.T) {
+	cases := []stallCase{
+		{
+			name: "an answer that stops after its headers",
+			size: 1,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				_, _ = io.WriteString(w, `{"partNumber":3,`)
+				_ = http.NewResponseController(w).Flush()
+			},
+		},
+		{
+			name:    "a worker that stops reading the part",
+			size:    64 << 20,
+			handler: func(http.ResponseWriter, *http.Request) {},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			release := make(chan struct{})
+			tr, target := newWorker(t, func(w http.ResponseWriter, r *http.Request) {
+				tc.handler(w, r)
+				select {
+				case <-release:
+				case <-time.After(10 * time.Second):
+				}
+			})
+			t.Cleanup(func() { close(release) })
+			tr.stall = time.Second
+
+			_, err := tr.PutPart(t.Context(), target, bytes.NewReader(make([]byte, tc.size)), int64(tc.size))
+
+			if !errors.Is(err, errPartStalled) || !retryable(err) {
+				t.Errorf("error = %v, want a stall that is retried", err)
+			}
+		})
+	}
+}
+
+func TestPartBodyEndsReadsOnStop(t *testing.T) {
+	b := &partBody{
+		r:     unreadReader{t: t},
+		timer: time.AfterFunc(time.Hour, func() {}),
+		stall: time.Hour,
+	}
+	b.stop()
+
+	if n, err := b.Read(make([]byte, 8)); n != 0 || !errors.Is(err, io.EOF) {
+		t.Errorf("a read after stop = %d, %v, want 0, EOF", n, err)
+	}
+}
+
+// unreadReader fails the test when it is read.
+type unreadReader struct {
+	t *testing.T
+}
+
+func (r unreadReader) Read([]byte) (int, error) {
+	r.t.Error("the body was read after stop")
+	return 0, io.EOF
+}
+
+// inFlightReader counts its reads still running; each pauses so one is in flight when a refusal arrives.
+type inFlightReader struct {
+	r       io.Reader
+	running atomic.Int32
+}
+
+func (r *inFlightReader) Read(p []byte) (int, error) {
+	r.running.Add(1)
+	defer r.running.Add(-1)
+	time.Sleep(200 * time.Millisecond)
+	return r.r.Read(p)
+}
+
+// slowReader hands out a few bytes per read after a pause.
+type slowReader struct {
+	r     io.Reader
+	pause time.Duration
+}
+
+func (s *slowReader) Read(p []byte) (int, error) {
+	time.Sleep(s.pause)
+	return s.r.Read(p[:min(len(p), 4)])
+}
+
+func TestHTTPTransportKeepsASlowPartThatMoves(t *testing.T) {
+	var got []byte
+	tr, target := newWorker(t, func(w http.ResponseWriter, r *http.Request) {
+		got, _ = io.ReadAll(r.Body)
+		_, _ = io.WriteString(w, `{"partNumber":3,"ack":"a"}`)
+	})
+	tr.stall = time.Second
+	body := patterned(16, 1)
+
+	_, err := tr.PutPart(t.Context(), target, &slowReader{
+		r:     bytes.NewReader(body),
+		pause: 300 * time.Millisecond,
+	}, int64(len(body)))
+
+	if err != nil || !bytes.Equal(got, body) {
+		t.Errorf("error = %v, %d of %d bytes arrived, want a part that keeps moving sent whole", err, len(got), len(body))
 	}
 }
