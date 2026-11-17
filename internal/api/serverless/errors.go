@@ -114,7 +114,7 @@ func rawCodeForStatus(statusCode int) string {
 		return "forbidden"
 	case http.StatusNotFound:
 		return "resourceNotFound"
-	case http.StatusConflict:
+	case http.StatusConflict, http.StatusPreconditionFailed:
 		return "conflict"
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return "validationFailed"

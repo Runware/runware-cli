@@ -3,6 +3,7 @@ package serverless
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"reflect"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/runware/runware-cli/internal/api/transport"
 )
 
 const (
@@ -823,11 +826,28 @@ func TestConnectorsUpdateRefusedWhenTheConnectorChangedSinceItWasRead(t *testing
 	if run.err == nil || run.err.Error() != want {
 		t.Fatalf("err = %v, want %q", run.err, want)
 	}
+	re, ok := errors.AsType[*transport.RunwareError](run.err)
+	if !ok || re.StatusCode != http.StatusPreconditionFailed || re.Retryable {
+		t.Fatalf("err = %#v, want a non-retryable *transport.RunwareError with status 412 so --format json keeps code and status", run.err)
+	}
 	if run.stdout != "" {
 		t.Fatalf("stdout = %q, want no connector printed", run.stdout)
 	}
 	if len(api.ifMatch) != 1 {
 		t.Fatalf("PUTs = %d, want exactly one and no retry", len(api.ifMatch))
+	}
+}
+
+func TestConnectorsUpdateSendsAWeakenedETagAsTheStrongOne(t *testing.T) {
+	api := &etagConnectorAPI{etag: "W/" + testConnectorETag, putStatus: http.StatusOK, putBody: testAWSConnector}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.ifMatch, []string{testConnectorETag}) {
+		t.Fatalf("If-Match on the PUTs = %q, want the strong tag %s a CDN weakened to W/", api.ifMatch, testConnectorETag)
 	}
 }
 

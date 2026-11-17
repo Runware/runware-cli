@@ -3,10 +3,12 @@ package serverless
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -411,8 +413,11 @@ until they roll.`,
 			// header goes out and the update applies unconditionally as it
 			// did before.
 			connector, err := client.UpdateOidcConnector(cmd.Context(), name, etag, body)
-			if errors.Is(err, serverlessapi.ErrPreconditionFailed) {
-				return fmt.Errorf("connector %s was changed by someone else since it was read; nothing was changed. Run the command again", name)
+			if re, ok := errors.AsType[*transport.RunwareError](err); ok && re.StatusCode == http.StatusPreconditionFailed {
+				// A copy keeps the code and status for --format json.
+				changed := *re
+				changed.Message = fmt.Sprintf("connector %s was changed by someone else since it was read; nothing was changed. Run the command again", name)
+				return &changed
 			}
 			if err != nil {
 				return err

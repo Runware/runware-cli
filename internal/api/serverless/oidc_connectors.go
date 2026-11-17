@@ -2,9 +2,9 @@ package serverless
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -74,6 +74,10 @@ func (c *Client) GetOidcConnector(ctx context.Context, name string) (*OidcConnec
 // GetOidcConnectorWithETag returns one OIDC connector together with the ETag
 // the API sent with it, to pass to UpdateOidcConnector as the If-Match
 // precondition. The ETag is empty when the API sent none (an older API).
+//
+// A W/ prefix is dropped: the API only issues strong tags, and a CDN that
+// compresses the response (Go's client asks for gzip) weakens the tag on the
+// way. An API that predates accepting the weak form answers it with 400.
 func (c *Client) GetOidcConnectorWithETag(ctx context.Context, name string) (*OidcConnector, string, error) {
 	if c.apiKey == "" {
 		return nil, "", transport.ErrNoAPIKey
@@ -92,7 +96,7 @@ func (c *Client) GetOidcConnectorWithETag(ctx context.Context, name string) (*Oi
 	if resp.JSON200 == nil {
 		return nil, "", fmt.Errorf("get oidc connector: empty 200 response")
 	}
-	return resp.JSON200, resp.HTTPResponse.Header.Get("ETag"), nil
+	return resp.JSON200, strings.TrimPrefix(resp.HTTPResponse.Header.Get("ETag"), "W/"), nil
 }
 
 // CreateOidcConnector creates an OIDC connector in the organization.
@@ -117,16 +121,12 @@ func (c *Client) CreateOidcConnector(ctx context.Context, body OidcConnectorCrea
 	return resp.JSON201, nil
 }
 
-// ErrPreconditionFailed is returned by UpdateOidcConnector when the API refused
-// the update with 412 because the connector changed after the ETag in ifMatch
-// was read. Nothing was changed.
-var ErrPreconditionFailed = errors.New("precondition failed: the resource changed since it was read")
-
 // UpdateOidcConnector replaces a connector's audience and provider block and
 // rolls every live deployment that attaches it. A non-empty ifMatch is sent as
 // the If-Match header, so the API applies the update only if the connector is
-// unchanged since the ETag was read, and otherwise fails with
-// ErrPreconditionFailed. An empty ifMatch updates unconditionally.
+// unchanged since the ETag was read, and otherwise fails with a
+// *transport.RunwareError whose StatusCode is 412. An empty ifMatch updates
+// unconditionally.
 func (c *Client) UpdateOidcConnector(ctx context.Context, name, ifMatch string, body OidcConnectorUpdate) (*OidcConnector, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
@@ -143,9 +143,6 @@ func (c *Client) UpdateOidcConnector(ctx context.Context, name, ifMatch string, 
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
-	if resp.StatusCode() == http.StatusPreconditionFailed {
-		return nil, ErrPreconditionFailed
-	}
 	if resp.StatusCode() != http.StatusOK {
 		return nil, problemFromBody(resp.Body, resp.StatusCode())
 	}
