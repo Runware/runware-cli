@@ -496,7 +496,7 @@ func TestConnectorCommandsPrintJSONAndYAML(t *testing.T) {
 		{name: testUpdateCommand, args: []string{testConnectorsGroup, testUpdateCommand, testConnectorName, audienceFlag, testAudience}},
 		{name: "apps list", args: []string{testAppsGroup, testConnectorsGroup, connectorsListUse, testAppID}, subject: true},
 		{name: "apps attach", args: []string{testAppsGroup, testConnectorsGroup, "attach", testAppID, testConnectorName}, subject: true},
-		{name: "delete", args: []string{testConnectorsGroup, "delete", testConnectorName}},
+		{name: testDeleteCommand, args: []string{testConnectorsGroup, testDeleteCommand, testConnectorName}},
 		{name: "apps detach", args: []string{testAppsGroup, testConnectorsGroup, "detach", testAppID, testConnectorName}},
 	}
 	for _, format := range []string{formatJSON, formatYAML} {
@@ -516,7 +516,9 @@ func TestConnectorCommandsPrintJSONAndYAML(t *testing.T) {
 					if err := yaml.Unmarshal([]byte(run.stdout), &doc); err != nil {
 						t.Fatalf("stdout is not YAML: %v\n%s", err, run.stdout)
 					}
-					assertCamelCaseYAML(t, tc.name, run.stdout)
+					if tc.name != testDeleteCommand && tc.name != "apps detach" {
+						assertYAMLEqualsJSON(t, environmentAPI(t, &bodyRecorder{}, responses), tc.args...)
+					}
 				}
 				if tc.name == "delete" || tc.name == "apps detach" {
 					return
@@ -718,19 +720,33 @@ func TestConnectorsRefuseForeignAndEmptyProviderFlags(t *testing.T) {
 	}
 }
 
-// assertCamelCaseYAML checks the keys a script reads keep their API names in
-// YAML: the API types carry json tags only, which a YAML encoder lowercases.
-func assertCamelCaseYAML(t *testing.T, command, out string) {
+// assertYAMLEqualsJSON runs a command in both formats against the same stub and fails
+// when the YAML document is not the JSON document: same keys, same values, same shape.
+func assertYAMLEqualsJSON(t *testing.T, handler http.HandlerFunc, args ...string) {
 	t.Helper()
-	switch command {
-	case testDeleteCommand, "apps detach":
-		return
-	case connectorsListUse:
-		if !strings.Contains(out, "nextCursor:") {
-			t.Errorf("yaml has no nextCursor key:\n%s", out)
+	run := func(format string) string {
+		r := runServerlessAgainst(t, handler, append([]string{"--format", format}, args...)...)
+		if r.err != nil {
+			t.Fatal(r.err)
 		}
+		return r.stdout
 	}
-	if !strings.Contains(out, "createdAt:") {
-		t.Errorf("yaml has no createdAt key:\n%s", out)
+	var fromJSON, fromYAML, normalized any
+	if err := json.Unmarshal([]byte(run(formatJSON)), &fromJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := yaml.Unmarshal([]byte(run(formatYAML)), &fromYAML); err != nil {
+		t.Fatal(err)
+	}
+	// YAML reads whole numbers as int and JSON as float64: compare through JSON text.
+	asJSON, err := json.Marshal(fromYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(asJSON, &normalized); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fromJSON, normalized) {
+		t.Errorf("%v: YAML document differs from JSON\nJSON: %v\nYAML: %v", args, fromJSON, normalized)
 	}
 }

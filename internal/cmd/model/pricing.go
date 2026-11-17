@@ -32,11 +32,6 @@ func (r modelPricing) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.p)
 }
 
-// MarshalYAML delegates to the raw pricing payload.
-func (r modelPricing) MarshalYAML() (any, error) {
-	return r.p, nil
-}
-
 func newPricingCmd(_ *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "pricing <model>",
