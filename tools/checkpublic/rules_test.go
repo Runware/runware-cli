@@ -199,7 +199,7 @@ func TestScanLine(t *testing.T) {
 		},
 		{
 			name: "short cluster service after the user of a URL",
-			line: "postgres://user:pw@db.ns" + ".svc/app",
+			line: "postgres://app@db.ns" + ".svc/app",
 			want: []string{ruleInternalHost},
 		},
 		{
