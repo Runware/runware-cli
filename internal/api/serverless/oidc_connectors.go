@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -66,24 +67,36 @@ func (c *Client) ListOidcConnectors(ctx context.Context, params ListOidcConnecto
 
 // GetOidcConnector returns one OIDC connector of the organization.
 func (c *Client) GetOidcConnector(ctx context.Context, name string) (*OidcConnector, error) {
+	connector, _, err := c.GetOidcConnectorWithETag(ctx, name)
+	return connector, err
+}
+
+// GetOidcConnectorWithETag returns one OIDC connector together with the ETag
+// the API sent with it, to pass to UpdateOidcConnector as the If-Match
+// precondition. The ETag is empty when the API sent none (an older API).
+//
+// A W/ prefix is dropped: the API only issues strong tags, and a CDN that
+// compresses the response (Go's client asks for gzip) weakens the tag on the
+// way. An API that predates accepting the weak form answers it with 400.
+func (c *Client) GetOidcConnectorWithETag(ctx context.Context, name string) (*OidcConnector, string, error) {
 	if c.apiKey == "" {
-		return nil, transport.ErrNoAPIKey
+		return nil, "", transport.ErrNoAPIKey
 	}
 
 	resp, err := c.inner.GetOidcConnectorWithResponse(ctx, name)
 	if err != nil {
-		return nil, fmt.Errorf("get oidc connector: %w", err)
+		return nil, "", fmt.Errorf("get oidc connector: %w", err)
 	}
 
 	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
 
 	if resp.StatusCode() != http.StatusOK {
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
+		return nil, "", problemFromBody(resp.Body, resp.StatusCode())
 	}
 	if resp.JSON200 == nil {
-		return nil, fmt.Errorf("get oidc connector: empty 200 response")
+		return nil, "", fmt.Errorf("get oidc connector: empty 200 response")
 	}
-	return resp.JSON200, nil
+	return resp.JSON200, strings.TrimPrefix(resp.HTTPResponse.Header.Get("ETag"), "W/"), nil
 }
 
 // CreateOidcConnector creates an OIDC connector in the organization.
@@ -109,13 +122,21 @@ func (c *Client) CreateOidcConnector(ctx context.Context, body OidcConnectorCrea
 }
 
 // UpdateOidcConnector replaces a connector's audience and provider block and
-// rolls every live deployment that attaches it.
-func (c *Client) UpdateOidcConnector(ctx context.Context, name string, body OidcConnectorUpdate) (*OidcConnector, error) {
+// rolls every live deployment that attaches it. A non-empty ifMatch is sent as
+// the If-Match header, so the API applies the update only if the connector is
+// unchanged since the ETag was read, and otherwise fails with a
+// *transport.RunwareError whose StatusCode is 412. An empty ifMatch updates
+// unconditionally.
+func (c *Client) UpdateOidcConnector(ctx context.Context, name, ifMatch string, body OidcConnectorUpdate) (*OidcConnector, error) {
 	if c.apiKey == "" {
 		return nil, transport.ErrNoAPIKey
 	}
 
-	resp, err := c.inner.UpdateOidcConnectorWithResponse(ctx, name, body)
+	params := &gen.UpdateOidcConnectorParams{}
+	if ifMatch != "" {
+		params.IfMatch = &ifMatch
+	}
+	resp, err := c.inner.UpdateOidcConnectorWithResponse(ctx, name, params, body)
 	if err != nil {
 		return nil, fmt.Errorf("update oidc connector: %w", err)
 	}

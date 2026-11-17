@@ -15,6 +15,9 @@ application that attaches the connector, and the new workers get a permission
 error on any resource only the service account could read. Clearing a service
 account the connector does not have is refused when nothing else changes.
 
+The update fails rather than overwrite a change someone else made to the
+connector after it was read.
+
 Updating rolls every live application that attaches the connector, so its
 workers get the new configuration. Running workers keep the old configuration
 until they roll.

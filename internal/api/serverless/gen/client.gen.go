@@ -2531,6 +2531,9 @@ type AppErrorWindow string
 // Cursor defines model for Cursor.
 type Cursor = string
 
+// IfMatch defines model for IfMatch.
+type IfMatch = string
+
 // Limit defines model for Limit.
 type Limit = int32
 
@@ -2630,6 +2633,9 @@ type PayloadTooLarge = ProblemDetails
 
 // PaymentRequired RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type PaymentRequired = ProblemDetails
+
+// PreconditionFailed RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type PreconditionFailed = ProblemDetails
 
 // SecretAttachValidationError RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type SecretAttachValidationError = ProblemDetails
@@ -3085,6 +3091,12 @@ type ListOidcConnectorsParams struct {
 
 	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// UpdateOidcConnectorParams defines parameters for UpdateOidcConnector.
+type UpdateOidcConnectorParams struct {
+	// IfMatch Optional precondition on the resource's current state: the `ETag` from an earlier read of it. The request applies only while that is still the resource's current `ETag`; otherwise it returns `412` and changes nothing. `*` matches any existing resource, so it adds no check beyond the resource existing. Without the header the request applies unconditionally. Send one strong entity-tag exactly as received, quotes included. A value that is not `*` or one quoted entity-tag (a weak `W/` tag, a comma-separated list in one header, a bare token) returns `400`. So does a quoted tag this API never issued, such as `"abc"` or `"-5"`. A value longer than 256 characters is refused by request validation with `422`, before the header is read as an entity-tag.
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
 // ListReservedCapacityParams defines parameters for ListReservedCapacity.
@@ -4123,19 +4135,35 @@ type ClientInterface interface {
 	//
 	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 	//
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+	// nothing changed and nothing rolled.
+	// `If-Match: *` applies whenever the connector exists.
+	// Without `If-Match` the update applies unconditionally, as before.
+	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-	UpdateOidcConnectorWithBody(ctx context.Context, connectorName OidcConnectorName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	UpdateOidcConnectorWithBody(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateOidcConnector Update an OIDC connector
 	//
 	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 	//
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+	// nothing changed and nothing rolled.
+	// `If-Match: *` applies whenever the connector exists.
+	// Without `If-Match` the update applies unconditionally, as before.
+	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-	UpdateOidcConnector(ctx context.Context, connectorName OidcConnectorName, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	UpdateOidcConnector(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListReservedCapacity Report reserved capacity and its use
 	//
@@ -5682,11 +5710,19 @@ func (c *Client) GetOidcConnector(ctx context.Context, connectorName OidcConnect
 //
 // Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 //
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+// nothing changed and nothing rolled.
+// `If-Match: *` applies whenever the connector exists.
+// Without `If-Match` the update applies unconditionally, as before.
+// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-func (c *Client) UpdateOidcConnectorWithBody(ctx context.Context, connectorName OidcConnectorName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateOidcConnectorRequestWithBody(c.Server, connectorName, contentType, body)
+func (c *Client) UpdateOidcConnectorWithBody(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOidcConnectorRequestWithBody(c.Server, connectorName, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5701,11 +5737,19 @@ func (c *Client) UpdateOidcConnectorWithBody(ctx context.Context, connectorName 
 //
 // Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 //
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+// nothing changed and nothing rolled.
+// `If-Match: *` applies whenever the connector exists.
+// Without `If-Match` the update applies unconditionally, as before.
+// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+//
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-func (c *Client) UpdateOidcConnector(ctx context.Context, connectorName OidcConnectorName, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateOidcConnectorRequest(c.Server, connectorName, body)
+func (c *Client) UpdateOidcConnector(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOidcConnectorRequest(c.Server, connectorName, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9943,18 +9987,18 @@ func NewGetOidcConnectorRequest(server string, connectorName OidcConnectorName) 
 }
 
 // NewUpdateOidcConnectorRequest calls the generic UpdateOidcConnector builder with application/json body
-func NewUpdateOidcConnectorRequest(server string, connectorName OidcConnectorName, body UpdateOidcConnectorJSONRequestBody) (*http.Request, error) {
+func NewUpdateOidcConnectorRequest(server string, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, body UpdateOidcConnectorJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewUpdateOidcConnectorRequestWithBody(server, connectorName, "application/json", bodyReader)
+	return NewUpdateOidcConnectorRequestWithBody(server, connectorName, params, "application/json", bodyReader)
 }
 
 // NewUpdateOidcConnectorRequestWithBody constructs an http.Request for the UpdateOidcConnector method, with any body, and a specified content type
-func NewUpdateOidcConnectorRequestWithBody(server string, connectorName OidcConnectorName, contentType string, body io.Reader) (*http.Request, error) {
+func NewUpdateOidcConnectorRequestWithBody(server string, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -9985,6 +10029,21 @@ func NewUpdateOidcConnectorRequestWithBody(server string, connectorName OidcConn
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -11758,19 +11817,35 @@ type ClientWithResponsesInterface interface {
 	//
 	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 	//
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+	// nothing changed and nothing rolled.
+	// `If-Match: *` applies whenever the connector exists.
+	// Without `If-Match` the update applies unconditionally, as before.
+	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-	UpdateOidcConnectorWithBodyWithResponse(ctx context.Context, connectorName OidcConnectorName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error)
+	UpdateOidcConnectorWithBodyWithResponse(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error)
 
 	// UpdateOidcConnectorWithResponse Update an OIDC connector
 	//
 	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 	//
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+	// nothing changed and nothing rolled.
+	// `If-Match: *` applies whenever the connector exists.
+	// Without `If-Match` the update applies unconditionally, as before.
+	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-	UpdateOidcConnectorWithResponse(ctx context.Context, connectorName OidcConnectorName, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error)
+	UpdateOidcConnectorWithResponse(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error)
 
 	// ListReservedCapacityWithResponse Report reserved capacity and its use
 	//
@@ -16993,6 +17068,11 @@ func (r ListOidcConnectorsResponse) ContentType() string {
 	return ""
 }
 
+// CreateOidcConnectorResponse201Headers the declared response headers of an HTTP 201 response for CreateOidcConnector
+type CreateOidcConnectorResponse201Headers struct {
+	ETag string
+}
+
 type CreateOidcConnectorResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17018,6 +17098,8 @@ type CreateOidcConnectorResponse struct {
 	ApplicationproblemJSON501 *OidcConnectorsUnavailable
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateOidcConnectorResponse201Headers
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -17194,6 +17276,11 @@ func (r DeleteOidcConnectorResponse) ContentType() string {
 	return ""
 }
 
+// GetOidcConnectorResponse200Headers the declared response headers of an HTTP 200 response for GetOidcConnector
+type GetOidcConnectorResponse200Headers struct {
+	ETag string
+}
+
 type GetOidcConnectorResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17211,6 +17298,8 @@ type GetOidcConnectorResponse struct {
 	ApplicationproblemJSON500 *InternalServerError
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetOidcConnectorResponse200Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -17277,6 +17366,11 @@ func (r GetOidcConnectorResponse) ContentType() string {
 	return ""
 }
 
+// UpdateOidcConnectorResponse200Headers the declared response headers of an HTTP 200 response for UpdateOidcConnector
+type UpdateOidcConnectorResponse200Headers struct {
+	ETag string
+}
+
 type UpdateOidcConnectorResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -17290,6 +17384,8 @@ type UpdateOidcConnectorResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON412 the response for an HTTP 412 `application/problem+json` response
+	ApplicationproblemJSON412 *PreconditionFailed
 	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
 	ApplicationproblemJSON413 *PayloadTooLarge
 	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
@@ -17302,6 +17398,8 @@ type UpdateOidcConnectorResponse struct {
 	ApplicationproblemJSON501 *OidcConnectorsUnavailable
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *ServiceUnavailable
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateOidcConnectorResponse200Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -17327,6 +17425,11 @@ func (r UpdateOidcConnectorResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r UpdateOidcConnectorResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON412 returns the response for an HTTP 412 `application/problem+json` response
+func (r UpdateOidcConnectorResponse) GetApplicationproblemJSON412() *PreconditionFailed {
+	return r.ApplicationproblemJSON412
 }
 
 // GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
@@ -19962,11 +20065,19 @@ func (c *ClientWithResponses) GetOidcConnectorWithResponse(ctx context.Context, 
 //
 // Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 //
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+// nothing changed and nothing rolled.
+// `If-Match: *` applies whenever the connector exists.
+// Without `If-Match` the update applies unconditionally, as before.
+// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-func (c *ClientWithResponses) UpdateOidcConnectorWithBodyWithResponse(ctx context.Context, connectorName OidcConnectorName, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error) {
-	rsp, err := c.UpdateOidcConnectorWithBody(ctx, connectorName, contentType, body, reqEditors...)
+func (c *ClientWithResponses) UpdateOidcConnectorWithBodyWithResponse(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error) {
+	rsp, err := c.UpdateOidcConnectorWithBody(ctx, connectorName, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -19977,11 +20088,19 @@ func (c *ClientWithResponses) UpdateOidcConnectorWithBodyWithResponse(ctx contex
 //
 // Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
 //
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+// nothing changed and nothing rolled.
+// `If-Match: *` applies whenever the connector exists.
+// Without `If-Match` the update applies unconditionally, as before.
+// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+//
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PUT /v1/oidc-connectors/{connectorName} (the `UpdateOidcConnector` operationId).
-func (c *ClientWithResponses) UpdateOidcConnectorWithResponse(ctx context.Context, connectorName OidcConnectorName, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error) {
-	rsp, err := c.UpdateOidcConnector(ctx, connectorName, body, reqEditors...)
+func (c *ClientWithResponses) UpdateOidcConnectorWithResponse(ctx context.Context, connectorName OidcConnectorName, params *UpdateOidcConnectorParams, body UpdateOidcConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOidcConnectorResponse, error) {
+	rsp, err := c.UpdateOidcConnector(ctx, connectorName, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -24650,6 +24769,19 @@ func ParseCreateOidcConnectorResponse(rsp *http.Response) (*CreateOidcConnectorR
 
 	}
 
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateOidcConnectorResponse201Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers201 = &headers
+	}
+
 	return response, nil
 }
 
@@ -24796,6 +24928,19 @@ func ParseGetOidcConnectorResponse(rsp *http.Response) (*GetOidcConnectorRespons
 
 	}
 
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetOidcConnectorResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
+	}
+
 	return response, nil
 }
 
@@ -24848,6 +24993,13 @@ func ParseUpdateOidcConnectorResponse(rsp *http.Response) (*UpdateOidcConnectorR
 		}
 		response.ApplicationproblemJSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest PreconditionFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON412 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
 		var dest PayloadTooLarge
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -24890,6 +25042,19 @@ func ParseUpdateOidcConnectorResponse(rsp *http.Response) (*UpdateOidcConnectorR
 		}
 		response.ApplicationproblemJSON503 = &dest
 
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateOidcConnectorResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil
