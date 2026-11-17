@@ -201,13 +201,9 @@ func assertAppHealthOutput(t *testing.T, out, command, format, state, reason str
 	if !ok || health["state"] != state || health["reason"] != reason {
 		t.Fatalf("health lost or changed: %s", out)
 	}
-	observedKey := "observedAt"
-	if format == "yaml" {
-		observedKey = "observedat"
-	}
 	stamps := map[string]string{
-		"since":     "2026-09-28T16:13:14Z",
-		observedKey: "2026-09-28T16:13:30Z",
+		"since":      "2026-09-28T16:13:14Z",
+		"observedAt": "2026-09-28T16:13:30Z",
 	}
 	for key, want := range stamps {
 		got := health[key]

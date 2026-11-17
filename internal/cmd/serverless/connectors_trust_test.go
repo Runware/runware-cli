@@ -125,7 +125,7 @@ func TestConnectorsTrustPrintsTheCommandsOfEachProviderAndScope(t *testing.T) {
 					` --attribute-condition=\"(<existing condition>) || assertion.sub.startsWith('` + trustPrefix + `')\"" >&2` + "\n",
 				`  echo "then add the entry to it. --attribute-mapping replaces the whole mapping, so keep every entry it has: gcloud iam workload-identity-pools providers update-oidc ` + testWIP +
 					` --attribute-mapping=\"<every existing entry>,google.subject=assertion.sub\"" >&2` + "\n",
-				"else\n  unset runware_condition runware_provider\n  gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n",
+				"else\n  unset runware_condition runware_provider\n  gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + " \\\n    --project=my-project \\\n",
 				"  --issuer-uri=" + trustIssuer + " \\\n",
 				"attribute.environment_id=assertion.environment_id",
 				`  --attribute-condition="assertion.sub.startsWith('` + trustPrefix + `')"` + "\n",
@@ -337,9 +337,9 @@ func TestConnectorsTrustGCPBindingRunsOnlyWhenTheProviderAdmitsTheEnvironment(t 
 		printed  func(member string) []string // the binding lines printed for a run by hand
 	}{
 		{"with a service account", trustAttachmentGCP(), func(member string) []string {
-			return []string{"service-accounts add-iam-policy-binding " + testServiceAccount, "--role=roles/iam.workloadIdentityUser", "--member=" + member}
+			return []string{"service-accounts add-iam-policy-binding " + testServiceAccount, "--project=my-project", "--role=roles/iam.workloadIdentityUser", "--member=" + member}
 		}, func(member string) []string {
-			return []string{"gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + ` \`, `  --role=roles/iam.workloadIdentityUser \`, "  --member=" + member}
+			return []string{"gcloud iam service-accounts add-iam-policy-binding " + testServiceAccount + ` \`, `  --project=my-project \`, `  --role=roles/iam.workloadIdentityUser \`, "  --member=" + member}
 		}},
 		{"without a service account", withoutSA, func(member string) []string {
 			return []string{"storage buckets add-iam-policy-binding gs://inputs", "--role=roles/storage.objectViewer", "--member=" + member}
@@ -849,6 +849,74 @@ func TestConnectorsTrustCommandRefusals(t *testing.T) {
 			t.Fatalf("err = %v, output = %q, want a refusal and no script", run.err, run.cobraOutput)
 		}
 	})
+}
+
+// bindingProjectCase is one service account email: the project the printed binding names
+// for it, or a refusal when the email is not one the API accepts.
+type bindingProjectCase struct {
+	email   string
+	project string // the --project value printed
+	refused bool   // the email is refused and no script is printed
+}
+
+// gcloud cannot resolve a service account without a project, so the binding names the one
+// the email carries. An email that is not <name>@<project id>.iam.gserviceaccount.com, as
+// the API's serviceAccountEmail pattern defines it, is refused like a bad provider name.
+func TestConnectorsTrustGCPBindingNamesTheProjectOfTheServiceAccount(t *testing.T) {
+	cases := []bindingProjectCase{
+		{
+			email:   "worker@my-project.iam.gserviceaccount.com",
+			project: "my-project",
+		},
+		{
+			email:   "trust-sa@proj-2-x.iam.gserviceaccount.com",
+			project: "proj-2-x",
+		},
+		{
+			email:   "first.last@proj-2-x.iam.gserviceaccount.com", // a dot is not allowed in the name
+			refused: true,
+		},
+		{
+			email:   "worker@example.com",
+			refused: true,
+		},
+		{
+			email:   "worker@proj.example.com.iam.gserviceaccount.com", // domain-scoped project
+			refused: true,
+		},
+		{
+			email:   "worker@My-Project.iam.gserviceaccount.com",
+			refused: true,
+		},
+		{
+			email:   "wrk@my-project.iam.gserviceaccount.com", // a name needs 6 to 30 characters
+			refused: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.email, func(t *testing.T) {
+			base := strings.Replace(trustGCPBase, testServiceAccount, tc.email, 1)
+			run := runTrust(t, trustGCPName, base)
+			if tc.refused {
+				if run.err == nil || !strings.Contains(run.err.Error(), "is not <name>@<project id>.iam.gserviceaccount.com") {
+					t.Fatalf("err = %v, want a refusal of %s", run.err, tc.email)
+				}
+				if strings.Contains(run.cobraOutput, "gcloud") {
+					t.Errorf("output has a script for %s:\n%s", tc.email, run.cobraOutput)
+				}
+				return
+			}
+			if run.err != nil {
+				t.Fatal(run.err)
+			}
+			if !strings.Contains(run.cobraOutput, "add-iam-policy-binding "+tc.email) {
+				t.Fatalf("output has no binding for %s:\n%s", tc.email, run.cobraOutput)
+			}
+			if want := "--project=" + tc.project + " \\\n"; !strings.Contains(run.cobraOutput, want) {
+				t.Errorf("output missing %q:\n%s", want, run.cobraOutput)
+			}
+		})
+	}
 }
 
 func TestConnectorsTrustUsesTheEnvironmentOfTheAttachment(t *testing.T) {

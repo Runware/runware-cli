@@ -99,11 +99,6 @@ func (d modelDetail) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.m)
 }
 
-// MarshalYAML delegates to the underlying ModelResult so YAML output contains the raw model data.
-func (d modelDetail) MarshalYAML() (any, error) {
-	return d.m, nil
-}
-
 func newShowCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <air>",

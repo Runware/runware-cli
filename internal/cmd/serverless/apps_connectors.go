@@ -53,7 +53,7 @@ StringEquals trust condition.`,
 				return err
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), camelKeysTable{appOidcConnectorsResult(connectors)})
+			return output.Print(cmdutil.FormatFor(cmd), appOidcConnectorsResult(connectors))
 		},
 	}
 }
@@ -89,7 +89,7 @@ refused when the application already has a variable or secret under one.`,
 				return err
 			}
 
-			return output.Print(cmdutil.FormatFor(cmd), camelKeysTable{appOidcConnectorResult(*connector)})
+			return output.Print(cmdutil.FormatFor(cmd), appOidcConnectorResult(*connector))
 		},
 	}
 }

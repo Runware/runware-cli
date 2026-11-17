@@ -58,11 +58,6 @@ func (r modelSearchResults) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.models)
 }
 
-// MarshalYAML delegates to the underlying slice so YAML output contains the raw model data.
-func (r modelSearchResults) MarshalYAML() (any, error) {
-	return r.models, nil
-}
-
 // formatDefaultSize renders a WxH string, or "—" when both are zero.
 func formatDefaultSize(w, h int) string {
 	if w == 0 && h == 0 {
