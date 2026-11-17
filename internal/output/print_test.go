@@ -235,15 +235,66 @@ func TestPrintYAMLKeepsLargeIntegersExact(t *testing.T) {
 // boolean, a number and a merge key unless they are quoted; the test reads the text,
 // because a YAML 1.2 parser reads them back as strings either way.
 func TestPrintYAMLQuotesWhatYAML11Misreads(t *testing.T) {
+	// A literal list, not yaml11Words: a word dropped from the set must fail here.
+	quoted := []string{
+		"y", "Y", "yes", "Yes", "YES", "n", "N", "no", "No", "NO",
+		"on", "On", "ON", "off", "Off", "OFF", "<<", "=",
+		"1:30:00", "-1:30", "+1:30", "1:30:00.5", "1_0:30",
+	}
+	plain := []string{"hello", "1h", "1:99", "a1:30", "yesterday", "on-demand"}
+
+	for _, word := range quoted {
+		if got := yamlScalar(t, word); got != `"`+word+`"` {
+			t.Errorf("%q printed as %s, want it quoted", word, got)
+		}
+	}
+	for _, word := range plain {
+		if got := yamlScalar(t, word); got != word {
+			t.Errorf("%q printed as %s, want it plain", word, got)
+		}
+	}
+}
+
+// yamlScalar prints a one-key document and returns the text after "k: ".
+func yamlScalar(t *testing.T, value string) string {
+	t.Helper()
 	var buf bytes.Buffer
-	data := map[string]any{"a": "yes", "b": "NO", "c": "on", "d": "y", "e": "1:30:00", "<<": "x", "plain": "hello", "k": "1h"}
-	if err := printYAML(&buf, data); err != nil {
+	if err := printYAML(&buf, map[string]any{"k": value}); err != nil {
 		t.Fatal(err)
 	}
-	got := buf.String()
-	for _, want := range []string{`a: "yes"`, `b: "NO"`, `c: "on"`, `d: "y"`, `e: "1:30:00"`, `"<<": x`, "plain: hello", "k: 1h"} {
-		if !strings.Contains(got, want+"\n") {
-			t.Errorf("output lacks %q:\n%s", want, got)
-		}
+	return strings.TrimSuffix(strings.TrimPrefix(buf.String(), "k: "), "\n")
+}
+
+// A raw JSON document may hold what encoding/json never writes itself: a "\/" escape, a
+// raw U+007F or U+0085. yaml.Unmarshal would fail on the first two and turn the third into a
+// space; the value must come out as it went in.
+func TestPrintYAMLKeepsAnyJSONString(t *testing.T) {
+	for name, raw := range map[string]string{
+		"escaped slash":      `{"a":"x\/y"}`,
+		"raw DEL":            "{\"a\":\"x\u007fy\"}",
+		"raw NEL":            "{\"a\":\"x\u0085y\"}",
+		"escaped DEL":        `{"a":"\u007f"}`,
+		"escaped NEL":        `{"a":"\u0085"}`,
+		"surrogate pair":     `{"a":"\ud83d\ude80"}`,
+		"large exact number": `{"a":9007199254740993,"b":1e+21,"c":-0.5}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := printYAML(&buf, json.RawMessage(raw)); err != nil {
+				t.Fatal(err)
+			}
+			var fromJSON, fromYAML map[string]any
+			if err := json.Unmarshal([]byte(raw), &fromJSON); err != nil {
+				t.Fatal(err)
+			}
+			if err := yaml.Unmarshal(buf.Bytes(), &fromYAML); err != nil {
+				t.Fatalf("not YAML: %v\n%s", err, buf.String())
+			}
+			for key, want := range fromJSON {
+				if s, isString := want.(string); isString && fromYAML[key] != s {
+					t.Errorf("%s = %q, want %q", key, fromYAML[key], s)
+				}
+			}
+		})
 	}
 }

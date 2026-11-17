@@ -228,11 +228,7 @@ func newConnectorsListCmd(logger *log.Logger) *cobra.Command {
 				return err
 			}
 
-			format := cmdutil.FormatFor(cmd)
-			if format == output.FormatYAML {
-				return output.Print(format, page)
-			}
-			return printPage(format, page, oidcConnectorsResult(page.Data), cmd.ErrOrStderr(), "")
+			return printPage(cmdutil.FormatFor(cmd), page, oidcConnectorsResult(page.Data), cmd.ErrOrStderr(), "")
 		},
 	}
 

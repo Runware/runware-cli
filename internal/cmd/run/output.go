@@ -113,14 +113,8 @@ func handleResults(cmd *cobra.Command, logger *log.Logger, results []json.RawMes
 
 // emitRaw prints a single parsed result as JSON or YAML.
 func emitRaw(format output.Format, parsed map[string]any) error {
-	// Re-use output.Print by encoding the map; JSON/YAML marshalers handle maps natively.
-	return output.Print(format, jsonMapValue(parsed))
+	return output.Print(format, parsed)
 }
-
-// jsonMapValue is a thin wrapper that makes map[string]any serializable via output.Print.
-type jsonMapValue map[string]any
-
-func (v jsonMapValue) MarshalJSON() ([]byte, error) { return json.Marshal(map[string]any(v)) }
 
 // extractOutputFileURLs extracts URL strings from the nested outputs.files[]
 // structure used by 3D inference responses:
