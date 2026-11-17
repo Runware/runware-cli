@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/google/uuid"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/output"
@@ -399,10 +397,11 @@ func TestAppResult_RedactsEnvironmentVariableValues(t *testing.T) {
 		t.Fatalf("json dropped the variable name: %s", js)
 	}
 
-	ym, err := yaml.Marshal(r)
-	if err != nil {
+	var yamlOut bytes.Buffer
+	if err := output.PrintTo(&yamlOut, output.FormatYAML, r); err != nil {
 		t.Fatalf("yaml: %v", err)
 	}
+	ym := yamlOut.Bytes()
 	if strings.Contains(string(ym), testEnvValue) || !strings.Contains(string(ym), redactedEnvValue) {
 		t.Fatalf("yaml = %s", ym)
 	}

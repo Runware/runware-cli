@@ -860,3 +860,12 @@ func TestEnvironmentsDeleteHintLeavesOtherErrorsAlone(t *testing.T) {
 		t.Fatalf("withEnvironmentContentsHint(%v) = %v, want it unchanged", err, got)
 	}
 }
+
+// A second real resource: the environment carries a null, nested objects, an array and
+// timestamps, and its YAML document must be its JSON document.
+func TestEnvironmentsShowYAMLEqualsJSON(t *testing.T) {
+	api := environmentAPI(t, &bodyRecorder{}, map[string]stubResponse{
+		"GET " + testStagingPath: {status: http.StatusOK, body: testStagingEnvironment},
+	})
+	assertYAMLEqualsJSON(t, api, testEnvironmentsGroup, testShowCommand, testEnvironment)
+}

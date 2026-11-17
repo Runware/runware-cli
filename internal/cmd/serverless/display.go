@@ -158,11 +158,6 @@ func (r appResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.withRedactedEnv())
 }
 
-// MarshalYAML redacts plaintext environment variable values, matching MarshalJSON.
-func (r appResult) MarshalYAML() (any, error) {
-	return r.withRedactedEnv(), nil
-}
-
 func (r appResult) withRedactedEnv() serverlessapi.App {
 	app := serverlessapi.App(r)
 	if len(app.EnvironmentVariables) == 0 {
@@ -1031,40 +1026,4 @@ func (r oidcConnectorDetachedResult) Headers() []string {
 
 func (r oidcConnectorDetachedResult) Rows() [][]any {
 	return [][]any{{r.AppID, r.Name}}
-}
-
-// camelKeys prints a value with its JSON key names in YAML too. The API types
-// carry json tags only, and a YAML encoder lowercases such a field's name
-// (subjectPattern becomes subjectpattern).
-type camelKeys struct {
-	V any
-}
-
-func (c camelKeys) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.V)
-}
-
-func (c camelKeys) MarshalYAML() (any, error) {
-	raw, err := json.Marshal(c.V)
-	if err != nil {
-		return nil, err
-	}
-	var doc any
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, err
-	}
-	return doc, nil
-}
-
-// camelKeysTable is camelKeys for a value that also prints as a table.
-type camelKeysTable struct {
-	output.Tabular
-}
-
-func (c camelKeysTable) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.Tabular)
-}
-
-func (c camelKeysTable) MarshalYAML() (any, error) {
-	return camelKeys{V: c.Tabular}.MarshalYAML()
 }

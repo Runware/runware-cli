@@ -29,11 +29,6 @@ func (r modelExamples) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.examples)
 }
 
-// MarshalYAML delegates to the raw examples payload.
-func (r modelExamples) MarshalYAML() (any, error) {
-	return r.examples, nil
-}
-
 const fieldModel = "model"
 
 var skipRequestKeys = map[string]struct{}{

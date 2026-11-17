@@ -59,22 +59,3 @@ func fetchModelSchema(ctx context.Context, air string, client *http.Client, base
 
 	return &schema, nil
 }
-
-// MarshalYAML converts ModelSchema to a form the YAML encoder can handle.
-// json.RawMessage fields are []byte, which would otherwise be base64-encoded
-// by the YAML encoder. Unmarshaling them to any first produces native Go
-// maps/slices that YAML can render as structured output.
-func (s ModelSchema) MarshalYAML() (any, error) {
-	var req, resp any
-	if err := json.Unmarshal(s.RequestSchema, &req); err != nil {
-		return nil, fmt.Errorf("failed to decode requestSchema for YAML: %w", err)
-	}
-	if err := json.Unmarshal(s.ResponseSchema, &resp); err != nil {
-		return nil, fmt.Errorf("failed to decode responseSchema for YAML: %w", err)
-	}
-	return map[string]any{
-		"requestSchema":  req,
-		"responseSchema": resp,
-		"documentation":  s.Documentation,
-	}, nil
-}
