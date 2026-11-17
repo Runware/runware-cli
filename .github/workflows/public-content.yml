@@ -45,8 +45,12 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # The checker is built from the base commit when it exists there, so
-      # a pull request cannot weaken the checker that judges it.
+      # The checker is built from the base commit when it exists there, so a
+      # change to tools/checkpublic does not judge its own pull request. A
+      # pull request runs this workflow file as it has it, though, so it can
+      # change or remove this step. The guard against that is CODEOWNERS:
+      # .github/workflows/ and tools/checkpublic/ need a code owner's review
+      # before a change to them merges to main.
       - name: Build checkpublic
         run: |
           src=.

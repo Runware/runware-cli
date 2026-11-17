@@ -20,6 +20,9 @@ var (
 	specMarker  = "x-" + "internal"
 	pemHeader   = "-----BEGIN " + "PRIVATE KEY-----"
 	longSecret  = strings.Repeat("a1B2", 8)
+	// jwtLike is a dotted value of base64 segments that each start with a
+	// letter, as a JWT's can.
+	jwtLike = "q7Xk2pLm9RtV4wZa" + "." + "b3Nf8Hj1Kd6Ys0Qe" + "." + "Tz5Wc2Rb8Mn4Lp1x"
 )
 
 // repoCLI is a public repository of the organization.
@@ -375,6 +378,91 @@ func TestScanLine(t *testing.T) {
 			name: "camelCase name set from a field",
 			line: `accessToken := cfg.AccessToken`,
 			want: nil,
+		},
+		{
+			name: "call on a selector chain with a digit",
+			line: "token := base64.StdEncoding.EncodeToString(b)",
+			want: nil,
+		},
+		{
+			name: "selector chain with a digit",
+			line: "accessToken := oauth2Token.AccessToken",
+			want: nil,
+		},
+		{
+			name: "call of a package function",
+			line: "clientSecret = config2.LoadFromEnvironment(ctx)",
+			want: nil,
+		},
+		{
+			name: "call of a function",
+			line: "token := newAccessTokenSource2(ctx, client)",
+			want: nil,
+		},
+		{
+			name: "call of a short function",
+			line: `key = os.Getenv("X")`,
+			want: nil,
+		},
+		{
+			name: "declared name set from a selector chain",
+			line: "const accessToken = " + "oauth2Token.AccessToken",
+			want: nil,
+		},
+		{
+			name: "field of this set from a selector chain",
+			line: "this.accessToken = oauth2Token.AccessToken;",
+			want: nil,
+		},
+		{
+			name: "unquoted YAML password with a dotted value",
+			line: "password: " + "CorrectHorse.BatteryStaple7",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "env file password with a dotted value",
+			line: "PASSWORD=" + "Correct.Horse.Battery7Staple",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "dotted call assigned with =",
+			line: "token = base64.StdEncoding.EncodeToString(b)",
+			want: nil,
+		},
+		{
+			name: "YAML password that reads as a call",
+			line: "password: " + "CorrectHorseBattery7(2026)",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "dotenv password that reads as a call",
+			line: "PASSWORD=" + "CorrectHorseBattery7(2026)",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "INI password that reads as a call",
+			line: "password = " + "CorrectHorseBattery7(2026)",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "quoted dotted value",
+			line: `token = "` + "cfg2.Section.NameValue" + `"`,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "JWT-like dotted value",
+			line: "token: " + jwtLike,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "JWT header dotted value",
+			line: "accessToken := " + "eyJ" + "hbGciOi1.eyJzdWIi0.c2lnbmF0dXJl",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "bare literal value",
+			line: "api_key" + " = " + longSecret,
+			want: []string{ruleCredential},
 		},
 		{
 			name: "short value",

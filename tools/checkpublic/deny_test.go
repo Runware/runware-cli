@@ -254,6 +254,20 @@ func TestDenyInvalidPatternWarnsWithoutShowingIt(t *testing.T) {
 	}
 }
 
+func TestDenyEmptyMatchPatternSkipped(t *testing.T) {
+	var stderr bytes.Buffer
+	gh := &fakeGH{
+		out: "hidden-name|\n(other)?\nok\n",
+	}
+	d := newTestDeny(t, gh, &stderr)
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{"ok"}) {
+		t.Errorf("patterns = %q, want only the one that cannot match empty text", got)
+	}
+	if strings.Contains(stderr.String(), "hidden-name") || strings.Contains(stderr.String(), "other") || !strings.Contains(stderr.String(), "skipped 2") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+}
+
 func TestDenyCISkips(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{

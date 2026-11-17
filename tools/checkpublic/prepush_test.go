@@ -649,3 +649,59 @@ func TestScanRangeOctopusMerge(t *testing.T) {
 		t.Fatalf("ScanRange with an octopus merge: err = %v, want more than two parents", err)
 	}
 }
+
+// TestScanRangeOrphanWithShowRootOff checks that a user's log.showRoot=false
+// does not hide the patch of a root commit: an orphan branch whose first
+// commit adds a leak that the next commit removes is still found.
+func TestScanRangeOrphanWithShowRootOff(t *testing.T) {
+	dir := cleanRepo(t)
+	gitIn(t, dir, "config", "log.showRoot", "false")
+	gitIn(t, dir, "checkout", "-q", "--orphan", "fresh")
+	gitIn(t, dir, "rm", "-q", "-rf", ".")
+	if err := os.WriteFile(filepath.Join(dir, "c.txt"), []byte(leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", ".")
+	gitIn(t, dir, "commit", "-q", "-m", "feat: start over")
+	if err := os.WriteFile(filepath.Join(dir, "c.txt"), []byte(cleanText+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "commit", "-q", "-am", "fix: clean up")
+	f, err := NewScanner().ScanRange(context.Background(), Git{Dir: dir}, Range{
+		Head: headRef,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || !strings.HasPrefix(f[0].Where, "commit ") || !strings.HasSuffix(f[0].Where, " c.txt:1") {
+		t.Fatalf("findings = %+v, want one in the root commit", f)
+	}
+}
+
+// TestScanRangeSuppressBlankEmpty checks that a user's
+// diff.suppressBlankEmpty and diff.interHunkContext, which put an empty
+// context line inside a -U0 hunk, do not shift the lines read after it.
+func TestScanRangeSuppressBlankEmpty(t *testing.T) {
+	dir := cleanRepo(t)
+	gitIn(t, dir, "config", "diff.suppressBlankEmpty", "true")
+	gitIn(t, dir, "config", "diff.interHunkContext", "3")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n\nthree\nfour\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "commit", "-q", "-am", "feat: more lines")
+	gitIn(t, dir, "update-ref", "refs/remotes/origin/main", headRef)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("uno\n\nthree\n"+leak+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "commit", "-q", "-am", "feat: change lines")
+	f, err := NewScanner().ScanRange(context.Background(), Git{Dir: dir}, Range{
+		Base: originMain,
+		Head: headRef,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || f[0].Where != "a.txt:4" {
+		t.Fatalf("findings = %+v, want one on a.txt:4", f)
+	}
+}

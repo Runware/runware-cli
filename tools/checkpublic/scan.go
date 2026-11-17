@@ -90,7 +90,9 @@ func (s *Scanner) ScanDiff(diff string) ([]Finding, error) {
 				newLeft--
 			case strings.HasPrefix(line, "-"):
 				oldLeft--
-			case strings.HasPrefix(line, " "):
+			case strings.HasPrefix(line, " ") || line == "":
+				// An empty line is a blank context line printed with
+				// diff.suppressBlankEmpty.
 				newLine++
 				oldLeft--
 				newLeft--
@@ -158,9 +160,29 @@ type Git struct {
 	Dir string
 }
 
-// run runs git in g.Dir with paths printed unquoted.
+// gitConfig pins the settings that change the output this tool reads, so a
+// user's configuration cannot hide added lines: paths printed unquoted, the
+// patch of a root commit shown, blank context lines kept as " ", no context
+// joined into a -U0 hunk, the a/ and b/ prefixes, every path from the top of
+// the repository, no colour, and no signature check output.
+var gitConfig = []string{
+	"-c", "core.quotePath=false",
+	"-c", "log.showRoot=true",
+	"-c", "log.showSignature=false",
+	"-c", "diff.suppressBlankEmpty=false",
+	"-c", "diff.interHunkContext=0",
+	"-c", "diff.noprefix=false",
+	"-c", "diff.mnemonicPrefix=false",
+	"-c", "diff.srcPrefix=a/",
+	"-c", "diff.dstPrefix=b/",
+	"-c", "diff.relative=false",
+	"-c", "color.ui=false",
+	"-c", "color.diff=false",
+}
+
+// run runs git in g.Dir with gitConfig.
 func (g Git) run(ctx context.Context, args ...string) (string, error) {
-	full := slices.Concat([]string{"-C", g.Dir, "-c", "core.quotePath=false"}, args)
+	full := slices.Concat([]string{"-C", g.Dir}, gitConfig, args)
 	cmd := exec.CommandContext(ctx, "git", full...) //nolint:gosec // git with arguments built by this tool, no shell
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

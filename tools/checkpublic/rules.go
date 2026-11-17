@@ -57,13 +57,14 @@ type hit struct {
 }
 
 // rule is one pattern. check, when set, filters or explains a match: it gets
-// the submatches and the path of the scanned file ("" for text that is not a
-// file) and returns false to drop the match.
+// the submatches, the path of the scanned file ("" for text that is not a
+// file) and the text of the line before the match, and returns false to drop
+// the match.
 type rule struct {
 	name    string
 	message string
 	re      *regexp.Regexp
-	check   func(s *Scanner, m []string, file string) bool
+	check   func(s *Scanner, m []string, file, before string) bool
 	// bounded, when set, keeps a match only when line[start:end] stands on
 	// its own. It replaces boundary groups in re, which would consume the
 	// separator that the next match needs.
@@ -210,7 +211,7 @@ func builtinRules() []rule {
 		{
 			name:    ruleCredential,
 			message: "assigns a literal value to a credential-like name",
-			re:      regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key|token|secret|passw(?:or)?d)["']?\s*(?::=|=|:)\s*["']?([a-z0-9._~+/-]{20,}=*)`),
+			re:      regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key|token|secret|passw(?:or)?d)["']?\s*(:=|=|:)\s*(["']?)([a-z0-9._~+/-]{20,}=*)(\(?)`),
 			check:   checkCredential,
 		},
 		{
@@ -218,7 +219,7 @@ func builtinRules() []rule {
 			// them: accessToken, clientSecret, runwareApiKey.
 			name:    ruleCredential,
 			message: "assigns a literal value to a credential-like name",
-			re:      regexp.MustCompile(`(?:^|[^A-Za-z0-9_])[A-Za-z][A-Za-z0-9]*?(?:Api[Kk]ey|APIKey|AccessKey|Token|Secret|Passw(?:or)?d)["']?\s*(?::=|=|:)\s*["']?([A-Za-z0-9._~+/-]{20,}=*)`),
+			re:      regexp.MustCompile(`(?:^|[^A-Za-z0-9_])[A-Za-z][A-Za-z0-9]*?(?:Api[Kk]ey|APIKey|AccessKey|Token|Secret|Passw(?:or)?d)["']?\s*(:=|=|:)\s*(["']?)([A-Za-z0-9._~+/-]{20,}=*)(\(?)`),
 			check:   checkCredential,
 		},
 		{
@@ -241,15 +242,15 @@ func builtinRules() []rule {
 	}
 }
 
-func checkRepo(s *Scanner, m []string, _ string) bool {
+func checkRepo(s *Scanner, m []string, _, _ string) bool {
 	name := strings.TrimSuffix(strings.TrimRight(m[1], "."), ".git")
 	return name != "" && !s.IsPublicRepo(name)
 }
 
 // checkShortRepo is checkRepo that also reads owner/name as Homebrew does,
 // for the tap in the homebrew-name repository: brew install runware/tap/x.
-func checkShortRepo(s *Scanner, m []string, file string) bool {
-	return checkRepo(s, m, file) && !s.IsPublicRepo("homebrew-"+m[1])
+func checkShortRepo(s *Scanner, m []string, file, before string) bool {
+	return checkRepo(s, m, file, before) && !s.IsPublicRepo("homebrew-"+m[1])
 }
 
 // publicInternalHosts are .internal names that are public knowledge and
@@ -259,7 +260,7 @@ var publicInternalHosts = map[string]struct{}{
 	"gateway.docker.internal": {},
 }
 
-func checkInternalTLD(_ *Scanner, m []string, _ string) bool {
+func checkInternalTLD(_ *Scanner, m []string, _, _ string) bool {
 	_, ok := publicInternalHosts[strings.ToLower(m[0])]
 	return !ok
 }
@@ -269,8 +270,8 @@ var placeholderWords = []string{"example", "test", "fake", "dummy", "placeholder
 
 // checkSecretValue keeps a match only when submatch i looks like a real
 // secret: it has a letter and a digit and is not an obvious placeholder.
-func checkSecretValue(i int) func(*Scanner, []string, string) bool {
-	return func(_ *Scanner, m []string, _ string) bool {
+func checkSecretValue(i int) func(*Scanner, []string, string, string) bool {
+	return func(_ *Scanner, m []string, _, _ string) bool {
 		return looksSecret(m[i])
 	}
 }
@@ -290,17 +291,78 @@ func looksSecret(v string) bool {
 
 var hexValue = regexp.MustCompile(`^[0-9a-fA-F]+$`)
 
-func checkCredential(_ *Scanner, m []string, file string) bool {
-	v := m[1]
+// checkCredential gets the credential rules' submatches: the assignment
+// operator, the opening quote of the value, if any, the value, and "(" when
+// a call follows it.
+func checkCredential(_ *Scanner, m []string, file, before string) bool {
+	op, quote, v, call := m[1], m[2], m[3], m[4] != ""
 	// Golden vectors under testdata are hex keys made for the test.
 	if hexValue.MatchString(v) && inTestdata(file) {
 		return false
 	}
-	// A dotted Go or YAML reference (cfg.Section.Name) is not a literal.
-	if strings.Contains(v, ".") && !strings.ContainsAny(v, "0123456789") {
+	if quote == "" && inCode(op, v, call, m[0], before) && isCodeExpression(v, call) {
 		return false
 	}
 	return looksSecret(v)
+}
+
+// declarationWords start a line that declares a name in a programming
+// language, so what it assigns is code.
+var declarationWords = map[string]struct{}{
+	"const": {},
+	"let":   {},
+	"var":   {},
+	"val":   {},
+	"final": {},
+	"def":   {},
+}
+
+// inCode reports whether an assignment reads as code rather than a
+// configuration line such as key: value, KEY=value or an INI key = value:
+// the operator is :=, the line starts with a declaration, the name is a
+// field of this or self, or the operator is = and the value is a dotted
+// call (pkg.Func(...)). A bare name(...) is not enough, since a password can
+// read that way. match is the rule's match, which starts with the character
+// before the name unless the name starts the line, and before is the text of
+// the line before it.
+func inCode(op, v string, call bool, match, before string) bool {
+	if op == ":=" || op == "=" && call && strings.Contains(v, ".") {
+		return true
+	}
+	if fields := strings.Fields(before); len(fields) > 0 {
+		if _, ok := declarationWords[fields[0]]; ok {
+			return true
+		}
+	}
+	return strings.HasPrefix(match, ".") && (strings.HasSuffix(before, "this") || strings.HasSuffix(before, "self"))
+}
+
+// identifier matches one segment of a selector chain: a name that starts
+// with a letter.
+var identifier = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
+
+// isCodeExpression reports whether an unquoted value reads as code rather
+// than a literal: a selector chain (cfg.Auth.Token) or a call
+// (base64.StdEncoding.EncodeToString(b), newToken2(x)). A JWT is dotted too,
+// so a value starting with a JWT header, or one with a long segment holding
+// a digit (base64 rather than a name), is a literal unless a call follows.
+func isCodeExpression(v string, call bool) bool {
+	if strings.HasPrefix(v, "eyJ") {
+		return false
+	}
+	segments := strings.Split(v, ".")
+	if len(segments) == 1 && !call {
+		return false
+	}
+	for _, seg := range segments {
+		if !identifier.MatchString(seg) {
+			return false
+		}
+		if !call && len(seg) >= 16 && strings.ContainsAny(seg, "0123456789") {
+			return false
+		}
+	}
+	return true
 }
 
 func inTestdata(file string) bool {
@@ -386,7 +448,7 @@ func isWordOrDot(c byte) bool {
 	return isDigit(c) || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '.'
 }
 
-func checkPublicIP(_ *Scanner, m []string, _ string) bool {
+func checkPublicIP(_ *Scanner, m []string, _, _ string) bool {
 	addr, err := netip.ParseAddr(m[1])
 	if err != nil {
 		return false
@@ -479,7 +541,7 @@ func (s *Scanner) ScanLine(file, line string) []hit {
 				continue
 			}
 			m := submatches(line, idx)
-			if r.check != nil && !r.check(s, m, file) {
+			if r.check != nil && !r.check(s, m, file, line[:idx[0]]) {
 				continue
 			}
 			match := strings.TrimLeft(m[0], " \t\"'([<,;:=|")

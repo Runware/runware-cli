@@ -173,10 +173,10 @@ func TestMakeSetupKeepsOtherHook(t *testing.T) {
 	}
 }
 
-// TestMakeSetupWarnsAboutHooksPath checks that make setup warns when
+// TestMakeSetupFailsWithHooksPath checks that make setup fails when
 // core.hooksPath is set, since git then does not run the hook it installs,
-// and leaves the setting to the user.
-func TestMakeSetupWarnsAboutHooksPath(t *testing.T) {
+// says how to fix it, and leaves the setting to the user.
+func TestMakeSetupFailsWithHooksPath(t *testing.T) {
 	if runtime.GOOS == goosWindows {
 		t.Skip("make setup writes a POSIX shell hook")
 	}
@@ -186,7 +186,7 @@ func TestMakeSetupWarnsAboutHooksPath(t *testing.T) {
 	dir := setupClone(t)
 	mustRun(t, dir, "git", "config", "core.hooksPath", ".hooks")
 	out, ok := setupRun(t, dir, "make", "setup")
-	if !ok || !strings.Contains(out, "while it is set") || !strings.Contains(out, "git config --unset core.hooksPath") {
+	if ok || strings.Contains(out, "installed") || !strings.Contains(out, "while it is set") || !strings.Contains(out, "git config --unset core.hooksPath") {
 		t.Fatalf("make setup with core.hooksPath set: ok=%v\n%s", ok, out)
 	}
 	if got, ok := setupRun(t, dir, "git", "config", "--get", "core.hooksPath"); !ok || strings.TrimSpace(got) != ".hooks" {

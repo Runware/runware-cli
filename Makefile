@@ -101,7 +101,8 @@ setup:
 	mv -f "$$hook.new" "$$hook"; \
 	hooks_path=$$(git config --get core.hooksPath || true); \
 	if [ -n "$$hooks_path" ]; then \
-		echo "make setup: warning: core.hooksPath is set to $$hooks_path, and git does not run hooks in the git directory, such as $$hook, while it is set; unset it with git config --unset core.hooksPath (add --global if it is set there)" >&2; \
+		echo "make setup: core.hooksPath is set to $$hooks_path, and git does not run hooks in the git directory, such as $$hook, while it is set, so the pre-push check would never run; unset it with git config --unset core.hooksPath (add --global if it is set there) and run make setup again" >&2; \
+		exit 1; \
 	fi; \
 	echo "make setup: installed $$hook, running the checker built from commit $$(git rev-parse --short HEAD)"
 

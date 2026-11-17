@@ -175,21 +175,22 @@ func (d denySource) writeCache(path string, b []byte) {
 	_ = os.Chtimes(path, now, now)
 }
 
-// parse returns the patterns in text, dropping comments, blank lines and
-// patterns that do not compile (with a warning that does not show them).
+// parse returns the patterns in text, dropping comments, blank lines,
+// patterns that do not compile and patterns that match the empty string,
+// which would match every line (with a warning that does not show them).
 func (d denySource) parse(text string) []*regexp.Regexp {
 	var out []*regexp.Regexp
 	bad := 0
 	for _, line := range listLines(text) {
 		re, err := regexp.Compile(line)
-		if err != nil {
+		if err != nil || re.MatchString("") {
 			bad++
 			continue
 		}
 		out = append(out, re)
 	}
 	if bad > 0 {
-		logf(d.stderr, "checkpublic: warning: skipped %d deny list pattern(s) that are not valid regular expressions.\n", bad)
+		logf(d.stderr, "checkpublic: warning: skipped %d deny list pattern(s) that are not valid regular expressions or match empty text.\n", bad)
 	}
 	return out
 }
