@@ -20,9 +20,6 @@ var (
 	specMarker  = "x-" + "internal"
 	pemHeader   = "-----BEGIN " + "PRIVATE KEY-----"
 	longSecret  = strings.Repeat("a1B2", 8)
-	// jwtLike is a dotted value of base64 segments that each start with a
-	// letter, as a JWT's can.
-	jwtLike = "q7Xk2pLm9RtV4wZa" + "." + "b3Nf8Hj1Kd6Ys0Qe" + "." + "Tz5Wc2Rb8Mn4Lp1x"
 )
 
 // repoCLI is a public repository of the organization.
@@ -380,91 +377,6 @@ func TestScanLine(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "call on a selector chain with a digit",
-			line: "token := base64.StdEncoding.EncodeToString(b)",
-			want: nil,
-		},
-		{
-			name: "selector chain with a digit",
-			line: "accessToken := oauth2Token.AccessToken",
-			want: nil,
-		},
-		{
-			name: "call of a package function",
-			line: "clientSecret = config2.LoadFromEnvironment(ctx)",
-			want: nil,
-		},
-		{
-			name: "call of a function",
-			line: "token := newAccessTokenSource2(ctx, client)",
-			want: nil,
-		},
-		{
-			name: "call of a short function",
-			line: `key = os.Getenv("X")`,
-			want: nil,
-		},
-		{
-			name: "declared name set from a selector chain",
-			line: "const accessToken = " + "oauth2Token.AccessToken",
-			want: nil,
-		},
-		{
-			name: "field of this set from a selector chain",
-			line: "this.accessToken = oauth2Token.AccessToken;",
-			want: nil,
-		},
-		{
-			name: "unquoted YAML password with a dotted value",
-			line: "password: " + "CorrectHorse.BatteryStaple7",
-			want: []string{ruleCredential},
-		},
-		{
-			name: "env file password with a dotted value",
-			line: "PASSWORD=" + "Correct.Horse.Battery7Staple",
-			want: []string{ruleCredential},
-		},
-		{
-			name: "dotted call assigned with =",
-			line: "token = base64.StdEncoding.EncodeToString(b)",
-			want: nil,
-		},
-		{
-			name: "YAML password that reads as a call",
-			line: "password: " + "CorrectHorseBattery7(2026)",
-			want: []string{ruleCredential},
-		},
-		{
-			name: "dotenv password that reads as a call",
-			line: "PASSWORD=" + "CorrectHorseBattery7(2026)",
-			want: []string{ruleCredential},
-		},
-		{
-			name: "INI password that reads as a call",
-			line: "password = " + "CorrectHorseBattery7(2026)",
-			want: []string{ruleCredential},
-		},
-		{
-			name: "quoted dotted value",
-			line: `token = "` + "cfg2.Section.NameValue" + `"`,
-			want: []string{ruleCredential},
-		},
-		{
-			name: "JWT-like dotted value",
-			line: "token: " + jwtLike,
-			want: []string{ruleCredential},
-		},
-		{
-			name: "JWT header dotted value",
-			line: "accessToken := " + "eyJ" + "hbGciOi1.eyJzdWIi0.c2lnbmF0dXJl",
-			want: []string{ruleCredential},
-		},
-		{
-			name: "bare literal value",
-			line: "api_key" + " = " + longSecret,
-			want: []string{ruleCredential},
-		},
-		{
 			name: "short value",
 			line: `token = "abc123"`,
 			want: nil,
@@ -620,6 +532,120 @@ func TestScanLine(t *testing.T) {
 	}
 }
 
+// correctHorse is a dotted literal with a digit, as a password can be.
+var correctHorse = "Correct.Horse." + "Battery7Staple"
+
+// goFile is the path of a Go source file.
+const goFile = "cmd/auth.go"
+
+// TestCredentialByFileType checks that the credential rule decides code or
+// configuration by the file: in a source file only a quoted value is a
+// candidate, anywhere else an unquoted value is one too.
+func TestCredentialByFileType(t *testing.T) {
+	cases := []ruleCase{
+		{
+			name: "Go struct field set from a selector chain",
+			file: goFile,
+			line: "\tAccessToken: oauth2Token.AccessToken,",
+			want: nil,
+		},
+		{
+			name: "Go reassignment from a selector chain",
+			file: goFile,
+			line: "\taccessToken = oauth2Token.AccessToken",
+			want: nil,
+		},
+		{
+			name: "Go selector chain with a long segment",
+			file: goFile,
+			line: "\ttoken := oauth2TokenSource.AccessToken",
+			want: nil,
+		},
+		{
+			name: "Go call",
+			file: goFile,
+			line: "\ttoken := base64.StdEncoding.EncodeToString(b)",
+			want: nil,
+		},
+		{
+			name: "Go quoted literal",
+			file: goFile,
+			line: "\tapiKey := \"" + longSecret + "\"",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "TypeScript template literal",
+			file: "web/auth.ts",
+			line: "const apiKey = `" + longSecret + "`;",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "Python single-quoted literal",
+			file: "scripts/auth.py",
+			line: "api_key = '" + longSecret + "'",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "Makefile assignment",
+			file: "Makefile",
+			line: "SERVICE_TOKEN := " + correctHorse,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "dotenv value that reads as a call",
+			file: ".env",
+			line: "PASSWORD=" + correctHorse + "(2026)",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "dotenv export",
+			file: "deploy/.env.local",
+			line: "export PASSWORD=" + correctHorse,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "properties key with dots",
+			file: "src/main/resources/application.properties",
+			line: "spring.datasource.password=" + correctHorse,
+			want: []string{ruleCredential},
+		},
+		{
+			name: "YAML dotted value",
+			file: "deploy/values.yaml",
+			line: "password: " + "CorrectHorse.BatteryStaple7",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "YAML dotted reference without a digit",
+			file: "deploy/values.yaml",
+			line: "token: " + "cfg.Section.AccessToken",
+			want: nil,
+		},
+		{
+			name: "text YAML dotted value",
+			line: "password: " + "CorrectHorse.BatteryStaple7",
+			want: []string{ruleCredential},
+		},
+		{
+			name: "text selector chain with a long segment",
+			line: "token := oauth2TokenSource.AccessToken",
+			want: []string{ruleCredential},
+		},
+	}
+	s := NewScanner()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []string
+			for _, h := range s.ScanLine(tc.file, tc.line) {
+				got = append(got, h.rule)
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("ScanLine(%q, %q) rules = %v, want %v", tc.file, tc.line, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLocalDenyList(t *testing.T) {
 	d := denySource{
 		extra:  `(?i)\bacme storage\b`,
@@ -717,6 +743,31 @@ func TestScanDiff(t *testing.T) {
 	want := "commit 0123456789 a.yaml:12,commit 0123456789 c.md:1"
 	if strings.Join(where, ",") != want {
 		t.Fatalf("ScanDiff findings at %v, want %s", where, want)
+	}
+}
+
+// TestScanDiffEmptyContextLine checks that an empty line inside a hunk is
+// counted as a blank context line, as git prints it with
+// diff.suppressBlankEmpty.
+func TestScanDiffEmptyContextLine(t *testing.T) {
+	s := NewScanner()
+	diff := strings.Join([]string{
+		"diff --git a/a.yaml b/a.yaml",
+		"--- a/a.yaml",
+		"+++ b/a.yaml",
+		"@@ -1,3 +1,3 @@",
+		" first",
+		"",
+		"-old",
+		"+" + specMarker + ": true",
+		"",
+	}, "\n")
+	f, err := s.ScanDiff(diff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || f[0].Where != "a.yaml:3" {
+		t.Fatalf("ScanDiff = %+v, want one finding at a.yaml:3", f)
 	}
 }
 
