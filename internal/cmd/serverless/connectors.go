@@ -22,6 +22,9 @@ const (
 	flagServiceAccountEmail      = "service-account-email"
 )
 
+// connectorClearFields are the fields connectors update clears with --clear.
+var connectorClearFields = []string{flagServiceAccountEmail}
+
 // connectorKinds are the --kind values, as the API names them.
 var connectorKinds = []serverlessapi.OidcConnectorKind{
 	serverlessapi.OidcConnectorKindAws,
@@ -50,7 +53,7 @@ func (f *connectorFlags) add(cmd *cobra.Command) {
 
 // foreignFlags returns the provider flags that kind does not take and that
 // were set.
-func (f *connectorFlags) foreignFlags(kind serverlessapi.OidcConnectorKind) []string {
+func (f *connectorFlags) foreignFlags(kind serverlessapi.OidcConnectorKind, clearSA bool) []string {
 	var foreign []string
 	if kind != serverlessapi.OidcConnectorKindAws && f.roleARN != "" {
 		foreign = append(foreign, "--"+flagRoleARN)
@@ -65,6 +68,9 @@ func (f *connectorFlags) foreignFlags(kind serverlessapi.OidcConnectorKind) []st
 		}
 		if f.serviceAccountEmail != "" {
 			foreign = append(foreign, "--"+flagServiceAccountEmail)
+		}
+		if clearSA {
+			foreign = append(foreign, "--"+clearFlag+" "+flagServiceAccountEmail)
 		}
 	}
 	return foreign
@@ -81,8 +87,8 @@ func (f *connectorFlags) checkNotEmpty(cmd *cobra.Command) error {
 	return nil
 }
 
-func (f *connectorFlags) checkKind(kind serverlessapi.OidcConnectorKind) error {
-	if foreign := f.foreignFlags(kind); len(foreign) > 0 {
+func (f *connectorFlags) checkKind(kind serverlessapi.OidcConnectorKind, clearSA bool) error {
+	if foreign := f.foreignFlags(kind, clearSA); len(foreign) > 0 {
 		return fmt.Errorf("%s do not apply to a %s connector", strings.Join(foreign, ", "), kind)
 	}
 	return nil
@@ -105,7 +111,7 @@ func parseConnectorKind(s string) (serverlessapi.OidcConnectorKind, error) {
 // createBody builds the createOidcConnector body for kind, refusing a kind
 // that lacks the flag it needs before any request is sent.
 func (f *connectorFlags) createBody(name string, kind serverlessapi.OidcConnectorKind) (serverlessapi.OidcConnectorCreate, error) {
-	if err := f.checkKind(kind); err != nil {
+	if err := f.checkKind(kind, false); err != nil {
 		return serverlessapi.OidcConnectorCreate{}, err
 	}
 	body := serverlessapi.OidcConnectorCreate{
@@ -139,8 +145,9 @@ func (f *connectorFlags) createBody(name string, kind serverlessapi.OidcConnecto
 
 // updateBody builds the updateOidcConnector body. The API replaces the whole
 // configuration, so what the flags leave out is carried over from current.
-func (f *connectorFlags) updateBody(current *serverlessapi.OidcConnector) (serverlessapi.OidcConnectorUpdate, error) {
-	if err := f.checkKind(current.Kind); err != nil {
+// clearSA removes a gcp connector's service account.
+func (f *connectorFlags) updateBody(current *serverlessapi.OidcConnector, clearSA bool) (serverlessapi.OidcConnectorUpdate, error) {
+	if err := f.checkKind(current.Kind, clearSA); err != nil {
 		return serverlessapi.OidcConnectorUpdate{}, err
 	}
 	body := serverlessapi.OidcConnectorUpdate{Audience: &current.Audience}
@@ -167,6 +174,16 @@ func (f *connectorFlags) updateBody(current *serverlessapi.OidcConnector) (serve
 		}
 		if f.serviceAccountEmail != "" {
 			gcp.ServiceAccountEmail = &f.serviceAccountEmail
+		}
+		if clearSA {
+			// A clear of a field that is already empty is refused only when it is the
+			// whole update: it would roll every application that attaches the connector
+			// and change nothing. Next to a new provider it is a no-op the update carries.
+			if (gcp.ServiceAccountEmail == nil || *gcp.ServiceAccountEmail == "") && f.workloadIdentityProvider == "" {
+				return body, errors.New("--" + clearFlag + " " + flagServiceAccountEmail + ": the connector has no service account, so there is nothing to change")
+			}
+			// The API replaces the whole configuration, so leaving it out removes it.
+			gcp.ServiceAccountEmail = nil
 		}
 		body.Gcp = &gcp
 		// The audience follows the provider, so a changed provider needs a new one.
@@ -336,6 +353,7 @@ Creating a connector does not give any application a token. Attach it with
 
 func newConnectorsUpdateCmd(logger *log.Logger) *cobra.Command {
 	var flags connectorFlags
+	var clears []string
 
 	cmd := &cobra.Command{
 		Use:   "update <name>",
@@ -343,17 +361,36 @@ func newConnectorsUpdateCmd(logger *log.Logger) *cobra.Command {
 		Long: `Change a connector's audience or provider fields. Fields you do not name keep
 their current value. The name and kind cannot change.
 
+--clear service-account-email removes a gcp connector's service account, so its
+workers use the federated principal directly instead of impersonating one. Grant
+the federated principal access to your resources first ('connectors trust' prints
+the grant for a connector with no service account): the clear rolls every live
+application that attaches the connector, and the new workers get a permission
+error on any resource only the service account could read. Clearing a service
+account the connector does not have is refused when nothing else changes.
+
 Updating rolls every live application that attaches the connector, so its
 workers get the new configuration. Running workers keep the old configuration
 until they roll.`,
 		Example: `  runware serverless connectors update aws-prod \
-    --role-arn arn:aws:iam::123456789012:role/runware-worker-v2`,
+    --role-arn arn:aws:iam::123456789012:role/runware-worker-v2
+
+  # stop impersonating a service account
+  runware serverless connectors update gcp-prod --clear service-account-email`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := flags.checkNotEmpty(cmd); err != nil {
 				return err
 			}
+			cleared, err := clearedFields(cmd.Flags(), clears, connectorClearFields)
+			if err != nil {
+				return err
+			}
+			if cmd.Flags().Changed(clearFlag) && len(cleared) == 0 {
+				return fmt.Errorf("--%s takes %s; got nothing", clearFlag, strings.Join(connectorClearFields, ", "))
+			}
+			_, clearSA := cleared[flagServiceAccountEmail]
 			client := newServerlessClient(cmd, logger)
 
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Updating connector %s...", name))
@@ -364,7 +401,7 @@ until they roll.`,
 			if err != nil {
 				return err
 			}
-			body, err := flags.updateBody(current)
+			body, err := flags.updateBody(current, clearSA)
 			if err != nil {
 				return err
 			}
@@ -379,7 +416,8 @@ until they roll.`,
 	}
 
 	flags.add(cmd)
-	cmd.MarkFlagsOneRequired(flagAudience, flagRoleARN, flagWorkloadIdentityProvider, flagServiceAccountEmail)
+	addClearFlag(cmd, &clears, connectorClearFields)
+	cmd.MarkFlagsOneRequired(flagAudience, flagRoleARN, flagWorkloadIdentityProvider, flagServiceAccountEmail, clearFlag)
 	return cmd
 }
 

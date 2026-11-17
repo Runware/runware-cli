@@ -15,6 +15,9 @@ const (
 	app                 = "app"
 	wipFlag             = "--workload-identity-provider"
 	roleARNFlag         = "--role-arn"
+	clearFlagName       = "--clear"
+	clearSAField        = "service-account-email"
+	serviceAccountFlag  = "--service-account-email"
 	testAudience        = "runware:org-1"
 	kindFlag            = "--kind"
 	audienceFlag        = "--audience"
@@ -33,6 +36,7 @@ const (
 	testRoleARN         = "arn:aws:iam::123456789012:role/runware-worker"
 	testNewRoleARN      = "arn:aws:iam::123456789012:role/runware-worker-v2"
 	testWIP             = "projects/123456789/locations/global/workloadIdentityPools/runware/providers/runware"
+	testNewWIP          = "projects/123456789/locations/global/workloadIdentityPools/runware/providers/runware-v2"
 	testServiceAccount  = "worker@my-project.iam.gserviceaccount.com"
 	testSubject         = "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:app:my-app"
 	testSubjectPattern  = "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:*"
@@ -42,6 +46,8 @@ const (
 		`"aws":{"roleArn":"` + testRoleARN + `"},"issuer":"https://oidc.runware.example",` + testConnectorTail + `}`
 	testGCPConnector = `{"id":"22222222-2222-2222-2222-222222222222","name":"gcp-prod","kind":"gcp","audience":"//iam.googleapis.com/` + testWIP + `",` +
 		`"gcp":{"workloadIdentityProvider":"` + testWIP + `","serviceAccountEmail":"` + testServiceAccount + `"},` + testConnectorTail + `}`
+	testGCPWithoutSA = `{"id":"22222222-2222-2222-2222-222222222222","name":"gcp-prod","kind":"gcp","audience":"//iam.googleapis.com/` + testWIP + `",` +
+		`"gcp":{"workloadIdentityProvider":"` + testWIP + `"},` + testConnectorTail + `}`
 	testGenericConnector = `{"id":"33333333-3333-3333-3333-333333333333","name":"vault","kind":"generic","audience":"https://vault.example.com",` + testConnectorTail + `}`
 	testAttachedAWS      = `{"id":"11111111-1111-1111-1111-111111111111","name":"aws-prod","kind":"aws","audience":"runware:org-1",` +
 		`"aws":{"roleArn":"` + testRoleARN + `"},"subject":"` + testSubject + `","subjectPattern":"` + testSubjectPattern + `",` + testConnectorTail + `}`
@@ -207,6 +213,24 @@ func TestConnectorsUpdateKeepsWhatTheFlagsLeaveOut(t *testing.T) {
 				`","serviceAccountEmail":"other@my-project.iam.gserviceaccount.com"}}`,
 		},
 		{
+			name:    "gcp clear removes the service account and keeps the provider",
+			current: testGCPConnector,
+			args:    []string{testConnectorName, clearFlagName, clearSAField},
+			want:    `{"audience":"//iam.googleapis.com/` + testWIP + `","gcp":{"workloadIdentityProvider":"` + testWIP + `"}}`,
+		},
+		{
+			name:    "gcp clear with a new provider recomputes the audience",
+			current: testGCPConnector,
+			args:    []string{testConnectorName, clearFlagName, clearSAField, wipFlag, testNewWIP},
+			want:    `{"audience":"//iam.googleapis.com/` + testNewWIP + `","gcp":{"workloadIdentityProvider":"` + testNewWIP + `"}}`,
+		},
+		{
+			name:    "gcp clear with a new provider goes through when there is no service account to clear",
+			current: testGCPWithoutSA,
+			args:    []string{testConnectorName, clearFlagName, clearSAField, wipFlag, testNewWIP},
+			want:    `{"audience":"//iam.googleapis.com/` + testNewWIP + `","gcp":{"workloadIdentityProvider":"` + testNewWIP + `"}}`,
+		},
+		{
 			name:    "generic audience",
 			current: testGenericConnector,
 			args:    []string{testConnectorName, audienceFlag, "https://other.example.com"},
@@ -234,30 +258,44 @@ func TestConnectorsUpdateKeepsWhatTheFlagsLeaveOut(t *testing.T) {
 }
 
 func TestConnectorsUpdateRefusals(t *testing.T) {
-	t.Run("no flag sends nothing", func(t *testing.T) {
-		run := runServerless(t, testConnectorsGroup, testUpdateCommand, "aws-prod")
+	cases := []struct {
+		name    string
+		current string   // the connector GET answers
+		args    []string // after "connectors update"
+		want    string   // a substring of the refusal
+		gets    int      // lookups sent before the refusal; no update is ever sent
+	}{
+		{name: "no flag sends nothing", current: testAWSConnector, args: []string{testConnectorName}, want: "at least one of the flags in the group"},
+		{name: "a flag of another kind is not sent", current: testGenericConnector, args: []string{testConnectorName, roleARNFlag, testNewRoleARN}, want: "--role-arn do not apply to a generic connector", gets: 1},
+		{name: "clear of a missing service account on its own", current: testGCPWithoutSA, args: []string{testConnectorName, clearFlagName, clearSAField}, want: "the connector has no service account, so there is nothing to change", gets: 1},
+		{name: "clear on an aws connector", current: testAWSConnector, args: []string{testConnectorName, clearFlagName, clearSAField}, want: "--clear service-account-email do not apply to a aws connector", gets: 1},
+		{name: "clear on a generic connector", current: testGenericConnector, args: []string{testConnectorName, clearFlagName, clearSAField}, want: "--clear service-account-email do not apply to a generic connector", gets: 1},
+		{name: "clear with its own flag", current: testGCPConnector, args: []string{testConnectorName, clearFlagName, clearSAField, serviceAccountFlag, testServiceAccount}, want: "both change service-account-email"},
+		{name: "clear of an unknown field", current: testGCPConnector, args: []string{testConnectorName, clearFlagName, "audience"}, want: `--clear takes service-account-email; got "audience"`},
+		{name: "clear with no field", current: testGCPConnector, args: []string{testConnectorName, clearFlagName, ""}, want: "--clear takes service-account-email; got nothing"},
+		{name: "clear with no field next to another change", current: testGCPConnector, args: []string{testConnectorName, clearFlagName, "", wipFlag, testNewWIP}, want: "--clear takes service-account-email; got nothing"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := connectorAPI(t, &bodyRecorder{}, map[string]stubResponse{
+				"GET " + testConnectorPath: {status: http.StatusOK, body: tc.current},
+			})
 
-		if run.err == nil || !strings.Contains(run.err.Error(), "at least one of the flags in the group") {
-			t.Fatalf("err = %v, want a one-required refusal", run.err)
-		}
-		if len(run.requests) != 0 {
-			t.Fatalf("requests = %v, want none", run.requests)
-		}
-	})
-	t.Run("a flag of another kind is not sent", func(t *testing.T) {
-		api := connectorAPI(t, &bodyRecorder{}, map[string]stubResponse{
-			"GET " + testConnectorPath: {status: http.StatusOK, body: testGenericConnector},
+			run := runServerlessAgainst(t, api, append([]string{testConnectorsGroup, testUpdateCommand}, tc.args...)...)
+
+			if run.err == nil || !strings.Contains(run.err.Error(), tc.want) {
+				t.Fatalf("err = %v, want one containing %q", run.err, tc.want)
+			}
+			if len(run.requests) != tc.gets {
+				t.Fatalf("requests = %v, want %d lookup(s) and no update", run.requests, tc.gets)
+			}
+			for _, r := range run.requests {
+				if r.method != http.MethodGet {
+					t.Fatalf("requests = %v, want no write", run.requests)
+				}
+			}
 		})
-
-		run := runServerlessAgainst(t, api, testConnectorsGroup, testUpdateCommand, "aws-prod", roleARNFlag, testNewRoleARN)
-
-		if run.err == nil || !strings.Contains(run.err.Error(), "--role-arn do not apply to a generic connector") {
-			t.Fatalf("err = %v", run.err)
-		}
-		if len(run.requests) != 1 || run.requests[0].method != http.MethodGet {
-			t.Fatalf("requests = %v, want the one lookup and no update", run.requests)
-		}
-	})
+	}
 }
 
 func TestConnectorsDeleteAndShow(t *testing.T) {
