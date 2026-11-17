@@ -67,24 +67,8 @@ func (c *Client) ListOidcConnectors(ctx context.Context, params ListOidcConnecto
 
 // GetOidcConnector returns one OIDC connector of the organization.
 func (c *Client) GetOidcConnector(ctx context.Context, name string) (*OidcConnector, error) {
-	if c.apiKey == "" {
-		return nil, transport.ErrNoAPIKey
-	}
-
-	resp, err := c.inner.GetOidcConnectorWithResponse(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("get oidc connector: %w", err)
-	}
-
-	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
-
-	if resp.StatusCode() != http.StatusOK {
-		return nil, problemFromBody(resp.Body, resp.StatusCode())
-	}
-	if resp.JSON200 == nil {
-		return nil, fmt.Errorf("get oidc connector: empty 200 response")
-	}
-	return resp.JSON200, nil
+	connector, _, err := c.GetOidcConnectorWithETag(ctx, name)
+	return connector, err
 }
 
 // GetOidcConnectorWithETag returns one OIDC connector together with the ETag

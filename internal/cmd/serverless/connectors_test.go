@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"cmp"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -762,6 +763,7 @@ type etagConnectorAPI struct {
 	etag      string
 	putStatus int
 	putBody   string
+	getBody   string // the connector GET answers; testAWSConnector when empty
 
 	mu       sync.Mutex
 	ifMatch  []string
@@ -776,7 +778,7 @@ func (a *etagConnectorAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.etag != "" {
 			w.Header().Set("ETag", a.etag)
 		}
-		_, _ = io.WriteString(w, testAWSConnector)
+		_, _ = io.WriteString(w, cmp.Or(a.getBody, testAWSConnector))
 	case http.MethodPut:
 		a.mu.Lock()
 		_, has := r.Header["If-Match"]
@@ -839,5 +841,45 @@ func TestConnectorsUpdateSendsNoIfMatchWhenTheAPIGaveNoETag(t *testing.T) {
 	}
 	if !reflect.DeepEqual(api.hasMatch, []bool{false}) {
 		t.Fatalf("PUT carried an If-Match header = %v, want one PUT without it", api.hasMatch)
+	}
+}
+
+func TestConnectorsUpdateKeepsTheAPIsOwnRefusalForOtherStatuses(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{name: "conflict", status: http.StatusConflict, body: `{"type":"about:blank","title":"Conflict","status":409,"detail":"connector is being deleted"}`, want: "connector is being deleted"},
+		{name: "bad request", status: http.StatusBadRequest, body: `{"type":"about:blank","title":"Bad Request","status":400,"detail":"If-Match is not a valid entity-tag"}`, want: "If-Match is not a valid entity-tag"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &etagConnectorAPI{etag: testConnectorETag, putStatus: tc.status, putBody: tc.body}
+
+			run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+			if run.err == nil || !strings.Contains(run.err.Error(), tc.want) {
+				t.Fatalf("err = %v, want the API's own text %q", run.err, tc.want)
+			}
+			if strings.Contains(run.err.Error(), "changed by someone else") {
+				t.Fatalf("err = %v, a %d must not read as a concurrent change", run.err, tc.status)
+			}
+		})
+	}
+}
+
+func TestConnectorsUpdateClearSendsTheETagAsIfMatch(t *testing.T) {
+	api := &etagConnectorAPI{etag: testConnectorETag, putStatus: http.StatusOK, putBody: testGCPWithoutSA}
+	api.getBody = testGCPConnector
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, clearFlagName, clearSAField)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.ifMatch, []string{testConnectorETag}) {
+		t.Fatalf("If-Match on the PUTs = %q, want exactly the GET's ETag %s", api.ifMatch, testConnectorETag)
 	}
 }
