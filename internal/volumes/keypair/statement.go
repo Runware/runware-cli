@@ -113,11 +113,10 @@ func NewVerifier(serverlessBaseURL, configDir string) (*Verifier, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewVerifierWithKeys(keys, platformHost(serverlessBaseURL), configDir, time.Now)
+	return newVerifier(keys, platformHost(serverlessBaseURL), configDir, time.Now)
 }
 
-// NewVerifierWithKeys is NewVerifier over explicit keys, platform host and clock, for tests in this module.
-func NewVerifierWithKeys(keys map[uint32]*ecdsa.PublicKey, host, configDir string, now func() time.Time) (*Verifier, error) {
+func newVerifier(keys map[uint32]*ecdsa.PublicKey, host, configDir string, now func() time.Time) (*Verifier, error) {
 	if configDir == "" {
 		return nil, errors.New("volume key-pair statement: the config directory is not set")
 	}
@@ -157,8 +156,9 @@ func (v *Verifier) Verify(statement, signature []byte, organization [16]byte) (S
 	if st.organization != organization {
 		return Statement{}, refuse("organization is not the configured one")
 	}
-	if !v.now().Before(st.NotAfter) {
-		return Statement{}, refuse("statement is at or past its not-after")
+	if now := v.now(); !now.Before(st.NotAfter) {
+		return Statement{}, refuse("statement is at or past its not-after (%s); local time is %s",
+			st.NotAfter.Format(time.RFC3339), now.UTC().Format(time.RFC3339Nano))
 	}
 	if err := v.seq.accept(st.organization, st.Sequence); err != nil {
 		return Statement{}, err

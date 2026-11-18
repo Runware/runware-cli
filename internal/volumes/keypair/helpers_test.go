@@ -158,7 +158,7 @@ func newTestVerifier(t *testing.T, version uint32, key *ecdsa.PublicKey, now tim
 func newVerifierWithKeys(t *testing.T, keys map[uint32]*ecdsa.PublicKey, now time.Time) (*Verifier, string) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "config")
-	verifier, err := NewVerifierWithKeys(keys, testHost, dir, func() time.Time { return now })
+	verifier, err := newVerifier(keys, testHost, dir, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}

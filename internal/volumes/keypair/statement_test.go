@@ -335,6 +335,23 @@ func TestVerifyStatementRefuses(t *testing.T) {
 	}
 }
 
+func TestExpiredStatementShowsBothTimesInUTC(t *testing.T) {
+	v := loadVectors(t)
+	now := v.notAfter.Add(time.Second)
+	verifier, _ := v.verifier(t, now.In(time.FixedZone("local", 2*60*60)))
+
+	_, err := verifier.Verify(v.statement, v.signature, v.org)
+	if !errors.Is(err, ErrStatement) {
+		t.Fatalf("error = %v, want ErrStatement", err)
+	}
+	for _, clock := range []time.Time{v.notAfter, now} {
+		want := clock.Format(time.RFC3339)
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, missing %s", err, want)
+		}
+	}
+}
+
 type acceptCase struct {
 	name      string
 	now       time.Time
