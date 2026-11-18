@@ -1,29 +1,34 @@
 package put
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 )
 
 const (
-	stateDirName  = "volumes"
-	hashCacheFile = "hashes.json"
-	hashCacheForm = 2
-	hashBufBytes  = 1 << 20
+	stateDirName    = "volumes"
+	hashCacheFile   = "hashes.json"
+	hashCacheForm   = 2
+	hashBufBytes    = 1 << 20
+	maxCachedHashes = 100_000
 )
 
 type cacheEntry struct {
-	Size    int64  `json:"size"`
-	ModTime int64  `json:"modTimeUnixNano"`
-	Change  int64  `json:"changeTimeUnixNano"`
-	SHA256  string `json:"sha256"`
+	Size     int64  `json:"size"`
+	ModTime  int64  `json:"modTimeUnixNano"`
+	Change   int64  `json:"changeTimeUnixNano"`
+	SHA256   string `json:"sha256"`
+	StoredAt int64  `json:"storedAtUnixNano,omitempty"`
 }
 
 type cacheFile struct {
@@ -53,6 +58,7 @@ func loadHashCache(stateDir string) *hashCache {
 		return c
 	}
 	c.entries = f.Files
+	c.trim(maxCachedHashes)
 	return c
 }
 
@@ -70,10 +76,11 @@ func (c *hashCache) lookup(abs string, size int64, modTime time.Time, change int
 
 func (c *hashCache) store(abs string, size int64, modTime time.Time, change int64, sum [32]byte) {
 	c.entries[abs] = cacheEntry{
-		Size:    size,
-		ModTime: modTime.UnixNano(),
-		Change:  change,
-		SHA256:  hex.EncodeToString(sum[:]),
+		Size:     size,
+		ModTime:  modTime.UnixNano(),
+		Change:   change,
+		SHA256:   hex.EncodeToString(sum[:]),
+		StoredAt: time.Now().UnixNano(),
 	}
 	c.dirty = true
 }
@@ -85,11 +92,28 @@ func (c *hashCache) forget(abs string) {
 	}
 }
 
+func (c *hashCache) trim(limit int) {
+	if len(c.entries) <= limit {
+		return
+	}
+	paths := slices.SortedFunc(maps.Keys(c.entries), func(a, b string) int {
+		if order := cmp.Compare(c.entries[b].StoredAt, c.entries[a].StoredAt); order != 0 {
+			return order
+		}
+		return cmp.Compare(a, b)
+	})
+	for _, path := range paths[limit:] {
+		delete(c.entries, path)
+	}
+	c.dirty = true
+}
+
 // save writes the cache when it changed: a 0600 file, in a 0700 directory, by temp file and rename.
 func (c *hashCache) save() error {
 	if !c.dirty {
 		return nil
 	}
+	c.trim(maxCachedHashes)
 	dir := filepath.Dir(c.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create the hash cache directory: %w", err)

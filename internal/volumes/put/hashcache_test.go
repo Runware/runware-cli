@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -55,6 +56,31 @@ func TestHashCacheRoundTrip(t *testing.T) {
 
 	if got, ok := loadHashCache(dir).lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
 		t.Errorf("a saved entry reads back as %x, %v", got, ok)
+	}
+}
+
+func TestHashCacheKeepsNewestEntriesWithinLimit(t *testing.T) {
+	dir := t.TempDir()
+	c := loadHashCache(dir)
+	for i := range maxCachedHashes {
+		c.entries[strconv.Itoa(i)] = cacheEntry{StoredAt: int64(i)}
+	}
+	mod := time.Unix(1, 0)
+	want := sha256.Sum256([]byte("new content"))
+	c.store("/data/new.bin", 11, mod, 42, want)
+	if err := c.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := loadHashCache(dir)
+	if reloaded.dirty || len(reloaded.entries) != maxCachedHashes {
+		t.Fatalf("saved cache did not stay within %d entries", maxCachedHashes)
+	}
+	if _, ok := reloaded.entries["0"]; ok {
+		t.Error("the oldest entry was not evicted")
+	}
+	if got, ok := reloaded.lookup("/data/new.bin", 11, mod, 42); !ok || got != want {
+		t.Error("the most recently cached hash was lost")
 	}
 }
 
