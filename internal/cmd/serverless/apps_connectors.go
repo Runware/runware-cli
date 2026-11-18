@@ -189,23 +189,25 @@ either the API refuses, and the refusal says when to retry.`,
 			}
 
 			client := newServerlessClient(cmd, logger)
-			waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
-			defer cancel()
-
 			spin := cmdutil.NewSpinner(fmt.Sprintf("Starting a test of connector %s on %s...", name, app))
 			spin.Start()
 
-			test, err := client.StartAppOidcConnectorTest(waitCtx, app, name)
+			// The start is outside the --timeout budget: a start cut off after the
+			// API accepted it would leave a running test this command never names.
+			test, err := client.StartAppOidcConnectorTest(cmd.Context(), app, name)
 			if err != nil {
 				spin.Stop()
-				return connectorTestStartError(waitCtx, err, app, name, timeout)
+				return connectorTestStartError(err, app, name)
 			}
 			if test.Status == serverlessapi.OidcConnectorTestStatusPending {
-				spin.SetMessage(fmt.Sprintf("Waiting for the result of test %s...", test.Id))
+				waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+				defer cancel()
+				id := test.Id.String()
+				spin.SetMessage(fmt.Sprintf("Waiting for the result of test %s...", id))
 				test, err = client.WaitAppOidcConnectorTest(waitCtx, app, name, test, pollInterval)
 				if err != nil {
 					spin.Stop()
-					return waitTimeoutErr(waitCtx, err, "the connector test", timeout)
+					return connectorTestWaitErr(waitCtx, err, id, timeout)
 				}
 			}
 			spin.Stop()
@@ -225,10 +227,10 @@ either the API refuses, and the refusal says when to retry.`,
 // connectorTestStartError says what a refused start means to the person at the
 // terminal. The API's own detail stays on the message, and the error remains a
 // *transport.RunwareError so the structured output and the status survive.
-func connectorTestStartError(waitCtx context.Context, err error, app, name string, timeout time.Duration) error {
+func connectorTestStartError(err error, app, name string) error {
 	re, ok := errors.AsType[*transport.RunwareError](err)
 	if !ok {
-		return waitTimeoutErr(waitCtx, err, "the connector test to start", timeout)
+		return err
 	}
 	var hint string
 	switch re.StatusCode {
@@ -246,6 +248,19 @@ func connectorTestStartError(waitCtx context.Context, err error, app, name strin
 	out := *re
 	out.Message = hint + "\n" + re.Message
 	return &out
+}
+
+// connectorTestWaitErr names the test a wait gave up on, which keeps running on
+// the platform until it ends. An API error keeps its type so its structured
+// output and status survive.
+func connectorTestWaitErr(waitCtx context.Context, err error, id string, timeout time.Duration) error {
+	note := fmt.Sprintf("test %s keeps running and ends within two minutes of its start", id)
+	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
+		out := *re
+		out.Message = re.Message + "\n" + note
+		return &out
+	}
+	return fmt.Errorf("%w; %s", waitTimeoutErr(waitCtx, err, "the connector test", timeout), note)
 }
 
 // connectorTestFailedErr is the exit status of a finished test: nil for ok, and

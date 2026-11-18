@@ -29,14 +29,16 @@ func connectorTestBody(status, extra string) string {
 }
 
 // connectorTestStub answers a test start with start, then each poll with the
-// next of polls (the last one repeats), and counts the polls.
+// next of polls (the last one repeats), or with pollRefusal when it has a
+// status, and counts the polls.
 type connectorTestStub struct {
-	mu     sync.Mutex
-	start  stubResponse
-	polls  []string
-	header http.Header
-	gets   int
-	query  map[string][]string
+	mu          sync.Mutex
+	start       stubResponse
+	polls       []string
+	pollRefusal stubResponse
+	header      http.Header
+	gets        int
+	query       map[string][]string
 }
 
 func (s *connectorTestStub) handler(t *testing.T) http.HandlerFunc {
@@ -57,14 +59,28 @@ func (s *connectorTestStub) handler(t *testing.T) http.HandlerFunc {
 			w.WriteHeader(status)
 			_, _ = w.Write([]byte(s.start.body))
 		case "GET " + testConnectorTestGet:
-			body := s.polls[min(s.gets, len(s.polls)-1)]
 			s.gets++
+			if s.pollRefusal.status != 0 {
+				w.Header().Set("Content-Type", testProblemJSON)
+				w.WriteHeader(s.pollRefusal.status)
+				_, _ = w.Write([]byte(s.pollRefusal.body))
+				return
+			}
+			body := s.polls[min(s.gets-1, len(s.polls)-1)]
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(body))
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			writeNotFound(w)
 		}
+	}
+}
+
+// pendingStart is the API's answer to a test start it accepted.
+func pendingStart() stubResponse {
+	return stubResponse{
+		status: http.StatusAccepted,
+		body:   connectorTestBody("pending", ""),
 	}
 }
 
@@ -80,7 +96,7 @@ func runConnectorTest(t *testing.T, stub *connectorTestStub, extra ...string) se
 
 func TestAppsConnectorsTestPollsUntilTheResultIsIn(t *testing.T) {
 	stub := &connectorTestStub{
-		start: stubResponse{status: http.StatusAccepted, body: connectorTestBody("pending", "")},
+		start: pendingStart(),
 		polls: []string{
 			connectorTestBody("pending", ""),
 			connectorTestBody("pending", ""),
@@ -106,13 +122,15 @@ func TestAppsConnectorsTestPollsUntilTheResultIsIn(t *testing.T) {
 	}
 }
 
+type connectorTestOutcomeCase struct {
+	name       string
+	final      string
+	wantErr    string
+	wantStdout []string
+}
+
 func TestAppsConnectorsTestOutcomes(t *testing.T) {
-	cases := []struct {
-		name       string
-		final      string
-		wantErr    string
-		wantStdout []string
-	}{
+	cases := []connectorTestOutcomeCase{
 		{
 			name:       "cloud error shows the code, message, stage and hint",
 			final:      connectorTestBody("cloud_error", `"stage":"assume_role","code":"AccessDenied","message":"Not authorized to perform sts:AssumeRoleWithWebIdentity","troubleshooting":"The role's trust policy does not match the token's subject."`),
@@ -129,7 +147,7 @@ func TestAppsConnectorsTestOutcomes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &connectorTestStub{
-				start: stubResponse{status: http.StatusAccepted, body: connectorTestBody("pending", "")},
+				start: pendingStart(),
 				polls: []string{tc.final},
 			}
 
@@ -150,7 +168,10 @@ func TestAppsConnectorsTestOutcomes(t *testing.T) {
 // A platform error at the start needs no polling: the API has already ended the test.
 func TestAppsConnectorsTestStopsAtAnAnswerThatIsAlreadyFinal(t *testing.T) {
 	stub := &connectorTestStub{
-		start: stubResponse{status: http.StatusAccepted, body: connectorTestBody("platform_error", `"reason":"tenancy_not_ready"`)},
+		start: stubResponse{
+			status: http.StatusAccepted,
+			body:   connectorTestBody("platform_error", `"reason":"tenancy_not_ready"`),
+		},
 		polls: []string{connectorTestBody("ok", "")},
 	}
 
@@ -166,7 +187,7 @@ func TestAppsConnectorsTestStopsAtAnAnswerThatIsAlreadyFinal(t *testing.T) {
 
 func TestAppsConnectorsTestJSONIsTheAPITest(t *testing.T) {
 	stub := &connectorTestStub{
-		start: stubResponse{status: http.StatusAccepted, body: connectorTestBody("pending", "")},
+		start: pendingStart(),
 		polls: []string{connectorTestBody("cloud_error", `"stage":"sts","code":"invalid_target","message":"bad audience","troubleshooting":"Check the audience."`)},
 	}
 
@@ -186,13 +207,15 @@ func TestAppsConnectorsTestJSONIsTheAPITest(t *testing.T) {
 	}
 }
 
+type connectorTestRefusalCase struct {
+	name   string
+	status int
+	header http.Header
+	want   []string
+}
+
 func TestAppsConnectorsTestRefusals(t *testing.T) {
-	cases := []struct {
-		name   string
-		status int
-		header http.Header
-		want   []string
-	}{
+	cases := []connectorTestRefusalCase{
 		{
 			name:   "running test",
 			status: http.StatusConflict,
@@ -224,7 +247,10 @@ func TestAppsConnectorsTestRefusals(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &connectorTestStub{
-				start:  stubResponse{status: tc.status, body: problemBody(tc.status, details[tc.status])},
+				start: stubResponse{
+					status: tc.status,
+					body:   problemBody(tc.status, details[tc.status]),
+				},
 				header: tc.header,
 				polls:  []string{connectorTestBody("ok", "")},
 			}
@@ -248,7 +274,7 @@ func TestAppsConnectorsTestRefusals(t *testing.T) {
 
 func TestAppsConnectorsTestStopsWaitingAtTheTimeout(t *testing.T) {
 	stub := &connectorTestStub{
-		start: stubResponse{status: http.StatusAccepted, body: connectorTestBody("pending", "")},
+		start: pendingStart(),
 		polls: []string{connectorTestBody("pending", "")},
 	}
 
@@ -258,8 +284,37 @@ func TestAppsConnectorsTestStopsWaitingAtTheTimeout(t *testing.T) {
 	if run.err == nil || !strings.Contains(run.err.Error(), "timed out waiting for the connector test after 100ms") {
 		t.Fatalf("err = %v, want the timeout", run.err)
 	}
+	if !strings.Contains(run.err.Error(), "test "+testConnectorTestID+" keeps running") {
+		t.Errorf("err = %v, want it to name the test that keeps running", run.err)
+	}
 	if time.Since(begin) > 5*time.Second {
 		t.Fatalf("took %s, want the command to stop at the timeout", time.Since(begin))
+	}
+}
+
+// A poll the API refuses ends the wait; the error keeps the API's detail and
+// names the test, which goes on without the command.
+func TestAppsConnectorsTestNamesTheTestWhenAPollFails(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusServiceUnavailable,
+			body:   problemBody(http.StatusServiceUnavailable, "the API is restarting"),
+		},
+	}
+
+	run := runConnectorTest(t, stub)
+
+	if run.err == nil {
+		t.Fatal("err = nil, want the failed poll")
+	}
+	for _, want := range []string{"the API is restarting", "test " + testConnectorTestID + " keeps running"} {
+		if !strings.Contains(run.err.Error(), want) {
+			t.Errorf("error missing %q:\n%s", want, run.err)
+		}
+	}
+	if stub.gets != 1 {
+		t.Errorf("polls = %d, want 1", stub.gets)
 	}
 }
 
