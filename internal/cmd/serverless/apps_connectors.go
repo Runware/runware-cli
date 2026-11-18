@@ -197,7 +197,9 @@ either the API refuses, and the refusal says when to retry.`,
 			test, err := client.StartAppOidcConnectorTest(cmd.Context(), app, name)
 			if err != nil {
 				spin.Stop()
-				return connectorTestStartError(err, app, name)
+				choice := environmentFor(cmd)
+				listCmd := serverlessCommand(choice.name, choice.defaultEnvironment, "apps", "connectors", "list", app)
+				return connectorTestStartError(err, app, name, listCmd)
 			}
 			if test.Status == serverlessapi.OidcConnectorTestStatusPending {
 				waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
@@ -227,7 +229,7 @@ either the API refuses, and the refusal says when to retry.`,
 // connectorTestStartError says what a refused start means to the person at the
 // terminal. The API's own detail stays on the message, and the error remains a
 // *transport.RunwareError so the structured output and the status survive.
-func connectorTestStartError(err error, app, name string) error {
+func connectorTestStartError(err error, app, name, listCmd string) error {
 	re, ok := errors.AsType[*transport.RunwareError](err)
 	if !ok {
 		return err
@@ -235,11 +237,9 @@ func connectorTestStartError(err error, app, name string) error {
 	var hint string
 	switch re.StatusCode {
 	case http.StatusNotFound:
-		hint = fmt.Sprintf("connector %s was not found on %s: check the application id and that the connector is attached to it in this environment ('runware serverless apps connectors list %s')", name, app, app)
+		hint = fmt.Sprintf("connector %s was not found on %s: check the application id and that the connector is attached to it in this environment ('%s')", name, app, listCmd)
 	case http.StatusConflict:
 		hint = fmt.Sprintf("a connector test of %s is already running in this environment: wait for it to end, within two minutes, and run the test again", app)
-	case http.StatusUnprocessableEntity:
-		hint = fmt.Sprintf("connector %s cannot be tested: only aws and gcp connectors can be, a generic connector has no cloud to exchange with", name)
 	case http.StatusTooManyRequests:
 		hint = "the organization has started as many connector tests as an hour allows"
 	default:
@@ -250,17 +250,36 @@ func connectorTestStartError(err error, app, name string) error {
 	return &out
 }
 
-// connectorTestWaitErr names the test a wait gave up on, which keeps running on
-// the platform until it ends. An API error keeps its type so its structured
-// output and status survive.
+// connectorTestWaitError is a wait that ended before its test did. It names
+// the test, which keeps running on the platform until it ends. It is a
+// cmdutil.ResumableError, so an interrupted run still prints it, and it
+// unwraps to its cause, so an interrupt still reads as one.
+type connectorTestWaitError struct {
+	msg   string
+	cause error
+}
+
+var _ cmdutil.ResumableError = (*connectorTestWaitError)(nil)
+
+func (e *connectorTestWaitError) Error() string { return e.msg }
+
+// Resumable marks the error as one the CLI prints even when interrupted.
+func (*connectorTestWaitError) Resumable() {}
+
+func (e *connectorTestWaitError) Unwrap() error { return e.cause }
+
+// connectorTestWaitErr names the test a wait gave up on. An API error keeps
+// its type, with the note on its message, so its structured output and status
+// survive.
 func connectorTestWaitErr(waitCtx context.Context, err error, id string, timeout time.Duration) error {
 	note := fmt.Sprintf("test %s keeps running and ends within two minutes of its start", id)
 	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
 		out := *re
 		out.Message = re.Message + "\n" + note
-		return &out
+		return &connectorTestWaitError{msg: out.Message, cause: &out}
 	}
-	return fmt.Errorf("%w; %s", waitTimeoutErr(waitCtx, err, "the connector test", timeout), note)
+	msg := waitTimeoutErr(waitCtx, err, "the connector test", timeout).Error() + "; " + note
+	return &connectorTestWaitError{msg: msg, cause: err}
 }
 
 // connectorTestFailedErr is the exit status of a finished test: nil for ok, and

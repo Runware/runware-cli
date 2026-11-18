@@ -207,6 +207,37 @@ func TestRunStaysSilentWhenAnInterruptLeavesNothingToResume(t *testing.T) {
 	}
 }
 
+// TestRunNamesTheConnectorTestWhenInterrupted pins what an interrupt while a
+// connector test is polled leaves the user: the interrupted status, and the id
+// of the test, which keeps running on the platform.
+func TestRunNamesTheConnectorTestWhenInterrupted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("interrupts the test process, which Windows cannot signal")
+	}
+	const testID = "0190a6a8-0000-7000-8000-0000000000c2"
+	answer := func(w http.ResponseWriter, r *http.Request, interrupt func()) {
+		if r.Method != http.MethodPost {
+			holdAndInterrupt(w, r, interrupt)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"id":"`+testID+`","status":"pending","createdAt":"2026-11-18T10:00:00Z","deadlineAt":"2026-11-18T10:02:00Z"}`)
+	}
+
+	code, logged := interruptedRun(t, answer,
+		"serverless", "apps", "connectors", "test", "my-app", "aws-prod",
+		"--poll-interval", "10ms",
+	)
+
+	if code != exitInterrupted {
+		t.Fatalf("exit = %d, want %d\n%s", code, exitInterrupted, logged)
+	}
+	if !strings.Contains(logged, "test "+testID+" keeps running") {
+		t.Fatalf("stderr = %q, want it to name the running test", logged)
+	}
+}
+
 // signalSelf sends sig to the test process.
 func signalSelf(t *testing.T, sig os.Signal) {
 	t.Helper()

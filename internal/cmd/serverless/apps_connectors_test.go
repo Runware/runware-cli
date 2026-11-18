@@ -222,9 +222,11 @@ func TestAppsConnectorsTestRefusals(t *testing.T) {
 			want:   []string{"already running", "run the test again", "a test of this connector is running"},
 		},
 		{
-			name:   "generic connector",
+			// A 422 is also any request the API's schema refuses, so the CLI adds
+			// no diagnosis of its own: the API's detail says what was wrong.
+			name:   "unprocessable",
 			status: http.StatusUnprocessableEntity,
-			want:   []string{"only aws and gcp connectors", "generic connector has no cloud", "kind generic"},
+			want:   []string{"only aws and gcp connectors can be tested"},
 		},
 		{
 			name:   "not attached",
@@ -240,7 +242,7 @@ func TestAppsConnectorsTestRefusals(t *testing.T) {
 	}
 	details := map[int]string{
 		http.StatusConflict:            "a test of this connector is running",
-		http.StatusUnprocessableEntity: "kind generic",
+		http.StatusUnprocessableEntity: "a generic OIDC connector has no cloud to test the trust setup against; only aws and gcp connectors can be tested",
 		http.StatusNotFound:            "connector is not attached",
 		http.StatusTooManyRequests:     "the organization started 20 OIDC connector tests in the last hour",
 	}
@@ -269,6 +271,43 @@ func TestAppsConnectorsTestRefusals(t *testing.T) {
 				t.Errorf("stdout = %q, polls = %d, want neither after a refusal", run.stdout, stub.gets)
 			}
 		})
+	}
+}
+
+// The not-found hint's list command addresses the environment the test did.
+func TestAppsConnectorsTestNotFoundHintKeepsTheEnvironment(t *testing.T) {
+	stub := &connectorTestStub{
+		start: stubResponse{
+			status: http.StatusNotFound,
+			body:   problemBody(http.StatusNotFound, "OIDC connector attachment not found"),
+		},
+	}
+
+	run := runConnectorTest(t, stub, "--env", testEnvironment)
+
+	want := "runware serverless apps connectors list " + testAppID + " --env " + testEnvironment
+	if run.err == nil || !strings.Contains(run.err.Error(), want) {
+		t.Fatalf("err = %v, want it to suggest %q", run.err, want)
+	}
+}
+
+// A 422 the API's schema raised is not about the connector's kind.
+func TestAppsConnectorsTestAddsNoDiagnosisToASchemaRefusal(t *testing.T) {
+	const detail = "appId: string doesn't match the regular expression"
+	stub := &connectorTestStub{
+		start: stubResponse{
+			status: http.StatusUnprocessableEntity,
+			body:   problemBody(http.StatusUnprocessableEntity, detail),
+		},
+	}
+
+	run := runConnectorTest(t, stub)
+
+	if run.err == nil || !strings.Contains(run.err.Error(), detail) {
+		t.Fatalf("err = %v, want the API's detail", run.err)
+	}
+	if strings.Contains(run.err.Error(), "generic") || strings.Contains(run.err.Error(), "aws and gcp") {
+		t.Fatalf("err = %v, want no connector-kind diagnosis", run.err)
 	}
 }
 
