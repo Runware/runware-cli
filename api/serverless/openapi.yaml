@@ -45,6 +45,9 @@ tags:
     description: Plain-text environment variables scoped to an app
   - name: Observability
     description: Usage, metrics, events, and logs
+  - name: AuditLogs
+    description: |
+      Who changed what in the organization. Each committed write to this API is recorded with the credential that made it.
 paths:
   /v1/gpu-types:
     get:
@@ -141,7 +144,7 @@ paths:
         - Tasks
       summary: Start a new sync task
       description: |
-        Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+        Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
       operationId: startSyncTask
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -224,7 +227,7 @@ paths:
         - Tasks
       summary: Start a new sync task on the default endpoint
       description: |
-        Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+        Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
       operationId: startDefaultSyncTask
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -298,7 +301,7 @@ paths:
         - Tasks
       summary: List tasks for an app
       description: |
-        Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+        Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
       operationId: listTasks
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -784,7 +787,7 @@ paths:
         - Apps
       summary: Deploy a version
       description: |
-        Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+        Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
         To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
         A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
         A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -1484,7 +1487,7 @@ paths:
         - Secrets
       summary: Update a secret
       description: |
-        Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+        Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
       operationId: updateSecret
       parameters:
         - $ref: '#/components/parameters/SecretName'
@@ -1691,10 +1694,8 @@ paths:
           description: OIDC connector created
           headers:
             ETag:
-              description: >
-                Opaque validator of this connector's current state; it changes on every update.
-                Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if
-                nobody changed the connector since.
+              description: |
+                Opaque validator of this connector's current state; it changes on every update. Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if nobody changed the connector since.
               required: true
               schema:
                 type: string
@@ -1735,10 +1736,8 @@ paths:
           description: The OIDC connector
           headers:
             ETag:
-              description: >
-                Opaque validator of this connector's current state; it changes on every update.
-                Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if
-                nobody changed the connector since.
+              description: |
+                Opaque validator of this connector's current state; it changes on every update. Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if nobody changed the connector since.
               required: true
               schema:
                 type: string
@@ -1763,15 +1762,8 @@ paths:
         - OidcConnectors
       summary: Update an OIDC connector
       description: |
-        Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-
-        Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-        the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-        nothing changed and nothing rolled.
-        `If-Match: *` applies whenever the connector exists.
-        Without `If-Match` the update applies unconditionally, as before.
-        A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-        A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+        Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+        Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
       operationId: updateOidcConnector
       parameters:
         - $ref: '#/components/parameters/OidcConnectorName'
@@ -1787,10 +1779,8 @@ paths:
           description: Updated OIDC connector
           headers:
             ETag:
-              description: >
-                Opaque validator of this connector's current state; it changes on every update.
-                Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if
-                nobody changed the connector since.
+              description: |
+                Opaque validator of this connector's current state; it changes on every update. Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if nobody changed the connector since.
               required: true
               schema:
                 type: string
@@ -1889,7 +1879,7 @@ paths:
         - OidcConnectors
       summary: Attach an OIDC connector to an app
       description: |
-        Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+        Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
         A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
       operationId: attachAppOidcConnector
       parameters:
@@ -1903,9 +1893,8 @@ paths:
               $ref: '#/components/schemas/OidcConnectorAttach'
       responses:
         '201':
-          description: >
-            OIDC connector attached. The body is the connector as `GET /v1/apps/{appId}/oidc-connectors`
-            lists it, with the `subject` its tokens carry.
+          description: |
+            OIDC connector attached. The body is the connector as `GET /v1/apps/{appId}/oidc-connectors` lists it, with the `subject` its tokens carry.
           content:
             application/json:
               schema:
@@ -1938,7 +1927,7 @@ paths:
         - OidcConnectors
       summary: Detach an OIDC connector from an app
       description: |
-        Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers lose the connector on its next rollout.
+        Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers lose the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
       operationId: detachAppOidcConnector
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2003,7 +1992,7 @@ paths:
         - Secrets
       summary: Attach a secret to an app
       description: |
-        Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+        Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
         The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
         An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
         A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -2046,7 +2035,7 @@ paths:
         - Secrets
       summary: Detach a secret from an app
       description: |
-        Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it. The worker stops receiving the value on a later redeploy instead. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
+        Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
       operationId: detachAppSecret
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -2499,6 +2488,62 @@ paths:
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/audit-logs:
+    get:
+      tags:
+        - AuditLogs
+      summary: List audit logs
+      description: |
+        Returns the organization's audit log, newest first. Each committed write records one entry, attributed to the credential that made it: an org-scoped token is the console and an API key is every other client. A write that changes nothing records no entry. A secret write refused with `403` because the organization's tenancy is not active records an entry with `status` `denied` on a best-effort basis: it is written after the refusal is answered, and is not written once the organization's deletion or purge has begun. Invocations, task polls and reads record nothing. Entries are kept until the organization is purged; deleting an app keeps its entries. A cursor is valid only with the `q`, `source` and `status` it was issued under, ignoring the case of `q`.
+      operationId: listAuditLogs
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: |
+            Case-insensitive literal substring match against `action`, `actor.name` and each target `id`. An entry matching any of them is returned.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AuditLogSource'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AuditLogStatus'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the organization's audit log
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditLog'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
         '500':
@@ -3028,16 +3073,8 @@ components:
       name: If-Match
       in: header
       required: false
-      description: >
-        Optional precondition on the resource's current state: the `ETag` from an earlier read of it.
-        The request applies only while that is still the resource's current `ETag`; otherwise it returns `412`
-        and changes nothing.
-        `*` matches any existing resource, so it adds no check beyond the resource existing.
-        Without the header the request applies unconditionally.
-        Send one strong entity-tag exactly as received, quotes included.
-        A value that is not `*` or one quoted entity-tag (a weak `W/` tag, a comma-separated list in one header, a bare token) returns `400`.
-        So does a quoted tag this API never issued, such as `"abc"` or `"-5"`.
-        A value longer than 256 characters is refused by request validation with `422`, before the header is read as an entity-tag.
+      description: |
+        Optional precondition on the resource's current state: the `ETag` from an earlier read of it. The request applies only while that is still the resource's current `ETag`; otherwise it returns `412` and changes nothing. `*` matches any existing resource, so it adds no check beyond the resource existing. Without the header the request applies unconditionally. Send one entity-tag exactly as received, quotes included. A `W/` prefix is accepted and ignored: a proxy that compresses the response may weaken the `ETag` to `W/"..."`, and that weak form names the same state as the strong one. A value that is not `*` or one quoted entity-tag, optionally `W/`-prefixed (a comma-separated list in one header, a bare token), returns `400`. So does a quoted tag this API never issued, such as `"abc"` or `"-5"`. A value longer than 256 characters is refused by request validation with `422`, before the header is read as an entity-tag.
       schema:
         type: string
         maxLength: 256
@@ -3063,11 +3100,8 @@ components:
       name: limit
       in: query
       required: false
-      description: >
-        Maximum number of log entries to return in one page.
-        A worker that is still loading writes hundreds of lines before the one
-        that says why it failed, so a log page may be larger than other lists.
-        The ceiling is the one the log store accepts.
+      description: |
+        Maximum number of log entries to return in one page. A worker that is still loading writes hundreds of lines before the one that says why it failed, so a log page may be larger than other lists. The ceiling is the one the log store accepts.
       schema:
         type: integer
         format: int32
@@ -3347,7 +3381,7 @@ components:
       description: |
         The invocation could not be accepted and no task was minted. The problem `type` says which of two conditions applies, because the client's next move differs.
 
-        `capacity-unavailable` means the app is deployed and correct, and the platform has no workload able to serve it: the app is short of the workers it asks for, or it has work waiting and nothing running it. The request is unchanged by the refusal and succeeds as sent once capacity returns, so retry it rather than correct it, after `Retry-After` where that header is present. Read `health.reason` on the app to tell the two capacity conditions apart.
+        `capacity-unavailable` means the app is deployed and correct, and the platform has no workload able to serve it: the app is short of the workers it asks for, or it has work waiting and nothing running it. The request is unchanged by the refusal and succeeds as sent once capacity returns, so retry it rather than correct it, after `Retry-After` where that header is present. Read `health.reason` on the app to tell the two capacity conditions apart. `detail` is `app has no workload able to serve this invocation`. When the current unavailable spell recorded the runtime's quoted line, that sentence follows it. A capacity shortfall does not carry a line from an earlier spell. Clients switch on `type`, never on `detail`.
 
         `service-unavailable` means something this route depends on is temporarily unreachable, or the organization's serverless tenancy is still being provisioned. That is retryable too, but it says nothing about the app.
       headers:
@@ -3370,6 +3404,13 @@ components:
                 title: Service Unavailable
                 status: 503
                 detail: app has no workload able to serve this invocation
+            application-line:
+              summary: The current outage recorded the runtime's quoted line
+              value:
+                type: https://docs.runware.ai/serverless/errors#service-unavailable
+                title: Service Unavailable
+                status: 503
+                detail: 'app has no workload able to serve this invocation. Your application''s last line: RuntimeError: weights'
             service-unavailable:
               summary: A dependency is temporarily unreachable
               value:
@@ -3421,10 +3462,8 @@ components:
                 status: 404
                 detail: app not found
     PreconditionFailed:
-      description: >
-        An `If-Match` precondition did not hold: the resource changed since the `ETag` the client sent,
-        so nothing was changed.
-        Read the resource again, reapply the change to the fresh state and retry with the new `ETag`.
+      description: |
+        An `If-Match` precondition did not hold: the resource changed since the `ETag` the client sent, so nothing was changed. Read the resource again, reapply the change to the fresh state and retry with the new `ETag`.
       content:
         application/problem+json:
           schema:
@@ -3608,7 +3647,7 @@ components:
                 status: 500
                 detail: Internal Server Error
     BadGateway:
-      description: An upstream service was unreachable or refused the request
+      description: An upstream service was unreachable or refused the request, or the API instance shut down while the request waited
       content:
         application/problem+json:
           schema:
@@ -4214,6 +4253,12 @@ components:
           format: date-time
           description: |
             When the platform last looked. It is rewritten on every observation, so it reports the freshness of the verdict and not the age of the condition. A value far in the past means nothing has observed the app recently.
+        applicationLine:
+          type: string
+          maxLength: 600
+          readOnly: true
+          description: |
+            The last line the application printed before a container exit, while the app cannot serve. The exit has to belong to the version the app runs now. A capacity shortfall includes one only when that exit was recorded at or after `since`. A start failure also includes that version's exit from the two minutes before `since`, because the exit commits before the observation that opens the spell. The same sentence is appended to that exit on `GET /v1/apps/{appId}/events`. Absent when the app can serve.
         explanations:
           type: array
           maxItems: 2
@@ -4305,7 +4350,7 @@ components:
     WorkerStatus:
       type: string
       description: |
-        Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field: `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop.
+        Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field: `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop. A worker on a node that is not ready is `unhealthy` with reason `node-not-ready`, also after a stop was requested, until the node returns and reports the exit.
       enum:
         - pending
         - pulling
@@ -4740,22 +4785,16 @@ components:
         id:
           type: string
           format: uuid
-          description: >
-            The environment's immutable identifier, the `<environment uuid>` in an OIDC subject.
-            It belongs to the environment, not to its name: an environment deleted and created again
-            under the same name gets a new `id`, and so a new `oidcSubjectPrefix`.
-          example: "0190a6a8-0000-7000-8000-0000000000e1"
+          description: |
+            The environment's immutable identifier, the `<environment uuid>` in an OIDC subject. It belongs to the environment, not to its name: an environment deleted and created again under the same name gets a new `id`, and so a new `oidcSubjectPrefix`.
+          example: 0190a6a8-0000-7000-8000-0000000000e1
         name:
           $ref: '#/components/schemas/EnvironmentName'
         oidcSubjectPrefix:
           type: string
-          description: >
-            What the `sub` of every worker token in this environment starts with:
-            `worker:org:<organization uuid>:env:<environment uuid>:`. It is the start of `subject` on every
-            connector attached in the environment, so a trust rule can trust the environment before any app
-            or connector exists. The value has no trailing `*`: for an AWS `StringLike` condition append `*`,
-            and for a GCP attribute condition use it as is, with `assertion.sub.startsWith(...)`.
-          example: "worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:"
+          description: |
+            What the `sub` of every worker token in this environment starts with: `worker:org:<organization uuid>:env:<environment uuid>:`. It is the start of `subject` on every connector attached in the environment, so a trust rule can trust the environment before any app or connector exists. The value has no trailing `*`: for an AWS `StringLike` condition append `*`, and for a GCP attribute condition use it as is, with `assertion.sub.startsWith(...)`.
+          example: 'worker:org:0190a6a8-0000-7000-8000-00000000000a:env:0190a6a8-0000-7000-8000-0000000000e1:'
         isDefault:
           type: boolean
           description: |
@@ -5672,6 +5711,207 @@ components:
           type: string
           description: |
             Which pipeline produced this build: `code` or `container`, straight from the build record. Build phases differ by this value, so clients must not assume a fixed phase list. Not modeled as an enum so adding a source type later does not churn the existing source-type constants this API shares.
+    AuditLog:
+      type: object
+      additionalProperties: false
+      description: One recorded write to this API.
+      required:
+        - id
+        - occurredAt
+        - action
+        - status
+        - actor
+        - source
+        - targets
+        - detail
+      properties:
+        id:
+          type: string
+          description: Opaque entry identifier.
+        occurredAt:
+          type: string
+          format: date-time
+          description: When the write ran.
+        action:
+          $ref: '#/components/schemas/AuditLogAction'
+        status:
+          $ref: '#/components/schemas/AuditLogStatus'
+        actor:
+          $ref: '#/components/schemas/AuditLogActor'
+        source:
+          $ref: '#/components/schemas/AuditLogSource'
+        clientAddress:
+          type: string
+          description: The caller's IP address. Omitted when it is not known.
+        environment:
+          $ref: '#/components/schemas/AuditLogEnvironment'
+        targets:
+          type: array
+          description: |
+            What the write acted on, by the identifier this API addresses it with: an app by `appId`, a version by its number, a secret, variable, connector or environment by name, and a build or source upload by id. `environment.defaults.update` names none.
+          items:
+            $ref: '#/components/schemas/AuditLogTarget'
+        detail:
+          type: object
+          additionalProperties: true
+          description: |
+            The non-secret change, under the names and in the shapes this API uses for the fields. A changed field is `{"from": …, "to": …}`, with configuration fields under `configuration`. An app update that rolls a new version names it under `versionNumber`, even when no field changed. A build delete that cancels an in-flight build records the status it left the build in under `status`, as a plain value. A secret write names the secret and records that its value changed, never the value. A denied entry carries the refusal under `refusal`.
+        requestId:
+          type: string
+          description: The request id the API answered with. Omitted when it is not known.
+    AuditLogAction:
+      type: string
+      enum:
+        - app.create
+        - app.update
+        - app.delete
+        - app.deploy
+        - app.stop
+        - app.resume
+        - app.favorite
+        - app.build.delete
+        - app.version.delete
+        - source.create
+        - source.complete
+        - source.delete
+        - secret.create
+        - secret.update
+        - secret.delete
+        - secret.copy
+        - secret.batch.create
+        - secret.attach
+        - secret.detach
+        - variable.put
+        - variable.delete
+        - connector.create
+        - connector.update
+        - connector.delete
+        - connector.attach
+        - connector.detach
+        - environment.create
+        - environment.update
+        - environment.delete
+        - environment.defaults.update
+      x-enum-varnames:
+        - AuditLogActionAppCreate
+        - AuditLogActionAppUpdate
+        - AuditLogActionAppDelete
+        - AuditLogActionAppDeploy
+        - AuditLogActionAppStop
+        - AuditLogActionAppResume
+        - AuditLogActionAppFavorite
+        - AuditLogActionAppBuildDelete
+        - AuditLogActionAppVersionDelete
+        - AuditLogActionSourceCreate
+        - AuditLogActionSourceComplete
+        - AuditLogActionSourceDelete
+        - AuditLogActionSecretCreate
+        - AuditLogActionSecretUpdate
+        - AuditLogActionSecretDelete
+        - AuditLogActionSecretCopy
+        - AuditLogActionSecretBatchCreate
+        - AuditLogActionSecretAttach
+        - AuditLogActionSecretDetach
+        - AuditLogActionVariablePut
+        - AuditLogActionVariableDelete
+        - AuditLogActionConnectorCreate
+        - AuditLogActionConnectorUpdate
+        - AuditLogActionConnectorDelete
+        - AuditLogActionConnectorAttach
+        - AuditLogActionConnectorDetach
+        - AuditLogActionEnvironmentCreate
+        - AuditLogActionEnvironmentUpdate
+        - AuditLogActionEnvironmentDelete
+        - AuditLogActionEnvironmentDefaultsUpdate
+    AuditLogStatus:
+      type: string
+      description: |
+        `success` when the write committed, `denied` when a secret write was refused with `403` because the organization's tenancy is not active.
+      enum:
+        - success
+        - denied
+      x-enum-varnames:
+        - AuditLogStatusSuccess
+        - AuditLogStatusDenied
+    AuditLogSource:
+      type: string
+      description: '`console` for an org-scoped token, `api` for an API key.'
+      enum:
+        - console
+        - api
+      x-enum-varnames:
+        - AuditLogSourceConsole
+        - AuditLogSourceApi
+    AuditLogActor:
+      type: object
+      additionalProperties: false
+      description: The credential that made the write, as it was named at write time.
+      required:
+        - kind
+        - id
+        - name
+      properties:
+        kind:
+          $ref: '#/components/schemas/AuditLogActorKind'
+        id:
+          type: string
+          description: The token subject or the API key id. Opaque.
+        name:
+          type: string
+          description: The token's name claim or the API key's name, copied when the write ran.
+    AuditLogActorKind:
+      type: string
+      description: '`token` for an org-scoped token, `apiKey` for an API key.'
+      enum:
+        - token
+        - apiKey
+      x-enum-varnames:
+        - AuditLogActorKindToken
+        - AuditLogActorKindApiKey
+    AuditLogEnvironment:
+      type: object
+      additionalProperties: false
+      description: The environment the write was scoped to. Omitted when it had none.
+      required:
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Omitted when `production` had no row when the request resolved it.
+        name:
+          type: string
+    AuditLogTarget:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          $ref: '#/components/schemas/AuditLogTargetType'
+        id:
+          type: string
+    AuditLogTargetType:
+      type: string
+      enum:
+        - app
+        - version
+        - build
+        - secret
+        - variable
+        - connector
+        - environment
+        - source
+      x-enum-varnames:
+        - AuditLogTargetTypeApp
+        - AuditLogTargetTypeVersion
+        - AuditLogTargetTypeBuild
+        - AuditLogTargetTypeSecret
+        - AuditLogTargetTypeVariable
+        - AuditLogTargetTypeConnector
+        - AuditLogTargetTypeEnvironment
+        - AuditLogTargetTypeSource
     TriggeredBy:
       type: object
       description: |
@@ -5767,7 +6007,7 @@ components:
           type: integer
           format: int32
           description: |
-            Version number to deploy. Must reference a `ready` version on this app. Any in-progress or queued builds are canceled. Use an older version number to roll back.
+            Version number to deploy. Must reference a `ready` version on this app. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. Use an older version number to roll back.
     EndpointTrafficStatus:
       type: string
       description: |
@@ -6595,7 +6835,7 @@ components:
       description: |
         A recorded fact about an app. A `deploy` message says where a rollout is. It does not say which worker is answering a task. The sentences below are the ones a client polls for. The list is not exhaustive.
 
-        `deploy accepted: rolling to version N` means the rollout was accepted. `activeVersionId` already names version N. A secret change records `secret change accepted: rolling to pick up the updated secret configuration` instead, and an OIDC connector change records `OIDC connector change accepted: rolling to pick up the updated connector configuration`. Neither moves `activeVersionId`: the roll reapplies the version already pinned. That roll ends with the same `version N applied; waiting for M keep-warm worker(s) to be able to serve` and `version N deployed; app is active` messages, for the already-pinned N.
+        `deploy accepted: rolling to version N` means the rollout was accepted. `activeVersionId` already names version N. A secret change records `secret change accepted: rolling to pick up the updated secret configuration` instead, and an OIDC connector change records `OIDC connector change accepted: rolling to pick up the updated connector configuration`. A change that arrives while a rollout is in progress records `secret change accepted: rolls when the rollout in progress finishes` or `OIDC connector change accepted: rolls when the rollout in progress finishes` instead, and once that rollout has finished, within about 15 seconds, `change made during the previous rollout: rolling to pick it up` starts the roll that carries it. Neither moves `activeVersionId`: the roll reapplies the version already pinned. That roll ends with the same `version N applied; waiting for M keep-warm worker(s) to be able to serve` and `version N deployed; app is active` messages, for the already-pinned N.
 
         `version N recorded while stopped; rolls out on resume` means the pin moved and nothing is rolling. `stopped` means no workers are running. The same sentence with `stopping` means workers are still draining. Resume applies that version either way.
 
