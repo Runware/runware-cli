@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -96,6 +97,33 @@ func TestHashCacheCorruptFileIsEmpty(t *testing.T) {
 	c.store("/data/a.bin", 1, time.Unix(1, 0), 1, [32]byte{1})
 	if err := c.save(); err != nil {
 		t.Errorf("a corrupt cache could not be replaced: %v", err)
+	}
+}
+
+func TestPutChecksContentWhenSourceMetadataMatches(t *testing.T) {
+	e := newTestEnv(t)
+	const name = "changed.bin"
+	file := singleFile(t, e, name, []byte("new bytes"))
+	sources, err := Walk([]string{file}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := sources[0]
+	if src.Change == 0 {
+		t.Skip("this filesystem does not report a change time for cache hits")
+	}
+	cache := loadHashCache(e.stateDir())
+	cache.store(src.Abs, src.Size, src.ModTime, src.Change, sha256.Sum256([]byte("old bytes")))
+	if err := cache.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = e.put(e.cloud.newVolume("model-weights", ""), file)
+	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), name) {
+		t.Fatalf("put error = %v, want ErrSourceChanged naming %s", err, name)
+	}
+	if e.hashedCount() != 0 || len(e.cloud.putLog()) != 0 {
+		t.Error("put should use the cached hash and reject the changed content before sending the part")
 	}
 }
 
