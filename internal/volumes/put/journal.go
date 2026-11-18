@@ -1,6 +1,7 @@
 package put
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,9 +47,9 @@ type fileRecord struct {
 	Mode      uint32 `json:"mode"`
 	Size      int64  `json:"size"`
 	SHA256    string `json:"sha256"`
-	DataKey   []byte `json:"dataKey"`
-	SealedKey []byte `json:"sealedKey"`
-	Attempt   string `json:"attemptId"`
+	DataKey   []byte `json:"dataKey,omitempty"`
+	SealedKey []byte `json:"sealedKey,omitempty"`
+	Attempt   string `json:"attemptId,omitempty"`
 }
 
 type declaredRecord struct {
@@ -77,6 +78,11 @@ type ackRecord struct {
 }
 
 type completeRecord struct {
+	Type  string `json:"type"`
+	Index int    `json:"index"`
+}
+
+type recordIndex struct {
 	Type  string `json:"type"`
 	Index int    `json:"index"`
 }
@@ -154,6 +160,59 @@ func (j *journal) write(durable bool, recs []any) error {
 		}
 	}
 	return nil
+}
+
+// discardFileKeys rewrites the journal once before transfer, without the keys of reused files.
+func (j *journal) discardFileKeys(reused map[int]struct{}) error {
+	if len(reused) == 0 {
+		return nil
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	path := filepath.Join(j.dir, journalName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read the resume state before removing unused keys: %w", err)
+	}
+	defer clear(data)
+	kept := make([]byte, 0, len(data))
+	defer func() { clear(kept) }()
+	for line := range bytes.Lines(data) {
+		var header recordIndex
+		if err := json.Unmarshal(line, &header); err != nil {
+			return fmt.Errorf("read a resume state record: %w", err)
+		}
+		if _, ok := reused[header.Index]; ok && header.Type == recordFile {
+			line, err = recordWithoutKeys(line)
+			if err != nil {
+				return err
+			}
+		}
+		kept = append(kept, line...)
+	}
+	if err := j.closeLocked(); err != nil {
+		return fmt.Errorf("close the resume state before removing unused keys: %w", err)
+	}
+	if err := writeFileAtomic(j.dir, journalName, kept); err != nil {
+		return fmt.Errorf("remove unused keys from the resume state: %w", err)
+	}
+	syncDir(j.dir)
+	j.file, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return fmt.Errorf("reopen the resume state: %w", err)
+	}
+	return nil
+}
+
+func recordWithoutKeys(line []byte) ([]byte, error) {
+	var rec fileRecord
+	if err := json.Unmarshal(line, &rec); err != nil {
+		return nil, fmt.Errorf("read a file's resume state: %w", err)
+	}
+	clear(rec.DataKey)
+	clear(rec.SealedKey)
+	rec.DataKey, rec.SealedKey, rec.Attempt = nil, nil, ""
+	return encodeLine(rec)
 }
 
 // close syncs and closes the journal without removing it.

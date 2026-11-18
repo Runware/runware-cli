@@ -842,6 +842,42 @@ func TestAbortFailureKeepsState(t *testing.T) {
 	}
 }
 
+func TestRetainedJournalDropsReusedFileKeys(t *testing.T) {
+	e := newTestEnv(t)
+	reused := singleFile(t, e, "known.bin", []byte("already stored"))
+	missing := singleFile(t, e, "missing.bin", []byte("needs transfer"))
+	e.mustPut(e.cloud.newVolume("original", ""), reused)
+
+	e.cloud.fault = func(partRequest) *fakeFault {
+		return &fakeFault{
+			Status: http.StatusUnauthorized,
+			Slug:   slugPartTokenInvalid,
+		}
+	}
+	opts := e.options(e.cloud.newVolume("another", ""), reused, missing)
+	opts.API = failingAbort{
+		API: e.cloud,
+		err: &ProblemError{Status: http.StatusServiceUnavailable},
+	}
+	_, err := Run(t.Context(), opts)
+	if !errors.Is(err, ErrPartTokenInvalid) || !strings.Contains(err.Error(), "could not be aborted") {
+		t.Fatalf("error = %v, want a refused part and failed abort", err)
+	}
+
+	var retained, scrubbed bool
+	for _, record := range readJournal(t, e.configDir).ofType(recordFile) {
+		switch record["path"] {
+		case "known.bin":
+			scrubbed = record["dataKey"] == nil && record["sealedKey"] == nil && record["attemptId"] == nil
+		case "missing.bin":
+			retained = len(decodeStd(t, record["dataKey"])) == 32
+		}
+	}
+	if !scrubbed || !retained {
+		t.Errorf("reused keys discarded = %t, in-flight key retained = %t", scrubbed, retained)
+	}
+}
+
 func keyForms(b []byte) []string {
 	return []string{
 		hex.EncodeToString(b),

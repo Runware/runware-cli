@@ -289,14 +289,20 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source, before FileList) (Summary, error) {
 	files, err := r.declare(ctx, sess, sources)
 	defer clearKeys(files)
-	if err != nil {
-		return Summary{}, err
-	}
+	reused := make(map[int]struct{})
 	var todo []*fileState
 	for _, f := range files {
-		if !f.reused {
+		if f.reused {
+			reused[f.index] = struct{}{}
+		} else {
 			todo = append(todo, f)
 		}
+	}
+	if cleanupErr := r.journal.discardFileKeys(reused); cleanupErr != nil {
+		return Summary{}, cleanupErr
+	}
+	if err != nil {
+		return Summary{}, err
 	}
 	if err := r.uploadFiles(ctx, todo); err != nil {
 		return Summary{}, err
