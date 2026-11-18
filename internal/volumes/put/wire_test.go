@@ -92,8 +92,8 @@ const specDeclareAnswer = `{"files":[
   {"file":{"id":"2e4f6a8c-0b1d-4e3f-9a5c-7b9d1f3e5a77","path":"unet/diffusion_pytorch_model.safetensors","mode":292,"size":10270000000,
            "sha256":"5a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b","state":"uploading","attemptId":"3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e",
            "layout":{"segmentBytes":1048576,"segmentPlaintextBytes":1048560,"segmentsPerPart":64,"partSizeBytes":67108880,"partCount":154,"ciphertextBytes":10270159184}},
-   "uploadTargets":[{"partNumber":1,"url":"https://volumes.serverless.runware.ai/v1/parts","token":"example-part-token-1","expiresAt":"2026-11-09T13:05:00Z"},
-                    {"partNumber":2,"url":"https://volumes.serverless.runware.ai/v1/parts","token":"example-part-token-2","expiresAt":"2026-11-09T13:05:00Z"}]},
+   "uploadTargets":[{"partNumber":1,"url":"https://upload.example.com/v1/parts","token":"example-part-token-1","expiresAt":"2026-11-09T13:05:00Z"},
+                    {"partNumber":2,"url":"https://upload.example.com/v1/parts","token":"example-part-token-2","expiresAt":"2026-11-09T13:05:00Z"}]},
   {"file":{"id":"9c7a5e3b-1d2f-4a6c-8e0b-3f5d7a9c1e22","path":"vae/diffusion_pytorch_model.safetensors","mode":292,"size":334643268,
            "sha256":"0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d","state":"reused"},
    "blob":{"sha256":"0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d","size":334643268}}]}`
@@ -145,7 +145,7 @@ func TestWireTypesTakeSpecExamples(t *testing.T) {
 	var renew PartTokenRequest
 	decodeStrict(t, []byte(`{"partNumbers":[12,13,14]}`), &renew)
 	var targets UploadTargets
-	decodeStrict(t, []byte(`{"uploadTargets":[{"partNumber":12,"url":"https://volumes.serverless.runware.ai/v1/parts","token":"a.b","expiresAt":"2026-11-09T13:05:00Z"}]}`), &targets)
+	decodeStrict(t, []byte(`{"uploadTargets":[{"partNumber":12,"url":"https://upload.example.com/v1/parts","token":"a.b","expiresAt":"2026-11-09T13:05:00Z"}]}`), &targets)
 	if len(renew.PartNumbers) != 3 || len(targets.UploadTargets) != 1 {
 		t.Errorf("renewal = %+v, %+v", renew, targets)
 	}
@@ -192,7 +192,7 @@ func TestSecretIsRedacted(t *testing.T) {
 	const value = "eyJ2IjoxfQ.c2lnbmF0dXJl"
 	target := Target{
 		PartNumber: 1,
-		URL:        "https://volumes.serverless.runware.ai/v1/parts",
+		URL:        "https://upload.example.com/v1/parts",
 		Token:      Secret(value),
 	}
 	ack := PartAck{
