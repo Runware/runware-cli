@@ -317,6 +317,7 @@ type fakeFile struct {
 	state  string
 	layout volumeformat.Layout
 	parts  map[int]storedPart
+	answer DeclarationAnswer
 }
 
 type fakeUpload struct {
@@ -328,6 +329,7 @@ type fakeUpload struct {
 	files     map[string]*fakeFile
 	paths     map[string]string
 	order     []string
+	result    UploadResult
 }
 
 // partRequest is a request to the fake upload endpoint.
@@ -699,7 +701,7 @@ func (c *fakeCloud) DeclareFiles(ctx context.Context, ref UploadRef, batch FileD
 				Pointer: pointer + "sealedKey",
 			}
 		}
-		if _, dup := up.paths[d.Path]; dup {
+		if id, dup := up.paths[d.Path]; dup && up.files[id].decl != *d {
 			return DeclarationResult{}, &ProblemError{
 				Status:  http.StatusConflict,
 				Slug:    "volume-upload-path-declared",
@@ -721,6 +723,10 @@ func (c *fakeCloud) DeclareFiles(ctx context.Context, ref UploadRef, batch FileD
 	var res DeclarationResult
 	for i := range batch.Files {
 		d := batch.Files[i]
+		if id, dup := up.paths[d.Path]; dup {
+			res.Files = append(res.Files, up.files[id].answer)
+			continue
+		}
 		f := &fakeFile{
 			id:     uuid.NewString(),
 			upload: up,
@@ -773,6 +779,7 @@ func (c *fakeCloud) DeclareFiles(ctx context.Context, ref UploadRef, batch FileD
 				UploadTargets: targets,
 			})
 		}
+		f.answer = res.Files[len(res.Files)-1]
 		up.files[f.id] = f
 		up.paths[d.Path] = f.id
 		up.order = append(up.order, f.id)
@@ -835,6 +842,9 @@ func (c *fakeCloud) CompleteFile(ctx context.Context, ref UploadRef, fileID stri
 		return UploadFile{}, p
 	}
 	f, ok := up.files[fileID]
+	if ok && f.state == stateVerified {
+		return f.verifiedResult(), nil
+	}
 	if !ok || f.state != stateUploading {
 		return UploadFile{}, &ProblemError{
 			Status: http.StatusConflict,
@@ -885,6 +895,10 @@ func (c *fakeCloud) CompleteFile(ctx context.Context, ref UploadRef, fileID stri
 		sha:  f.decl.SHA256,
 		size: f.decl.Size,
 	}] = blobID(f.decl.SHA256, f.decl.Size)
+	return f.verifiedResult(), nil
+}
+
+func (f *fakeFile) verifiedResult() UploadFile {
 	return UploadFile{
 		ID:     f.id,
 		Path:   f.decl.Path,
@@ -892,7 +906,7 @@ func (c *fakeCloud) CompleteFile(ctx context.Context, ref UploadRef, fileID stri
 		Size:   f.decl.Size,
 		SHA256: f.decl.SHA256,
 		State:  stateVerified,
-	}, nil
+	}
 }
 
 // decryptsTo opens the sealed key and the object as a reader of the Volume would and checks the plaintext.
@@ -956,6 +970,9 @@ func (c *fakeCloud) CompleteUpload(ctx context.Context, ref UploadRef) (UploadRe
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.logCall("complete")
+	if up, p := c.upload(ref); p == nil && up.state == fakeCompleted {
+		return up.result, nil
+	}
 	up, p := c.openUpload(ref)
 	if p != nil {
 		return UploadResult{}, p
@@ -984,7 +1001,7 @@ func (c *fakeCloud) CompleteUpload(ctx context.Context, ref UploadRef) (UploadRe
 		}
 	}
 	up.state = fakeCompleted
-	return UploadResult{
+	up.result = UploadResult{
 		Upload: Upload{
 			ID:        up.id,
 			VolumeID:  up.vol.id,
@@ -993,7 +1010,8 @@ func (c *fakeCloud) CompleteUpload(ctx context.Context, ref UploadRef) (UploadRe
 		},
 		Changed:        changed,
 		ManifestSHA256: c.digest(up.vol),
-	}, nil
+	}
+	return up.result, nil
 }
 
 func (c *fakeCloud) AbortUpload(ctx context.Context, ref UploadRef) error {

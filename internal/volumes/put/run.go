@@ -19,13 +19,16 @@ import (
 )
 
 const (
-	defaultParallelism  = 4
-	maxParallelism      = 16
-	maxDeclarationBatch = 100
-	keyPairAttempts     = 5
-	baseBackoff         = 500 * time.Millisecond
-	abortTimeout        = 15 * time.Second
+	defaultParallelism   = 4
+	maxParallelism       = 16
+	maxDeclarationBatch  = 100
+	keyPairAttempts      = 5
+	maxUploadAPIAttempts = 5
+	baseBackoff          = 500 * time.Millisecond
+	abortTimeout         = 15 * time.Second
 )
+
+var errUploadRetriesExhausted = errors.New("the upload retry limit was reached")
 
 // Options configures one put.
 type Options struct {
@@ -290,7 +293,9 @@ func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source
 	if err := r.uploadFiles(ctx, todo); err != nil {
 		return Summary{}, err
 	}
-	res, err := r.api.CompleteUpload(ctx, r.ref)
+	res, err := retryUploadAPI(ctx, r.sleep, func() (UploadResult, error) {
+		return r.api.CompleteUpload(ctx, r.ref)
+	})
 	if err != nil {
 		return Summary{}, fmt.Errorf("complete the upload: %w", explain(err))
 	}
@@ -352,7 +357,9 @@ func (r *runner) declare(ctx context.Context, sess KeySession, sources []Source)
 		if err := r.journal.logSync(recs...); err != nil {
 			return files, err
 		}
-		got, err := r.api.DeclareFiles(ctx, r.ref, decls)
+		got, err := retryUploadAPI(ctx, r.sleep, func() (DeclarationResult, error) {
+			return r.api.DeclareFiles(ctx, r.ref, decls)
+		})
 		if err != nil {
 			return files, explainDeclare(err, batch)
 		}
@@ -485,6 +492,31 @@ func pointerFile(pointer string) (int, bool) {
 	index, _, _ := strings.Cut(rest, "/")
 	i, err := strconv.Atoi(index)
 	return i, err == nil && i >= 0
+}
+
+func retryUploadAPI[T any](ctx context.Context, sleep func(context.Context, time.Duration) error, call func() (T, error)) (T, error) {
+	var empty T
+	for attempt := 1; ; attempt++ {
+		if ctx.Err() != nil {
+			return empty, context.Cause(ctx)
+		}
+		res, err := call()
+		if err == nil {
+			return res, nil
+		}
+		if ctx.Err() != nil {
+			return empty, context.Cause(ctx)
+		}
+		if !retryable(err) || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionExpired) {
+			return empty, err
+		}
+		if attempt == maxUploadAPIAttempts {
+			return empty, fmt.Errorf("%w: %w", errUploadRetriesExhausted, err)
+		}
+		if err := sleep(ctx, backoff(attempt)); err != nil {
+			return empty, err
+		}
+	}
 }
 
 func backoff(attempt int) time.Duration {

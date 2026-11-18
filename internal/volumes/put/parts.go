@@ -303,7 +303,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			return partResult{}, err
 		default:
 			if attempts++; attempts >= maxPartAttempts {
-				return partResult{}, err
+				return partResult{}, fmt.Errorf("%w: %w", errUploadRetriesExhausted, err)
 			}
 			if err := r.sleep(ctx, backoff(attempts)); err != nil {
 				return partResult{}, err
@@ -312,7 +312,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 	}
 }
 
-// retryable reports whether sending the part again can help.
+// retryable reports whether the request can benefit from a retry.
 func retryable(err error) bool {
 	if errors.Is(err, ErrPartTokenInvalid) || errors.Is(err, ErrPartLengthMismatch) || errors.Is(err, ErrProtocol) {
 		return false
@@ -330,14 +330,16 @@ func (r *runner) target(ctx context.Context, f *fileState, part int, failed Secr
 	if t, ok := f.targets[part]; ok && (failed == "" || t.Token != failed) {
 		return t, nil
 	}
-	if !r.now().Before(r.expiresAt) {
-		return Target{}, ErrSessionExpired
-	}
 	parts := make([]int, 0, maxRenewParts)
 	for p := part; p <= int(f.layout.PartCount) && len(parts) < maxRenewParts; p++ {
 		parts = append(parts, p)
 	}
-	got, err := r.api.RenewParts(ctx, r.ref, f.id, parts)
+	got, err := retryUploadAPI(ctx, r.sleep, func() ([]Target, error) {
+		if !r.now().Before(r.expiresAt) {
+			return nil, ErrSessionExpired
+		}
+		return r.api.RenewParts(ctx, r.ref, f.id, parts)
+	})
 	if err != nil {
 		return Target{}, fmt.Errorf("renew the part tokens: %w", explain(err))
 	}
@@ -362,9 +364,12 @@ func (r *runner) completeFile(ctx context.Context, f *fileState) error {
 			Ack:        f.results[i].Ack,
 		}
 	}
-	done, err := r.api.CompleteFile(ctx, r.ref, f.id, FileCompletion{
+	completion := FileCompletion{
 		CRC64NVME: fmt.Sprintf("%016x", fileCRC(f.results)),
 		Parts:     parts,
+	}
+	done, err := retryUploadAPI(ctx, r.sleep, func() (UploadFile, error) {
+		return r.api.CompleteFile(ctx, r.ref, f.id, completion)
 	})
 	if err != nil {
 		return fileErr(f.src.Abs, fmt.Errorf("complete the file: %w", explain(err)))
