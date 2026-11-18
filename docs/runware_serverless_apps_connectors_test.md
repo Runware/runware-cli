@@ -26,11 +26,13 @@ The outcome is one of:
                   and they say nothing about the trust setup
 
 The command exits non-zero unless the outcome is ok. A result normally arrives
-within a minute and always within two; --timeout stops waiting sooner.
+within a minute and always within two; a --timeout below two minutes stops
+waiting sooner. A poll that fails on a server or network error is retried until
+--timeout.
 
-One test of an application's connectors runs at a time in an environment, and an
-organization may start 20 tests an hour (60 that end in platform_error). Past
-either the API refuses, and the refusal says when to retry.
+One test of each connector runs at a time for an application in an environment,
+and an organization may start 20 tests an hour (60 that end in platform_error).
+Past either the API refuses, and the refusal says when to retry.
 
 ```
 runware serverless apps connectors test <appId> <connector> [flags]

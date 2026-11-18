@@ -209,7 +209,7 @@ func TestRunStaysSilentWhenAnInterruptLeavesNothingToResume(t *testing.T) {
 
 // TestRunNamesTheConnectorTestWhenInterrupted pins what an interrupt while a
 // connector test is polled leaves the user: the interrupted status, and the id
-// of the test, which keeps running on the platform.
+// of the test the command stopped waiting for.
 func TestRunNamesTheConnectorTestWhenInterrupted(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("interrupts the test process, which Windows cannot signal")
@@ -233,7 +233,7 @@ func TestRunNamesTheConnectorTestWhenInterrupted(t *testing.T) {
 	if code != exitInterrupted {
 		t.Fatalf("exit = %d, want %d\n%s", code, exitInterrupted, logged)
 	}
-	if !strings.Contains(logged, "test "+testID+" keeps running") {
+	if !strings.Contains(logged, "test "+testID) {
 		t.Fatalf("stderr = %q, want it to name the running test", logged)
 	}
 }

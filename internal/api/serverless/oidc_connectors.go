@@ -325,7 +325,9 @@ func (c *Client) GetAppOidcConnectorTest(ctx context.Context, appID, connectorNa
 }
 
 // WaitAppOidcConnectorTest polls a connector test every interval until it is no
-// longer pending, and returns it. It returns ctx's error when ctx ends first.
+// longer pending, and returns it. A poll that fails on a server or network
+// error is retried at the next interval, since the test goes on regardless;
+// any other error ends the wait. It returns ctx's error when ctx ends first.
 func (c *Client) WaitAppOidcConnectorTest(ctx context.Context, appID, connectorName string, test *OidcConnectorTest, interval time.Duration) (*OidcConnectorTest, error) {
 	if interval <= 0 {
 		interval = defaultConnectorTestPollInterval
@@ -342,11 +344,27 @@ func (c *Client) WaitAppOidcConnectorTest(ctx context.Context, appID, connectorN
 
 		next, err := c.GetAppOidcConnectorTest(ctx, appID, connectorName, test.Id.String())
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if retryablePoll(err) {
+				continue
+			}
 			return nil, err
 		}
 		test = next
 	}
 	return test, nil
+}
+
+// retryablePoll reports whether a failed poll may succeed at the next one: an
+// API error the transport counts as transient (5xx, 429, a timeout, a dropped
+// connection), or a request that got no HTTP response at all.
+func retryablePoll(err error) bool {
+	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
+		return re.Retryable
+	}
+	return !errors.Is(err, transport.ErrNoAPIKey)
 }
 
 // withRetryAfter adds the response's Retry-After to a refusal that carries one,
