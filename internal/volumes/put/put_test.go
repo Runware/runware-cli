@@ -178,11 +178,41 @@ func TestPutReuseAcrossVolumes(t *testing.T) {
 	sum := e.mustPut(second, dir)
 
 	requireFiles(t, e, second, want)
-	if sum.BytesSent != 0 || sum.Reused != len(want) || sum.Added != 0 || !sum.Changed {
-		t.Errorf("%d bytes, %d reused, %d added, changed %v, want zero bytes, all reused and a changed Volume", sum.BytesSent, sum.Reused, sum.Added, sum.Changed)
+	if sum.BytesSent != 0 || sum.Reused != len(want) || sum.Added != len(want) || sum.Replaced != 0 || !sum.Changed {
+		t.Errorf("%d bytes, %d reused, %d added, %d replaced, changed %v; want all paths added with reused content", sum.BytesSent, sum.Reused, sum.Added, sum.Replaced, sum.Changed)
+	}
+	for _, f := range sum.Files {
+		if f.Action != ActionAdded {
+			t.Errorf("path %s has action %s, want added", f.Path, f.Action)
+		}
 	}
 	if got := len(e.cloud.putLog()); got != puts {
 		t.Errorf("%d parts were sent for content the organization already stores", got-puts)
+	}
+}
+
+func TestPutModeChangeReplacesThePathAndReusesItsContent(t *testing.T) {
+	e := newTestEnv(t)
+	file := singleFile(t, e, "example.sh", []byte("example"))
+	vol := e.cloud.newVolume("model-weights", "")
+	before := e.mustPut(vol, file)
+	if err := os.Chmod(file, 0o700); err != nil { //nolint:gosec // The fixture needs the executable bit.
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o100 == 0 {
+		t.Skip("the test filesystem does not expose the executable bit")
+	}
+
+	sum := e.mustPut(vol, file)
+	if !sum.Changed || sum.ManifestSHA256 == before.ManifestSHA256 || sum.Added != 0 || sum.Replaced != 1 || sum.Reused != 1 || sum.BytesSent != 0 {
+		t.Fatalf("summary = %+v, want one replaced path with reused content and no bytes sent", sum)
+	}
+	if len(sum.Files) != 1 || sum.Files[0].Action != ActionReplaced {
+		t.Fatalf("file results = %+v, want a replaced path", sum.Files)
 	}
 }
 

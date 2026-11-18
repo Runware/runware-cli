@@ -401,9 +401,9 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 }
 
 func (r *runner) summarize(files []*fileState, before FileList, res UploadResult) Summary {
-	existing := make(map[string]struct{}, len(before.Files))
-	for i := range before.Files {
-		existing[before.Files[i].Path] = struct{}{}
+	existing := make(map[string]VolumeFile, len(before.Files))
+	for _, file := range before.Files {
+		existing[file.Path] = file
 	}
 	s := Summary{
 		Volume:         r.o.Volume.Name,
@@ -419,16 +419,18 @@ func (r *runner) summarize(files []*fileState, before FileList, res UploadResult
 			SHA256:    hex.EncodeToString(f.src.SHA256[:]),
 			BytesSent: f.bytesSent(),
 		}
-		switch _, found := existing[f.src.Target]; {
-		case f.reused:
-			fr.Action = ActionReused
+		if f.reused {
 			s.Reused++
-		case found:
+		}
+		switch old, found := existing[fr.Path]; {
+		case !found:
+			fr.Action = ActionAdded
+			s.Added++
+		case old.Mode != f.src.Mode || old.Size != fr.Size || old.SHA256 != fr.SHA256:
 			fr.Action = ActionReplaced
 			s.Replaced++
 		default:
-			fr.Action = ActionAdded
-			s.Added++
+			fr.Action = ActionUnchanged
 		}
 		s.BytesSent += fr.BytesSent
 		s.Files = append(s.Files, fr)

@@ -8,9 +8,9 @@ import (
 
 // What a put did with one file.
 const (
-	ActionAdded    = "added"
-	ActionReplaced = "replaced"
-	ActionReused   = "reused"
+	ActionAdded     = "added"
+	ActionReplaced  = "replaced"
+	ActionUnchanged = "unchanged"
 )
 
 const productionEnvironment = "production"
@@ -32,7 +32,7 @@ type Summary struct {
 	ManifestSHA256 string       `json:"manifestSha256,omitempty"`
 	Added          int          `json:"added"`
 	Replaced       int          `json:"replaced"`
-	Reused         int          `json:"reused"`
+	Reused         int          `json:"reused"` // Files that reused content, including added or replaced paths.
 	BytesSent      int64        `json:"bytesSent"`
 	Files          []FileResult `json:"files"`
 }
