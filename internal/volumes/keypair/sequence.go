@@ -61,7 +61,8 @@ func (s sequenceStore) mark(organization uuid.UUID) (mark uint64, seen bool, err
 	}
 	// A final line without its newline is an append still being written.
 	for line := range bytes.Lines(data[:bytes.LastIndexByte(data, '\n')+1]) {
-		line = bytes.TrimSpace(line)
+		// A torn append can leave zero padding at the end of a line.
+		line = bytes.TrimRight(bytes.TrimSpace(line), "\x00")
 		if len(line) == 0 {
 			continue
 		}

@@ -333,6 +333,48 @@ func TestSequenceStoreSkipsATornAppend(t *testing.T) {
 	}
 }
 
+func TestSequenceStoreRecoversFromZeroPaddedAppend(t *testing.T) {
+	line := markLine(t, 9)
+	type paddedAppendCase struct {
+		name   string
+		prefix []byte
+		want   uint64
+	}
+	for _, tc := range []paddedAppendCase{
+		{
+			name: "only padding",
+			want: 5,
+		},
+		{
+			name:   "partial mark",
+			prefix: line[:len(line)-1],
+			want:   5,
+		},
+		{
+			name:   "complete mark",
+			prefix: line,
+			want:   9,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := sequenceStore{dir: t.TempDir(), host: testHost}
+			if err := store.accept(testOrg, 5); err != nil {
+				t.Fatal(err)
+			}
+			appendRecord(t, store, append(slices.Clone(tc.prefix), 0, 0, 0))
+			if err := store.accept(testOtherOrg, 1); err != nil {
+				t.Fatal(err)
+			}
+			if mark, seen, err := store.mark(testOrg); err != nil || !seen || mark != tc.want {
+				t.Fatalf("mark = %d, %v, %v; want %d", mark, seen, err, tc.want)
+			}
+			if err := store.accept(testOrg, tc.want-1); !errors.Is(err, ErrStatement) {
+				t.Fatalf("accept(%d) after %d: error = %v, want ErrStatement", tc.want-1, tc.want, err)
+			}
+		})
+	}
+}
+
 // markLine is a record line for testOrg at sequence, without its newline.
 func markLine(t *testing.T, sequence uint64) []byte {
 	t.Helper()

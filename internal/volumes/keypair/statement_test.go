@@ -143,9 +143,25 @@ type refusalCase struct {
 // another organization, at or past its not-after, or below the recorded sequence is
 // refused, names the failing check, and records nothing.
 func TestVerifyStatementRefuses(t *testing.T) {
+	const missingVersion = "signing key version is missing"
 	v := loadVectors(t)
 	other := newReleaseKey(t)
 	cases := []refusalCase{
+		{
+			name:   "empty statement",
+			reason: missingVersion,
+			raw:    []byte{},
+		},
+		{
+			name:   "one field",
+			reason: missingVersion,
+			raw:    join(baseSpec(v).fields()[:1]),
+		},
+		{
+			name:   "missing signing key version",
+			reason: missingVersion,
+			raw:    join(baseSpec(v).fields()[:fieldVersion]),
+		},
 		{
 			name:   "unknown signing key version",
 			reason: "unknown signing key version 2",
@@ -153,7 +169,7 @@ func TestVerifyStatementRefuses(t *testing.T) {
 		},
 		{
 			name:   "signing key version of the wrong size",
-			reason: "signing key version is missing",
+			reason: missingVersion,
 			edit:   setField(fieldVersion, []byte{0, 0, 1}),
 		},
 		{
@@ -494,6 +510,34 @@ func TestUnknownPlatformRefusesEverything(t *testing.T) {
 func TestNewVerifierNeedsAConfigDirectory(t *testing.T) {
 	if _, err := NewVerifier(config.DefaultServerlessBaseURL, ""); err == nil {
 		t.Fatal("NewVerifier accepted an empty config directory")
+	}
+}
+
+func TestNewVerifierAcceptsAStatementSignedByAPlatformKey(t *testing.T) {
+	original := verificationKeys
+	t.Cleanup(func() { verificationKeys = original })
+	signer := newReleaseKey(t)
+	verificationKeys = map[string]map[uint32]string{
+		testHost: {
+			testVersion: pemOf(t, &signer.PublicKey),
+		},
+	}
+
+	dir := t.TempDir()
+	verifier, err := NewVerifier("https://"+testHost, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	spec := baseSpec(loadVectors(t))
+	spec.issuedAt = now.Add(-time.Minute)
+	spec.notAfter = now.Add(time.Hour)
+	raw := join(spec.fields())
+	if _, err := verifier.Verify(raw, sign(t, signer, raw), spec.org); err != nil {
+		t.Fatal(err)
+	}
+	if mark := readMarks(t, dir)[orgKey(spec.org)]; mark != spec.sequence {
+		t.Fatalf("recorded sequence = %d, want %d", mark, spec.sequence)
 	}
 }
 
