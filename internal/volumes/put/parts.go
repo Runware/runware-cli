@@ -202,6 +202,14 @@ func (r *runner) feedFile(ctx context.Context, f *fileState, pool *bufferPool, j
 			}
 		}
 		digest := sha256.Sum256(buf.data)
+		send, err := r.resumePart(f, part, digest)
+		if err != nil || !send {
+			pool.put(buf)
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		if err := r.journal.logSync(partRecord{
 			Type:   recordPart,
 			Index:  f.index,
@@ -223,7 +231,7 @@ func (r *runner) feedFile(ctx context.Context, f *fileState, pool *bufferPool, j
 			return context.Cause(ctx)
 		}
 	}
-	return nil
+	return r.resumeVerified(ctx, f)
 }
 
 // readPart fills buf from the file at offset; a file that ends early has changed.

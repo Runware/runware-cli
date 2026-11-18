@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand/v2"
 	"path/filepath"
 	"strconv"
@@ -49,7 +50,8 @@ type Options struct {
 	Transport    Transport
 	Parallelism  int // parts in flight; zero means four, and sixteen is the most
 	Progress     io.Writer
-	ProgressTTY  bool // Progress is a terminal
+	ProgressTTY  bool         // Progress is a terminal
+	Logger       *slog.Logger // debug events, such as a resumed or discarded session; nil logs nothing
 
 	now           func() time.Time
 	sleep         func(context.Context, time.Duration) error
@@ -83,6 +85,7 @@ type runner struct {
 	expiresAt           time.Time
 	journal             *journal
 	completionAttempted bool
+	resumed             map[int]*resumeFile // resumed files by journal index; nil unless a saved session is resumed
 }
 
 func newRunner(o Options) (*runner, error) {
@@ -144,6 +147,9 @@ func (r *runner) run(ctx context.Context) (Summary, error) {
 	before, err := r.api.LatestFiles(ctx, r.o.Volume)
 	if err != nil {
 		return Summary{}, fmt.Errorf("read the Volume's files: %w", err)
+	}
+	if resumed, sum, err := r.resume(ctx, sources, before); resumed {
+		return sum, err
 	}
 	sess, err := r.openKeys(ctx)
 	if err != nil {
