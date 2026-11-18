@@ -67,7 +67,7 @@ func TestVerifyStatementGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.SigningKeyVersion != v.raw.Statement.SigningKeyVersion || st.Organization != v.org || st.KeyPair != v.keyPair {
+	if st.SigningKeyVersion != v.raw.Statement.SigningKeyVersion || st.Organization() != v.org || st.KeyPairID() != v.keyPair {
 		t.Fatalf("statement ids differ from the vectors: %+v", st)
 	}
 	if st.Sequence != v.raw.Statement.Sequence || !st.IssuedAt.Equal(v.issuedAt) || !st.NotAfter.Equal(v.notAfter) {
@@ -95,8 +95,8 @@ func TestVerifiedKeyIsCopiedFromTheCaller(t *testing.T) {
 	}
 	clear(statement)
 
-	if !bytes.Equal(st.publicKey, v.publicKey) {
-		t.Fatal("the verified public key changed with the caller's buffer")
+	if !bytes.Equal(st.publicKey, v.publicKey) || st.Organization() != v.org || st.KeyPairID() != v.keyPair {
+		t.Fatal("the verified key pair changed with the caller's buffer")
 	}
 }
 
@@ -325,7 +325,7 @@ func TestVerifyStatementRefuses(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.reason) {
 				t.Fatalf("error = %q, want it to name %q", err, tc.reason)
 			}
-			if st.publicKey != nil || st.Sequence != 0 || st.Organization != ([16]byte{}) {
+			if st.publicKey != nil || st.Sequence != 0 || st.Organization() != ([16]byte{}) {
 				t.Fatalf("a refused statement returned %+v", st)
 			}
 			if got := readMarks(t, dir); !maps.Equal(got, wantMarks) {
@@ -393,7 +393,7 @@ func TestVerifyStatementAccepts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if st.SigningKeyVersion != testVersion || st.Organization != testOrg || st.KeyPair != testKeyPair || st.Sequence != testSequence {
+			if st.SigningKeyVersion != testVersion || st.Organization() != testOrg || st.KeyPairID() != testKeyPair || st.Sequence != testSequence {
 				t.Fatalf("accepted %+v", st)
 			}
 			if !st.IssuedAt.Equal(testIssuedAt) || !st.NotAfter.Equal(testNotAfter) || !bytes.Equal(st.publicKey, v.publicKey) {

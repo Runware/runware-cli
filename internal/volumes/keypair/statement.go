@@ -84,13 +84,19 @@ var sizedFields = []sizedField{
 // Statement is a key-pair statement that Verify accepted; Open takes no other.
 type Statement struct {
 	SigningKeyVersion uint32
-	Organization      [16]byte
-	KeyPair           [16]byte
 	Sequence          uint64
 	IssuedAt          time.Time
 	NotAfter          time.Time
+	organization      [16]byte
+	keyPair           [16]byte
 	publicKey         []byte
 }
+
+// Organization returns the verified organization ID.
+func (st Statement) Organization() [16]byte { return st.organization }
+
+// KeyPairID returns the verified key pair ID.
+func (st Statement) KeyPairID() [16]byte { return st.keyPair }
 
 // Verifier checks key-pair statements against the verification keys of one platform.
 type Verifier struct {
@@ -148,13 +154,13 @@ func (v *Verifier) Verify(statement, signature []byte, organization [16]byte) (S
 	if err != nil {
 		return Statement{}, err
 	}
-	if st.Organization != organization {
+	if st.organization != organization {
 		return Statement{}, refuse("organization is not the configured one")
 	}
 	if !v.now().Before(st.NotAfter) {
 		return Statement{}, refuse("statement is at or past its not-after")
 	}
-	if err := v.seq.accept(st.Organization, st.Sequence); err != nil {
+	if err := v.seq.accept(st.organization, st.Sequence); err != nil {
 		return Statement{}, err
 	}
 	return st, nil
@@ -205,7 +211,7 @@ func parseStatement(fields [][]byte) (Statement, error) {
 		NotAfter:          time.Unix(int64(binary.BigEndian.Uint64(fields[fieldNotAfter])), 0).UTC(),
 		publicKey:         bytes.Clone(fields[fieldPublicKey]),
 	}
-	copy(st.Organization[:], fields[fieldOrganization])
-	copy(st.KeyPair[:], fields[fieldKeyPair])
+	copy(st.organization[:], fields[fieldOrganization])
+	copy(st.keyPair[:], fields[fieldKeyPair])
 	return st, nil
 }

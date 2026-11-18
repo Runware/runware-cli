@@ -50,8 +50,6 @@ func TestOpenSessionRefusesBeforeEncapsulating(t *testing.T) {
 	}
 	handBuilt := Statement{
 		SigningKeyVersion: v.raw.Statement.SigningKeyVersion,
-		Organization:      v.org,
-		KeyPair:           v.keyPair,
 		Sequence:          v.raw.Statement.Sequence,
 		IssuedAt:          v.issuedAt,
 		NotAfter:          v.notAfter,

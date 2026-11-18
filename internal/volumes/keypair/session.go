@@ -62,8 +62,8 @@ func Open(st Statement) (*Session, error) {
 		return nil, fmt.Errorf("encapsulate to the key pair: %w", err)
 	}
 	return &Session{
-		org:     st.Organization,
-		keyPair: st.KeyPair,
+		org:     st.organization,
+		keyPair: st.keyPair,
 		enc:     sealer.Encapsulation(),
 		sealer:  sealer,
 	}, nil
