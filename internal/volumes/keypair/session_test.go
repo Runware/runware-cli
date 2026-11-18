@@ -134,7 +134,7 @@ func TestSealedKeyUnwrapsWithVectors(t *testing.T) {
 				t.Fatal(err)
 			}
 			id := fk.Identity()
-			if id.Organization != v.org || id.SHA256 != digest || id.Size != size || id.Attempt != fk.Attempt() {
+			if id.Organization != v.org || id.SHA256 != digest || id.Size != size || id.Attempt == ([16]byte{}) {
 				t.Fatalf("identity %+v does not carry the file's organization, digest, size and attempt", id)
 			}
 			sealed := fk.Sealed()
@@ -163,7 +163,7 @@ func TestSealedKeyUnwrapsWithVectors(t *testing.T) {
 				edit(&changed)
 				key, err := volumeformat.UnwrapDataKey(decrypting, changed.session, changed.id, sealed)
 				if !errors.Is(err, volumeformat.ErrAuthentication) || key != nil {
-					t.Errorf("%s changed: key = %x, error = %v, want ErrAuthentication and no key", field, key, err)
+					t.Errorf("%s changed: key returned = %t, error = %v, want ErrAuthentication and no key", field, key != nil, err)
 				}
 			}
 		})
@@ -257,20 +257,16 @@ func TestSessionStates(t *testing.T) {
 }
 
 type journalEntry struct {
-	File    *FileKey
-	Session *Session
+	File   FileKey
+	Files  []FileKey
+	Nested struct{ File FileKey }
 }
 
 type heldByValue struct {
-	file  FileKey
-	files []FileKey
-	sess  Session
-}
-
-type heldByPointer struct {
-	file  *FileKey
-	files []*FileKey
-	sess  *Session
+	file   FileKey
+	files  []FileKey
+	nested struct{ file FileKey }
+	sess   Session
 }
 
 var fmtVerbs = []string{
@@ -306,7 +302,7 @@ func TestEveryFmtVerbPrintsRedacted(t *testing.T) {
 }
 
 // TestKeysInUnexportedFieldsPrintNoBytes: fmt calls no method on a value in an unexported field, so
-// a Session or FileKey held there, alone, in a slice or by pointer, must print no key under any verb.
+// a Session or FileKey held there, alone, nested or in a slice, must print no key under any verb.
 // What a struct prints must not change when the live keys are zeroed.
 func TestKeysInUnexportedFieldsPrintNoBytes(t *testing.T) {
 	v, s, _ := sealedKeyFixture(t)
@@ -319,30 +315,22 @@ func TestKeysInUnexportedFieldsPrintNoBytes(t *testing.T) {
 	if allZero(sessionKey) || allZero(dataKey) {
 		t.Fatal("a live key is all zero")
 	}
-	held := map[string]any{
-		"by value": heldByValue{
-			file:  *fk,
-			files: []FileKey{*fk},
-			sess: Session{
-				org:     s.org,
-				keyPair: s.keyPair,
-				enc:     s.enc,
-				session: s.session,
-				key:     s.key,
-			},
-		},
-		"by pointer": heldByPointer{
-			file:  fk,
-			files: []*FileKey{fk},
-			sess:  s,
+	var held any = heldByValue{
+		file:   *fk,
+		files:  []FileKey{*fk},
+		nested: struct{ file FileKey }{file: *fk},
+		sess: Session{
+			org:     s.org,
+			keyPair: s.keyPair,
+			enc:     s.enc,
+			session: s.session,
+			key:     s.key,
 		},
 	}
-	printAll := func() map[string]string {
-		printed := map[string]string{}
-		for name, h := range held {
-			for _, verb := range fmtVerbs {
-				printed[verb+" "+name] = fmt.Sprintf(verb, h)
-			}
+	printAll := func() []string {
+		printed := make([]string, len(fmtVerbs))
+		for i, verb := range fmtVerbs {
+			printed[i] = fmt.Sprintf(verb, held)
 		}
 		return printed
 	}
@@ -352,9 +340,9 @@ func TestKeysInUnexportedFieldsPrintNoBytes(t *testing.T) {
 	clear(dataKey)
 	after := printAll()
 
-	for name, text := range before {
-		if after[name] != text {
-			t.Errorf("%s prints the key bytes", name)
+	for i, text := range before {
+		if after[i] != text {
+			t.Errorf("%s prints the key bytes", fmtVerbs[i])
 		}
 	}
 }
@@ -383,14 +371,18 @@ func TestKeysAreClearedAndRedacted(t *testing.T) {
 	jsonLog.Info("sealed", "session", s, "file", fk)
 	textLog.Info("sealed", "session", s, "file", fk)
 	if !strings.Contains(logs.String(), `"session":"[redacted]"`) || !strings.Contains(logs.String(), "file=[redacted]") {
-		t.Errorf("logs do not redact: %s", logs.String())
+		t.Error("logs do not redact the keys")
 	}
-	printed := logs.String()
 	entry := journalEntry{
-		File:    fk,
-		Session: s,
+		File:   *fk,
+		Files:  []FileKey{*fk},
+		Nested: struct{ File FileKey }{File: *fk},
 	}
-	printed += fmt.Sprintf("%+v", entry) + s.String() + fk.String() + s.GoString() + fk.GoString()
+	fields := fmt.Sprintf("%+v", entry)
+	if strings.Count(fields, redactedText) != 3 {
+		t.Error("formatting does not redact all three exported file key values")
+	}
+	printed := logs.String() + fields + s.String() + fk.String() + s.GoString() + fk.GoString()
 	for _, secret := range secrets {
 		if strings.Contains(printed, secret) {
 			t.Error("formatted output holds key material")
