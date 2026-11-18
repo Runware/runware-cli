@@ -288,7 +288,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 		if err != nil {
 			return partResult{}, err
 		}
-		sealer, err := volumeformat.NewPartSealer(f.key.DataKey(), f.identity, f.layout, int64(part))
+		sealer, err := r.newPartSealer(f.key.DataKey(), f.identity, f.layout, int64(part))
 		if err != nil {
 			return partResult{}, fmt.Errorf("seal the part: %w", err)
 		}

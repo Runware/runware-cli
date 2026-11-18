@@ -56,6 +56,7 @@ type Options struct {
 	tick          <-chan time.Time
 	onHash        func(path string)
 	progressEvery time.Duration
+	newSealer     sealerFactory
 }
 
 // Run uploads the paths to the Volume.
