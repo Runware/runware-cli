@@ -202,7 +202,7 @@ func (r *runner) feedFile(ctx context.Context, f *fileState, pool *bufferPool, j
 			}
 		}
 		digest := sha256.Sum256(buf.data)
-		if err := r.journal.log(partRecord{
+		if err := r.journal.logSync(partRecord{
 			Type:   recordPart,
 			Index:  f.index,
 			Part:   part,

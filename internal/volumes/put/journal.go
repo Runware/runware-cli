@@ -18,7 +18,7 @@ const (
 	journalVersion = 1
 )
 
-// Journal record types; session, file and declared records are synced before they are used.
+// Journal record types; session, file, declared and part records are synced before they are used.
 const (
 	recordSession  = "session"
 	recordFile     = "file"
