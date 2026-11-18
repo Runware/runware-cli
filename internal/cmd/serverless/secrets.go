@@ -104,9 +104,10 @@ exists there. The same name in another environment is a different secret.
 
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
-that attaches it, so a running worker picks up the new value. If a rollout is already
-in progress, the new value reaches that worker on the next deploy. An application
-that is not live picks it up on its next deploy.
+that attaches it, so a running worker picks up the new value. An application that
+is not live picks it up on its next deploy.
+
+` + rolloutInProgressHelp(secretWaitMessage) + `
 
 The secret value is never printed. Prefer --value-file so the value is not visible
 in process lists; use --value-file - to read from stdin.`,
@@ -240,9 +241,10 @@ different environment variable name.
 
 The secret must already exist in the application's environment (see
 'secrets set'). Attaching rolls the live deployment so a running worker picks
-up the value. If a rollout is already in progress, this attach reaches the
-worker on the next deploy. An application that is not live records the
-attachment only; the next deploy or resume reads it.`,
+up the value. An application that is not live records the attachment only; the
+next deploy or resume reads it.
+
+` + rolloutInProgressHelp(secretWaitMessage),
 		Example: `  # attach a secret using its name as the env var
   runware serverless secrets attach my-app FOO
 
@@ -286,8 +288,9 @@ func newSecretsDetachCmd(logger *log.Logger) *cobra.Command {
 		Long: `Remove a secret's attachment from an application. The secret itself remains.
 
 Detaching rolls the live deployment so a running worker stops receiving the
-value. If a rollout is already in progress, the worker stops receiving it on
-the next deploy. An application that is not live records the removal only.`,
+value. An application that is not live records the removal only.
+
+` + rolloutInProgressHelp(secretWaitMessage),
 		Example: `  # detach a secret from an application
   runware serverless secrets detach my-app FOO`,
 		Args: cobra.ExactArgs(2),

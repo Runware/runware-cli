@@ -9,8 +9,17 @@ workers' tokens carry and the subjectPattern that matches every application of
 the organization in this environment.
 
 Attaching rolls the application's live deployment, so its workers start
-getting a token. An application that is not live, or already has a rollout in
-progress, picks the connector up on its next rollout.
+getting a token. An application that is not live picks the connector up on its
+next rollout.
+
+If an application already has a rollout in progress, it rolls again on its own
+once that rollout finishes. 'runware serverless apps events' shows "OIDC connector change accepted: rolls when the rollout in progress finishes"
+right away, then "change made during the previous rollout: rolling to pick it
+up" when the second rollout starts. If that rollout fails or leaves the
+application not live, the application picks the change up on its next rollout.
+If the second rollout cannot be deployed, 'runware serverless apps events --type
+error' shows "credential change not applied" and the workers keep the previous
+configuration until the application is redeployed.
 
 An application holds at most one connector of each kind. The env names a
 connector sets on the worker are reserved while it is attached: attaching is

@@ -372,7 +372,10 @@ connector after it was read.
 
 Updating rolls every live application that attaches the connector, so its
 workers get the new configuration. Running workers keep the old configuration
-until they roll.`,
+until they roll. An application that is not live picks up the new configuration
+on its next rollout.
+
+` + rolloutInProgressHelp(connectorWaitMessage),
 		Example: `  runware serverless connectors update aws-prod \
     --role-arn arn:aws:iam::123456789012:role/runware-worker-v2
 
