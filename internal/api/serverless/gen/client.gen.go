@@ -218,6 +218,7 @@ const (
 	AuditLogActionConnectorCreate           AuditLogAction = "connector.create"
 	AuditLogActionConnectorDelete           AuditLogAction = "connector.delete"
 	AuditLogActionConnectorDetach           AuditLogAction = "connector.detach"
+	AuditLogActionConnectorTest             AuditLogAction = "connector.test"
 	AuditLogActionConnectorUpdate           AuditLogAction = "connector.update"
 	AuditLogActionEnvironmentCreate         AuditLogAction = "environment.create"
 	AuditLogActionEnvironmentDefaultsUpdate AuditLogAction = "environment.defaults.update"
@@ -265,6 +266,8 @@ func (e AuditLogAction) Valid() bool {
 	case AuditLogActionConnectorDelete:
 		return true
 	case AuditLogActionConnectorDetach:
+		return true
+	case AuditLogActionConnectorTest:
 		return true
 	case AuditLogActionConnectorUpdate:
 		return true
@@ -605,6 +608,90 @@ func (e OidcConnectorKind) Valid() bool {
 	case OidcConnectorKindGcp:
 		return true
 	case OidcConnectorKindGeneric:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OidcConnectorTestReason.
+const (
+	OidcConnectorTestReasonDeadline            OidcConnectorTestReason = "deadline"
+	OidcConnectorTestReasonDeployerUnavailable OidcConnectorTestReason = "deployer_unavailable"
+	OidcConnectorTestReasonImagePull           OidcConnectorTestReason = "image_pull"
+	OidcConnectorTestReasonIssuerRefused       OidcConnectorTestReason = "issuer_refused"
+	OidcConnectorTestReasonProbeFailed         OidcConnectorTestReason = "probe_failed"
+	OidcConnectorTestReasonTenancyNotReady     OidcConnectorTestReason = "tenancy_not_ready"
+	OidcConnectorTestReasonUnconfigured        OidcConnectorTestReason = "unconfigured"
+	OidcConnectorTestReasonUnschedulable       OidcConnectorTestReason = "unschedulable"
+)
+
+// Valid indicates whether the value is a known member of the OidcConnectorTestReason enum.
+func (e OidcConnectorTestReason) Valid() bool {
+	switch e {
+	case OidcConnectorTestReasonDeadline:
+		return true
+	case OidcConnectorTestReasonDeployerUnavailable:
+		return true
+	case OidcConnectorTestReasonImagePull:
+		return true
+	case OidcConnectorTestReasonIssuerRefused:
+		return true
+	case OidcConnectorTestReasonProbeFailed:
+		return true
+	case OidcConnectorTestReasonTenancyNotReady:
+		return true
+	case OidcConnectorTestReasonUnconfigured:
+		return true
+	case OidcConnectorTestReasonUnschedulable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OidcConnectorTestStage.
+const (
+	OidcConnectorTestStageAssumeRole    OidcConnectorTestStage = "assume_role"
+	OidcConnectorTestStageImpersonation OidcConnectorTestStage = "impersonation"
+	OidcConnectorTestStageIssuer        OidcConnectorTestStage = "issuer"
+	OidcConnectorTestStageSts           OidcConnectorTestStage = "sts"
+)
+
+// Valid indicates whether the value is a known member of the OidcConnectorTestStage enum.
+func (e OidcConnectorTestStage) Valid() bool {
+	switch e {
+	case OidcConnectorTestStageAssumeRole:
+		return true
+	case OidcConnectorTestStageImpersonation:
+		return true
+	case OidcConnectorTestStageIssuer:
+		return true
+	case OidcConnectorTestStageSts:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OidcConnectorTestStatus.
+const (
+	OidcConnectorTestStatusCloudError    OidcConnectorTestStatus = "cloud_error"
+	OidcConnectorTestStatusOk            OidcConnectorTestStatus = "ok"
+	OidcConnectorTestStatusPending       OidcConnectorTestStatus = "pending"
+	OidcConnectorTestStatusPlatformError OidcConnectorTestStatus = "platform_error"
+)
+
+// Valid indicates whether the value is a known member of the OidcConnectorTestStatus enum.
+func (e OidcConnectorTestStatus) Valid() bool {
+	switch e {
+	case OidcConnectorTestStatusCloudError:
+		return true
+	case OidcConnectorTestStatusOk:
+		return true
+	case OidcConnectorTestStatusPending:
+		return true
+	case OidcConnectorTestStatusPlatformError:
 		return true
 	default:
 		return false
@@ -2082,6 +2169,45 @@ type OidcConnectorKind string
 // OidcConnectorName OIDC connector name, unique within the organization. `site-store` is reserved for a platform connector.
 type OidcConnectorName = string
 
+// OidcConnectorTest One test of an OIDC connector's trust setup. It holds no token and no credential.
+type OidcConnectorTest struct {
+	// Code On `cloud_error`, the cloud's own error code, such as `invalid_target` or `unauthorized_client` from Google or `AccessDenied` from AWS, or `unknown`. On `platform_error: issuer_refused`, the platform's issuer's RFC 6749 code, such as `invalid_grant`: the platform refused to sign the app's token, and the customer's cloud was not asked.
+	Code      *string   `json:"code,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DeadlineAt When a test still `pending` turns into `platform_error` with `deadline`.
+	DeadlineAt time.Time          `json:"deadlineAt"`
+	FinishedAt *time.Time         `json:"finishedAt,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Identity On `ok`, what the cloud accepted the token as: the assumed role's ARN (AWS) or the impersonated service account (GCP). Absent for a GCP connector with no service account.
+	Identity *string `json:"identity,omitempty"`
+
+	// Message On `cloud_error`, the cloud's error message, or `cloud error message withheld` when it contained a token or a credential. On `platform_error`, the platform's description of what went wrong, such as `Google STS answered 503`: it is not the cloud's verdict on the trust setup.
+	Message *string `json:"message,omitempty"`
+
+	// Reason Why the platform could not run a test, present only with `platform_error`. `unconfigured`: this environment cannot run tests. `unschedulable`: the probe could not be placed. `image_pull`: the probe's image could not be pulled. `deadline`: the test did not finish in time. `issuer_refused`: the platform's issuer would not sign the app's token. `probe_failed`: the probe could not finish for a reason that says nothing about the trust setup, such as a cloud error on the provider's side or throttling. `tenancy_not_ready`: the organization's workers cannot run yet. `deployer_unavailable`: the platform could not start the test.
+	Reason *OidcConnectorTestReason `json:"reason,omitempty"`
+
+	// Stage Where the probe was when it was refused: `issuer` (getting the app's token), `sts` (Google STS), `impersonation` (Google service account impersonation) or `assume_role` (AWS).
+	Stage *OidcConnectorTestStage `json:"stage,omitempty"`
+
+	// Status Where a test is. `ok` and `cloud_error` are the trust setup's own answer: the cloud accepted the token, or refused it with the error in `code` and `message`. `platform_error` means the platform could not run the test (see `reason`) and says nothing about the trust setup.
+	Status OidcConnectorTestStatus `json:"status"`
+
+	// Troubleshooting What a `cloud_error` with this `code` usually means and what to check.
+	Troubleshooting *string `json:"troubleshooting,omitempty"`
+}
+
+// OidcConnectorTestReason Why the platform could not run a test, present only with `platform_error`. `unconfigured`: this environment cannot run tests. `unschedulable`: the probe could not be placed. `image_pull`: the probe's image could not be pulled. `deadline`: the test did not finish in time. `issuer_refused`: the platform's issuer would not sign the app's token. `probe_failed`: the probe could not finish for a reason that says nothing about the trust setup, such as a cloud error on the provider's side or throttling. `tenancy_not_ready`: the organization's workers cannot run yet. `deployer_unavailable`: the platform could not start the test.
+type OidcConnectorTestReason string
+
+// OidcConnectorTestStage Where the probe was when it was refused: `issuer` (getting the app's token), `sts` (Google STS), `impersonation` (Google service account impersonation) or `assume_role` (AWS).
+type OidcConnectorTestStage string
+
+// OidcConnectorTestStatus Where a test is. `ok` and `cloud_error` are the trust setup's own answer: the cloud accepted the token, or refused it with the error in `code` and `message`. `platform_error` means the platform could not run the test (see `reason`) and says nothing about the trust setup.
+type OidcConnectorTestStatus string
+
 // OidcConnectorUpdate The connector's new configuration, replacing the old one. The name and `kind` cannot change; the provider block must match the kind.
 type OidcConnectorUpdate struct {
 	// Audience The token's `aud`. Defaults to `runware:<organization uuid>` for `aws`, one value per organization, which the IAM OIDC provider must list as a client ID. An audience that starts with `runware:` is reserved: only the organization's own `runware:<organization uuid>` is accepted, and any other returns `422`. Always `//iam.googleapis.com/<workloadIdentityProvider>` for `gcp`, the audience Google's STS expects; any other value returns `422`. Required for `generic`.
@@ -2813,6 +2939,9 @@ type LogLimit = int32
 // MetricWindow defines model for MetricWindow.
 type MetricWindow string
 
+// OidcConnectorTestId defines model for OidcConnectorTestId.
+type OidcConnectorTestId = openapi_types.UUID
+
 // PinnedTo defines model for PinnedTo.
 type PinnedTo = int64
 
@@ -2894,6 +3023,9 @@ type InvocationUnavailable = ProblemDetails
 
 // NotFound RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type NotFound = ProblemDetails
+
+// OidcConnectorTestLimited RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type OidcConnectorTestLimited = ProblemDetails
 
 // OidcConnectorsUnavailable RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type OidcConnectorsUnavailable = ProblemDetails
@@ -3160,6 +3292,18 @@ type AttachAppOidcConnectorParams struct {
 
 // DetachAppOidcConnectorParams defines parameters for DetachAppOidcConnector.
 type DetachAppOidcConnectorParams struct {
+	// Environment The environment the request addresses. An app id names one copy per environment, so this parameter completes the app's address: `appId` together with `environment` selects the copy. The app list and the app summary are limited to the environment, and an app, build, endpoint, worker, event, usage or attached-secret cursor is valid only in the environment it came from. A metric query that names no app covers the whole organization, and a log query covers this environment; a metric query expanded by app returns only the apps live in this environment. Omitted means `production`. A name the organization has no live environment under returns `404`.
+	Environment *AppEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// TestAppOidcConnectorParams defines parameters for TestAppOidcConnector.
+type TestAppOidcConnectorParams struct {
+	// Environment The environment the request addresses. An app id names one copy per environment, so this parameter completes the app's address: `appId` together with `environment` selects the copy. The app list and the app summary are limited to the environment, and an app, build, endpoint, worker, event, usage or attached-secret cursor is valid only in the environment it came from. A metric query that names no app covers the whole organization, and a log query covers this environment; a metric query expanded by app returns only the apps live in this environment. Omitted means `production`. A name the organization has no live environment under returns `404`.
+	Environment *AppEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// GetAppOidcConnectorTestParams defines parameters for GetAppOidcConnectorTest.
+type GetAppOidcConnectorTestParams struct {
 	// Environment The environment the request addresses. An app id names one copy per environment, so this parameter completes the app's address: `appId` together with `environment` selects the copy. The app list and the app summary are limited to the environment, and an app, build, endpoint, worker, event, usage or attached-secret cursor is valid only in the environment it came from. A metric query that names no app covers the whole organization, and a log query covers this environment; a metric query expanded by app returns only the apps live in this environment. Omitted means `production`. A name the organization has no live environment under returns `404`.
 	Environment *AppEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
 }
@@ -4121,6 +4265,21 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/oidc-connectors/{connectorName} (the `DetachAppOidcConnector` operationId).
 	DetachAppOidcConnector(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *DetachAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAppOidcConnector Test an attached OIDC connector's trust setup
+	//
+	// Starts a test of the trust setup between the app and the connector's cloud, without deploying any code. The platform runs a short-lived probe as a worker of the app, with no customer code: it gets the app's token like a worker does and exchanges it with the cloud, Google STS (and service account impersonation when the connector names one) or AWS `AssumeRoleWithWebIdentity`. The probe obtains real, short-lived credentials and discards them; no token or credential is returned, stored or logged. On AWS the session name is `runware-connector-test-<test id>`, so a test shows in CloudTrail.
+	// Answers `202` with the test in `pending`; poll `GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId}` for the result, which is normally there within a minute and always within two. The connector must be attached to the app in the environment, and be of kind `aws` or `gcp`: a `generic` connector has no cloud to exchange with and answers `422`. One test of a connector runs at a time for each app and environment; a second answers `409`. An organization starts at most 20 tests an hour, counting those running and those that ended `ok` or `cloud_error`, and at most 60 an hour that end `platform_error`; past either, `429`.
+	//
+	// Corresponds with POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test (the `TestAppOidcConnector` operationId).
+	TestAppOidcConnector(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *TestAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppOidcConnectorTest Get an OIDC connector test
+	//
+	// A test started with `POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test`. Tests are kept for 24 hours.
+	//
+	// Corresponds with GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId} (the `GetAppOidcConnectorTest` operationId).
+	GetAppOidcConnectorTest(ctx context.Context, appId AppId, connectorName OidcConnectorName, testId OidcConnectorTestId, params *GetAppOidcConnectorTestParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResumeApp Resume an app
 	//
@@ -5330,6 +5489,41 @@ func (c *Client) AttachAppOidcConnector(ctx context.Context, appId AppId, params
 // Corresponds with DELETE /v1/apps/{appId}/oidc-connectors/{connectorName} (the `DetachAppOidcConnector` operationId).
 func (c *Client) DetachAppOidcConnector(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *DetachAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDetachAppOidcConnectorRequest(c.Server, appId, connectorName, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestAppOidcConnector Test an attached OIDC connector's trust setup
+//
+// Starts a test of the trust setup between the app and the connector's cloud, without deploying any code. The platform runs a short-lived probe as a worker of the app, with no customer code: it gets the app's token like a worker does and exchanges it with the cloud, Google STS (and service account impersonation when the connector names one) or AWS `AssumeRoleWithWebIdentity`. The probe obtains real, short-lived credentials and discards them; no token or credential is returned, stored or logged. On AWS the session name is `runware-connector-test-<test id>`, so a test shows in CloudTrail.
+// Answers `202` with the test in `pending`; poll `GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId}` for the result, which is normally there within a minute and always within two. The connector must be attached to the app in the environment, and be of kind `aws` or `gcp`: a `generic` connector has no cloud to exchange with and answers `422`. One test of a connector runs at a time for each app and environment; a second answers `409`. An organization starts at most 20 tests an hour, counting those running and those that ended `ok` or `cloud_error`, and at most 60 an hour that end `platform_error`; past either, `429`.
+//
+// Corresponds with POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test (the `TestAppOidcConnector` operationId).
+func (c *Client) TestAppOidcConnector(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *TestAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAppOidcConnectorRequest(c.Server, appId, connectorName, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAppOidcConnectorTest Get an OIDC connector test
+//
+// A test started with `POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test`. Tests are kept for 24 hours.
+//
+// Corresponds with GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId} (the `GetAppOidcConnectorTest` operationId).
+func (c *Client) GetAppOidcConnectorTest(ctx context.Context, appId AppId, connectorName OidcConnectorName, testId OidcConnectorTestId, params *GetAppOidcConnectorTestParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppOidcConnectorTestRequest(c.Server, appId, connectorName, testId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -8395,6 +8589,149 @@ func NewDetachAppOidcConnectorRequest(server string, appId AppId, connectorName 
 	}
 
 	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTestAppOidcConnectorRequest constructs an http.Request for the TestAppOidcConnector method
+func NewTestAppOidcConnectorRequest(server string, appId AppId, connectorName OidcConnectorName, params *TestAppOidcConnectorParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "connectorName", connectorName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/oidc-connectors/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAppOidcConnectorTestRequest constructs an http.Request for the GetAppOidcConnectorTest method
+func NewGetAppOidcConnectorTestRequest(server string, appId AppId, connectorName OidcConnectorName, testId OidcConnectorTestId, params *GetAppOidcConnectorTestParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "connectorName", connectorName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "testId", testId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/oidc-connectors/%s/tests/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11852,6 +12189,25 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /v1/apps/{appId}/oidc-connectors/{connectorName} (the `DetachAppOidcConnector` operationId).
 	DetachAppOidcConnectorWithResponse(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *DetachAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*DetachAppOidcConnectorResponse, error)
 
+	// TestAppOidcConnectorWithResponse Test an attached OIDC connector's trust setup
+	//
+	// Starts a test of the trust setup between the app and the connector's cloud, without deploying any code. The platform runs a short-lived probe as a worker of the app, with no customer code: it gets the app's token like a worker does and exchanges it with the cloud, Google STS (and service account impersonation when the connector names one) or AWS `AssumeRoleWithWebIdentity`. The probe obtains real, short-lived credentials and discards them; no token or credential is returned, stored or logged. On AWS the session name is `runware-connector-test-<test id>`, so a test shows in CloudTrail.
+	// Answers `202` with the test in `pending`; poll `GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId}` for the result, which is normally there within a minute and always within two. The connector must be attached to the app in the environment, and be of kind `aws` or `gcp`: a `generic` connector has no cloud to exchange with and answers `422`. One test of a connector runs at a time for each app and environment; a second answers `409`. An organization starts at most 20 tests an hour, counting those running and those that ended `ok` or `cloud_error`, and at most 60 an hour that end `platform_error`; past either, `429`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test (the `TestAppOidcConnector` operationId).
+	TestAppOidcConnectorWithResponse(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *TestAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*TestAppOidcConnectorResponse, error)
+
+	// GetAppOidcConnectorTestWithResponse Get an OIDC connector test
+	//
+	// A test started with `POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test`. Tests are kept for 24 hours.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId} (the `GetAppOidcConnectorTest` operationId).
+	GetAppOidcConnectorTestWithResponse(ctx context.Context, appId AppId, connectorName OidcConnectorName, testId OidcConnectorTestId, params *GetAppOidcConnectorTestParams, reqEditors ...RequestEditorFn) (*GetAppOidcConnectorTestResponse, error)
+
 	// ResumeAppWithResponse Resume an app
 	//
 	// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
@@ -15051,6 +15407,207 @@ func (r DetachAppOidcConnectorResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DetachAppOidcConnectorResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// TestAppOidcConnectorResponse429Headers the declared response headers of an HTTP 429 response for TestAppOidcConnector
+type TestAppOidcConnectorResponse429Headers struct {
+	RetryAfter int32
+}
+
+type TestAppOidcConnectorResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *OidcConnectorTest
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *OidcConnectorTestLimited
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *OidcConnectorsUnavailable
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *TestAppOidcConnectorResponse429Headers
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r TestAppOidcConnectorResponse) GetJSON202() *OidcConnectorTest {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON403() *Forbidden {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON429() *OidcConnectorTestLimited {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON501() *OidcConnectorsUnavailable {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r TestAppOidcConnectorResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r TestAppOidcConnectorResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAppOidcConnectorResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAppOidcConnectorResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TestAppOidcConnectorResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAppOidcConnectorTestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OidcConnectorTest
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAppOidcConnectorTestResponse) GetJSON200() *OidcConnectorTest {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetAppOidcConnectorTestResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetAppOidcConnectorTestResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetAppOidcConnectorTestResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetAppOidcConnectorTestResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetAppOidcConnectorTestResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetAppOidcConnectorTestResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAppOidcConnectorTestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppOidcConnectorTestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppOidcConnectorTestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAppOidcConnectorTestResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19971,6 +20528,37 @@ func (c *ClientWithResponses) DetachAppOidcConnectorWithResponse(ctx context.Con
 	return ParseDetachAppOidcConnectorResponse(rsp)
 }
 
+// TestAppOidcConnectorWithResponse Test an attached OIDC connector's trust setup
+//
+// Starts a test of the trust setup between the app and the connector's cloud, without deploying any code. The platform runs a short-lived probe as a worker of the app, with no customer code: it gets the app's token like a worker does and exchanges it with the cloud, Google STS (and service account impersonation when the connector names one) or AWS `AssumeRoleWithWebIdentity`. The probe obtains real, short-lived credentials and discards them; no token or credential is returned, stored or logged. On AWS the session name is `runware-connector-test-<test id>`, so a test shows in CloudTrail.
+// Answers `202` with the test in `pending`; poll `GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId}` for the result, which is normally there within a minute and always within two. The connector must be attached to the app in the environment, and be of kind `aws` or `gcp`: a `generic` connector has no cloud to exchange with and answers `422`. One test of a connector runs at a time for each app and environment; a second answers `409`. An organization starts at most 20 tests an hour, counting those running and those that ended `ok` or `cloud_error`, and at most 60 an hour that end `platform_error`; past either, `429`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test (the `TestAppOidcConnector` operationId).
+func (c *ClientWithResponses) TestAppOidcConnectorWithResponse(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *TestAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*TestAppOidcConnectorResponse, error) {
+	rsp, err := c.TestAppOidcConnector(ctx, appId, connectorName, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAppOidcConnectorResponse(rsp)
+}
+
+// GetAppOidcConnectorTestWithResponse Get an OIDC connector test
+//
+// A test started with `POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test`. Tests are kept for 24 hours.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId} (the `GetAppOidcConnectorTest` operationId).
+func (c *ClientWithResponses) GetAppOidcConnectorTestWithResponse(ctx context.Context, appId AppId, connectorName OidcConnectorName, testId OidcConnectorTestId, params *GetAppOidcConnectorTestParams, reqEditors ...RequestEditorFn) (*GetAppOidcConnectorTestResponse, error) {
+	rsp, err := c.GetAppOidcConnectorTest(ctx, appId, connectorName, testId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppOidcConnectorTestResponse(rsp)
+}
+
 // ResumeAppWithResponse Resume an app
 //
 // Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
@@ -23112,6 +23700,183 @@ func ParseDetachAppOidcConnectorResponse(rsp *http.Response) (*DetachAppOidcConn
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAppOidcConnectorResponse parses an HTTP response from a TestAppOidcConnectorWithResponse call
+func ParseTestAppOidcConnectorResponse(rsp *http.Response) (*TestAppOidcConnectorResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAppOidcConnectorResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest OidcConnectorTest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest OidcConnectorTestLimited
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest OidcConnectorsUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers TestAppOidcConnectorResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int32
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetAppOidcConnectorTestResponse parses an HTTP response from a GetAppOidcConnectorTestWithResponse call
+func ParseGetAppOidcConnectorTestResponse(rsp *http.Response) (*GetAppOidcConnectorTestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppOidcConnectorTestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OidcConnectorTest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

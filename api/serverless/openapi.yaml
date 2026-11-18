@@ -1950,6 +1950,79 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /v1/apps/{appId}/oidc-connectors/{connectorName}/test:
+    post:
+      tags:
+        - OidcConnectors
+      summary: Test an attached OIDC connector's trust setup
+      description: |
+        Starts a test of the trust setup between the app and the connector's cloud, without deploying any code. The platform runs a short-lived probe as a worker of the app, with no customer code: it gets the app's token like a worker does and exchanges it with the cloud, Google STS (and service account impersonation when the connector names one) or AWS `AssumeRoleWithWebIdentity`. The probe obtains real, short-lived credentials and discards them; no token or credential is returned, stored or logged. On AWS the session name is `runware-connector-test-<test id>`, so a test shows in CloudTrail.
+        Answers `202` with the test in `pending`; poll `GET /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId}` for the result, which is normally there within a minute and always within two. The connector must be attached to the app in the environment, and be of kind `aws` or `gcp`: a `generic` connector has no cloud to exchange with and answers `422`. One test of a connector runs at a time for each app and environment; a second answers `409`. An organization starts at most 20 tests an hour, counting those running and those that ended `ok` or `cloud_error`, and at most 60 an hour that end `platform_error`; past either, `429`.
+      operationId: testAppOidcConnector
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/AppEnvironment'
+        - $ref: '#/components/parameters/OidcConnectorName'
+      responses:
+        '202':
+          description: |
+            Test started. `status` is `pending`, or `platform_error` with `tenancy_not_ready` when the organization's workers cannot run yet; no probe runs then.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcConnectorTest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/OidcConnectorTestLimited'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '501':
+          $ref: '#/components/responses/OidcConnectorsUnavailable'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/apps/{appId}/oidc-connectors/{connectorName}/tests/{testId}:
+    get:
+      tags:
+        - OidcConnectors
+      summary: Get an OIDC connector test
+      description: |
+        A test started with `POST /v1/apps/{appId}/oidc-connectors/{connectorName}/test`. Tests are kept for 24 hours.
+      operationId: getAppOidcConnectorTest
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/AppEnvironment'
+        - $ref: '#/components/parameters/OidcConnectorName'
+        - $ref: '#/components/parameters/OidcConnectorTestId'
+      responses:
+        '200':
+          description: The test
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcConnectorTest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/apps/{appId}/secrets:
     get:
       tags:
@@ -3069,6 +3142,14 @@ components:
       description: OIDC connector name, unique within the authenticated organization.
       schema:
         $ref: '#/components/schemas/OidcConnectorName'
+    OidcConnectorTestId:
+      name: testId
+      in: path
+      required: true
+      description: The test's id, from the `202` that started it.
+      schema:
+        type: string
+        format: uuid
     IfMatch:
       name: If-Match
       in: header
@@ -3418,6 +3499,28 @@ components:
                 title: Service Unavailable
                 status: 503
                 detail: task store is unavailable
+    OidcConnectorTestLimited:
+      description: |
+        The organization has started as many OIDC connector tests as an hour allows. `Retry-After` says when the next one may start.
+      headers:
+        Retry-After:
+          description: Seconds to wait before starting another test.
+          required: true
+          schema:
+            type: integer
+            format: int32
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            too-many-requests:
+              summary: The hourly test allowance is used up
+              value:
+                type: https://docs.runware.ai/serverless/errors#too-many-requests
+                title: Too Many Requests
+                status: 429
+                detail: the organization started 20 OIDC connector tests in the last hour
     OidcConnectorsUnavailable:
       description: |
         OIDC connectors are not available in this environment: it has no OIDC issuer. Creating, updating and attaching a connector answer this before they read or write anything; listing, reading, deleting and detaching keep working, so a connector can always be removed.
@@ -5788,6 +5891,7 @@ components:
         - connector.delete
         - connector.attach
         - connector.detach
+        - connector.test
         - environment.create
         - environment.update
         - environment.delete
@@ -5819,6 +5923,7 @@ components:
         - AuditLogActionConnectorDelete
         - AuditLogActionConnectorAttach
         - AuditLogActionConnectorDetach
+        - AuditLogActionConnectorTest
         - AuditLogActionEnvironmentCreate
         - AuditLogActionEnvironmentUpdate
         - AuditLogActionEnvironmentDelete
@@ -6232,6 +6337,102 @@ components:
         - OidcConnectorKindAws
         - OidcConnectorKindGcp
         - OidcConnectorKindGeneric
+    OidcConnectorTestStatus:
+      type: string
+      description: |
+        Where a test is. `ok` and `cloud_error` are the trust setup's own answer: the cloud accepted the token, or refused it with the error in `code` and `message`. `platform_error` means the platform could not run the test (see `reason`) and says nothing about the trust setup.
+      enum:
+        - pending
+        - ok
+        - cloud_error
+        - platform_error
+      x-enum-varnames:
+        - OidcConnectorTestStatusPending
+        - OidcConnectorTestStatusOk
+        - OidcConnectorTestStatusCloudError
+        - OidcConnectorTestStatusPlatformError
+    OidcConnectorTestReason:
+      type: string
+      description: |
+        Why the platform could not run a test, present only with `platform_error`. `unconfigured`: this environment cannot run tests. `unschedulable`: the probe could not be placed. `image_pull`: the probe's image could not be pulled. `deadline`: the test did not finish in time. `issuer_refused`: the platform's issuer would not sign the app's token. `probe_failed`: the probe could not finish for a reason that says nothing about the trust setup, such as a cloud error on the provider's side or throttling. `tenancy_not_ready`: the organization's workers cannot run yet. `deployer_unavailable`: the platform could not start the test.
+      enum:
+        - unconfigured
+        - unschedulable
+        - image_pull
+        - deadline
+        - issuer_refused
+        - probe_failed
+        - tenancy_not_ready
+        - deployer_unavailable
+      x-enum-varnames:
+        - OidcConnectorTestReasonUnconfigured
+        - OidcConnectorTestReasonUnschedulable
+        - OidcConnectorTestReasonImagePull
+        - OidcConnectorTestReasonDeadline
+        - OidcConnectorTestReasonIssuerRefused
+        - OidcConnectorTestReasonProbeFailed
+        - OidcConnectorTestReasonTenancyNotReady
+        - OidcConnectorTestReasonDeployerUnavailable
+    OidcConnectorTestStage:
+      type: string
+      description: |
+        Where the probe was when it was refused: `issuer` (getting the app's token), `sts` (Google STS), `impersonation` (Google service account impersonation) or `assume_role` (AWS).
+      enum:
+        - issuer
+        - sts
+        - impersonation
+        - assume_role
+      x-enum-varnames:
+        - OidcConnectorTestStageIssuer
+        - OidcConnectorTestStageSts
+        - OidcConnectorTestStageImpersonation
+        - OidcConnectorTestStageAssumeRole
+    OidcConnectorTest:
+      type: object
+      description: One test of an OIDC connector's trust setup. It holds no token and no credential.
+      required:
+        - id
+        - status
+        - createdAt
+        - deadlineAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/OidcConnectorTestStatus'
+        reason:
+          $ref: '#/components/schemas/OidcConnectorTestReason'
+        stage:
+          $ref: '#/components/schemas/OidcConnectorTestStage'
+        code:
+          type: string
+          maxLength: 64
+          description: |
+            On `cloud_error`, the cloud's own error code, such as `invalid_target` or `unauthorized_client` from Google or `AccessDenied` from AWS, or `unknown`. On `platform_error: issuer_refused`, the platform's issuer's RFC 6749 code, such as `invalid_grant`: the platform refused to sign the app's token, and the customer's cloud was not asked.
+        message:
+          type: string
+          maxLength: 512
+          description: |
+            On `cloud_error`, the cloud's error message, or `cloud error message withheld` when it contained a token or a credential. On `platform_error`, the platform's description of what went wrong, such as `Google STS answered 503`: it is not the cloud's verdict on the trust setup.
+        troubleshooting:
+          type: string
+          description: What a `cloud_error` with this `code` usually means and what to check.
+        identity:
+          type: string
+          maxLength: 1024
+          description: |
+            On `ok`, what the cloud accepted the token as: the assumed role's ARN (AWS) or the impersonated service account (GCP). Absent for a GCP connector with no service account.
+        createdAt:
+          type: string
+          format: date-time
+        deadlineAt:
+          type: string
+          format: date-time
+          description: When a test still `pending` turns into `platform_error` with `deadline`.
+        finishedAt:
+          type: string
+          format: date-time
     OidcConnectorAudience:
       type: string
       description: |
