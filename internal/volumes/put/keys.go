@@ -52,7 +52,7 @@ func (k keypairKeys) Open(statement, signature []byte, organization [16]byte) (K
 	}
 	return keypairSession{
 		Session: s,
-		keyPair: st.KeyPair,
+		keyPair: st.KeyPairID(),
 	}, nil
 }
 

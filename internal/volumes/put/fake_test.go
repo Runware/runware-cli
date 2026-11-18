@@ -3,9 +3,7 @@ package put
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -54,24 +52,18 @@ type vectorKeyPair struct {
 }
 
 type vectorStatement struct {
-	Encoded              string `json:"encoded"`
-	IssuedAt             int64  `json:"issuedAt"`
-	Signature            string `json:"signature"`
-	SigningKeyVersion    uint32 `json:"signingKeyVersion"`
-	SigningPublicKeySpki string `json:"signingPublicKeySpki"`
+	Encoded   string `json:"encoded"`
+	Signature string `json:"signature"`
 }
 
 // vectorKeys is the format vectors' organization, key pair and signed key-pair statement.
 type vectorKeys struct {
-	org            [16]byte
-	keyPair        [16]byte
-	privateKey     []byte
-	publicKey      []byte
-	statement      []byte
-	signature      []byte
-	signingVersion uint32
-	signingKey     *ecdsa.PublicKey
-	issuedAt       time.Time
+	org        [16]byte
+	keyPair    [16]byte
+	privateKey []byte
+	publicKey  []byte
+	statement  []byte
+	signature  []byte
 }
 
 func loadVectorKeys(t *testing.T) vectorKeys {
@@ -84,24 +76,13 @@ func loadVectorKeys(t *testing.T) vectorKeys {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)
 	}
-	parsed, err := x509.ParsePKIXPublicKey(unhex(t, raw.Statement.SigningPublicKeySpki))
-	if err != nil {
-		t.Fatal(err)
-	}
-	signingKey, ok := parsed.(*ecdsa.PublicKey)
-	if !ok {
-		t.Fatal("the vectors' signing key is not an ECDSA key")
-	}
 	return vectorKeys{
-		org:            [16]byte(uuid.MustParse(raw.KeyPair.Organization)),
-		keyPair:        [16]byte(uuid.MustParse(raw.KeyPair.KeyPairID)),
-		privateKey:     unhex(t, raw.KeyPair.PrivateKey),
-		publicKey:      unhex(t, raw.KeyPair.PublicKey),
-		statement:      unhex(t, raw.Statement.Encoded),
-		signature:      unhex(t, raw.Statement.Signature),
-		signingVersion: raw.Statement.SigningKeyVersion,
-		signingKey:     signingKey,
-		issuedAt:       time.Unix(raw.Statement.IssuedAt, 0).UTC(),
+		org:        [16]byte(uuid.MustParse(raw.KeyPair.Organization)),
+		keyPair:    [16]byte(uuid.MustParse(raw.KeyPair.KeyPairID)),
+		privateKey: unhex(t, raw.KeyPair.PrivateKey),
+		publicKey:  unhex(t, raw.KeyPair.PublicKey),
+		statement:  unhex(t, raw.Statement.Encoded),
+		signature:  unhex(t, raw.Statement.Signature),
 	}
 }
 

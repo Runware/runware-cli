@@ -340,44 +340,27 @@ func (r *recordedOpen) OpenUpload(ctx context.Context, vol VolumeRef, open Uploa
 	return r.API.OpenUpload(ctx, vol, open)
 }
 
-// AC 4: through a real verifier, the engine passes the configured organization to Verify and opens the session with the verified key pair.
-func TestPutThroughTheRealVerifier(t *testing.T) {
-	t.Run("the configured organization reaches Verify", func(t *testing.T) {
-		e := newTestEnv(t)
-		dir := standardTree(t, e)
-		opts := e.options(e.cloud.newVolume("model-weights", ""), dir)
-		opts.Keys = e.realKeys(t)
+// AC 4: the engine passes the configured organization to Keys and uses the returned key pair to open the upload.
+func TestPutUsesConfiguredOrganizationAndReturnedKeyPair(t *testing.T) {
+	e := newTestEnv(t)
+	dir := standardTree(t, e)
+	rec := &recordedOpen{API: e.cloud}
+	opts := e.options(e.cloud.newVolume("model-weights", ""), dir)
+	opts.API = rec
 
-		if _, err := Run(t.Context(), opts); err != nil {
-			t.Fatalf("the real verifier refused the configured organization's statement: %v", err)
-		}
+	if _, err := Run(t.Context(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if want := uuid.UUID(e.vec.keyPair).String(); rec.open.KeyPairID != want {
+		t.Fatalf("the session opened with key pair %q, want %q", rec.open.KeyPairID, want)
+	}
+	requireFiles(t, e, opts.Volume, expectedFiles(t, dir, ""))
 
-		requireFiles(t, e, opts.Volume, expectedFiles(t, dir, ""))
-		other := e.options(e.cloud.newVolume("other", ""), dir)
-		other.Keys = e.realKeys(t)
-		other.Organization = uuid.NewString()
-		if _, err := Run(t.Context(), other); !errors.Is(err, keypair.ErrStatement) || !strings.Contains(err.Error(), "organization") {
-			t.Errorf("another organization: error = %v, want the statement refused for its organization", err)
-		}
-	})
-
-	t.Run("the verified key pair reaches OpenUpload", func(t *testing.T) {
-		e := newTestEnv(t)
-		dir := standardTree(t, e)
-		rec := &recordedOpen{API: e.cloud}
-		opts := e.options(e.cloud.newVolume("model-weights", ""), dir)
-		opts.API = rec
-		opts.Keys = e.realKeys(t)
-
-		_, err := Run(t.Context(), opts)
-
-		if want := uuid.UUID(e.vec.keyPair).String(); rec.open.KeyPairID != want {
-			t.Fatalf("the session opened with key pair %q, want the verified statement's %q", rec.open.KeyPairID, want)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	other := e.options(e.cloud.newVolume("other", ""), dir)
+	other.Organization = uuid.NewString()
+	if _, err := Run(t.Context(), other); !errors.Is(err, keypair.ErrStatement) || !strings.Contains(err.Error(), "organization") {
+		t.Errorf("another organization: error = %v, want the statement refused for its organization", err)
+	}
 }
 
 // AC 4: put without an organization refuses before any work.

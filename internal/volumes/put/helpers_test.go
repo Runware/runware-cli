@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +19,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/runware/runware-cli/internal/volumes/keypair"
 	"github.com/runware/runware-cli/pkg/volumeformat"
 )
 
@@ -72,21 +70,6 @@ func newTestEnv(t *testing.T) *testEnv {
 }
 
 func (e *testEnv) org() string { return uuid.UUID(e.vec.org).String() }
-
-// realKeys returns Keys over a real verifier that trusts the vectors' signing key and runs inside the statement's validity.
-func (e *testEnv) realKeys(t *testing.T) Keys {
-	t.Helper()
-	v, err := keypair.NewVerifierWithKeys(
-		map[uint32]*ecdsa.PublicKey{e.vec.signingVersion: e.vec.signingKey},
-		"api.example.com",
-		e.configDir,
-		func() time.Time { return e.vec.issuedAt.Add(time.Hour) },
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return NewKeys(v)
-}
 
 // options wires a put of paths into vol against the fake cloud, with no sleeping and a skewable clock.
 func (e *testEnv) options(vol VolumeRef, paths ...string) Options {
