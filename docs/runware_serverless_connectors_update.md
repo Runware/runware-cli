@@ -20,7 +20,17 @@ connector after it was read.
 
 Updating rolls every live application that attaches the connector, so its
 workers get the new configuration. Running workers keep the old configuration
-until they roll.
+until they roll. An application that is not live picks up the new configuration
+on its next rollout.
+
+If an application already has a rollout in progress, it rolls again on its own
+once that rollout finishes. 'runware serverless apps events' shows "OIDC connector change accepted: rolls when the rollout in progress finishes"
+right away, then "change made during the previous rollout: rolling to pick it
+up" when the second rollout starts. If that rollout fails or leaves the
+application not live, the application picks the change up on its next rollout.
+If the second rollout cannot be deployed, 'runware serverless apps events --type
+error' shows "credential change not applied" and the workers keep the previous
+configuration until the application is redeployed.
 
 ```
 runware serverless connectors update <name> [flags]

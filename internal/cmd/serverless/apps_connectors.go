@@ -67,8 +67,10 @@ workers' tokens carry and the subjectPattern that matches every application of
 the organization in this environment.
 
 Attaching rolls the application's live deployment, so its workers start
-getting a token. An application that is not live, or already has a rollout in
-progress, picks the connector up on its next rollout.
+getting a token. An application that is not live picks the connector up on its
+next rollout.
+
+` + rolloutInProgressHelp(connectorWaitMessage) + `
 
 An application holds at most one connector of each kind. The env names a
 connector sets on the worker are reserved while it is attached: attaching is
@@ -102,7 +104,10 @@ func newAppsConnectorsDetachCmd(logger *log.Logger) *cobra.Command {
 
 Detaching rolls the application's live deployment, so its workers stop getting
 a token. Running workers keep the connector until they roll, and a token a
-worker already holds stays valid until it expires, at most an hour.`,
+worker already holds stays valid until it expires, at most an hour. An
+application that is not live loses the connector on its next rollout.
+
+` + rolloutInProgressHelp(connectorWaitMessage),
 		Example: `  runware serverless apps connectors detach my-app aws-prod`,
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
