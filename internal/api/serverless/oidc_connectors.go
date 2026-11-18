@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -383,15 +382,30 @@ func (e *LastPollError) Error() string {
 func (e *LastPollError) Unwrap() error { return e.Cause }
 
 // retryablePoll reports whether a failed poll may succeed at the next one: an
-// API error the transport counts as transient (5xx, 429, a timeout, a dropped
-// connection), or a request that got no HTTP response. A response the client
-// could not decode is not retried: the next one would be the same.
+// answer with a transient status (408, 429, 500, 502, 503 or 504), a transport
+// failure the client counts as transient, or a request whose connection failed
+// before or while the answer was read. Any other status ends the wait, as does
+// an answer the client could not decode: the next one would be the same.
 func retryablePoll(err error) bool {
 	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
-		return re.Retryable
+		if re.StatusCode == 0 {
+			return re.Retryable
+		}
+		return transientPollStatus(re.StatusCode)
 	}
-	_, ok := errors.AsType[*url.Error](err)
-	return ok
+	return transport.IsConnectionError(err)
+}
+
+// transientPollStatus reports whether a poll answered with status may succeed
+// when repeated. The error code alone cannot tell: every status the client does
+// not map, such as 405 or 410, counts as a server error.
+func transientPollStatus(status int) bool {
+	switch status {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // withRetryAfter adds the response's Retry-After to a refusal that carries one,

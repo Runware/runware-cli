@@ -37,16 +37,18 @@ func connectorTestBody(status, extra string) string {
 
 // connectorTestStub answers a test start with start, then each poll with the
 // next of polls (the last one repeats), except that the first refusedPolls
-// polls get pollRefusal, and counts the polls.
+// polls get pollRefusal and the truncatedPolls after them a body cut short,
+// and counts the polls.
 type connectorTestStub struct {
-	mu           sync.Mutex
-	start        stubResponse
-	polls        []string
-	pollRefusal  stubResponse
-	refusedPolls int
-	header       http.Header
-	gets         int
-	query        map[string][]string
+	mu             sync.Mutex
+	start          stubResponse
+	polls          []string
+	pollRefusal    stubResponse
+	refusedPolls   int
+	truncatedPolls int
+	header         http.Header
+	gets           int
+	query          map[string][]string
 }
 
 func (s *connectorTestStub) handler(t *testing.T) http.HandlerFunc {
@@ -74,7 +76,15 @@ func (s *connectorTestStub) handler(t *testing.T) http.HandlerFunc {
 				_, _ = w.Write([]byte(s.pollRefusal.body))
 				return
 			}
-			body := s.polls[min(s.gets-1-s.refusedPolls, len(s.polls)-1)]
+			if s.gets <= s.refusedPolls+s.truncatedPolls {
+				// The declared length is never met, so the client's read of the
+				// body fails with io.ErrUnexpectedEOF.
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Content-Length", "1000")
+				_, _ = w.Write([]byte(`{"id":`))
+				return
+			}
+			body := s.polls[min(s.gets-1-s.refusedPolls-s.truncatedPolls, len(s.polls)-1)]
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(body))
 		default:
@@ -423,6 +433,47 @@ func TestAppsConnectorsTestTimeoutNamesTheLastFailedPoll(t *testing.T) {
 	}
 	if stub.gets < 2 {
 		t.Errorf("polls = %d, want the failed poll retried", stub.gets)
+	}
+}
+
+// A poll whose answer is cut off mid-body is retried: the connection failed,
+// not the API.
+func TestAppsConnectorsTestRetriesAPollCutOffMidBody(t *testing.T) {
+	stub := &connectorTestStub{
+		start:          pendingStart(),
+		truncatedPolls: 1,
+		polls:          []string{connectorTestBody("ok", `"identity":"`+testConnectorTestRole+`"`)},
+	}
+
+	run := runConnectorTest(t, stub)
+
+	if run.err != nil {
+		t.Fatalf("err = %v, want the result after the cut-off poll", run.err)
+	}
+	if stub.gets != 2 {
+		t.Errorf("polls = %d, want 2 (one cut off, then ok)", stub.gets)
+	}
+}
+
+// A status the client maps to a server error by default, such as 410, is not
+// transient, so the poll is not retried.
+func TestAppsConnectorsTestDoesNotRetryAGonePoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusGone,
+			body:   problemBody(http.StatusGone, "gone"),
+		},
+		refusedPolls: 1 << 20,
+	}
+
+	run := runConnectorTest(t, stub, "--timeout", "5s")
+
+	if run.err == nil {
+		t.Fatal("err = nil, want the refusal")
+	}
+	if stub.gets != 1 {
+		t.Errorf("polls = %d, want 1", stub.gets)
 	}
 }
 
