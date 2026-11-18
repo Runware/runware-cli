@@ -330,7 +330,7 @@ type fakeUpload struct {
 	order     []string
 }
 
-// partRequest is a request to the fake Worker, for fault injection and assertions.
+// partRequest is a request to the fake upload endpoint.
 type partRequest struct {
 	FileID  string
 	Path    string
@@ -351,7 +351,7 @@ type putRecord struct {
 	Salt   []byte
 }
 
-// fakeCloud is the Volumes API and the upload Worker of one organization, in memory.
+// fakeCloud is the in-memory Volumes API and upload endpoint for one organization.
 type fakeCloud struct {
 	t      *testing.T
 	vec    vectorKeys
@@ -1054,7 +1054,7 @@ func (c *fakeCloud) writeProblem(w http.ResponseWriter, status int, slug string)
 	}
 }
 
-// servePart is the upload Worker: it checks the token and length, stores the part and acks it.
+// servePart is the fake upload endpoint.
 func (c *fakeCloud) servePart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		c.writeProblem(w, http.StatusMethodNotAllowed, "method-not-allowed")

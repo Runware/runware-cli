@@ -211,6 +211,69 @@ func TestPartsUploadInParallel(t *testing.T) {
 	}
 }
 
+func TestParallelismBoundsPartRequestsAcrossFiles(t *testing.T) {
+	const parallel = 2
+	e := newTestEnv(t)
+	vol := e.cloud.newVolume("model-weights", "")
+	var paths []string
+	for i := range 3 * parallel {
+		paths = append(paths, singleFile(t, e, fmt.Sprintf("part-%d.bin", i), []byte{byte(i)}))
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	var (
+		inFlight atomic.Int32
+		exceeded atomic.Bool
+		arrived  = make(chan struct{}, len(paths))
+		release  = make(chan struct{})
+		once     sync.Once
+	)
+	unblock := func() { once.Do(func() { close(release) }) }
+	e.cloud.onPut = func(partRequest) {
+		if inFlight.Add(1) > parallel {
+			exceeded.Store(true)
+		}
+		defer inFlight.Add(-1)
+		arrived <- struct{}{}
+		<-release
+	}
+	opts := e.options(vol, paths...)
+	opts.Parallelism = parallel
+	done := make(chan error, 1)
+	go func() {
+		_, err := Run(ctx, opts)
+		done <- err
+		close(done)
+	}()
+	defer func() {
+		unblock()
+		cancel()
+		<-done
+	}()
+	for range parallel {
+		select {
+		case <-arrived:
+		case <-ctx.Done():
+			t.Fatal("the expected requests did not run together")
+		}
+	}
+	select {
+	case <-arrived:
+		t.Error("another request started before an upload slot was free")
+	case <-time.After(200 * time.Millisecond):
+	}
+	unblock()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if exceeded.Load() {
+		t.Errorf("more than %d part requests overlapped", parallel)
+	}
+	if got := len(e.cloud.putLog()); got != len(paths) {
+		t.Errorf("sent %d parts, want %d", got, len(paths))
+	}
+}
+
 // TestParallelismIsBounded: zero or less runs four parts at once, and no more than sixteen run however many are asked for.
 func TestParallelismIsBounded(t *testing.T) {
 	for asked, want := range map[int]int{
