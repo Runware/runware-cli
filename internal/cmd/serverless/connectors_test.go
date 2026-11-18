@@ -1,13 +1,19 @@
 package serverless
 
 import (
+	"cmp"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/runware/runware-cli/internal/api/transport"
 )
 
 const (
@@ -748,5 +754,152 @@ func assertYAMLEqualsJSON(t *testing.T, handler http.HandlerFunc, args ...string
 	}
 	if !reflect.DeepEqual(fromJSON, normalized) {
 		t.Errorf("%v: YAML document differs from JSON\nJSON: %v\nYAML: %v", args, fromJSON, normalized)
+	}
+}
+
+const testConnectorETag = `"1763337600000123"`
+
+// etagConnectorAPI answers GET with the connector and etag (no header when etag
+// is empty) and PUT with putStatus. It keeps the If-Match header of every PUT,
+// and whether one was present at all.
+type etagConnectorAPI struct {
+	etag      string
+	putStatus int
+	putBody   string
+	getBody   string // the connector GET answers; testAWSConnector when empty
+
+	mu       sync.Mutex
+	ifMatch  []string
+	hasMatch []bool
+}
+
+func (a *etagConnectorAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		if a.etag != "" {
+			w.Header().Set("ETag", a.etag)
+		}
+		_, _ = io.WriteString(w, cmp.Or(a.getBody, testAWSConnector))
+	case http.MethodPut:
+		a.mu.Lock()
+		_, has := r.Header["If-Match"]
+		a.hasMatch = append(a.hasMatch, has)
+		a.ifMatch = append(a.ifMatch, r.Header.Get("If-Match"))
+		a.mu.Unlock()
+		contentType := "application/json"
+		if a.putStatus >= http.StatusBadRequest {
+			contentType = "application/problem+json"
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(a.putStatus)
+		_, _ = io.WriteString(w, a.putBody)
+	default:
+		http.Error(w, "unexpected", http.StatusMethodNotAllowed)
+	}
+}
+
+func TestConnectorsUpdateSendsTheETagItReadAsIfMatch(t *testing.T) {
+	api := &etagConnectorAPI{etag: testConnectorETag, putStatus: http.StatusOK, putBody: testAWSConnector}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.ifMatch, []string{testConnectorETag}) {
+		t.Fatalf("If-Match on the PUTs = %q, want exactly the GET's ETag %s", api.ifMatch, testConnectorETag)
+	}
+}
+
+func TestConnectorsUpdateRefusedWhenTheConnectorChangedSinceItWasRead(t *testing.T) {
+	api := &etagConnectorAPI{
+		etag:      testConnectorETag,
+		putStatus: http.StatusPreconditionFailed,
+		putBody:   `{"type":"https://docs.runware.ai/serverless/errors#precondition-failed","title":"Precondition Failed","status":412,"detail":"the OIDC connector changed since the ETag in If-Match; read it again and retry"}`,
+	}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	want := "connector aws-prod was changed by someone else since it was read; nothing was changed. Run the command again"
+	if run.err == nil || run.err.Error() != want {
+		t.Fatalf("err = %v, want %q", run.err, want)
+	}
+	re, ok := errors.AsType[*transport.RunwareError](run.err)
+	if !ok || re.StatusCode != http.StatusPreconditionFailed || re.Retryable || !strings.HasSuffix(re.ProblemType, "#precondition-failed") {
+		t.Fatalf("err = %#v, want a non-retryable *transport.RunwareError for the 412 so --format json keeps the code and the precondition-failed problem type", run.err)
+	}
+	if run.stdout != "" {
+		t.Fatalf("stdout = %q, want no connector printed", run.stdout)
+	}
+	if len(api.ifMatch) != 1 {
+		t.Fatalf("PUTs = %d, want exactly one and no retry", len(api.ifMatch))
+	}
+}
+
+func TestConnectorsUpdateSendsAWeakenedETagAsTheStrongOne(t *testing.T) {
+	api := &etagConnectorAPI{etag: "W/" + testConnectorETag, putStatus: http.StatusOK, putBody: testAWSConnector}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.ifMatch, []string{testConnectorETag}) {
+		t.Fatalf("If-Match on the PUTs = %q, want the strong tag %s a CDN weakened to W/", api.ifMatch, testConnectorETag)
+	}
+}
+
+func TestConnectorsUpdateSendsNoIfMatchWhenTheAPIGaveNoETag(t *testing.T) {
+	api := &etagConnectorAPI{putStatus: http.StatusOK, putBody: testAWSConnector}
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.hasMatch, []bool{false}) {
+		t.Fatalf("PUT carried an If-Match header = %v, want one PUT without it", api.hasMatch)
+	}
+}
+
+func TestConnectorsUpdateKeepsTheAPIsOwnRefusalForOtherStatuses(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{name: "conflict", status: http.StatusConflict, body: `{"type":"about:blank","title":"Conflict","status":409,"detail":"connector is being deleted"}`, want: "connector is being deleted"},
+		{name: "bad request", status: http.StatusBadRequest, body: `{"type":"about:blank","title":"Bad Request","status":400,"detail":"If-Match is not a valid entity-tag"}`, want: "If-Match is not a valid entity-tag"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &etagConnectorAPI{etag: testConnectorETag, putStatus: tc.status, putBody: tc.body}
+
+			run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, roleARNFlag, testNewRoleARN)
+
+			if run.err == nil || !strings.Contains(run.err.Error(), tc.want) {
+				t.Fatalf("err = %v, want the API's own text %q", run.err, tc.want)
+			}
+			if strings.Contains(run.err.Error(), "changed by someone else") {
+				t.Fatalf("err = %v, a %d must not read as a concurrent change", run.err, tc.status)
+			}
+		})
+	}
+}
+
+func TestConnectorsUpdateClearSendsTheETagAsIfMatch(t *testing.T) {
+	api := &etagConnectorAPI{etag: testConnectorETag, putStatus: http.StatusOK, putBody: testGCPWithoutSA}
+	api.getBody = testGCPConnector
+
+	run := runServerlessAgainst(t, api.ServeHTTP, testConnectorsGroup, testUpdateCommand, testConnectorName, clearFlagName, clearSAField)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	if !reflect.DeepEqual(api.ifMatch, []string{testConnectorETag}) {
+		t.Fatalf("If-Match on the PUTs = %q, want exactly the GET's ETag %s", api.ifMatch, testConnectorETag)
 	}
 }

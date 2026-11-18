@@ -1689,6 +1689,15 @@ paths:
       responses:
         '201':
           description: OIDC connector created
+          headers:
+            ETag:
+              description: >
+                Opaque validator of this connector's current state; it changes on every update.
+                Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if
+                nobody changed the connector since.
+              required: true
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -1724,6 +1733,15 @@ paths:
       responses:
         '200':
           description: The OIDC connector
+          headers:
+            ETag:
+              description: >
+                Opaque validator of this connector's current state; it changes on every update.
+                Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if
+                nobody changed the connector since.
+              required: true
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -1746,9 +1764,18 @@ paths:
       summary: Update an OIDC connector
       description: |
         Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
+
+        Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
+        the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
+        nothing changed and nothing rolled.
+        `If-Match: *` applies whenever the connector exists.
+        Without `If-Match` the update applies unconditionally, as before.
+        A connector that does not exist returns `404` for a well-formed `If-Match` or none.
+        A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
       operationId: updateOidcConnector
       parameters:
         - $ref: '#/components/parameters/OidcConnectorName'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -1758,6 +1785,15 @@ paths:
       responses:
         '200':
           description: Updated OIDC connector
+          headers:
+            ETag:
+              description: >
+                Opaque validator of this connector's current state; it changes on every update.
+                Send it as `If-Match` on `PUT /v1/oidc-connectors/{connectorName}` to apply the update only if
+                nobody changed the connector since.
+              required: true
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -1770,6 +1806,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
@@ -2986,6 +3024,23 @@ components:
       description: OIDC connector name, unique within the authenticated organization.
       schema:
         $ref: '#/components/schemas/OidcConnectorName'
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: >
+        Optional precondition on the resource's current state: the `ETag` from an earlier read of it.
+        The request applies only while that is still the resource's current `ETag`; otherwise it returns `412`
+        and changes nothing.
+        `*` matches any existing resource, so it adds no check beyond the resource existing.
+        Without the header the request applies unconditionally.
+        Send one strong entity-tag exactly as received, quotes included.
+        A value that is not `*` or one quoted entity-tag (a weak `W/` tag, a comma-separated list in one header, a bare token) returns `400`.
+        So does a quoted tag this API never issued, such as `"abc"` or `"-5"`.
+        A value longer than 256 characters is refused by request validation with `422`, before the header is read as an entity-tag.
+      schema:
+        type: string
+        maxLength: 256
     SecretName:
       name: secretName
       in: path
@@ -3365,6 +3420,23 @@ components:
                 title: Not Found
                 status: 404
                 detail: app not found
+    PreconditionFailed:
+      description: >
+        An `If-Match` precondition did not hold: the resource changed since the `ETag` the client sent,
+        so nothing was changed.
+        Read the resource again, reapply the change to the fresh state and retry with the new `ETag`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            precondition-failed:
+              summary: The resource changed since it was read
+              value:
+                type: https://docs.runware.ai/serverless/errors#precondition-failed
+                title: Precondition Failed
+                status: 412
+                detail: the OIDC connector changed since the ETag in If-Match; read it again and retry
     Conflict:
       description: Resource already exists or the request conflicts with its current state
       content:
