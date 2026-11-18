@@ -21,8 +21,9 @@ The outcome is one of:
                   service account is printed
   cloud_error     the cloud refused the token; its code, message and a
                   troubleshooting hint are printed, with the stage it refused at
-  platform_error  the platform could not run the test; the reason is printed and
-                  says nothing about the trust setup
+  platform_error  the platform could not run the test; the reason and what went
+                  wrong are printed (with the issuer's code for issuer_refused),
+                  and they say nothing about the trust setup
 
 The command exits non-zero unless the outcome is ok. A result normally arrives
 within a minute and always within two; --timeout stops waiting sooner.
