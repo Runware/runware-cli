@@ -9,9 +9,17 @@ exists there. The same name in another environment is a different secret.
 
 Creating a secret does not attach it to an application. Use 'secrets attach' for that.
 Updating an existing secret re-encrypts the value and rolls every live application
-that attaches it, so a running worker picks up the new value. If a rollout is already
-in progress, the new value reaches that worker on the next deploy. An application
-that is not live picks it up on its next deploy.
+that attaches it, so a running worker picks up the new value. An application that
+is not live picks it up on its next deploy.
+
+If an application already has a rollout in progress, it rolls again on its own
+once that rollout finishes. 'runware serverless apps events' shows "secret change accepted: rolls when the rollout in progress finishes"
+right away, then "change made during the previous rollout: rolling to pick it
+up" when the second rollout starts. If that rollout fails or leaves the
+application not live, the application picks the change up on its next rollout.
+If the second rollout cannot be deployed, 'runware serverless apps events --type
+error' shows "credential change not applied" and the workers keep the previous
+configuration until the application is redeployed.
 
 The secret value is never printed. Prefer --value-file so the value is not visible
 in process lists; use --value-file - to read from stdin.
