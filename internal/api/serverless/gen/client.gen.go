@@ -203,6 +203,198 @@ func (e AppStatus) Valid() bool {
 	}
 }
 
+// Defines values for AuditLogAction.
+const (
+	AuditLogActionAppBuildDelete            AuditLogAction = "app.build.delete"
+	AuditLogActionAppCreate                 AuditLogAction = "app.create"
+	AuditLogActionAppDelete                 AuditLogAction = "app.delete"
+	AuditLogActionAppDeploy                 AuditLogAction = "app.deploy"
+	AuditLogActionAppFavorite               AuditLogAction = "app.favorite"
+	AuditLogActionAppResume                 AuditLogAction = "app.resume"
+	AuditLogActionAppStop                   AuditLogAction = "app.stop"
+	AuditLogActionAppUpdate                 AuditLogAction = "app.update"
+	AuditLogActionAppVersionDelete          AuditLogAction = "app.version.delete"
+	AuditLogActionConnectorAttach           AuditLogAction = "connector.attach"
+	AuditLogActionConnectorCreate           AuditLogAction = "connector.create"
+	AuditLogActionConnectorDelete           AuditLogAction = "connector.delete"
+	AuditLogActionConnectorDetach           AuditLogAction = "connector.detach"
+	AuditLogActionConnectorUpdate           AuditLogAction = "connector.update"
+	AuditLogActionEnvironmentCreate         AuditLogAction = "environment.create"
+	AuditLogActionEnvironmentDefaultsUpdate AuditLogAction = "environment.defaults.update"
+	AuditLogActionEnvironmentDelete         AuditLogAction = "environment.delete"
+	AuditLogActionEnvironmentUpdate         AuditLogAction = "environment.update"
+	AuditLogActionSecretAttach              AuditLogAction = "secret.attach"
+	AuditLogActionSecretBatchCreate         AuditLogAction = "secret.batch.create"
+	AuditLogActionSecretCopy                AuditLogAction = "secret.copy"
+	AuditLogActionSecretCreate              AuditLogAction = "secret.create"
+	AuditLogActionSecretDelete              AuditLogAction = "secret.delete"
+	AuditLogActionSecretDetach              AuditLogAction = "secret.detach"
+	AuditLogActionSecretUpdate              AuditLogAction = "secret.update"
+	AuditLogActionSourceComplete            AuditLogAction = "source.complete"
+	AuditLogActionSourceCreate              AuditLogAction = "source.create"
+	AuditLogActionSourceDelete              AuditLogAction = "source.delete"
+	AuditLogActionVariableDelete            AuditLogAction = "variable.delete"
+	AuditLogActionVariablePut               AuditLogAction = "variable.put"
+)
+
+// Valid indicates whether the value is a known member of the AuditLogAction enum.
+func (e AuditLogAction) Valid() bool {
+	switch e {
+	case AuditLogActionAppBuildDelete:
+		return true
+	case AuditLogActionAppCreate:
+		return true
+	case AuditLogActionAppDelete:
+		return true
+	case AuditLogActionAppDeploy:
+		return true
+	case AuditLogActionAppFavorite:
+		return true
+	case AuditLogActionAppResume:
+		return true
+	case AuditLogActionAppStop:
+		return true
+	case AuditLogActionAppUpdate:
+		return true
+	case AuditLogActionAppVersionDelete:
+		return true
+	case AuditLogActionConnectorAttach:
+		return true
+	case AuditLogActionConnectorCreate:
+		return true
+	case AuditLogActionConnectorDelete:
+		return true
+	case AuditLogActionConnectorDetach:
+		return true
+	case AuditLogActionConnectorUpdate:
+		return true
+	case AuditLogActionEnvironmentCreate:
+		return true
+	case AuditLogActionEnvironmentDefaultsUpdate:
+		return true
+	case AuditLogActionEnvironmentDelete:
+		return true
+	case AuditLogActionEnvironmentUpdate:
+		return true
+	case AuditLogActionSecretAttach:
+		return true
+	case AuditLogActionSecretBatchCreate:
+		return true
+	case AuditLogActionSecretCopy:
+		return true
+	case AuditLogActionSecretCreate:
+		return true
+	case AuditLogActionSecretDelete:
+		return true
+	case AuditLogActionSecretDetach:
+		return true
+	case AuditLogActionSecretUpdate:
+		return true
+	case AuditLogActionSourceComplete:
+		return true
+	case AuditLogActionSourceCreate:
+		return true
+	case AuditLogActionSourceDelete:
+		return true
+	case AuditLogActionVariableDelete:
+		return true
+	case AuditLogActionVariablePut:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditLogActorKind.
+const (
+	AuditLogActorKindApiKey AuditLogActorKind = "apiKey"
+	AuditLogActorKindToken  AuditLogActorKind = "token"
+)
+
+// Valid indicates whether the value is a known member of the AuditLogActorKind enum.
+func (e AuditLogActorKind) Valid() bool {
+	switch e {
+	case AuditLogActorKindApiKey:
+		return true
+	case AuditLogActorKindToken:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditLogSource.
+const (
+	AuditLogSourceApi     AuditLogSource = "api"
+	AuditLogSourceConsole AuditLogSource = "console"
+)
+
+// Valid indicates whether the value is a known member of the AuditLogSource enum.
+func (e AuditLogSource) Valid() bool {
+	switch e {
+	case AuditLogSourceApi:
+		return true
+	case AuditLogSourceConsole:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditLogStatus.
+const (
+	AuditLogStatusDenied  AuditLogStatus = "denied"
+	AuditLogStatusSuccess AuditLogStatus = "success"
+)
+
+// Valid indicates whether the value is a known member of the AuditLogStatus enum.
+func (e AuditLogStatus) Valid() bool {
+	switch e {
+	case AuditLogStatusDenied:
+		return true
+	case AuditLogStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditLogTargetType.
+const (
+	AuditLogTargetTypeApp         AuditLogTargetType = "app"
+	AuditLogTargetTypeBuild       AuditLogTargetType = "build"
+	AuditLogTargetTypeConnector   AuditLogTargetType = "connector"
+	AuditLogTargetTypeEnvironment AuditLogTargetType = "environment"
+	AuditLogTargetTypeSecret      AuditLogTargetType = "secret"
+	AuditLogTargetTypeSource      AuditLogTargetType = "source"
+	AuditLogTargetTypeVariable    AuditLogTargetType = "variable"
+	AuditLogTargetTypeVersion     AuditLogTargetType = "version"
+)
+
+// Valid indicates whether the value is a known member of the AuditLogTargetType enum.
+func (e AuditLogTargetType) Valid() bool {
+	switch e {
+	case AuditLogTargetTypeApp:
+		return true
+	case AuditLogTargetTypeBuild:
+		return true
+	case AuditLogTargetTypeConnector:
+		return true
+	case AuditLogTargetTypeEnvironment:
+		return true
+	case AuditLogTargetTypeSecret:
+		return true
+	case AuditLogTargetTypeSource:
+		return true
+	case AuditLogTargetTypeVariable:
+		return true
+	case AuditLogTargetTypeVersion:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BuildPhaseOutcome.
 const (
 	BuildPhaseOutcomeFailed    BuildPhaseOutcome = "failed"
@@ -968,7 +1160,7 @@ type AppCreate struct {
 
 // AppEvent A recorded fact about an app. A `deploy` message says where a rollout is. It does not say which worker is answering a task. The sentences below are the ones a client polls for. The list is not exhaustive.
 //
-// `deploy accepted: rolling to version N` means the rollout was accepted. `activeVersionId` already names version N. A secret change records `secret change accepted: rolling to pick up the updated secret configuration` instead, and an OIDC connector change records `OIDC connector change accepted: rolling to pick up the updated connector configuration`. Neither moves `activeVersionId`: the roll reapplies the version already pinned. That roll ends with the same `version N applied; waiting for M keep-warm worker(s) to be able to serve` and `version N deployed; app is active` messages, for the already-pinned N.
+// `deploy accepted: rolling to version N` means the rollout was accepted. `activeVersionId` already names version N. A secret change records `secret change accepted: rolling to pick up the updated secret configuration` instead, and an OIDC connector change records `OIDC connector change accepted: rolling to pick up the updated connector configuration`. A change that arrives while a rollout is in progress records `secret change accepted: rolls when the rollout in progress finishes` or `OIDC connector change accepted: rolls when the rollout in progress finishes` instead, and once that rollout has finished, within about 15 seconds, `change made during the previous rollout: rolling to pick it up` starts the roll that carries it. Neither moves `activeVersionId`: the roll reapplies the version already pinned. That roll ends with the same `version N applied; waiting for M keep-warm worker(s) to be able to serve` and `version N deployed; app is active` messages, for the already-pinned N.
 //
 // `version N recorded while stopped; rolls out on resume` means the pin moved and nothing is rolling. `stopped` means no workers are running. The same sentence with `stopping` means workers are still draining. Resume applies that version either way.
 //
@@ -997,6 +1189,9 @@ type AppEventType string
 
 // AppHealth The platform's last recorded verdict on whether the app can serve. It is observed from the cluster rather than requested, so it lags a change by one observation.
 type AppHealth struct {
+	// ApplicationLine The last line the application printed before a container exit, while the app cannot serve. The exit has to belong to the version the app runs now. A capacity shortfall includes one only when that exit was recorded at or after `since`. A start failure also includes that version's exit from the two minutes before `since`, because the exit commits before the observation that opens the spell. The same sentence is appended to that exit on `GET /v1/apps/{appId}/events`. Absent when the app can serve.
+	ApplicationLine *string `json:"applicationLine,omitempty"`
+
 	// Explanations Why a worker the app asked for is waiting to be placed, and which worker limit currently holds the app, each with a next step. At most one of each. Omitted when nothing is waiting and no limit applies, and also when the platform has not observed the app in the last ten minutes, because an old explanation is not shown as current.
 	Explanations *[]AppHealthExplanation `json:"explanations,omitempty"`
 
@@ -1213,6 +1408,81 @@ type AppVolume struct {
 	MountPath string `json:"mountPath"`
 }
 
+// AuditLog One recorded write to this API.
+type AuditLog struct {
+	Action AuditLogAction `json:"action"`
+
+	// Actor The credential that made the write, as it was named at write time.
+	Actor AuditLogActor `json:"actor"`
+
+	// ClientAddress The caller's IP address. Omitted when it is not known.
+	ClientAddress *string `json:"clientAddress,omitempty"`
+
+	// Detail The non-secret change, under the names and in the shapes this API uses for the fields. A changed field is `{"from": …, "to": …}`, with configuration fields under `configuration`. An app update that rolls a new version names it under `versionNumber`, even when no field changed. A build delete that cancels an in-flight build records the status it left the build in under `status`, as a plain value. A secret write names the secret and records that its value changed, never the value. A denied entry carries the refusal under `refusal`.
+	Detail map[string]interface{} `json:"detail"`
+
+	// Environment The environment the write was scoped to. Omitted when it had none.
+	Environment *AuditLogEnvironment `json:"environment,omitempty"`
+
+	// Id Opaque entry identifier.
+	Id string `json:"id"`
+
+	// OccurredAt When the write ran.
+	OccurredAt time.Time `json:"occurredAt"`
+
+	// RequestId The request id the API answered with. Omitted when it is not known.
+	RequestId *string `json:"requestId,omitempty"`
+
+	// Source `console` for an org-scoped token, `api` for an API key.
+	Source AuditLogSource `json:"source"`
+
+	// Status `success` when the write committed, `denied` when a secret write was refused with `403` because the organization's tenancy is not active.
+	Status AuditLogStatus `json:"status"`
+
+	// Targets What the write acted on, by the identifier this API addresses it with: an app by `appId`, a version by its number, a secret, variable, connector or environment by name, and a build or source upload by id. `environment.defaults.update` names none.
+	Targets []AuditLogTarget `json:"targets"`
+}
+
+// AuditLogAction defines model for AuditLogAction.
+type AuditLogAction string
+
+// AuditLogActor The credential that made the write, as it was named at write time.
+type AuditLogActor struct {
+	// Id The token subject or the API key id. Opaque.
+	Id string `json:"id"`
+
+	// Kind `token` for an org-scoped token, `apiKey` for an API key.
+	Kind AuditLogActorKind `json:"kind"`
+
+	// Name The token's name claim or the API key's name, copied when the write ran.
+	Name string `json:"name"`
+}
+
+// AuditLogActorKind `token` for an org-scoped token, `apiKey` for an API key.
+type AuditLogActorKind string
+
+// AuditLogEnvironment The environment the write was scoped to. Omitted when it had none.
+type AuditLogEnvironment struct {
+	// Id Omitted when `production` had no row when the request resolved it.
+	Id   *openapi_types.UUID `json:"id,omitempty"`
+	Name string              `json:"name"`
+}
+
+// AuditLogSource `console` for an org-scoped token, `api` for an API key.
+type AuditLogSource string
+
+// AuditLogStatus `success` when the write committed, `denied` when a secret write was refused with `403` because the organization's tenancy is not active.
+type AuditLogStatus string
+
+// AuditLogTarget defines model for AuditLogTarget.
+type AuditLogTarget struct {
+	Id   string             `json:"id"`
+	Type AuditLogTargetType `json:"type"`
+}
+
+// AuditLogTargetType defines model for AuditLogTargetType.
+type AuditLogTargetType string
+
 // Build Details of a build. Both source types build, and `source.type` says which pipeline ran: a `code` submission or a customer's own wrapper Dockerfile. Phase lists differ by `source.type`, so never assume a fixed one. `listBuilds` and `getBuild` return this same shape.
 //
 // Nullability:
@@ -1416,7 +1686,7 @@ type Currency string
 
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
-	// VersionNumber Version number to deploy. Must reference a `ready` version on this app. Any in-progress or queued builds are canceled. Use an older version number to roll back.
+	// VersionNumber Version number to deploy. Must reference a `ready` version on this app. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. Use an older version number to roll back.
 	VersionNumber int32 `json:"versionNumber"`
 }
 
@@ -2391,7 +2661,7 @@ type Worker struct {
 	NodeName *string `json:"nodeName,omitempty"`
 	PodName  string  `json:"podName"`
 
-	// Status Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field: `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop.
+	// Status Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field: `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop. A worker on a node that is not ready is `unhealthy` with reason `node-not-ready`, also after a stop was requested, until the node returns and reports the exit.
 	Status WorkerStatus `json:"status"`
 
 	// StatusOccurredAt When the worker entered its current status. For a `stopped` worker this is when it stopped, so it is also the end of the worker's uptime.
@@ -2514,7 +2784,7 @@ type WorkerConfigPatch struct {
 // WorkerStateFilter Which worker states a page covers. `live` is every status other than `stopped`, so it is the page a dashboard wants and the one `status` alone can only ask for one value at a time. `all` includes the terminal rows that are kept as history.
 type WorkerStateFilter string
 
-// WorkerStatus Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field: `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop.
+// WorkerStatus Worker lifecycle status. Also the type of `UsageEvent.eventType`, which records a ledger subset of these states (see that field: `busy` never appears there). `unhealthy` means the pod exists but failed to become or stay ready, not an intentional drain or stop. A worker on a node that is not ready is `unhealthy` with reason `node-not-ready`, also after a stop was requested, until the node returns and reports the exit.
 type WorkerStatus string
 
 // AppEnvironment Lowercase letters, digits, hyphens, underscores and periods, starting with a letter or a digit, at most 63 characters. Unique among the organization's live environments and immutable. `production` is every organization's default.
@@ -3003,6 +3273,20 @@ type GetWorkerParams struct {
 	Environment *AppEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
 }
 
+// ListAuditLogsParams defines parameters for ListAuditLogs.
+type ListAuditLogsParams struct {
+	// Q Case-insensitive literal substring match against `action`, `actor.name` and each target `id`. An entry matching any of them is returned.
+	Q      *string         `form:"q,omitempty" json:"q,omitempty"`
+	Source *AuditLogSource `form:"source,omitempty" json:"source,omitempty"`
+	Status *AuditLogStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Limit Maximum number of items to return.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListEnvironmentsParams defines parameters for ListEnvironments.
 type ListEnvironmentsParams struct {
 	// Q Case-insensitive substring of the environment name. Omit to list every environment.
@@ -3095,7 +3379,7 @@ type ListOidcConnectorsParams struct {
 
 // UpdateOidcConnectorParams defines parameters for UpdateOidcConnector.
 type UpdateOidcConnectorParams struct {
-	// IfMatch Optional precondition on the resource's current state: the `ETag` from an earlier read of it. The request applies only while that is still the resource's current `ETag`; otherwise it returns `412` and changes nothing. `*` matches any existing resource, so it adds no check beyond the resource existing. Without the header the request applies unconditionally. Send one strong entity-tag exactly as received, quotes included. A value that is not `*` or one quoted entity-tag (a weak `W/` tag, a comma-separated list in one header, a bare token) returns `400`. So does a quoted tag this API never issued, such as `"abc"` or `"-5"`. A value longer than 256 characters is refused by request validation with `422`, before the header is read as an entity-tag.
+	// IfMatch Optional precondition on the resource's current state: the `ETag` from an earlier read of it. The request applies only while that is still the resource's current `ETag`; otherwise it returns `412` and changes nothing. `*` matches any existing resource, so it adds no check beyond the resource existing. Without the header the request applies unconditionally. Send one entity-tag exactly as received, quotes included. A `W/` prefix is accepted and ignored: a proxy that compresses the response may weaken the `ETag` to `W/"..."`, and that weak form names the same state as the strong one. A value that is not `*` or one quoted entity-tag, optionally `W/`-prefixed (a comma-separated list in one header, a bare token), returns `400`. So does a quoted tag this API never issued, such as `"abc"` or `"-5"`. A value longer than 256 characters is refused by request validation with `422`, before the header is read as an entity-tag.
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
@@ -3594,7 +3878,7 @@ type ClientInterface interface {
 
 	// DeployVersionWithBody Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -3619,7 +3903,7 @@ type ClientInterface interface {
 
 	// DeployVersion Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -3772,7 +4056,7 @@ type ClientInterface interface {
 
 	// StartDefaultSyncTaskWithBody Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -3781,7 +4065,7 @@ type ClientInterface interface {
 
 	// StartDefaultSyncTask Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3790,7 +4074,7 @@ type ClientInterface interface {
 
 	// StartSyncTaskWithBody Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -3799,7 +4083,7 @@ type ClientInterface interface {
 
 	// StartSyncTask Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -3813,7 +4097,7 @@ type ClientInterface interface {
 
 	// AttachAppOidcConnectorWithBody Attach an OIDC connector to an app
 	//
-	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 	// A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 	//
 	// Takes any type of body and a specified content type.
@@ -3823,7 +4107,7 @@ type ClientInterface interface {
 
 	// AttachAppOidcConnector Attach an OIDC connector to an app
 	//
-	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 	// A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 	//
 	// Takes a body of the `application/json` content type.
@@ -3833,7 +4117,7 @@ type ClientInterface interface {
 
 	// DetachAppOidcConnector Detach an OIDC connector from an app
 	//
-	// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers lose the connector on its next rollout.
+	// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers lose the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/oidc-connectors/{connectorName} (the `DetachAppOidcConnector` operationId).
 	DetachAppOidcConnector(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *DetachAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3852,7 +4136,7 @@ type ClientInterface interface {
 
 	// AttachAppSecretWithBody Attach a secret to an app
 	//
-	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -3864,7 +4148,7 @@ type ClientInterface interface {
 
 	// AttachAppSecret Attach a secret to an app
 	//
-	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -3876,7 +4160,7 @@ type ClientInterface interface {
 
 	// DetachAppSecret Detach a secret from an app
 	//
-	// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it. The worker stops receiving the value on a later redeploy instead. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
+	// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
 	//
 	// Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 	DetachAppSecret(ctx context.Context, appId AppId, secretName SecretName, params *DetachAppSecretParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3890,7 +4174,7 @@ type ClientInterface interface {
 
 	// ListTasks List tasks for an app
 	//
-	// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+	// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3932,6 +4216,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/apps/{appId}/workers/{workerId} (the `GetWorker` operationId).
 	GetWorker(ctx context.Context, appId AppId, workerId WorkerId, params *GetWorkerParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAuditLogs List audit logs
+	//
+	// Returns the organization's audit log, newest first. Each committed write records one entry, attributed to the credential that made it: an org-scoped token is the console and an API key is every other client. A write that changes nothing records no entry. A secret write refused with `403` because the organization's tenancy is not active records an entry with `status` `denied` on a best-effort basis: it is written after the refusal is answered, and is not written once the organization's deletion or purge has begun. Invocations, task polls and reads record nothing. Entries are kept until the organization is purged; deleting an app keeps its entries. A cursor is valid only with the `q`, `source` and `status` it was issued under, ignoring the case of `q`.
+	//
+	// Corresponds with GET /v1/audit-logs (the `ListAuditLogs` operationId).
+	ListAuditLogs(ctx context.Context, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCreditPool Read the organization's credit balance
 	//
@@ -4133,15 +4424,8 @@ type ClientInterface interface {
 
 	// UpdateOidcConnectorWithBody Update an OIDC connector
 	//
-	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-	//
-	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-	// nothing changed and nothing rolled.
-	// `If-Match: *` applies whenever the connector exists.
-	// Without `If-Match` the update applies unconditionally, as before.
-	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4150,15 +4434,8 @@ type ClientInterface interface {
 
 	// UpdateOidcConnector Update an OIDC connector
 	//
-	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-	//
-	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-	// nothing changed and nothing rolled.
-	// `If-Match: *` applies whenever the connector exists.
-	// Without `If-Match` the update applies unconditionally, as before.
-	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4230,7 +4507,7 @@ type ClientInterface interface {
 
 	// UpdateSecretWithBody Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4239,7 +4516,7 @@ type ClientInterface interface {
 
 	// UpdateSecret Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4577,7 +4854,7 @@ func (c *Client) GetBuild(ctx context.Context, appId AppId, buildId openapi_type
 
 // DeployVersionWithBody Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -4613,7 +4890,7 @@ func (c *Client) DeployVersionWithBody(ctx context.Context, appId AppId, params 
 
 // DeployVersion Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -4917,7 +5194,7 @@ func (c *Client) StartAsyncTask(ctx context.Context, appId AppId, endpointPath E
 
 // StartDefaultSyncTaskWithBody Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4936,7 +5213,7 @@ func (c *Client) StartDefaultSyncTaskWithBody(ctx context.Context, appId AppId, 
 
 // StartDefaultSyncTask Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4955,7 +5232,7 @@ func (c *Client) StartDefaultSyncTask(ctx context.Context, appId AppId, params *
 
 // StartSyncTaskWithBody Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4974,7 +5251,7 @@ func (c *Client) StartSyncTaskWithBody(ctx context.Context, appId AppId, endpoin
 
 // StartSyncTask Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5008,7 +5285,7 @@ func (c *Client) ListAppOidcConnectors(ctx context.Context, appId AppId, params 
 
 // AttachAppOidcConnectorWithBody Attach an OIDC connector to an app
 //
-// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 // A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 //
 // Takes any type of body and a specified content type.
@@ -5028,7 +5305,7 @@ func (c *Client) AttachAppOidcConnectorWithBody(ctx context.Context, appId AppId
 
 // AttachAppOidcConnector Attach an OIDC connector to an app
 //
-// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 // A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 //
 // Takes a body of the `application/json` content type.
@@ -5048,7 +5325,7 @@ func (c *Client) AttachAppOidcConnector(ctx context.Context, appId AppId, params
 
 // DetachAppOidcConnector Detach an OIDC connector from an app
 //
-// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers lose the connector on its next rollout.
+// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers lose the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
 //
 // Corresponds with DELETE /v1/apps/{appId}/oidc-connectors/{connectorName} (the `DetachAppOidcConnector` operationId).
 func (c *Client) DetachAppOidcConnector(ctx context.Context, appId AppId, connectorName OidcConnectorName, params *DetachAppOidcConnectorParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5097,7 +5374,7 @@ func (c *Client) ListAppSecrets(ctx context.Context, appId AppId, params *ListAp
 
 // AttachAppSecretWithBody Attach a secret to an app
 //
-// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -5119,7 +5396,7 @@ func (c *Client) AttachAppSecretWithBody(ctx context.Context, appId AppId, param
 
 // AttachAppSecret Attach a secret to an app
 //
-// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -5141,7 +5418,7 @@ func (c *Client) AttachAppSecret(ctx context.Context, appId AppId, params *Attac
 
 // DetachAppSecret Detach a secret from an app
 //
-// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it. The worker stops receiving the value on a later redeploy instead. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
+// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
 //
 // Corresponds with DELETE /v1/apps/{appId}/secrets/{secretName} (the `DetachAppSecret` operationId).
 func (c *Client) DetachAppSecret(ctx context.Context, appId AppId, secretName SecretName, params *DetachAppSecretParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5175,7 +5452,7 @@ func (c *Client) StopApp(ctx context.Context, appId AppId, params *StopAppParams
 
 // ListTasks List tasks for an app
 //
-// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 //
 // Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 func (c *Client) ListTasks(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5278,6 +5555,23 @@ func (c *Client) ListWorkers(ctx context.Context, appId AppId, params *ListWorke
 // Corresponds with GET /v1/apps/{appId}/workers/{workerId} (the `GetWorker` operationId).
 func (c *Client) GetWorker(ctx context.Context, appId AppId, workerId WorkerId, params *GetWorkerParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetWorkerRequest(c.Server, appId, workerId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAuditLogs List audit logs
+//
+// Returns the organization's audit log, newest first. Each committed write records one entry, attributed to the credential that made it: an org-scoped token is the console and an API key is every other client. A write that changes nothing records no entry. A secret write refused with `403` because the organization's tenancy is not active records an entry with `status` `denied` on a best-effort basis: it is written after the refusal is answered, and is not written once the organization's deletion or purge has begun. Invocations, task polls and reads record nothing. Entries are kept until the organization is purged; deleting an app keeps its entries. A cursor is valid only with the `q`, `source` and `status` it was issued under, ignoring the case of `q`.
+//
+// Corresponds with GET /v1/audit-logs (the `ListAuditLogs` operationId).
+func (c *Client) ListAuditLogs(ctx context.Context, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAuditLogsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5708,15 +6002,8 @@ func (c *Client) GetOidcConnector(ctx context.Context, connectorName OidcConnect
 
 // UpdateOidcConnectorWithBody Update an OIDC connector
 //
-// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-//
-// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-// nothing changed and nothing rolled.
-// `If-Match: *` applies whenever the connector exists.
-// Without `If-Match` the update applies unconditionally, as before.
-// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5735,15 +6022,8 @@ func (c *Client) UpdateOidcConnectorWithBody(ctx context.Context, connectorName 
 
 // UpdateOidcConnector Update an OIDC connector
 //
-// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-//
-// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-// nothing changed and nothing rolled.
-// `If-Match: *` applies whenever the connector exists.
-// Without `If-Match` the update applies unconditionally, as before.
-// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5895,7 +6175,7 @@ func (c *Client) DeleteSecret(ctx context.Context, secretName SecretName, params
 
 // UpdateSecretWithBody Update a secret
 //
-// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5914,7 +6194,7 @@ func (c *Client) UpdateSecretWithBody(ctx context.Context, secretName SecretName
 
 // UpdateSecret Update a secret
 //
-// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -9058,6 +9338,108 @@ func NewGetWorkerRequest(server string, appId AppId, workerId WorkerId, params *
 	return req, nil
 }
 
+// NewListAuditLogsRequest constructs an http.Request for the ListAuditLogs method
+func NewListAuditLogsRequest(server string, params *ListAuditLogsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/audit-logs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Source != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "source", *params.Source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetCreditPoolRequest constructs an http.Request for the GetCreditPool method
 func NewGetCreditPoolRequest(server string) (*http.Request, error) {
 	var err error
@@ -11206,7 +11588,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeployVersionWithBodyWithResponse Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -11231,7 +11613,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeployVersionWithResponse Deploy a version
 	//
-	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+	// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 	// To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 	// A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -11400,7 +11782,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartDefaultSyncTaskWithBodyWithResponse Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11409,7 +11791,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartDefaultSyncTaskWithResponse Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11418,7 +11800,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithBodyWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11427,7 +11809,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11443,7 +11825,7 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppOidcConnectorWithBodyWithResponse Attach an OIDC connector to an app
 	//
-	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 	// A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -11453,7 +11835,7 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppOidcConnectorWithResponse Attach an OIDC connector to an app
 	//
-	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+	// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 	// A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -11463,7 +11845,7 @@ type ClientWithResponsesInterface interface {
 
 	// DetachAppOidcConnectorWithResponse Detach an OIDC connector from an app
 	//
-	// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers lose the connector on its next rollout.
+	// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers lose the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11488,7 +11870,7 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppSecretWithBodyWithResponse Attach a secret to an app
 	//
-	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -11500,7 +11882,7 @@ type ClientWithResponsesInterface interface {
 
 	// AttachAppSecretWithResponse Attach a secret to an app
 	//
-	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+	// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 	// The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 	// An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 	// A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -11512,7 +11894,7 @@ type ClientWithResponsesInterface interface {
 
 	// DetachAppSecretWithResponse Detach a secret from an app
 	//
-	// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it. The worker stops receiving the value on a later redeploy instead. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
+	// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11530,7 +11912,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListTasksWithResponse List tasks for an app
 	//
-	// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+	// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11586,6 +11968,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/apps/{appId}/workers/{workerId} (the `GetWorker` operationId).
 	GetWorkerWithResponse(ctx context.Context, appId AppId, workerId WorkerId, params *GetWorkerParams, reqEditors ...RequestEditorFn) (*GetWorkerResponse, error)
+
+	// ListAuditLogsWithResponse List audit logs
+	//
+	// Returns the organization's audit log, newest first. Each committed write records one entry, attributed to the credential that made it: an org-scoped token is the console and an API key is every other client. A write that changes nothing records no entry. A secret write refused with `403` because the organization's tenancy is not active records an entry with `status` `denied` on a best-effort basis: it is written after the refusal is answered, and is not written once the organization's deletion or purge has begun. Invocations, task polls and reads record nothing. Entries are kept until the organization is purged; deleting an app keeps its entries. A cursor is valid only with the `q`, `source` and `status` it was issued under, ignoring the case of `q`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/audit-logs (the `ListAuditLogs` operationId).
+	ListAuditLogsWithResponse(ctx context.Context, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error)
 
 	// GetCreditPoolWithResponse Read the organization's credit balance
 	//
@@ -11815,15 +12206,8 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateOidcConnectorWithBodyWithResponse Update an OIDC connector
 	//
-	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-	//
-	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-	// nothing changed and nothing rolled.
-	// `If-Match: *` applies whenever the connector exists.
-	// Without `If-Match` the update applies unconditionally, as before.
-	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11832,15 +12216,8 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateOidcConnectorWithResponse Update an OIDC connector
 	//
-	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-	//
-	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-	// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-	// nothing changed and nothing rolled.
-	// `If-Match: *` applies whenever the connector exists.
-	// Without `If-Match` the update applies unconditionally, as before.
-	// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-	// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+	// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+	// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11918,7 +12295,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSecretWithBodyWithResponse Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11927,7 +12304,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSecretWithResponse Update a secret
 	//
-	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -15764,6 +16141,92 @@ func (r GetWorkerResponse) ContentType() string {
 	return ""
 }
 
+type ListAuditLogsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data []AuditLog `json:"data"`
+
+		// NextCursor Cursor for the next page. Null when there are no more items.
+		NextCursor *string `json:"nextCursor,omitempty"`
+	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAuditLogsResponse) GetJSON200() *struct {
+	Data []AuditLog `json:"data"`
+
+	// NextCursor Cursor for the next page. Null when there are no more items.
+	NextCursor *string `json:"nextCursor,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListAuditLogsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListAuditLogsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListAuditLogsResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListAuditLogsResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListAuditLogsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAuditLogsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAuditLogsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAuditLogsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAuditLogsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetCreditPoolResponse200Headers the declared response headers of an HTTP 200 response for GetCreditPool
 type GetCreditPoolResponse200Headers struct {
 	CacheControl string
@@ -19098,7 +19561,7 @@ func (c *ClientWithResponses) GetBuildWithResponse(ctx context.Context, appId Ap
 
 // DeployVersionWithBodyWithResponse Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -19130,7 +19593,7 @@ func (c *ClientWithResponses) DeployVersionWithBodyWithResponse(ctx context.Cont
 
 // DeployVersionWithResponse Deploy a version
 //
-// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout and canceling in-progress builds (`superseded`) are performed asynchronously by the deployer/Scaler. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
+// Activates a `ready` version by number, setting `activeVersionId` and returning `202` once that intent is persisted. Worker rollout is performed asynchronously by the deploy queue and the deployer. A deploy cancels no build: while a build's rollout is still in flight, it returns `409 Conflict`. The `202` records the pin. It does not mean a worker of the version is answering tasks. `version N deployed; app is active` is activation, defined on `AppEvent`. Permitted in any addressable status, including `initializing` and `failed`.
 // To roll back, supply an older `versionNumber`. The operation is identical to a forward deploy. No new version is created and no rebuild happens: the version's existing image is re-applied. Re-deploying the currently active version is permitted and re-applies it.
 // A successful deploy, including a rollback, does not change `configuration` or `environmentVariables`. They stay on the latest write, so `GET /v1/apps/{appId}` can show values the deployed version does not have. The next configuration or environment-variable change records a new version whose configuration and environment variables come from those stored values, and carries forward the image, endpoints, and volumes of the version `activeVersionId` names. So after a rollback, that version keeps the latest stored values, not the deployed version's snapshot, unless the request replaces them. `PATCH /v1/apps/{appId}` overwrites the configuration fields it sends, and replaces the whole environment set when `environmentVariables` is present. One environment-variable write changes only that key. Secrets stay on the app. `changes` diffs the new version against the previous version number, not against the version that was deployed.
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
@@ -19390,7 +19853,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithResponse(ctx context.Context, ap
 
 // StartDefaultSyncTaskWithBodyWithResponse Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -19405,7 +19868,7 @@ func (c *ClientWithResponses) StartDefaultSyncTaskWithBodyWithResponse(ctx conte
 
 // StartDefaultSyncTaskWithResponse Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -19420,7 +19883,7 @@ func (c *ClientWithResponses) StartDefaultSyncTaskWithResponse(ctx context.Conte
 
 // StartSyncTaskWithBodyWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -19435,7 +19898,7 @@ func (c *ClientWithResponses) StartSyncTaskWithBodyWithResponse(ctx context.Cont
 
 // StartSyncTaskWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -19463,7 +19926,7 @@ func (c *ClientWithResponses) ListAppOidcConnectorsWithResponse(ctx context.Cont
 
 // AttachAppOidcConnectorWithBodyWithResponse Attach an OIDC connector to an app
 //
-// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 // A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -19479,7 +19942,7 @@ func (c *ClientWithResponses) AttachAppOidcConnectorWithBodyWithResponse(ctx con
 
 // AttachAppOidcConnectorWithResponse Attach an OIDC connector to an app
 //
-// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers pick up the connector on its next rollout. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
+// Attaches an organization OIDC connector to an app and rolls the app's live deployment in place, so its workers start getting a token. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers pick up the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so. An app holds at most one connector of each kind; a second of the same kind, or the same one twice, returns `409`.
 // A connector reserves the env names it sets on the worker for as long as it is attached: `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` for `aws`, `RUNWARE_OIDC_TOKEN_FILE` for `generic`. Attaching to an app that already has a plain environment variable or an attached secret under one of them returns `422`, and setting one on an app that has a connector of that kind returns `422` too. Whatever else sets one of them, such as an older version the app is pinned to, the worker gets the connector's value. An app with no connector of that kind may use those names. `GOOGLE_APPLICATION_CREDENTIALS`, which a `gcp` connector sets, and `RUNWARE_OIDC_CONFIG_DIGEST`, which every connector sets, are reserved on every app, connector or not, and always return `422`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -19495,7 +19958,7 @@ func (c *ClientWithResponses) AttachAppOidcConnectorWithResponse(ctx context.Con
 
 // DetachAppOidcConnectorWithResponse Detach an OIDC connector from an app
 //
-// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live or already has a rollout in progress; the workers lose the connector on its next rollout.
+// Detaches the connector and rolls the app's live deployment in place, so its workers stop getting a token. Running workers keep the connector until they roll, and a token a worker already holds stays valid until it expires, at most an hour. `activeVersionId` does not move. See `AppEvent`. No rollout starts when the deployment is not live; the workers lose the connector on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -19538,7 +20001,7 @@ func (c *ClientWithResponses) ListAppSecretsWithResponse(ctx context.Context, ap
 
 // AttachAppSecretWithBodyWithResponse Attach a secret to an app
 //
-// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -19556,7 +20019,7 @@ func (c *ClientWithResponses) AttachAppSecretWithBodyWithResponse(ctx context.Co
 
 // AttachAppSecretWithResponse Attach a secret to an app
 //
-// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
+// Records that a secret of the app's environment is attached to the app under a resolved env-var name, and rolls the app's live deployment in place so a running worker picks up the value without waiting for an unrelated deploy. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this attach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live records the attachment only. The next resume reads the attach set fresh. Returns `409` if the secret is already attached, or if another attach would use the same env-var name.
 // The resolved name (`envVarName`, or `secretName` when omitted) must not already exist as a plain environment variable on this app (`deployment_configs.key`). Only one value can reach the app under a name, so the server rejects the collision with `422` instead of letting one value silently shadow the other. The reverse check applies when setting a plain environment variable.
 // An app holds at most 100 environment bindings in total, plain environment variables plus attached secrets, the same combined ceiling as create and the single-key env-var route. Attaching when the app is already at that limit returns `422`.
 // A secret can be attached to at most 25 deployments. Rolling every attached deployment is what an update or detach costs, so the ceiling bounds that cost rather than the app side of the binding. Attaching past it returns `422`. A `registry` secret returns `422` `secret-not-attachable`: a registry login is not an environment variable.
@@ -19574,7 +20037,7 @@ func (c *ClientWithResponses) AttachAppSecretWithResponse(ctx context.Context, a
 
 // DetachAppSecretWithResponse Detach a secret from an app
 //
-// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it. The worker stops receiving the value on a later redeploy instead. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
+// Removes the attachment and rolls the app's live deployment in place so a running worker stops receiving the value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this detach is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live has the removal recorded only. There is nothing to roll until it resumes.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -19604,7 +20067,7 @@ func (c *ClientWithResponses) StopAppWithResponse(ctx context.Context, appId App
 
 // ListTasksWithResponse List tasks for an app
 //
-// Lists TTL-bounded asynchronous task metadata for this app so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -19701,6 +20164,21 @@ func (c *ClientWithResponses) GetWorkerWithResponse(ctx context.Context, appId A
 		return nil, err
 	}
 	return ParseGetWorkerResponse(rsp)
+}
+
+// ListAuditLogsWithResponse List audit logs
+//
+// Returns the organization's audit log, newest first. Each committed write records one entry, attributed to the credential that made it: an org-scoped token is the console and an API key is every other client. A write that changes nothing records no entry. A secret write refused with `403` because the organization's tenancy is not active records an entry with `status` `denied` on a best-effort basis: it is written after the refusal is answered, and is not written once the organization's deletion or purge has begun. Invocations, task polls and reads record nothing. Entries are kept until the organization is purged; deleting an app keeps its entries. A cursor is valid only with the `q`, `source` and `status` it was issued under, ignoring the case of `q`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/audit-logs (the `ListAuditLogs` operationId).
+func (c *ClientWithResponses) ListAuditLogsWithResponse(ctx context.Context, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error) {
+	rsp, err := c.ListAuditLogs(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAuditLogsResponse(rsp)
 }
 
 // GetCreditPoolWithResponse Read the organization's credit balance
@@ -20063,15 +20541,8 @@ func (c *ClientWithResponses) GetOidcConnectorWithResponse(ctx context.Context, 
 
 // UpdateOidcConnectorWithBodyWithResponse Update an OIDC connector
 //
-// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-//
-// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-// nothing changed and nothing rolled.
-// `If-Match: *` applies whenever the connector exists.
-// Without `If-Match` the update applies unconditionally, as before.
-// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20086,15 +20557,8 @@ func (c *ClientWithResponses) UpdateOidcConnectorWithBodyWithResponse(ctx contex
 
 // UpdateOidcConnectorWithResponse Update an OIDC connector
 //
-// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live or already has a rollout in progress; it picks up the change on its next rollout.
-//
-// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write:
-// the update applies only if the connector is unchanged since that read, and otherwise returns `412` with
-// nothing changed and nothing rolled.
-// `If-Match: *` applies whenever the connector exists.
-// Without `If-Match` the update applies unconditionally, as before.
-// A connector that does not exist returns `404` for a well-formed `If-Match` or none.
-// A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
+// Replaces the connector's audience and provider fields; the name and `kind` stay. Rolls every live deployment that attaches it in place, so its workers get the new configuration. Running workers keep the old configuration until they roll. `activeVersionId` does not move. See `AppEvent`. No rollout starts for a deployment that is not live; it picks up the change on its next rollout. A deployment that already has a rollout in progress rolls again on its own once that rollout finishes, and records an event that says so.
+// Send the `ETag` from `GET /v1/oidc-connectors/{connectorName}` as `If-Match` to guard a read-modify-write: the update applies only if the connector is unchanged since that read, and otherwise returns `412` with nothing changed and nothing rolled. `If-Match: *` applies whenever the connector exists. Without `If-Match` the update applies unconditionally, as before. A connector that does not exist returns `404` for a well-formed `If-Match` or none. A malformed `If-Match` returns `400` before the connector is looked up, so a missing connector with one also returns `400`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20220,7 +20684,7 @@ func (c *ClientWithResponses) DeleteSecretWithResponse(ctx context.Context, secr
 
 // UpdateSecretWithBodyWithResponse Update a secret
 //
-// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20235,7 +20699,7 @@ func (c *ClientWithResponses) UpdateSecretWithBodyWithResponse(ctx context.Conte
 
 // UpdateSecretWithResponse Update a secret
 //
-// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it. It reaches the worker on a later redeploy instead. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Re-encrypts the value under the same name (no rename). A secret of the same name in another environment is not changed. Rolls every live deployment that attaches this secret in place so a running worker picks up the new value. `activeVersionId` does not move. See `AppEvent`. If a rollout is already in progress when this commits, this change is not guaranteed to land on it, so the deployment rolls again on its own once that rollout finishes, and records an event that says so. A deployment that is not live picks it up on its next deploy for another reason. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -23545,6 +24009,72 @@ func ParseGetWorkerResponse(rsp *http.Response) (*GetWorkerResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAuditLogsResponse parses an HTTP response from a ListAuditLogsWithResponse call
+func ParseListAuditLogsResponse(rsp *http.Response) (*ListAuditLogsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAuditLogsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data []AuditLog `json:"data"`
+
+			// NextCursor Cursor for the next page. Null when there are no more items.
+			NextCursor *string `json:"nextCursor,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError
