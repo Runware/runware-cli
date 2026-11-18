@@ -51,7 +51,7 @@ type Options struct {
 	progressEvery time.Duration
 }
 
-// Run uploads the paths to the Volume, aborting the session on failure; a lost answer to the final completion can fail a put that did publish.
+// Run uploads the paths to the Volume and preserves resume state on interruption or retry exhaustion.
 func Run(ctx context.Context, o Options) (Summary, error) {
 	r, err := newRunner(o)
 	if err != nil {
@@ -201,7 +201,7 @@ func (r *runner) keyPairStatement(ctx context.Context) (KeyPairStatement, error)
 	}
 }
 
-// upload opens the session, runs the transfer and aborts the session when it fails.
+// upload opens the session and keeps local state only while it may still be useful.
 func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, before FileList) (Summary, error) {
 	up, err := r.api.OpenUpload(ctx, r.o.Volume, UploadOpen{
 		KeyPairID:     uuid.UUID(sess.KeyPairID()).String(),
@@ -224,8 +224,16 @@ func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, 
 	}
 	sum, err := r.transfer(ctx, sess, sources, before)
 	if err != nil {
-		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
-			err = ctx.Err()
+		cause := context.Cause(ctx)
+		interrupted := cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause))
+		if interrupted {
+			err = cause
+		}
+		if (interrupted || errors.Is(err, errUploadRetriesExhausted)) && r.now().Before(r.expiresAt) {
+			if closeErr := r.journal.close(); closeErr != nil {
+				return Summary{}, errors.Join(err, fmt.Errorf("save the retained resume state: %w", closeErr))
+			}
+			return Summary{}, fmt.Errorf("%w (the resume state was kept)", err)
 		}
 		return Summary{}, r.abort(ctx, err)
 	}

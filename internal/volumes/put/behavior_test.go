@@ -121,7 +121,7 @@ func TestRetryUsesNewSealer(t *testing.T) {
 	}
 }
 
-func TestStorageFailureGivesUp(t *testing.T) {
+func TestStorageFailureKeepsTheJournalAfterRetries(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -140,8 +140,11 @@ func TestStorageFailureGivesUp(t *testing.T) {
 	if got := len(e.cloud.putLog()); got != maxPartAttempts {
 		t.Errorf("%d tries, want %d", got, maxPartAttempts)
 	}
-	if e.cloud.count("abort") != 1 || e.cloud.count("complete") != 0 {
-		t.Errorf("calls = %v, want an abort and no completion", e.cloud.callLog())
+	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
+		t.Errorf("calls = %v, state = %q, want the session left open", e.cloud.callLog(), e.cloud.uploadState())
+	}
+	if dirs := e.uploadDirs(); len(dirs) != 1 {
+		t.Errorf("want one retained journal after retries, got %d", len(dirs))
 	}
 }
 
@@ -744,15 +747,22 @@ func TestAbortsOnFatalPartRefusal(t *testing.T) {
 	}
 }
 
-func TestAbortOnInterrupt(t *testing.T) {
+func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
 	e := newTestEnv(t)
-	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
+	first := singleFile(t, e, "first.bin", patterned(5000, 1))
+	second := singleFile(t, e, "second.bin", patterned(5000, 2))
 	vol := e.cloud.newVolume("model-weights", "")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	e.cloud.onPut = func(partRequest) { cancel() }
+	e.cloud.onPut = func(req partRequest) {
+		if req.Path == "second.bin" {
+			cancel()
+		}
+	}
+	opts := e.options(vol, first, second)
+	opts.Parallelism = 1
 
-	_, err := Run(ctx, e.options(vol, file))
+	_, err := Run(ctx, opts)
 
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want the cancellation", err)
@@ -760,11 +770,11 @@ func TestAbortOnInterrupt(t *testing.T) {
 	if _, ok := errors.AsType[*FileError](err); ok {
 		t.Errorf("error = %v, want the interrupt on its own, not a failure of one file", err)
 	}
-	if e.cloud.count("abort") != 1 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeAborted {
-		t.Errorf("calls = %v, state = %q, want an abort and no completion", e.cloud.callLog(), e.cloud.uploadState())
+	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
+		t.Errorf("calls = %v, state = %q, want an open session and no completion", e.cloud.callLog(), e.cloud.uploadState())
 	}
-	if dirs := e.uploadDirs(); len(dirs) != 0 {
-		t.Errorf("resume state left after the interrupt: %v", dirs)
+	if acks := readJournal(t, e.configDir).ofType(recordAck); len(acks) != 1 || acks[0]["index"] != float64(0) {
+		t.Error("the journal does not contain the first file's acknowledgement")
 	}
 	if !e.keys.allCleared() {
 		t.Error("a key was not cleared after the interrupt")

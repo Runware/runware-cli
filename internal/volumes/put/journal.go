@@ -156,11 +156,15 @@ func (j *journal) write(durable bool, recs []any) error {
 	return nil
 }
 
-// close releases the journal file and leaves the state on disk.
+// close syncs and closes the journal without removing it.
 func (j *journal) close() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.closeLocked()
+	if j.file == nil {
+		return nil
+	}
+	syncErr := j.file.Sync()
+	return errors.Join(syncErr, j.closeLocked())
 }
 
 func (j *journal) closeLocked() error {
