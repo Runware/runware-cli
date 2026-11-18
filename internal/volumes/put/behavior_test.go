@@ -811,7 +811,8 @@ func (a observedAbort) AbortUpload(ctx context.Context, ref UploadRef) error {
 	return a.API.AbortUpload(ctx, ref)
 }
 
-func TestInterruptAbortsAndCleansUploadJournal(t *testing.T) {
+// TestInterruptKeepsSession: an interrupt leaves the session open and its resume state on disk, for put to resume.
+func TestInterruptKeepsSession(t *testing.T) {
 	e := newTestEnv(t)
 	first := singleFile(t, e, "first.bin", patterned(5000, 1))
 	second := singleFile(t, e, "second.bin", patterned(5000, 2))
@@ -824,11 +825,6 @@ func TestInterruptAbortsAndCleansUploadJournal(t *testing.T) {
 		Transport: opts.Transport,
 		cancel:    cancel,
 	}
-	var snap journalSnapshot
-	opts.API = observedAbort{
-		API:    e.cloud,
-		before: journalAt(t, e, &snap),
-	}
 
 	_, err := Run(ctx, opts)
 
@@ -838,9 +834,16 @@ func TestInterruptAbortsAndCleansUploadJournal(t *testing.T) {
 	if _, ok := errors.AsType[*FileError](err); ok {
 		t.Errorf("error = %v, want the interrupt on its own, not a failure of one file", err)
 	}
-	if e.cloud.count("abort") != 1 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeAborted {
-		t.Errorf("calls = %v, state = %q, want an aborted session and no completion", e.cloud.callLog(), e.cloud.uploadState())
+	if !strings.Contains(err.Error(), "run put again with the same paths to resume") {
+		t.Errorf("error %q does not say how to resume", err)
 	}
+	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
+		t.Errorf("calls = %v, state = %q, want the session left open", e.cloud.callLog(), e.cloud.uploadState())
+	}
+	if dirs := e.uploadDirs(); len(dirs) != 1 {
+		t.Fatalf("resume state after the interrupt = %v, want one session", dirs)
+	}
+	snap := readJournal(t, e.configDir)
 	if acks := snap.ofType(recordAck); len(acks) != 1 || acks[0]["index"] != float64(0) {
 		t.Error("the journal does not contain the first file's acknowledgement")
 	}
@@ -855,9 +858,6 @@ func TestInterruptAbortsAndCleansUploadJournal(t *testing.T) {
 	}
 	if !e.keys.allCleared() {
 		t.Error("a key was not cleared after the interrupt")
-	}
-	if dirs := e.uploadDirs(); len(dirs) != 0 {
-		t.Errorf("resume state left after the interrupt: %v", dirs)
 	}
 }
 

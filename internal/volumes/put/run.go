@@ -59,7 +59,7 @@ type Options struct {
 	newSealer     sealerFactory
 }
 
-// Run uploads the paths to the Volume.
+// Run uploads the paths to the Volume, aborting the session on failure and keeping it open for a resume when put is interrupted.
 func Run(ctx context.Context, o Options) (Summary, error) {
 	r, err := newRunner(o)
 	if err != nil {
@@ -210,7 +210,7 @@ func (r *runner) keyPairStatement(ctx context.Context) (KeyPairStatement, error)
 	}
 }
 
-// upload opens a session and keeps a journal while the upload is in progress.
+// upload opens a session and keeps a journal while the upload is in progress; an interrupt leaves both for a resume.
 func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, before FileList) (Summary, error) {
 	up, err := r.api.OpenUpload(ctx, r.o.Volume, UploadOpen{
 		KeyPairID:     uuid.UUID(sess.KeyPairID()).String(),
@@ -238,7 +238,7 @@ func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, 
 		}
 		// A fresh put is the next step unless the completion request was sent, which may have published the files.
 		rerun := errors.Is(err, errUploadRetriesExhausted) && !r.completionAttempted
-		err = r.abort(ctx, err)
+		err = r.fail(ctx, err)
 		if rerun {
 			err = fmt.Errorf("%w; run put again", err)
 		}

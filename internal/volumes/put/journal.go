@@ -188,15 +188,27 @@ func (j *journal) discardFileKeys(index int) error {
 	return nil
 }
 
+// close releases the journal file and leaves the state on disk, for a resume.
+func (j *journal) close() error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.closeLocked()
+}
+
+func (j *journal) closeLocked() error {
+	if j.file == nil {
+		return nil
+	}
+	err := j.file.Close()
+	j.file = nil
+	return err
+}
+
 // remove closes the journal and deletes its directory.
 func (j *journal) remove() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	var closeErr error
-	if j.file != nil {
-		closeErr = j.file.Close()
-		j.file = nil
-	}
+	closeErr := j.closeLocked()
 	if err := os.RemoveAll(j.dir); err != nil {
 		return errors.Join(closeErr, fmt.Errorf("remove the resume state: %w", err))
 	}
