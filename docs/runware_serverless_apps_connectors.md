@@ -4,7 +4,8 @@ Manage the OIDC connectors attached to an application
 
 ### Synopsis
 
-Attach OIDC connectors to an application and detach them.
+Attach OIDC connectors to an application, detach them, and test the trust
+setup of an attached connector.
 
 An application holds at most one connector of each kind (aws, gcp, generic),
 and an attachment belongs to the copy of the application in one environment:
@@ -41,4 +42,5 @@ runware serverless apps connectors [flags]
 * [runware serverless apps connectors attach](runware_serverless_apps_connectors_attach.md)	 - Attach an OIDC connector to an application
 * [runware serverless apps connectors detach](runware_serverless_apps_connectors_detach.md)	 - Detach an OIDC connector from an application
 * [runware serverless apps connectors list](runware_serverless_apps_connectors_list.md)	 - List the OIDC connectors attached to an application
+* [runware serverless apps connectors test](runware_serverless_apps_connectors_test.md)	 - Test the trust setup of an attached OIDC connector
 

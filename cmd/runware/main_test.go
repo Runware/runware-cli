@@ -241,3 +241,47 @@ func divertStderr(t *testing.T) func() string {
 		return string(logged)
 	}
 }
+
+// TestRunExitsZeroOnlyWhenAConnectorTestIsOk pins the process exit of
+// `apps connectors test`: the outcome decides the status a CI step reads.
+func TestRunExitsZeroOnlyWhenAConnectorTestIsOk(t *testing.T) {
+	const testID = "0190a6a8-0000-7000-8000-0000000000c1"
+	finished := func(status, extra string) string {
+		return `{"id":"` + testID + `","status":"` + status + `","createdAt":"2026-11-18T10:00:00Z","deadlineAt":"2026-11-18T10:02:00Z"` + extra + `}`
+	}
+	cases := []struct {
+		name     string
+		result   string
+		wantCode int
+	}{
+		{name: "ok", result: finished("ok", `,"identity":"arn:aws:sts::123456789012:assumed-role/runware-worker/x"`), wantCode: 0},
+		{name: "cloud error", result: finished("cloud_error", `,"code":"AccessDenied","stage":"assume_role"`), wantCode: 1},
+		{name: "platform error", result: finished("platform_error", `,"reason":"deadline"`), wantCode: 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("RUNWARE_ENV", "")
+			t.Setenv("RUNWARE_API_KEY", "test-key")
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == http.MethodPost {
+					w.WriteHeader(http.StatusAccepted)
+					_, _ = io.WriteString(w, finished("pending", ""))
+					return
+				}
+				_, _ = io.WriteString(w, tc.result)
+			}))
+			defer srv.Close()
+			t.Setenv("RUNWARE_SERVERLESS_BASE_URL", srv.URL)
+			stderr := divertStderr(t)
+
+			code := runArgs([]string{"serverless", "apps", "connectors", "test", "my-app", "aws-prod", "--poll-interval", "5ms"})
+			logged := stderr()
+
+			if code != tc.wantCode {
+				t.Fatalf("exit = %d, want %d\n%s", code, tc.wantCode, logged)
+			}
+		})
+	}
+}

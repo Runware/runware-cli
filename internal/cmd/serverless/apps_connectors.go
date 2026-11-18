@@ -1,9 +1,15 @@
 package serverless
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -13,7 +19,8 @@ import (
 // for the OIDC connectors attached to an application.
 func newAppsConnectorsCmd(logger *log.Logger) *cobra.Command {
 	cmd := stubGroup("connectors", "Manage the OIDC connectors attached to an application")
-	cmd.Long = `Attach OIDC connectors to an application and detach them.
+	cmd.Long = `Attach OIDC connectors to an application, detach them, and test the trust
+setup of an attached connector.
 
 An application holds at most one connector of each kind (aws, gcp, generic),
 and an attachment belongs to the copy of the application in one environment:
@@ -26,6 +33,7 @@ Create connectors with 'serverless connectors create'.`
 		newAppsConnectorsListCmd(logger),
 		newAppsConnectorsAttachCmd(logger),
 		newAppsConnectorsDetachCmd(logger),
+		newAppsConnectorsTestCmd(logger),
 	)
 	return cmd
 }
@@ -124,4 +132,147 @@ application that is not live loses the connector on its next rollout.
 			return output.Print(cmdutil.FormatFor(cmd), oidcConnectorDetachedResult{AppID: app, Name: name})
 		},
 	}
+}
+
+// connectorTestMaxWait is how long test waits for a result by default. The API
+// ends every test within two minutes, so this is a little more.
+const connectorTestMaxWait = 150 * time.Second
+
+func newAppsConnectorsTestCmd(logger *log.Logger) *cobra.Command {
+	var (
+		timeout      time.Duration
+		pollInterval time.Duration
+	)
+
+	cmd := &cobra.Command{
+		Use:   "test <appId> <connector>",
+		Short: "Test the trust setup of an attached OIDC connector",
+		Long: `Test the trust setup between an application and a connector's cloud without
+deploying any code, and print the outcome. A test needs an aws or gcp connector
+that is attached to the application in this environment.
+
+The platform runs a short-lived probe as a worker of the application. The probe
+gets the application's token as a worker does and exchanges it with the cloud:
+AWS AssumeRoleWithWebIdentity, or Google STS and, when the connector names a
+service account, impersonation of it. It obtains real, short-lived credentials
+and discards them. No token or credential is returned, stored or printed. On AWS
+the session is named runware-connector-test-<test id>, so a test shows in
+CloudTrail.
+
+The outcome is one of:
+  ok              the cloud accepted the token; the assumed role or impersonated
+                  service account is printed
+  cloud_error     the cloud refused the token; its code, message and a
+                  troubleshooting hint are printed, with the stage it refused at
+  platform_error  the platform could not run the test; the reason is printed and
+                  says nothing about the trust setup
+
+The command exits non-zero unless the outcome is ok. A result normally arrives
+within a minute and always within two; --timeout stops waiting sooner.
+
+One test of an application's connectors runs at a time in an environment, and an
+organization may start 20 tests an hour (60 that end in platform_error). Past
+either the API refuses, and the refusal says when to retry.`,
+		Example: `  runware serverless apps connectors test my-app aws-prod
+
+  # the staging copy of the application
+  runware serverless apps connectors test my-app aws-prod --env staging
+
+  # machine-readable outcome
+  runware serverless apps connectors test my-app aws-prod -F json`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, name := args[0], args[1]
+			if timeout <= 0 {
+				return fmt.Errorf("--timeout must be positive")
+			}
+
+			client := newServerlessClient(cmd, logger)
+			waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+			defer cancel()
+
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Starting a test of connector %s on %s...", name, app))
+			spin.Start()
+
+			test, err := client.StartAppOidcConnectorTest(waitCtx, app, name)
+			if err != nil {
+				spin.Stop()
+				return connectorTestStartError(waitCtx, err, app, name, timeout)
+			}
+			if test.Status == serverlessapi.OidcConnectorTestStatusPending {
+				spin.SetMessage(fmt.Sprintf("Waiting for the result of test %s...", test.Id))
+				test, err = client.WaitAppOidcConnectorTest(waitCtx, app, name, test, pollInterval)
+				if err != nil {
+					spin.Stop()
+					return waitTimeoutErr(waitCtx, err, "the connector test", timeout)
+				}
+			}
+			spin.Stop()
+
+			if err := output.Print(cmdutil.FormatFor(cmd), oidcConnectorTestResult(*test)); err != nil {
+				return err
+			}
+			return connectorTestFailedErr(name, test)
+		},
+	}
+
+	cmd.Flags().DurationVar(&timeout, "timeout", connectorTestMaxWait, "Maximum time to wait for the result")
+	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 2*time.Second, "Polling interval when waiting for the result")
+	return cmd
+}
+
+// connectorTestStartError says what a refused start means to the person at the
+// terminal. The API's own detail stays on the message, and the error remains a
+// *transport.RunwareError so the structured output and the status survive.
+func connectorTestStartError(waitCtx context.Context, err error, app, name string, timeout time.Duration) error {
+	re, ok := errors.AsType[*transport.RunwareError](err)
+	if !ok {
+		return waitTimeoutErr(waitCtx, err, "the connector test to start", timeout)
+	}
+	var hint string
+	switch re.StatusCode {
+	case http.StatusNotFound:
+		hint = fmt.Sprintf("connector %s was not found on %s: check the application id and that the connector is attached to it in this environment ('runware serverless apps connectors list %s')", name, app, app)
+	case http.StatusConflict:
+		hint = fmt.Sprintf("a connector test of %s is already running in this environment: wait for it to end, within two minutes, and run the test again", app)
+	case http.StatusUnprocessableEntity:
+		hint = fmt.Sprintf("connector %s cannot be tested: only aws and gcp connectors can be, a generic connector has no cloud to exchange with", name)
+	case http.StatusTooManyRequests:
+		hint = "the organization has started as many connector tests as an hour allows"
+	default:
+		return err
+	}
+	out := *re
+	out.Message = hint + "\n" + re.Message
+	return &out
+}
+
+// connectorTestFailedErr is the exit status of a finished test: nil for ok, and
+// an error for every other outcome. The outcome itself is printed on stdout.
+func connectorTestFailedErr(name string, test *serverlessapi.OidcConnectorTest) error {
+	switch test.Status {
+	case serverlessapi.OidcConnectorTestStatusOk:
+		return nil
+	case serverlessapi.OidcConnectorTestStatusCloudError:
+		return fmt.Errorf("the cloud refused the token of connector %s%s", name, connectorTestErrorDetail(test))
+	case serverlessapi.OidcConnectorTestStatusPlatformError:
+		reason := ""
+		if test.Reason != nil {
+			reason = ": " + string(*test.Reason)
+		}
+		return fmt.Errorf("the platform could not test connector %s%s; this says nothing about its trust setup", name, reason)
+	default:
+		return fmt.Errorf("connector %s test ended with unexpected status %q", name, test.Status)
+	}
+}
+
+func connectorTestErrorDetail(test *serverlessapi.OidcConnectorTest) string {
+	detail := ""
+	if test.Code != nil && *test.Code != "" {
+		detail = ": " + *test.Code
+	}
+	if test.Stage != nil && *test.Stage != "" {
+		detail += " at " + string(*test.Stage)
+	}
+	return detail
 }

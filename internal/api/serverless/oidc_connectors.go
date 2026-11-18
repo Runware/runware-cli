@@ -2,9 +2,14 @@ package serverless
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -16,6 +21,25 @@ type OidcConnector = gen.OidcConnector
 // AppOidcConnector is an OIDC connector attached to an app, with the subject
 // its workers' tokens carry.
 type AppOidcConnector = gen.AppOidcConnector
+
+// OidcConnectorTest is one test of a connector's trust setup. It holds no
+// token and no credential.
+type OidcConnectorTest = gen.OidcConnectorTest
+
+// OidcConnectorTestStatus is where a connector test is.
+type OidcConnectorTestStatus = gen.OidcConnectorTestStatus
+
+// The statuses of a connector test. Only pending is not final.
+const (
+	OidcConnectorTestStatusPending       = gen.OidcConnectorTestStatusPending
+	OidcConnectorTestStatusOk            = gen.OidcConnectorTestStatusOk
+	OidcConnectorTestStatusCloudError    = gen.OidcConnectorTestStatusCloudError
+	OidcConnectorTestStatusPlatformError = gen.OidcConnectorTestStatusPlatformError
+)
+
+// defaultConnectorTestPollInterval is used when WaitAppOidcConnectorTest is
+// called with a non-positive interval.
+const defaultConnectorTestPollInterval = 2 * time.Second
 
 // OidcConnectorCreate is the request body for createOidcConnector.
 type OidcConnectorCreate = gen.OidcConnectorCreate
@@ -242,4 +266,106 @@ func (c *Client) DetachAppOidcConnector(ctx context.Context, appID, connectorNam
 		return problemFromBody(resp.Body, resp.StatusCode())
 	}
 	return nil
+}
+
+// StartAppOidcConnectorTest starts a test of the connector's trust setup for an
+// app in the client's environment and returns it as the API accepted it: usually
+// pending, or already platform_error when the platform cannot run it. A 429
+// carries how long to wait before another test may start.
+func (c *Client) StartAppOidcConnectorTest(ctx context.Context, appID, connectorName string) (*OidcConnectorTest, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.TestAppOidcConnectorWithResponse(ctx, appID, connectorName, &gen.TestAppOidcConnectorParams{
+		Environment: c.environmentParam(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("start oidc connector test: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	if resp.StatusCode() != http.StatusAccepted {
+		return nil, withRetryAfter(problemFromBody(resp.Body, resp.StatusCode()), resp.HTTPResponse)
+	}
+	if resp.JSON202 == nil {
+		return nil, fmt.Errorf("start oidc connector test: empty 202 response")
+	}
+	return resp.JSON202, nil
+}
+
+// GetAppOidcConnectorTest returns a connector test started in the client's
+// environment.
+func (c *Client) GetAppOidcConnectorTest(ctx context.Context, appID, connectorName, testID string) (*OidcConnectorTest, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+	id, err := uuid.Parse(testID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid test id %q: must be a UUID", testID)
+	}
+
+	resp, err := c.inner.GetAppOidcConnectorTestWithResponse(ctx, appID, connectorName, id, &gen.GetAppOidcConnectorTestParams{
+		Environment: c.environmentParam(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get oidc connector test: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	if resp.StatusCode() != http.StatusOK {
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("get oidc connector test: empty 200 response")
+	}
+	return resp.JSON200, nil
+}
+
+// WaitAppOidcConnectorTest polls a connector test every interval until it is no
+// longer pending, and returns it. It returns ctx's error when ctx ends first.
+func (c *Client) WaitAppOidcConnectorTest(ctx context.Context, appID, connectorName string, test *OidcConnectorTest, interval time.Duration) (*OidcConnectorTest, error) {
+	if interval <= 0 {
+		interval = defaultConnectorTestPollInterval
+	}
+
+	for test.Status == OidcConnectorTestStatusPending {
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+
+		next, err := c.GetAppOidcConnectorTest(ctx, appID, connectorName, test.Id.String())
+		if err != nil {
+			return nil, err
+		}
+		test = next
+	}
+	return test, nil
+}
+
+// withRetryAfter adds the response's Retry-After to a refusal that carries one,
+// so a 429 says when to try again. The API sends whole seconds; a value that is
+// not is shown as sent.
+func withRetryAfter(err error, resp *http.Response) error {
+	re, ok := errors.AsType[*transport.RunwareError](err)
+	if !ok || resp == nil {
+		return err
+	}
+	value := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if value == "" {
+		return err
+	}
+	wait := value
+	if secs, convErr := strconv.Atoi(value); convErr == nil && secs >= 0 {
+		wait = (time.Duration(secs) * time.Second).String()
+	}
+	out := *re
+	out.Message = fmt.Sprintf("%s\nRetry after %s", re.Message, wait)
+	return &out
 }
