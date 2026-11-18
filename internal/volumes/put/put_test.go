@@ -508,7 +508,8 @@ func TestPutHelpText(t *testing.T) {
 		"Uploads are additive",
 		"files you do not name stay as they are",
 		"Workers that start after an upload get the new files",
-		"Rolling an app back restores its image and settings, not earlier Volume files",
+		"Rolling an app back re-applies its earlier image, not earlier Volume files",
+		"Links inside a directory must point to files within it",
 		"create a new Volume",
 	} {
 		if !strings.Contains(help, want) {

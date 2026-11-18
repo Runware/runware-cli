@@ -9,12 +9,13 @@ const (
 Uploads are additive. The paths you give are added to the Volume's latest files, or
 replace the file already at the same path; files you do not name stay as they are. A
 directory's files keep their paths relative to the directory, under --to when you give
-it and at the Volume root otherwise.
+it and at the Volume root otherwise. Links inside a directory must point to files
+within it. To upload a file outside that directory, name it as a separate path.
 
 Workers that start after an upload get the new files. Workers that are already running
 keep the files they started with.
 
-Rolling an app back restores its image and settings, not earlier Volume files. To go
+Rolling an app back re-applies its earlier image, not earlier Volume files. To go
 back to older files, upload them again.
 
 To start from an empty set of files, create a new Volume and upload into it.
