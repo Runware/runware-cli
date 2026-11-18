@@ -18,10 +18,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/runware/runware-cli/internal/agents"
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
-	"github.com/runware/runware-cli/internal/buildinfo"
 )
 
 // defaultTimeout bounds a single REST request.
@@ -276,11 +274,7 @@ func newClient(apiKey, baseURL string, logger *slog.Logger, httpClient gen.HttpR
 }
 
 func newGeneratedClient(apiKey, baseURL string, httpClient gen.HttpRequestDoer) *gen.ClientWithResponses {
-	ua := buildinfo.UserAgent()
-	if agent := agents.Detect(); agent != "" {
-		ua += " agent/" + string(agent)
-	}
-
+	ua := userAgent()
 	inner, err := gen.NewClientWithResponses(
 		baseURL,
 		gen.WithHTTPClient(httpClient),

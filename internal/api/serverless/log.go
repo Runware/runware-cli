@@ -53,14 +53,26 @@ func debugLogBody(status int, body []byte) string {
 	return string(body)
 }
 
+// valueKeys is the member redactJSONValues replaces.
+var valueKeys = map[string]struct{}{
+	"value": {},
+}
+
 // redactJSONValues replaces every object key "value" with "[redacted]".
 // Returns the original bytes if the body is not JSON or has no such key.
 func redactJSONValues(body []byte) []byte {
+	return redactJSONKeys(body, valueKeys)
+}
+
+// redactJSONKeys replaces the value of every object member named in keys,
+// at any depth, with "[redacted]". Returns the original bytes if the body is
+// not JSON or has no such member.
+func redactJSONKeys(body []byte, keys map[string]struct{}) []byte {
 	var v any
 	if err := json.Unmarshal(body, &v); err != nil {
 		return body
 	}
-	if !redactValueKeys(v) {
+	if !redactKeys(v, keys) {
 		return body
 	}
 	out, err := json.Marshal(v)
@@ -70,17 +82,17 @@ func redactJSONValues(body []byte) []byte {
 	return out
 }
 
-func redactValueKeys(v any) bool {
+func redactKeys(v any, keys map[string]struct{}) bool {
 	switch t := v.(type) {
 	case map[string]any:
 		changed := false
 		for k, child := range t {
-			if k == "value" {
+			if _, secret := keys[k]; secret {
 				t[k] = redactedValue
 				changed = true
 				continue
 			}
-			if redactValueKeys(child) {
+			if redactKeys(child, keys) {
 				changed = true
 			}
 		}
@@ -88,7 +100,7 @@ func redactValueKeys(v any) bool {
 	case []any:
 		changed := false
 		for _, child := range t {
-			if redactValueKeys(child) {
+			if redactKeys(child, keys) {
 				changed = true
 			}
 		}

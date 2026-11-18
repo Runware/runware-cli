@@ -497,7 +497,7 @@ func explainDeclare(err error, batch []*fileState) error {
 	if !ok {
 		return fmt.Errorf("declare the files: %w", err)
 	}
-	cause := explain(p)
+	cause := explain(err)
 	if i, ok := pointerFile(p.Pointer); ok && i < len(batch) {
 		return fileErr(batch[i].src.Abs, cause)
 	}
