@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -327,44 +328,70 @@ func (c *Client) GetAppOidcConnectorTest(ctx context.Context, appID, connectorNa
 // WaitAppOidcConnectorTest polls a connector test every interval until it is no
 // longer pending, and returns it. A poll that fails on a server or network
 // error is retried at the next interval, since the test goes on regardless;
-// any other error ends the wait. It returns ctx's error when ctx ends first.
+// any other error ends the wait. It returns ctx's error when ctx ends first,
+// as a *LastPollError when the poll before it had failed.
 func (c *Client) WaitAppOidcConnectorTest(ctx context.Context, appID, connectorName string, test *OidcConnectorTest, interval time.Duration) (*OidcConnectorTest, error) {
 	if interval <= 0 {
 		interval = defaultConnectorTestPollInterval
 	}
 
+	var lastErr error
+	ended := func() error {
+		if lastErr != nil {
+			return &LastPollError{Cause: ctx.Err(), Last: lastErr}
+		}
+		return ctx.Err()
+	}
 	for test.Status == OidcConnectorTestStatusPending {
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, ctx.Err()
+			return nil, ended()
 		case <-timer.C:
 		}
 
 		next, err := c.GetAppOidcConnectorTest(ctx, appID, connectorName, test.Id.String())
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				return nil, ended()
 			}
 			if retryablePoll(err) {
+				lastErr = err
 				continue
 			}
 			return nil, err
 		}
+		lastErr = nil
 		test = next
 	}
 	return test, nil
 }
 
+// LastPollError is a wait that ended while its last poll had failed and was
+// waiting to be retried. It unwraps to the context's error, so a timeout or an
+// interrupt still reads as one.
+type LastPollError struct {
+	Cause error
+	Last  error
+}
+
+func (e *LastPollError) Error() string {
+	return fmt.Sprintf("%v (the last poll failed: %v)", e.Cause, e.Last)
+}
+
+func (e *LastPollError) Unwrap() error { return e.Cause }
+
 // retryablePoll reports whether a failed poll may succeed at the next one: an
 // API error the transport counts as transient (5xx, 429, a timeout, a dropped
-// connection), or a request that got no HTTP response at all.
+// connection), or a request that got no HTTP response. A response the client
+// could not decode is not retried: the next one would be the same.
 func retryablePoll(err error) bool {
 	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
 		return re.Retryable
 	}
-	return !errors.Is(err, transport.ErrNoAPIKey)
+	_, ok := errors.AsType[*url.Error](err)
+	return ok
 }
 
 // withRetryAfter adds the response's Retry-After to a refusal that carries one,

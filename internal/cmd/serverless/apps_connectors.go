@@ -280,19 +280,28 @@ func connectorTestWaitErr(waitCtx context.Context, err error, test *serverlessap
 		out.Message = re.Message + "\n" + note
 		return &connectorTestWaitError{msg: out.Message, cause: &out}
 	}
-	msg := waitTimeoutErr(waitCtx, err, "the connector test", timeout).Error() + "; " + note
+	msg := waitTimeoutErr(waitCtx, err, "the connector test", timeout).Error()
+	if last, ok := errors.AsType[*serverlessapi.LastPollError](err); ok {
+		msg += fmt.Sprintf(" (the last poll failed: %v)", last.Last)
+	}
+	msg += "; " + note
 	return &connectorTestWaitError{msg: msg, cause: err}
 }
 
-// connectorTestRunningNote says what became of a test the command stopped
-// waiting for at now. Before its deadline it is still running; past it, the API
-// should already have ended it as a platform_error with reason deadline.
+// connectorTestRunningNote says what the command knows of a test it stopped
+// waiting for at now: only that it was pending when last read. Before its
+// deadline it may still be running; past it, the API should have ended it as a
+// platform_error with reason deadline. The clock is the client's, so the note
+// claims neither.
 func connectorTestRunningNote(test *serverlessapi.OidcConnectorTest, now time.Time) string {
+	if test.DeadlineAt.IsZero() {
+		return fmt.Sprintf("test %s was pending when last read and may still be running", test.Id)
+	}
 	deadline := test.DeadlineAt.UTC().Format(time.RFC3339)
 	if now.Before(test.DeadlineAt) {
-		return fmt.Sprintf("test %s keeps running; the API ends it by %s at the latest", test.Id, deadline)
+		return fmt.Sprintf("test %s was pending when last read and may still be running; the API ends it by %s at the latest", test.Id, deadline)
 	}
-	return fmt.Sprintf("test %s was still pending past its deadline %s: the API did not end it on time", test.Id, deadline)
+	return fmt.Sprintf("test %s was pending when last read; its deadline %s has passed, so the API should have ended it", test.Id, deadline)
 }
 
 // connectorTestFailedErr is the exit status of a finished test: nil for ok, and

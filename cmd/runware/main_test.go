@@ -222,7 +222,7 @@ func TestRunNamesTheConnectorTestWhenInterrupted(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = io.WriteString(w, `{"id":"`+testID+`","status":"pending","createdAt":"2026-11-18T10:00:00Z","deadlineAt":"2026-11-18T10:02:00Z"}`)
+		_, _ = io.WriteString(w, `{"id":"`+testID+`","status":"pending","createdAt":"2099-01-01T10:00:00Z","deadlineAt":"2099-01-01T10:02:00Z"}`)
 	}
 
 	code, logged := interruptedRun(t, answer,
@@ -233,7 +233,7 @@ func TestRunNamesTheConnectorTestWhenInterrupted(t *testing.T) {
 	if code != exitInterrupted {
 		t.Fatalf("exit = %d, want %d\n%s", code, exitInterrupted, logged)
 	}
-	if !strings.Contains(logged, "test "+testID) {
+	if !strings.Contains(logged, "test "+testID+" was pending when last read and may still be running") {
 		t.Fatalf("stderr = %q, want it to name the running test", logged)
 	}
 }

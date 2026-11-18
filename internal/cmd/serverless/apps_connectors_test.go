@@ -401,6 +401,69 @@ func TestAppsConnectorsTestRetriesAPollTheServerFailed(t *testing.T) {
 	}
 }
 
+// Polls the server keeps failing are retried until --timeout, and the timeout
+// says what the last one answered.
+func TestAppsConnectorsTestTimeoutNamesTheLastFailedPoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusServiceUnavailable,
+			body:   problemBody(http.StatusServiceUnavailable, "the API is restarting"),
+		},
+		refusedPolls: 1 << 20,
+	}
+
+	run := runConnectorTest(t, stub, "--timeout", "100ms")
+
+	printed := printedError(t, run.err)
+	for _, want := range []string{"timed out waiting for the connector test after 100ms", "the last poll failed: the API is restarting", "test " + testConnectorTestID} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("printed error = %q, want %q", printed, want)
+		}
+	}
+	if stub.gets < 2 {
+		t.Errorf("polls = %d, want the failed poll retried", stub.gets)
+	}
+}
+
+// A poll the API refuses for the credential is not retried.
+func TestAppsConnectorsTestDoesNotRetryAnUnauthorizedPoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusUnauthorized,
+			body:   problemBody(http.StatusUnauthorized, "Missing or invalid credentials"),
+		},
+		refusedPolls: 1 << 20,
+	}
+
+	run := runConnectorTest(t, stub)
+
+	if run.err == nil {
+		t.Fatal("err = nil, want the refusal")
+	}
+	if stub.gets != 1 {
+		t.Errorf("polls = %d, want 1", stub.gets)
+	}
+}
+
+// An answer the client cannot decode is not retried: the next would be the same.
+func TestAppsConnectorsTestDoesNotRetryAnUndecodablePoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		polls: []string{"{not json"},
+	}
+
+	run := runConnectorTest(t, stub, "--timeout", "5s")
+
+	if run.err == nil {
+		t.Fatal("err = nil, want the decode failure")
+	}
+	if stub.gets != 1 {
+		t.Errorf("polls = %d, want 1", stub.gets)
+	}
+}
+
 // What the error says of a test the command stopped waiting for depends on
 // its deadline: still running before it, overdue past it.
 func TestConnectorTestRunningNote(t *testing.T) {
@@ -410,12 +473,19 @@ func TestConnectorTestRunningNote(t *testing.T) {
 	}
 
 	before := connectorTestRunningNote(test, deadline.Add(-time.Second))
-	if !strings.Contains(before, "keeps running; the API ends it by 2026-11-18T10:02:00Z") {
-		t.Errorf("before the deadline = %q, want it still running until the deadline", before)
+	if !strings.Contains(before, "may still be running; the API ends it by 2026-11-18T10:02:00Z at the latest") {
+		t.Errorf("before the deadline = %q, want it possibly running until the deadline", before)
 	}
 	after := connectorTestRunningNote(test, deadline.Add(30*time.Second))
-	if !strings.Contains(after, "past its deadline 2026-11-18T10:02:00Z: the API did not end it on time") {
-		t.Errorf("past the deadline = %q, want it overdue", after)
+	if !strings.Contains(after, "its deadline 2026-11-18T10:02:00Z has passed, so the API should have ended it") {
+		t.Errorf("past the deadline = %q, want the deadline passed", after)
+	}
+	if strings.Contains(after, "may still be running") {
+		t.Errorf("past the deadline = %q, want no claim that it still runs", after)
+	}
+	none := connectorTestRunningNote(&serverlessapi.OidcConnectorTest{}, deadline)
+	if strings.Contains(none, "deadline") {
+		t.Errorf("without a deadline = %q, want no deadline claimed", none)
 	}
 }
 
