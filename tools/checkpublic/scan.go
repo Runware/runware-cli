@@ -27,9 +27,20 @@ type Finding struct {
 	Tag string
 }
 
-// ScanText scans free text (a PR title, body or comment). label names it in
-// findings, for example "PR body".
+// ScanText scans free text that is not posted on GitHub: a commit message,
+// branch name, tag or added path. label names it in findings, for example
+// "branch name". A PR title, body or comment goes through ScanPost.
 func (s *Scanner) ScanText(label, text string) []Finding {
+	return s.scanText(label, text, false)
+}
+
+// ScanPost scans text that is posted on GitHub (a PR title, description or
+// comment) with every rule, the post rules included.
+func (s *Scanner) ScanPost(label, text string) []Finding {
+	return s.scanText(label, text, true)
+}
+
+func (s *Scanner) scanText(label, text string, post bool) []Finding {
 	var out []Finding
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
@@ -37,14 +48,14 @@ func (s *Scanner) ScanText(label, text string) []Finding {
 		if len(lines) > 1 {
 			where = fmt.Sprintf("%s line %d", label, i+1)
 		}
-		out = append(out, s.findings(where, "", line)...)
+		out = append(out, s.findings(where, "", line, post)...)
 	}
 	return out
 }
 
-func (s *Scanner) findings(where, file, line string) []Finding {
+func (s *Scanner) findings(where, file, line string, post bool) []Finding {
 	var out []Finding
-	for _, h := range s.ScanLine(file, line) {
+	for _, h := range s.scanLine(file, line, post) {
 		out = append(out, Finding{
 			Where:   where,
 			Rule:    h.rule,
@@ -84,7 +95,7 @@ func (s *Scanner) ScanDiff(diff string) ([]Finding, error) {
 					if commit != "" {
 						where = fmt.Sprintf("commit %s %s", short(commit), where)
 					}
-					out = append(out, s.findings(where, file, line[1:])...)
+					out = append(out, s.findings(where, file, line[1:], false)...)
 				}
 				newLine++
 				newLeft--

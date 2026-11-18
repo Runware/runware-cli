@@ -220,3 +220,52 @@ func TestScanModes(t *testing.T) {
 		})
 	}
 }
+
+// TestPRModeTicketKeyInTitleAndBodyOnly checks that the pr mode, which CI
+// runs, finds a ticket key in the title and body and not in the branch name
+// or a commit message.
+func TestPRModeTicketKeyInTitleAndBodyOnly(t *testing.T) {
+	dir := gitRepo(t, cleanText, "fix: one thing ("+ticketKey+")")
+	ev := prEvent{
+		PullRequest: prPayload{
+			Title: "fix: one thing (" + ticketKey + ")",
+			Body:  "Fixes " + ticketKey,
+			Base: prRef{
+				Ref: "main",
+				SHA: gitIn(t, dir, "rev-parse", originMain),
+			},
+			Head: prRef{
+				Ref: ticketKey + "-one-thing",
+				SHA: gitIn(t, dir, "rev-parse", "HEAD"),
+			},
+		},
+	}
+	b, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := filepath.Join(t.TempDir(), "event.json")
+	if err := os.WriteFile(event, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"pr", "-C", dir, "-event", event, "-redact"}, strings.NewReader(""), &stdout, &stderr); code != exitFindings {
+		t.Fatalf("exit %d, want %d: %s", code, exitFindings, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "PR title: ["+ruleTicketKey+"]") || !strings.Contains(out, "PR body: ["+ruleTicketKey+"]") {
+		t.Errorf("no ticket-key finding in the title and body:\n%s", out)
+	}
+	if strings.Contains(out, "branch name: [") || strings.Contains(out, "message: [") {
+		t.Errorf("a ticket key in the branch name or a commit message is a finding:\n%s", out)
+	}
+}
+
+// TestTextModeFindsTicketKey checks that the text mode, the manual check of a
+// post, applies the post rules.
+func TestTextModeFindsTicketKey(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"text", "-label", "PR body"}, strings.NewReader("Fixes "+ticketKey+"\n"), &stdout, &stderr); code != exitFindings {
+		t.Fatalf("exit %d, want %d: %s", code, exitFindings, stdout.String()+stderr.String())
+	}
+}

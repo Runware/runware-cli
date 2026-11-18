@@ -777,6 +777,35 @@ func TestScanDiffEmptyContextLine(t *testing.T) {
 	}
 }
 
+// ticketKey is a ticket key, built so this file does not hold one.
+var ticketKey = "RUN" + "SERV-123"
+
+// TestTicketKeyOnlyInPosts checks that a ticket key is a finding in a PR
+// title, description or comment, and not in a commit message, branch name or
+// file.
+func TestTicketKeyOnlyInPosts(t *testing.T) {
+	s := NewScanner()
+	if f := s.ScanPost("PR title", "fix: one thing ("+ticketKey+")"); len(f) != 1 || f[0].Rule != ruleTicketKey {
+		t.Fatalf("ScanPost = %+v, want one ticket-key finding", f)
+	}
+	if f := s.ScanText("commit message", "fix: one thing ("+ticketKey+")"); len(f) != 0 {
+		t.Fatalf("ScanText = %+v, want none", f)
+	}
+	if f := s.ScanPost("PR body", ticketKey+" "+allowMarker+" because"); len(f) != 1 {
+		t.Fatalf("ScanPost = %+v, want the allow marker not to exempt a post", f)
+	}
+	diff := "diff --git a/x.md b/x.md\n+++ b/x.md\n@@ -0,0 +1 @@\n+see " + ticketKey + "\n"
+	if f, err := s.ScanDiff(diff); err != nil || len(f) != 0 {
+		t.Fatalf("ScanDiff = %+v, %v, want none", f, err)
+	}
+	if f := s.ScanPost("PR body", "branch "+ticketKey+"-fix or "+ticketKey+"/fix"); len(f) != 0 {
+		t.Fatalf("ScanPost = %+v, want none for a branch name", f)
+	}
+	if f := s.ScanPost("PR body", "SHA-256, RTX-4090, FLUX-1, RUNTIME-3, RUN-12 and CVE-2024-1234"); len(f) != 0 {
+		t.Fatalf("ScanPost = %+v, want none for other identifiers", f)
+	}
+}
+
 func TestScanText(t *testing.T) {
 	s := NewScanner()
 	f := s.ScanText("PR body", "first line\nsee "+ghRepo+"some-private-repo")
