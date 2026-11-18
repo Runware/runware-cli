@@ -327,12 +327,19 @@ func retryable(err error) bool {
 func (r *runner) target(ctx context.Context, f *fileState, part int, failed Secret) (Target, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if t, ok := f.targets[part]; ok && (failed == "" || t.Token != failed) {
+	now := r.now()
+	if !now.Before(r.expiresAt) {
+		return Target{}, ErrSessionExpired
+	}
+	if t, ok := f.targets[part]; ok && t.ExpiresAt.After(now) && (failed == "" || t.Token != failed) {
 		return t, nil
 	}
 	parts := make([]int, 0, maxRenewParts)
 	for p := part; p <= int(f.layout.PartCount) && len(parts) < maxRenewParts; p++ {
 		parts = append(parts, p)
+	}
+	if len(parts) == 0 {
+		return Target{}, fmt.Errorf("%w: no upload target for part %d", ErrProtocol, part)
 	}
 	got, err := retryUploadAPI(ctx, r.sleep, func() ([]Target, error) {
 		if !r.now().Before(r.expiresAt) {
@@ -346,10 +353,15 @@ func (r *runner) target(ctx context.Context, f *fileState, part int, failed Secr
 	if len(got) != len(parts) {
 		return Target{}, fmt.Errorf("%w: %d upload targets for %d parts", ErrProtocol, len(got), len(parts))
 	}
+	if !got[0].ExpiresAt.After(r.now()) {
+		return Target{}, fmt.Errorf("%w: the renewed token for part %d already expired", ErrPartTokenExpired, part)
+	}
 	for i := range got {
 		if got[i].PartNumber != parts[i] {
 			return Target{}, fmt.Errorf("%w: an upload target is for part %d, not %d", ErrProtocol, got[i].PartNumber, parts[i])
 		}
+	}
+	for i := range got {
 		f.targets[parts[i]] = got[i]
 	}
 	return f.targets[part], nil

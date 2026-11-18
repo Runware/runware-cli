@@ -453,7 +453,7 @@ func TestFileKeyClearedWhenItsFileCompletes(t *testing.T) {
 	}
 }
 
-func TestRenewsExpiredToken(t *testing.T) {
+func TestRenewsExpiredTokenBeforeSending(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -461,11 +461,28 @@ func TestRenewsExpiredToken(t *testing.T) {
 
 	e.mustPut(vol, file)
 
-	if got := statuses(e.cloud.putLog()); !slices.Equal(got, []int{http.StatusUnauthorized, http.StatusOK}) {
-		t.Errorf("part statuses = %v, want an expired token then an acceptance", got)
+	if got := statuses(e.cloud.putLog()); !slices.Equal(got, []int{http.StatusOK}) {
+		t.Errorf("part statuses = %v, want a single send after the renewal", got)
 	}
 	if got := e.cloud.renewals(); !slices.Equal(got, []string{"weights.bin:[1]"}) {
 		t.Errorf("renewals = %v, want one renewal of part 1", got)
+	}
+}
+
+func TestRenewsTokenRefusedByEndpoint(t *testing.T) {
+	e := newTestEnv(t)
+	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
+	vol := e.cloud.newVolume("model-weights", "")
+	e.cloud.fault = func(req partRequest) *fakeFault {
+		if req.Attempt == 1 {
+			return &fakeFault{Status: http.StatusUnauthorized, Slug: slugPartTokenExpired}
+		}
+		return nil
+	}
+	e.mustPut(vol, file)
+
+	if got := statuses(e.cloud.putLog()); !slices.Equal(got, []int{http.StatusUnauthorized, http.StatusOK}) {
+		t.Errorf("part statuses = %v, want an expired token then an acceptance", got)
 	}
 }
 
@@ -473,8 +490,9 @@ func TestRenewalGivesUp(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
-	e.cloud.declareTTL = -time.Minute
-	e.cloud.renewTTL = -time.Minute
+	e.cloud.fault = func(partRequest) *fakeFault {
+		return &fakeFault{Status: http.StatusUnauthorized, Slug: slugPartTokenExpired}
+	}
 
 	_, err := e.put(vol, file)
 
@@ -486,6 +504,19 @@ func TestRenewalGivesUp(t *testing.T) {
 	}
 	if e.cloud.count("abort") != 1 {
 		t.Errorf("calls = %v, want the session aborted", e.cloud.callLog())
+	}
+}
+
+func TestRejectsAlreadyExpiredRenewal(t *testing.T) {
+	e := newTestEnv(t)
+	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
+	vol := e.cloud.newVolume("model-weights", "")
+	e.cloud.declareTTL = -time.Minute
+	e.cloud.renewTTL = -time.Minute
+
+	_, err := e.put(vol, file)
+	if !errors.Is(err, ErrPartTokenExpired) || len(e.cloud.renewals()) != 1 || len(e.cloud.putLog()) != 0 {
+		t.Fatalf("error = %v, calls = %v; want one renewal and no part sends", err, e.cloud.callLog())
 	}
 }
 
@@ -556,11 +587,13 @@ func (a *renewalAPI) RenewParts(_ context.Context, _ UploadRef, _ string, parts 
 // targetsFor is a well-formed answer: one target for each part, in order.
 func targetsFor(parts []int) []Target {
 	targets := make([]Target, len(parts))
+	expires := time.Now().Add(time.Minute)
 	for i, p := range parts {
 		targets[i] = Target{
 			PartNumber: p,
 			URL:        "https://upload.example.com/v1/parts",
 			Token:      Secret("token"),
+			ExpiresAt:  expires,
 		}
 	}
 	return targets
@@ -678,8 +711,7 @@ func TestNeverRenewsPastSessionDeadline(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
-	e.cloud.declareTTL = -time.Minute
-	e.cloud.onPut = func(partRequest) { e.skew.Store(int64(48 * time.Hour)) }
+	e.cloud.onDeclare = func(FileDeclarations) { e.skew.Store(int64(48 * time.Hour)) }
 
 	_, err := e.put(vol, file)
 
