@@ -30,7 +30,7 @@ type HTTPTransport struct {
 	stall  time.Duration
 }
 
-// NewHTTPTransport returns a transport on client, or on an HTTP/1.1 client that keeps a connection for each part in flight when client is nil.
+// NewHTTPTransport copies client without a total timeout; nil uses a dedicated HTTP/1.1 client.
 func NewHTTPTransport(client *http.Client) *HTTPTransport {
 	if client == nil {
 		client = &http.Client{
@@ -51,6 +51,7 @@ func NewHTTPTransport(client *http.Client) *HTTPTransport {
 		}
 	}
 	c := *client
+	c.Timeout = 0
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &HTTPTransport{
 		client: &c,

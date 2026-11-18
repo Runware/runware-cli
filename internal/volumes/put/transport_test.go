@@ -66,6 +66,27 @@ func TestHTTPTransportPutsPart(t *testing.T) {
 	}
 }
 
+func TestHTTPTransportDoesNotInheritClientTimeout(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.Copy(io.Discard, r.Body); err != nil {
+			return
+		}
+		_, _ = io.WriteString(w, `{"partNumber":1,"ack":"example-ack"}`)
+	}))
+	t.Cleanup(srv.Close)
+	client := *srv.Client()
+	client.Timeout = time.Nanosecond
+	tr := NewHTTPTransport(&client)
+
+	target := Target{PartNumber: 1, URL: srv.URL, Token: Secret(workerToken)}
+	if _, err := tr.PutPart(t.Context(), target, strings.NewReader("x"), 1); err != nil {
+		t.Fatal(err)
+	}
+	if client.Timeout != time.Nanosecond {
+		t.Error("the part transport changed the caller's client")
+	}
+}
+
 type problemCase struct {
 	name      string
 	status    int
