@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	maxPartAttempts = 5
-	maxRenewals     = 3
-	maxRenewParts   = 128
+	maxRenewals   = 3
+	maxRenewParts = 128
 )
 
 // partResult is an acknowledged part: its ack, ciphertext CRC and length.
@@ -303,10 +302,10 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 		case !retryable(err):
 			return partResult{}, err
 		default:
-			if attempts++; attempts >= maxPartAttempts {
+			if attempts++; attempts >= maxUploadAttempts {
 				return partResult{}, fmt.Errorf("%w: %w", errUploadRetriesExhausted, err)
 			}
-			if err := r.sleep(ctx, backoff(attempts)); err != nil {
+			if err := r.sleep(ctx, uploadBackoff(attempts)); err != nil {
 				return partResult{}, err
 			}
 		}

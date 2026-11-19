@@ -138,8 +138,8 @@ func TestStorageFailureKeepsTheJournalAfterRetries(t *testing.T) {
 	if !errors.Is(err, ErrPartStorageUnavailable) {
 		t.Fatalf("error = %v, want a storage failure", err)
 	}
-	if got := len(e.cloud.putLog()); got != maxPartAttempts {
-		t.Errorf("%d tries, want %d", got, maxPartAttempts)
+	if got := len(e.cloud.putLog()); got != maxUploadAttempts {
+		t.Errorf("%d tries, want %d", got, maxUploadAttempts)
 	}
 	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
 		t.Errorf("calls = %v, state = %q, want the session left open", e.cloud.callLog(), e.cloud.uploadState())
@@ -149,12 +149,13 @@ func TestStorageFailureKeepsTheJournalAfterRetries(t *testing.T) {
 	}
 }
 
-func TestStorageFailureBacksOff(t *testing.T) {
+func TestPartRecoversAfterExtendedOutage(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
-	e.cloud.fault = func(rq partRequest) *fakeFault {
-		if rq.Attempt > 3 {
+	var elapsed atomic.Int64
+	e.cloud.fault = func(partRequest) *fakeFault {
+		if elapsed.Load() >= int64(uploadTestOutage) {
 			return nil
 		}
 		return &fakeFault{
@@ -171,6 +172,7 @@ func TestStorageFailureBacksOff(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		pauses = append(pauses, d)
+		elapsed.Add(int64(d))
 		return ctx.Err()
 	}
 
@@ -180,9 +182,10 @@ func TestStorageFailureBacksOff(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if want := []time.Duration{baseBackoff, 2 * baseBackoff, 4 * baseBackoff}; !slices.Equal(pauses, want) {
-		t.Errorf("pauses = %v, want %v", pauses, want)
+	if elapsed.Load() < int64(uploadTestOutage) || e.cloud.count("complete") != 1 {
+		t.Errorf("upload did not publish after recovering from a %v outage", uploadTestOutage)
 	}
+	checkUploadPauses(t, pauses)
 }
 
 func TestPartsUploadInParallel(t *testing.T) {

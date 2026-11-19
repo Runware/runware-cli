@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"slices"
 	"testing"
 	"time"
 
@@ -13,6 +12,19 @@ import (
 )
 
 const retryRenewOperation = "renew"
+
+const uploadTestOutage = 3 * time.Minute
+
+func checkUploadPauses(t *testing.T, pauses []time.Duration) {
+	t.Helper()
+	window := 500 * time.Millisecond
+	for i, delay := range pauses {
+		if delay < window/2 || delay >= window {
+			t.Errorf("pause %d = %v, want [%v, %v)", i+1, delay, window/2, window)
+		}
+		window = min(2*window, 30*time.Second)
+	}
+}
 
 type transientUploadAPI struct {
 	API
@@ -87,9 +99,10 @@ func TestPutRetriesTransientUploadAPICalls(t *testing.T) {
 				t.Fatal(err)
 			}
 			files, digest := e.cloud.latest(vol)
-			if api.calls != 2 || !slices.Equal(pauses, []time.Duration{baseBackoff}) {
+			if api.calls != 2 || len(pauses) != 1 {
 				t.Errorf("requests = %d, pauses = %v; want two requests and one backoff", api.calls, pauses)
 			}
+			checkUploadPauses(t, pauses)
 			if len(files) != 1 || sum.ManifestSHA256 != digest || !sum.Changed || sum.Added != 1 {
 				t.Errorf("summary = %+v, want the original result of publishing one file", sum)
 			}
@@ -98,6 +111,40 @@ func TestPutRetriesTransientUploadAPICalls(t *testing.T) {
 			}
 		})
 	}
+}
+
+type unavailableCompletion struct {
+	API
+	elapsed time.Duration
+}
+
+func (a *unavailableCompletion) CompleteUpload(ctx context.Context, ref UploadRef) (UploadResult, error) {
+	if a.elapsed < uploadTestOutage {
+		return UploadResult{}, &ProblemError{Status: http.StatusServiceUnavailable}
+	}
+	return a.API.CompleteUpload(ctx, ref)
+}
+
+func TestUploadCompletionRecoversAfterExtendedOutage(t *testing.T) {
+	e := newTestEnv(t)
+	file := singleFile(t, e, "weights.bin", patterned(20, 1))
+	vol := e.cloud.newVolume("model-weights", "")
+	opts := e.options(vol, file)
+	api := &unavailableCompletion{API: e.cloud}
+	opts.API = api
+	var pauses []time.Duration
+	opts.sleep = func(ctx context.Context, d time.Duration) error {
+		api.elapsed += d
+		pauses = append(pauses, d)
+		return ctx.Err()
+	}
+
+	sum, err := Run(t.Context(), opts)
+
+	if err != nil || !sum.Changed || e.cloud.count("complete") != 1 {
+		t.Fatalf("summary = %+v, error = %v; want publication after a %v outage", sum, err, uploadTestOutage)
+	}
+	checkUploadPauses(t, pauses)
 }
 
 func TestRenewalBackoffDoesNotPassSessionDeadline(t *testing.T) {

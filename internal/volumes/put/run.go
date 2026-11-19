@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,13 +20,14 @@ import (
 )
 
 const (
-	defaultParallelism   = 4
-	maxParallelism       = 16
-	maxDeclarationBatch  = 100
-	keyPairAttempts      = 5
-	maxUploadAPIAttempts = 5
-	baseBackoff          = 500 * time.Millisecond
-	abortTimeout         = 15 * time.Second
+	defaultParallelism  = 4
+	maxParallelism      = 16
+	maxDeclarationBatch = 100
+	keyPairAttempts     = 5
+	maxUploadAttempts   = 18
+	maxUploadBackoff    = 30 * time.Second
+	baseBackoff         = 500 * time.Millisecond
+	abortTimeout        = 15 * time.Second
 )
 
 var errUploadRetriesExhausted = errors.New("the upload retry limit was reached")
@@ -544,10 +546,10 @@ func retryUploadAPI[T any](ctx context.Context, sleep func(context.Context, time
 		if !retryable(err) || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionExpired) {
 			return empty, err
 		}
-		if attempt == maxUploadAPIAttempts {
+		if attempt == maxUploadAttempts {
 			return empty, fmt.Errorf("%w: %w", errUploadRetriesExhausted, err)
 		}
-		if err := sleep(ctx, backoff(attempt)); err != nil {
+		if err := sleep(ctx, uploadBackoff(attempt)); err != nil {
 			return empty, err
 		}
 	}
@@ -555,6 +557,11 @@ func retryUploadAPI[T any](ctx context.Context, sleep func(context.Context, time
 
 func backoff(attempt int) time.Duration {
 	return baseBackoff << (attempt - 1)
+}
+
+func uploadBackoff(attempt int) time.Duration {
+	window := min(backoff(attempt), maxUploadBackoff)
+	return window/2 + rand.N(window/2)
 }
 
 func sleepContext(ctx context.Context, d time.Duration) error {
