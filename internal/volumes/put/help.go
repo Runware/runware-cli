@@ -2,6 +2,8 @@ package put
 
 // Help text of volumes put: additive uploads, and no promise to delete.
 const (
+	escapingSymlinkAdvice = "remove the link or replace it with a copy of its target"
+
 	HelpShort = "Upload files and directories to a Volume"
 
 	HelpLong = `Upload local files and directories to a Volume.
@@ -10,7 +12,7 @@ Uploads are additive. The paths you give are added to the Volume's latest files,
 replace the file already at the same path; files you do not name stay as they are. A
 directory's files keep their paths relative to the directory, under --to when you give
 it and at the Volume root otherwise. Links inside a directory must point to files
-within it. To upload a file outside that directory, name it as a separate path.
+within it. If a link points outside the local directory, ` + escapingSymlinkAdvice + `.
 
 Workers that start after an upload get the new files. Workers that are already running
 keep the files they started with.

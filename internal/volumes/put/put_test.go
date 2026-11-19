@@ -504,12 +504,14 @@ func TestPutSummaryJSON(t *testing.T) {
 // AC 6: the help states the additive rules and promises no deletion.
 func TestPutHelpText(t *testing.T) {
 	help := strings.Join(strings.Fields(HelpShort+" "+HelpLong+" "+HelpExample), " ")
+	const localLinkAdvice = "If a link points outside the local directory, remove the link or replace it with a copy of its target."
 	for _, want := range []string{
 		"Uploads are additive",
 		"files you do not name stay as they are",
 		"Workers that start after an upload get the new files",
 		"Rolling an app back re-applies its earlier image, not earlier Volume files",
 		"Links inside a directory must point to files within it",
+		localLinkAdvice,
 		"create a new Volume",
 	} {
 		if !strings.Contains(help, want) {
@@ -517,7 +519,7 @@ func TestPutHelpText(t *testing.T) {
 		}
 	}
 	for _, banned := range []string{"delet", "remov", "prune", "sync"} {
-		if strings.Contains(strings.ToLower(help), banned) {
+		if strings.Contains(strings.ToLower(strings.ReplaceAll(help, localLinkAdvice, "")), banned) {
 			t.Errorf("help mentions %q, which reads as a promise to take files out of a Volume", banned)
 		}
 	}
