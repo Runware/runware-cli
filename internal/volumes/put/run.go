@@ -307,6 +307,11 @@ func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source
 	if err := r.uploadFiles(ctx, todo); err != nil {
 		return Summary{}, err
 	}
+	for i := range sources {
+		if err := unchanged(&sources[i]); err != nil {
+			return Summary{}, err
+		}
+	}
 	res, err := retryUploadAPI(ctx, r.sleep, func() (UploadResult, error) {
 		return r.api.CompleteUpload(ctx, r.ref)
 	})

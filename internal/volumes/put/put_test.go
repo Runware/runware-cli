@@ -741,6 +741,36 @@ func TestPutTruncatedDuringUploadAborts(t *testing.T) {
 	assertAborted(t, e, err, file, vol, 0)
 }
 
+func TestPutRechecksEverySourceBeforePublish(t *testing.T) {
+	for _, firstReused := range []bool{false, true} {
+		name := "uploaded"
+		if firstReused {
+			name = "reused"
+		}
+		t.Run(name, func(t *testing.T) {
+			e := newTestEnv(t)
+			first := singleFile(t, e, "first.bin", patterned(64, 1))
+			second := singleFile(t, e, "second.bin", patterned(64, 2))
+			if firstReused {
+				e.mustPut(e.cloud.newVolume("original", ""), first)
+			}
+			vol := e.cloud.newVolume("model-weights", "")
+			since := len(e.cloud.callLog())
+			e.cloud.onCompleteFile = func(path string) {
+				if path == "second.bin" {
+					rewrite(t, first, patterned(65, 3))
+				}
+			}
+			opts := e.options(vol, first, second)
+			opts.Parallelism = 1
+
+			_, err := Run(t.Context(), opts)
+
+			assertAborted(t, e, err, first, vol, since)
+		})
+	}
+}
+
 // assertAborted checks the file is named, the session aborted and nothing published or left behind.
 func assertAborted(t *testing.T, e *testEnv, err error, file string, vol VolumeRef, since int) {
 	t.Helper()
