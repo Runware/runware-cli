@@ -1,6 +1,8 @@
 // Command checkpublic finds text that must not be published in this public
 // repository: references to private repositories, links to internal tools,
-// internal hostnames, unpublished OpenAPI sections and credentials.
+// internal hostnames, unpublished OpenAPI sections and credentials. In a PR
+// title, description or comment (the pr and text modes) it also finds ticket
+// keys, and the allow marker exempts nothing.
 //
 // Usage:
 //
@@ -156,7 +158,7 @@ func finish(o options, sections []section, stdout, stderr io.Writer) int {
 		}
 	}
 	if total > 0 {
-		logf(stderr, "checkpublic: %d finding(s). This repository is public: rewrite the text. For a false positive in a file, add `%s <reason>` to the line; it does not exempt a PR title, description or comment, a key, a token or a credential.\n", total, allowMarker)
+		logf(stderr, "checkpublic: %d finding(s). This repository is public: rewrite the text. For a false positive in a file, add `%s <reason>` to the line; it does not exempt a PR title, description or comment, a private key, a token or a credential.\n", total, allowMarker)
 		return exitFindings
 	}
 	return 0

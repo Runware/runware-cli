@@ -798,7 +798,7 @@ func TestTicketKeyOnlyInPosts(t *testing.T) {
 	if f, err := s.ScanDiff(diff); err != nil || len(f) != 0 {
 		t.Fatalf("ScanDiff = %+v, %v, want none", f, err)
 	}
-	if f := s.ScanPost("PR body", "branch "+ticketKey+"-fix or "+ticketKey+"/fix"); len(f) != 0 {
+	if f := s.ScanPost("PR body", "branch "+ticketKey+"-fix, "+ticketKey+"-Fix or "+ticketKey+"/fix"); len(f) != 0 {
 		t.Fatalf("ScanPost = %+v, want none for a branch name", f)
 	}
 	if f := s.ScanPost("PR body", "_"+ticketKey+"_ and __"+ticketKey+"__"); len(f) != 1 || f[0].Match != ticketKey {
@@ -819,12 +819,12 @@ func TestTicketKeyOnlyInPosts(t *testing.T) {
 
 func TestScanText(t *testing.T) {
 	s := NewScanner()
-	f := s.ScanText("PR body", "first line\nsee "+ghRepo+"some-private-repo")
-	if len(f) != 1 || f[0].Where != "PR body line 2" || f[0].Match != "some-private-repo" {
+	f := s.ScanText("commit message", "first line\nsee "+ghRepo+"some-private-repo")
+	if len(f) != 1 || f[0].Where != "commit message line 2" || f[0].Match != "some-private-repo" {
 		t.Fatalf("ScanText = %+v", f)
 	}
-	f = s.ScanText("PR title", "fix: one line "+clusterHost)
-	if len(f) != 1 || f[0].Where != "PR title" {
+	f = s.ScanText("tag message", "release one line "+clusterHost)
+	if len(f) != 1 || f[0].Where != "tag message" {
 		t.Fatalf("ScanText = %+v", f)
 	}
 }
