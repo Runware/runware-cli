@@ -9,10 +9,12 @@ import (
 	"sync"
 )
 
-// allowMarker, followed by a reason on the same line, exempts that line from
-// every rule except the credential and deny-list rules (see neverAllowed). Use it for a
-// line that has to name a pattern, such as a test of a rule or a guard like
-// the published-spec test. A marker without a reason exempts nothing.
+// allowMarker, followed by a reason on the same line, exempts that line of a
+// file, commit message or branch name from every rule except the credential
+// and deny-list rules (see neverAllowed). It exempts nothing in a post (a PR
+// title, description or comment), which would publish it. Use it for a line
+// that has to name a pattern, such as a test of a rule or a guard like the
+// published-spec test. A marker without a reason exempts nothing.
 const allowMarker = "checkpublic:allow"
 
 // allowed matches the marker followed by a reason: optionally a colon, then
@@ -169,12 +171,13 @@ func builtinRules() []rule {
 			re:      regexp.MustCompile(`(?i)\b(?:[a-z0-9-]+\.)*(?:atlassian\.net|notion\.so|notion\.site|slack\.com|docs\.google\.com|drive\.google\.com)\b`),
 		},
 		{
-			// A Runware ticket key, of the RUNSERV project. A
-			// key followed by -slug or / is a branch name, which may carry
-			// one.
+			// A Runware ticket key, of the RUNSERV project, in any case and
+			// also inside Markdown _emphasis_, where \b sees no boundary. A
+			// key followed by -slug or /slug is a branch name, which may
+			// carry one.
 			name:    ruleTicketKey,
 			message: "has a ticket key; a PR title, description or comment explains the change without it, and the key can stay in the branch name",
-			re:      regexp.MustCompile(`\bRUNSERV-[0-9]+\b`),
+			re:      regexp.MustCompile(`(?i)(?:\b|_)(RUNSERV-[0-9]+)`),
 			bounded: notBranchName,
 			post:    true,
 		},
@@ -268,9 +271,14 @@ func checkShortRepo(s *Scanner, m []string, file string) bool {
 }
 
 // notBranchName reports whether the ticket key at line[start:end] is not the
-// start of a branch name: RUNSERV-12-fix or RUNSERV-12/fix.
+// start of a branch name: RUNSERV-12-fix or RUNSERV-12/fix. Only a letter
+// after the - or / makes one, so a range or list of keys stays a finding.
 func notBranchName(line string, _, end int) bool {
-	return end == len(line) || line[end] != '-' && line[end] != '/'
+	if end+1 >= len(line) || line[end] != '-' && line[end] != '/' {
+		return true
+	}
+	c := line[end+1] | 0x20
+	return c < 'a' || c > 'z'
 }
 
 // publicInternalHosts are .internal names that are public knowledge and
@@ -564,7 +572,7 @@ func (s *Scanner) scanLine(file, line string, post bool) []hit {
 				continue
 			}
 			match := strings.TrimLeft(m[0], " \t\"'([<,;:=|")
-			if r.name == ruleRepo || r.name == rulePublicIP {
+			if r.name == ruleRepo || r.name == rulePublicIP || r.name == ruleTicketKey {
 				match = m[1]
 			}
 			key := r.name + "\x00" + strings.ToLower(match)

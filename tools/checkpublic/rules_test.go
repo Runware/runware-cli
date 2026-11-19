@@ -801,6 +801,17 @@ func TestTicketKeyOnlyInPosts(t *testing.T) {
 	if f := s.ScanPost("PR body", "branch "+ticketKey+"-fix or "+ticketKey+"/fix"); len(f) != 0 {
 		t.Fatalf("ScanPost = %+v, want none for a branch name", f)
 	}
+	if f := s.ScanPost("PR body", "_"+ticketKey+"_ and __"+ticketKey+"__"); len(f) != 1 || f[0].Match != ticketKey {
+		t.Fatalf("ScanPost = %+v, want one finding for a key in Markdown emphasis", f)
+	}
+	if f := s.ScanPost("PR body", "see "+strings.ToLower(ticketKey)); len(f) != 1 {
+		t.Fatalf("ScanPost = %+v, want a finding for a lowercase key", f)
+	}
+	for _, list := range []string{ticketKey + "-125", ticketKey + "/124", ticketKey + "-"} {
+		if f := s.ScanPost("PR body", "see "+list); len(f) != 1 {
+			t.Fatalf("ScanPost(%q) = %+v, want a finding for a range or list", list, f)
+		}
+	}
 	if f := s.ScanPost("PR body", "SHA-256, RTX-4090, FLUX-1, RUNTIME-3, RUN-12 and CVE-2024-1234"); len(f) != 0 {
 		t.Fatalf("ScanPost = %+v, want none for other identifiers", f)
 	}

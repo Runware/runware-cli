@@ -260,13 +260,13 @@ func TestDenyInvalidPatternWarnsWithoutShowingIt(t *testing.T) {
 func TestDenyControlCharacterSkipped(t *testing.T) {
 	var stderr bytes.Buffer
 	gh := &fakeGH{
-		out: "\bname #[0-9]+\nok\n",
+		out: "\bname #[0-9]+\na\x7fb\na\tb\nok\n",
 	}
 	d := newTestDeny(t, gh, &stderr)
-	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{"ok"}) {
-		t.Errorf("patterns = %q, want the one without a control character", got)
+	if got := patternStrings(d.patterns(context.Background())); !slices.Equal(got, []string{"a\tb", "ok"}) {
+		t.Errorf("patterns = %q, want the ones without a control character other than a tab", got)
 	}
-	if !strings.Contains(stderr.String(), "skipped 1") {
+	if !strings.Contains(stderr.String(), "skipped 2") {
 		t.Errorf("stderr = %q", stderr.String())
 	}
 }

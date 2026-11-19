@@ -235,7 +235,7 @@ func TestPRModeTicketKeyInTitleAndBodyOnly(t *testing.T) {
 				SHA: gitIn(t, dir, "rev-parse", originMain),
 			},
 			Head: prRef{
-				Ref: ticketKey + "-one-thing",
+				Ref: ticketKey,
 				SHA: gitIn(t, dir, "rev-parse", "HEAD"),
 			},
 		},
