@@ -122,10 +122,20 @@ func TestWalkSymlinks(t *testing.T) {
 		symlinkOrSkip(t, outside, link)
 		t.Cleanup(func() { _ = os.Remove(link) })
 
-		_, err := Walk([]string{root}, "")
+		_, err := Walk([]string{root, outside}, "")
 
-		if !errors.Is(err, ErrEscapingSymlink) || !strings.Contains(err.Error(), "escape.bin") {
-			t.Errorf("error = %v, want the escaping link named", err)
+		if !errors.Is(err, ErrEscapingSymlink) || !strings.Contains(err.Error(), "escape.bin") ||
+			!strings.Contains(err.Error(), "remove the link or replace it with a copy") {
+			t.Fatalf("error = %v, want the escaping link named and a way to fix it", err)
+		}
+
+		if err := os.Remove(link); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, link, patterned(3, 1))
+		got, err := Walk([]string{root}, "")
+		if err != nil || !slices.Equal(targets(got), []string{"escape.bin", "real.bin"}) {
+			t.Errorf("targets = %v, error = %v; want both files after replacing the link", targets(got), err)
 		}
 	})
 

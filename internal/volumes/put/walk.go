@@ -23,7 +23,7 @@ var (
 	// ErrNoFiles is a put whose paths hold no file.
 	ErrNoFiles = errors.New("nothing to upload: the paths hold no files")
 	// ErrEscapingSymlink is a symlink inside an uploaded directory that points outside it.
-	ErrEscapingSymlink = errors.New("is a symlink that leaves the uploaded directory; copy the file into it or name it as a path of its own")
+	ErrEscapingSymlink = errors.New("is a symlink that points outside the uploaded directory; remove the link or replace it with a copy of its target")
 	// ErrSymlinkDirectory is a symlink to a directory, which put does not follow.
 	ErrSymlinkDirectory = errors.New("is a symlink to a directory, which put does not follow")
 	// ErrNotRegular is a path that is not a regular file; a Volume holds regular files only.
