@@ -41,7 +41,7 @@ type UploadRef struct {
 	ID     string
 }
 
-// API is the serverless Volumes API an upload drives; a method returns a *ProblemError for a problem answer.
+// API is the Volumes API the engine drives; adapters keep shared auth errors and use *ProblemError for upload-specific problems.
 type API interface {
 	LatestFiles(ctx context.Context, volume VolumeRef) (FileList, error)
 	KeyPairStatement(ctx context.Context) (KeyPairStatement, error)

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/pkg/volumeformat"
 )
 
@@ -319,6 +320,12 @@ func retryable(err error) bool {
 	}
 	if p, ok := errors.AsType[*ProblemError](err); ok {
 		return p.Status >= http.StatusInternalServerError || p.Status == http.StatusTooManyRequests
+	}
+	if transport.IsAuthError(err) {
+		return false
+	}
+	if e, ok := errors.AsType[*transport.RunwareError](err); ok && e.StatusCode != 0 {
+		return e.StatusCode >= http.StatusInternalServerError || e.StatusCode == http.StatusTooManyRequests
 	}
 	return true
 }

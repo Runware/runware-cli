@@ -8,6 +8,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/runware/runware-cli/internal/api/transport"
 )
 
 const retryRenewOperation = "renew"
@@ -134,5 +136,26 @@ func TestUploadAPIStopsRetriesOnCancellation(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) || calls != 1 || pauses != 0 {
 		t.Fatalf("error = %v, requests = %d, pauses = %d; want cancellation without a retry", err, calls, pauses)
+	}
+}
+
+func TestUploadAPIPreservesAuthErrorsWithoutRetrying(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			authErr := transport.CreateRunwareError("forbidden", http.StatusText(status), transport.RunwareErrorDetails{
+				StatusCode: status,
+			})
+			calls, pauses := 0, 0
+			_, err := retryUploadAPI(t.Context(), func(context.Context, time.Duration) error {
+				pauses++
+				return nil
+			}, func() (int, error) {
+				calls++
+				return 0, authErr
+			})
+			if !errors.Is(err, authErr) || !transport.IsAuthError(err) || calls != 1 || pauses != 0 {
+				t.Fatalf("error = %v, requests = %d, pauses = %d; want the original auth error without a retry", err, calls, pauses)
+			}
+		})
 	}
 }
