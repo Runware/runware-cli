@@ -1,0 +1,90 @@
+{
+  "about": "Request bodies and the layouts the API must answer, for the files of format-vectors.json. Ids and keys match the other fixtures.",
+  "declareFiles": {
+    "files": [
+      {
+        "attemptId": "b536997aaeeb74d191e6a3a7e95c9acb",
+        "mode": 292,
+        "path": "empty.txt",
+        "sealedKey": "_lAk8E8JCXPZGHua4oJmTSDOZCIABXMnpxLhV1fPpU1TZ5oTZqTvh6LQiPGhZa5YQNh6EQVmoV7BTBbE",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      {
+        "attemptId": "2981bc975d7fd3611b99d588cd19eb5b",
+        "mode": 292,
+        "path": "model/config.json",
+        "sealedKey": "ZZsu1Tof58ij_HPBepEEmxZByI3NYKx_-wfoeJG-VDPphrcp18sATO9l2reUaAgEpOa19HHNTrymqdtU",
+        "sha256": "8b08f4bd38a7e3f5f0d30e323bd574f3e1fbf7cf2d1ca17b3dc22f3d7d24e065",
+        "size": 13
+      },
+      {
+        "attemptId": "a3a9955e89b82c4da999d36ec5c55258",
+        "mode": 292,
+        "path": "model/tokenizer.bin",
+        "sealedKey": "2SS8mQF1O4gTMRcX9k9XxJ0u7y71WGnyCI68JGscr-4I7zHgEZReAgNTKgldzH4GpQsPatwl_t42YsfE",
+        "sha256": "74e41cd8c3f54e870fdbd0b42ea9e8d35df266e0ac91c1ee877c6048c3d86fd5",
+        "size": 1049560
+      },
+      {
+        "attemptId": "86eb29c297f994591f39b7293a75e965",
+        "mode": 365,
+        "path": "model/weights.bin",
+        "sealedKey": "xJKYopyXSy51S8mpsVrDDWDZnGhGi4lXmmldsNWtYnijLXY18_vNnfKu2qO1T2Ii9JnKujNR58cx388l",
+        "sha256": "767e7305af369473e9c0787846e44992997a6c8b71d175e9995089e02e61466f",
+        "size": 67107845
+      }
+    ]
+  },
+  "expectedLayouts": [
+    {
+      "layout": {
+        "ciphertextBytes": 32,
+        "partCount": 1,
+        "partSizeBytes": 67108880,
+        "segmentBytes": 1048576,
+        "segmentPlaintextBytes": 1048560,
+        "segmentsPerPart": 64
+      },
+      "path": "empty.txt"
+    },
+    {
+      "layout": {
+        "ciphertextBytes": 45,
+        "partCount": 1,
+        "partSizeBytes": 67108880,
+        "segmentBytes": 1048576,
+        "segmentPlaintextBytes": 1048560,
+        "segmentsPerPart": 64
+      },
+      "path": "model/config.json"
+    },
+    {
+      "layout": {
+        "ciphertextBytes": 1049608,
+        "partCount": 1,
+        "partSizeBytes": 67108880,
+        "segmentBytes": 1048576,
+        "segmentPlaintextBytes": 1048560,
+        "segmentsPerPart": 64
+      },
+      "path": "model/tokenizer.bin"
+    },
+    {
+      "layout": {
+        "ciphertextBytes": 67108917,
+        "partCount": 2,
+        "partSizeBytes": 67108880,
+        "segmentBytes": 1048576,
+        "segmentPlaintextBytes": 1048560,
+        "segmentsPerPart": 64
+      },
+      "path": "model/weights.bin"
+    }
+  ],
+  "openUpload": {
+    "encapsulation": "COmPHEvbU_niH-JaYMcUXYDsmVd268eV7uq_ndOk8mQcs3xp5pxiqYnPZb-JlCw1wNICMBl60n6naj1HTGqf9AvkjW0YiwxucshD7_5kBgYwZ6Cp3u2ZNhDYep4cOAl-Pl8qoSTzl-bNcvnSLCERE1YbMTmW1qMs2ObI2Tun4aVaPfuA5H0s1IoiOwf_763q0IruZAiWqG1RsvcWjNi_DD_uDCygeP6PTnZUsHe073jREA8epRkApeqaOXqM-KQP0EE41t9HhqDLEv7YLgxo1VgMMXaBiGBBkKOEvpaf5Tedv3LE0SXl2F9TgQneo5-pgAscNHNx3Ht6tAx-a-r_2BXDvPivqBnO8VORXkbX6ZDbaPjS8_-BEzQebK0Iq1cL3E_2sQOkGQeVY1j4hZyepgWpzhMjnnRQkwHLQ-erd8veALA889nv3BuvNBAEysrum1YZxwfsTHSC5_845iTV818lnVeVKDNuAnB5MCGlkUzXtgPvMoIsXRneUw3VWxTZZzsoevR7_m_WMzs-nqimCRxmtYr5C5q_7q2kdFllIdW4eRBvzxKsOWrnWgE4tU96wk9fbMqhmmsoxyGs6l2tbGR9P74MrQwlDr6fvcDurPq6z77KHHt6EKJz5CgtgVsohVDLLZI3vy188btHg2anr3JX-6FdEhQR2dN8nV3kc4RIIW18u9grXGw68CNm7QsPqR26C67RFboj-hJzHClf0fLdVd6tvRVy9BgwlcAJHCE5ZUinqf9r3k6FaEoAR3y4vnILroAeid1ntU7ZTcPwc2CQql0sVdAHh7rLBIenbxNq-Wba3NXjEtoWC9MHb9QWYUJV38MpZZFholznbNldPjpe-d9kslHqxmf5KXU6Mm7KPwgtxxIJ9PFZZYj7Ngr3i9vUORwLKGsEq_6k-2gF001KCaEp9XNaPiS7Wz1Iq7hLICXeA6D6nkJy9_YdLMR3VCsLMhU0Gv8HkJYICYjgUVevAUSSGvP_un7Q6yUxbisBUIAeYFe7yObSSC-3ABQklyh1JiLfyBYrnw3Aez1fn0RqYS4HdtAWw23KoQXsvjRH3onpr84hLhSjG_xG2TM1mN0SaWexAueWcwlP5gFhJcOObB1b95ZVfcO-Rrg4L8I9XwnxhlvmeiXzcfaQpQ5s9LfLhbxtxgoyNcS2Yi0bYUqawytxdk5Mv6PFKzFWWZX5M_PfmV7wRyfv0iAEF463pef-f9itJL9m0IEtjpSvPdjPFHncqMGDpLRSetggDXcqAnd27tAu_UzzXGF3ayOcs59A5MxY7i9KpR7i9_YSy8nQYvwfWWmQOMT8G3gPfxygbpjOasFncjh7_DUfcZPRWddJeNbb2fumfjx45cRiwhzts_dKK1qdkaUocU0Z_FNJJo8MYLL8HetSJRincZy_tfrhczmf98RfLPGI--Zni55mCZEl1AQcopV9r7uURCGQeaqoD4icL5YD5uoMwH3nJQ9kzMgsC0-SeROKSD_oMA",
+    "keyPairId": "c4a1f8e2-3b6d-4e9a-8c57-1d2f0e9b6a73"
+  },
+  "openedUploadId": "7f3e9b1c-2d4a-4c8e-b5f6-a0e1d2c3b4a5"
+}
