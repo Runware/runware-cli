@@ -552,7 +552,7 @@ func backoff(attempt int) time.Duration {
 
 func uploadBackoff(attempt int) time.Duration {
 	window := min(backoff(attempt), maxUploadBackoff)
-	return window/2 + rand.N(window/2)
+	return window/2 + rand.N(window/2) //nolint:gosec // Retry jitter is not security sensitive.
 }
 
 func sleepContext(ctx context.Context, d time.Duration) error {
