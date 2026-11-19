@@ -147,6 +147,47 @@ func TestUploadCompletionRecoversAfterExtendedOutage(t *testing.T) {
 	checkUploadPauses(t, pauses)
 }
 
+type transientAbort struct {
+	API
+	calls int
+}
+
+func (a *transientAbort) AbortUpload(ctx context.Context, ref UploadRef) error {
+	a.calls++
+	if a.calls == 1 {
+		return &ProblemError{Status: http.StatusBadGateway}
+	}
+	if err := a.API.AbortUpload(ctx, ref); err != nil {
+		return err
+	}
+	if a.calls == 2 {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+
+func TestSourceChangeRetriesAbort(t *testing.T) {
+	e := newTestEnv(t)
+	file := singleFile(t, e, "weights.bin", patterned(20, 1))
+	vol := e.cloud.newVolume("model-weights", "")
+	e.cloud.onOpen = func() { rewrite(t, file, patterned(30, 2)) }
+	api := &transientAbort{API: e.cloud}
+	opts := e.options(vol, file)
+	opts.API = api
+
+	_, err := Run(t.Context(), opts)
+
+	if !errors.Is(err, ErrSourceChanged) || errors.Is(err, errUploadRetriesExhausted) || errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("error = %v, want the original source change after abort succeeds", err)
+	}
+	if api.calls != 3 || e.cloud.count("abort") != 2 || e.cloud.uploadState() != fakeAborted {
+		t.Fatalf("attempts = %d, calls = %v, state = %q; want a successful repeated abort", api.calls, e.cloud.callLog(), e.cloud.uploadState())
+	}
+	if dirs := e.uploadDirs(); e.cloud.count("complete") != 0 || len(dirs) != 0 {
+		t.Errorf("calls = %v, resume state = %v; want no publication or leftover state", e.cloud.callLog(), dirs)
+	}
+}
+
 func TestRenewalBackoffDoesNotPassSessionDeadline(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(20, 1))

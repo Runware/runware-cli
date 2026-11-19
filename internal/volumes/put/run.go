@@ -53,7 +53,7 @@ type Options struct {
 	progressEvery time.Duration
 }
 
-// Run uploads the paths to the Volume and preserves resume state on interruption or retry exhaustion.
+// Run uploads the paths to the Volume.
 func Run(ctx context.Context, o Options) (Summary, error) {
 	r, err := newRunner(o)
 	if err != nil {
@@ -203,7 +203,7 @@ func (r *runner) keyPairStatement(ctx context.Context) (KeyPairStatement, error)
 	}
 }
 
-// upload opens the session and keeps local state only while it may still be useful.
+// upload opens a session and keeps a journal while the upload is in progress.
 func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, before FileList) (Summary, error) {
 	up, err := r.api.OpenUpload(ctx, r.o.Volume, UploadOpen{
 		KeyPairID:     uuid.UUID(sess.KeyPairID()).String(),
@@ -226,16 +226,8 @@ func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, 
 	}
 	sum, err := r.transfer(ctx, sess, sources, before)
 	if err != nil {
-		cause := context.Cause(ctx)
-		interrupted := cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause))
-		if interrupted {
+		if cause := context.Cause(ctx); cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause)) {
 			err = cause
-		}
-		if (interrupted || errors.Is(err, errUploadRetriesExhausted)) && r.now().Before(r.expiresAt) {
-			if closeErr := r.journal.close(); closeErr != nil {
-				return Summary{}, errors.Join(err, fmt.Errorf("save the retained resume state: %w", closeErr))
-			}
-			return Summary{}, fmt.Errorf("%w (the resume state was kept)", err)
 		}
 		return Summary{}, r.abort(ctx, err)
 	}
@@ -260,32 +252,31 @@ func (r *runner) begin(sess KeySession, id uuid.UUID, up Upload) error {
 		CreatedAt:    up.CreatedAt,
 		ExpiresAt:    up.ExpiresAt,
 	})
-	if err != nil {
-		return err
-	}
 	r.journal = j
-	return nil
+	return err
 }
 
-// abort deletes the session, then the resume state, which stays when the session cannot be deleted.
+// abort tries to close the session and removes the local journal even if the server is unreachable.
 func (r *runner) abort(ctx context.Context, cause error) error {
 	actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abortTimeout)
 	defer cancel()
-	err := r.api.AbortUpload(actx, r.ref)
-	if p, ok := errors.AsType[*ProblemError](err); err == nil || (ok && p.Slug == slugUploadNotOpen) {
-		if r.journal != nil {
-			if rmErr := r.journal.remove(); rmErr != nil {
-				r.warn("%v", rmErr)
-			}
+	_, abortErr := retryUploadAPI(actx, r.sleep, func() (struct{}, error) {
+		err := r.api.AbortUpload(actx, r.ref)
+		if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
+			return struct{}{}, nil
 		}
-		return cause
+		return struct{}{}, err
+	})
+	if abortErr != nil {
+		cause = fmt.Errorf("%w (could not confirm the upload was aborted; the session may stay open until %s: %w)",
+			cause, r.expiresAt.Format(time.RFC3339), abortErr)
 	}
 	if r.journal != nil {
-		if closeErr := r.journal.close(); closeErr != nil {
-			r.warn("%v", closeErr)
+		if err := r.journal.remove(); err != nil {
+			return errors.Join(cause, err)
 		}
 	}
-	return fmt.Errorf("%w (the upload session could not be aborted and stays open until %s: %w)", cause, r.expiresAt.Format(time.RFC3339), err)
+	return cause
 }
 
 func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source, before FileList) (Summary, error) {

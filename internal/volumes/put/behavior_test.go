@@ -122,7 +122,7 @@ func TestRetryUsesNewSealer(t *testing.T) {
 	}
 }
 
-func TestStorageFailureKeepsTheJournalAfterRetries(t *testing.T) {
+func TestStorageFailureAbortsAfterRetries(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -135,17 +135,17 @@ func TestStorageFailureKeepsTheJournalAfterRetries(t *testing.T) {
 
 	_, err := e.put(vol, file)
 
-	if !errors.Is(err, ErrPartStorageUnavailable) {
+	if !errors.Is(err, ErrPartStorageUnavailable) || !errors.Is(err, errUploadRetriesExhausted) {
 		t.Fatalf("error = %v, want a storage failure", err)
 	}
 	if got := len(e.cloud.putLog()); got != maxUploadAttempts {
 		t.Errorf("%d tries, want %d", got, maxUploadAttempts)
 	}
-	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
-		t.Errorf("calls = %v, state = %q, want the session left open", e.cloud.callLog(), e.cloud.uploadState())
+	if e.cloud.count("abort") != 1 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeAborted {
+		t.Errorf("calls = %v, state = %q, want the session aborted", e.cloud.callLog(), e.cloud.uploadState())
 	}
-	if dirs := e.uploadDirs(); len(dirs) != 1 {
-		t.Errorf("want one retained journal after retries, got %d", len(dirs))
+	if dirs := e.uploadDirs(); len(dirs) != 0 {
+		t.Errorf("resume state left after retries: %v", dirs)
 	}
 }
 
@@ -798,7 +798,17 @@ func (c *cancelOnSecondPart) PutPart(ctx context.Context, target Target, body io
 	return c.Transport.PutPart(ctx, target, body, length)
 }
 
-func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
+type observedAbort struct {
+	API
+	before func()
+}
+
+func (a observedAbort) AbortUpload(ctx context.Context, ref UploadRef) error {
+	a.before()
+	return a.API.AbortUpload(ctx, ref)
+}
+
+func TestInterruptAbortsAndCleansUploadJournal(t *testing.T) {
 	e := newTestEnv(t)
 	first := singleFile(t, e, "first.bin", patterned(5000, 1))
 	second := singleFile(t, e, "second.bin", patterned(5000, 2))
@@ -811,6 +821,11 @@ func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
 		Transport: opts.Transport,
 		cancel:    cancel,
 	}
+	var snap journalSnapshot
+	opts.API = observedAbort{
+		API:    e.cloud,
+		before: journalAt(t, e, &snap),
+	}
 
 	_, err := Run(ctx, opts)
 
@@ -820,10 +835,9 @@ func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
 	if _, ok := errors.AsType[*FileError](err); ok {
 		t.Errorf("error = %v, want the interrupt on its own, not a failure of one file", err)
 	}
-	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
-		t.Errorf("calls = %v, state = %q, want an open session and no completion", e.cloud.callLog(), e.cloud.uploadState())
+	if e.cloud.count("abort") != 1 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeAborted {
+		t.Errorf("calls = %v, state = %q, want an aborted session and no completion", e.cloud.callLog(), e.cloud.uploadState())
 	}
-	snap := readJournal(t, e.configDir)
 	if acks := snap.ofType(recordAck); len(acks) != 1 || acks[0]["index"] != float64(0) {
 		t.Error("the journal does not contain the first file's acknowledgement")
 	}
@@ -839,24 +853,31 @@ func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
 	if !e.keys.allCleared() {
 		t.Error("a key was not cleared after the interrupt")
 	}
+	if dirs := e.uploadDirs(); len(dirs) != 0 {
+		t.Errorf("resume state left after the interrupt: %v", dirs)
+	}
 }
 
 // failingAbort is an API whose session cannot be aborted.
 type failingAbort struct {
 	API
-	err error
+	err   error
+	calls int
 }
 
-func (f failingAbort) AbortUpload(context.Context, UploadRef) error { return f.err }
+func (f *failingAbort) AbortUpload(context.Context, UploadRef) error {
+	f.calls++
+	return f.err
+}
 
 type abortCase struct {
-	name      string
-	err       error
-	wantState bool
+	name             string
+	err              error
+	wantCalls        int
+	wantAbortFailure bool
 }
 
-// TestAbortFailureKeepsState: the resume state stays only while the session stays open.
-func TestAbortFailureKeepsState(t *testing.T) {
+func TestAbortFailureStillRemovesJournal(t *testing.T) {
 	cases := []abortCase{
 		{
 			name: "the API is unreachable",
@@ -864,7 +885,8 @@ func TestAbortFailureKeepsState(t *testing.T) {
 				Status: http.StatusServiceUnavailable,
 				Detail: "unavailable",
 			},
-			wantState: true,
+			wantCalls:        maxUploadAttempts,
+			wantAbortFailure: true,
 		},
 		{
 			name: "the session is already gone",
@@ -873,6 +895,7 @@ func TestAbortFailureKeepsState(t *testing.T) {
 				Slug:   slugUploadNotOpen,
 				Detail: "expired",
 			},
+			wantCalls: 1,
 		},
 	}
 	for _, tc := range cases {
@@ -882,27 +905,31 @@ func TestAbortFailureKeepsState(t *testing.T) {
 			vol := e.cloud.newVolume("model-weights", "")
 			e.cloud.onOpen = func() { rewrite(t, file, patterned(80, 2)) }
 			opts := e.options(vol, file)
-			opts.API = failingAbort{
+			api := &failingAbort{
 				API: e.cloud,
 				err: tc.err,
 			}
+			opts.API = api
 
 			_, err := Run(t.Context(), opts)
 
 			if !errors.Is(err, ErrSourceChanged) {
 				t.Fatalf("error = %v, want the source change", err)
 			}
-			if got := strings.Contains(err.Error(), "could not be aborted"); got != tc.wantState {
-				t.Errorf("error %q: could not be aborted = %v, want %v", err, got, tc.wantState)
+			if api.calls != tc.wantCalls {
+				t.Errorf("abort attempts = %d, want %d", api.calls, tc.wantCalls)
 			}
-			if got := len(e.uploadDirs()) == 1; got != tc.wantState {
-				t.Errorf("resume state kept = %v, want %v", got, tc.wantState)
+			if got := errors.Is(err, tc.err); got != tc.wantAbortFailure {
+				t.Errorf("error = %v, exposes abort failure = %v, want %v", err, got, tc.wantAbortFailure)
+			}
+			if dirs := e.uploadDirs(); len(dirs) != 0 {
+				t.Errorf("resume state left on disk: %v", dirs)
 			}
 		})
 	}
 }
 
-func TestRetainedJournalDropsReusedFileKeys(t *testing.T) {
+func TestJournalDropsReusedFileKeys(t *testing.T) {
 	e := newTestEnv(t)
 	reused := singleFile(t, e, "known.bin", []byte("already stored"))
 	missing := singleFile(t, e, "missing.bin", []byte("needs transfer"))
@@ -915,16 +942,16 @@ func TestRetainedJournalDropsReusedFileKeys(t *testing.T) {
 		}
 	}
 	opts := e.options(e.cloud.newVolume("another", ""), reused, missing)
-	opts.API = failingAbort{
-		API: e.cloud,
-		err: &ProblemError{Status: http.StatusServiceUnavailable},
+	var snap journalSnapshot
+	opts.API = observedAbort{
+		API:    e.cloud,
+		before: journalAt(t, e, &snap),
 	}
 	_, err := Run(t.Context(), opts)
-	if !errors.Is(err, ErrPartTokenInvalid) || !strings.Contains(err.Error(), "could not be aborted") {
-		t.Fatalf("error = %v, want a refused part and failed abort", err)
+	if !errors.Is(err, ErrPartTokenInvalid) || e.cloud.uploadState() != fakeAborted {
+		t.Fatalf("error = %v, state = %q, want a refused part and an aborted session", err, e.cloud.uploadState())
 	}
 
-	snap := readJournal(t, e.configDir)
 	if _, ok := snap.Keys[0]; ok {
 		t.Error("the reused file still has resume keys")
 	}

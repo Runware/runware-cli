@@ -93,34 +93,38 @@ type journal struct {
 	file *os.File
 }
 
-// createJournal saves the session record, with the sealing key, before it returns.
+// createJournal returns the owned journal for cleanup even if writing its first record fails.
 func createJournal(stateDir string, rec sessionRecord) (*journal, error) {
 	id, err := uuid.Parse(rec.Upload)
 	if err != nil {
 		return nil, fmt.Errorf("the session id is not a UUID: %w", err)
 	}
-	dir := filepath.Join(stateDir, uploadsDirName, id.String())
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	root := filepath.Join(stateDir, uploadsDirName)
+	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, fmt.Errorf("create the resume state directory: %w", err)
 	}
+	dir := filepath.Join(root, id.String())
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create the session's resume state directory: %w", err)
+	}
+	j := &journal{dir: dir}
 	rec.Type = recordSession
 	rec.Version = journalVersion
 	line, err := encodeLine(rec)
 	if err != nil {
-		return nil, err
+		return j, err
 	}
+	defer clear(line)
 	if err := writeFileAtomic(dir, journalName, line); err != nil {
-		return nil, fmt.Errorf("save the resume state: %w", err)
+		return j, fmt.Errorf("save the resume state: %w", err)
 	}
 	syncDir(dir)
 	f, err := os.OpenFile(filepath.Join(dir, journalName), os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open the resume state: %w", err)
+		return j, fmt.Errorf("open the resume state: %w", err)
 	}
-	return &journal{
-		dir:  dir,
-		file: f,
-	}, nil
+	j.file = f
+	return j, nil
 }
 
 func encodeLine(rec any) ([]byte, error) {
@@ -184,33 +188,17 @@ func (j *journal) discardFileKeys(index int) error {
 	return nil
 }
 
-// close syncs and closes the journal without removing it.
-func (j *journal) close() error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.file == nil {
-		return nil
-	}
-	syncErr := j.file.Sync()
-	return errors.Join(syncErr, j.closeLocked())
-}
-
-func (j *journal) closeLocked() error {
-	if j.file == nil {
-		return nil
-	}
-	err := j.file.Close()
-	j.file = nil
-	return err
-}
-
 // remove closes the journal and deletes its directory.
 func (j *journal) remove() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	closeErr := j.closeLocked()
+	var closeErr error
+	if j.file != nil {
+		closeErr = j.file.Close()
+		j.file = nil
+	}
 	if err := os.RemoveAll(j.dir); err != nil {
-		return fmt.Errorf("remove the resume state: %w", err)
+		return errors.Join(closeErr, fmt.Errorf("remove the resume state: %w", err))
 	}
 	return closeErr
 }
