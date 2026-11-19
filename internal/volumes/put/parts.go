@@ -271,6 +271,8 @@ func (r *runner) transferPart(ctx context.Context, j partJob) error {
 // sendPart seals and sends one part: under a fresh salt on retry, with a renewed token when it expired.
 func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []byte) (partResult, error) {
 	var failed Secret
+	// The retry window limits when another attempt can start.
+	retryCtx := ctx
 	var stopRetryTimer context.CancelFunc
 	defer func() {
 		if stopRetryTimer != nil {
@@ -279,10 +281,10 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 	}()
 	attempts, renewals := 0, 0
 	for {
-		if cause := context.Cause(ctx); cause != nil {
+		if cause := context.Cause(retryCtx); cause != nil {
 			return partResult{}, cause
 		}
-		target, err := r.target(ctx, f, part, failed)
+		target, err := r.target(retryCtx, f, part, failed)
 		if err != nil {
 			return partResult{}, err
 		}
@@ -295,6 +297,9 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			return partResult{}, fmt.Errorf("seal the part: %w", err)
 		}
 		crc := volumeformat.NewCRC64NVME()
+		if cause := context.Cause(retryCtx); cause != nil {
+			return partResult{}, cause
+		}
 		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, crc), sealer.Len())
 		tokenExpired := errors.Is(err, ErrPartTokenExpired)
 		switch {
@@ -306,6 +311,8 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			}, nil
 		case ctx.Err() != nil:
 			return partResult{}, context.Cause(ctx)
+		case retryCtx.Err() != nil:
+			return partResult{}, errors.Join(context.Cause(retryCtx), err)
 		case tokenExpired:
 			if renewals++; renewals > maxRenewals {
 				return partResult{}, err
@@ -319,12 +326,12 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			}
 		}
 		if stopRetryTimer == nil {
-			retryCtx, cancel := context.WithTimeoutCause(ctx, maxPartRetryTime, errUploadRetriesExhausted)
+			retryWindow, cancel := context.WithTimeoutCause(ctx, maxPartRetryTime, errUploadRetriesExhausted)
 			stopRetryTimer = cancel
-			ctx = retryCtx
+			retryCtx = retryWindow
 		}
 		if !tokenExpired {
-			if err := r.sleep(ctx, uploadBackoff(attempts)); err != nil {
+			if err := r.sleep(retryCtx, uploadBackoff(attempts)); err != nil {
 				return partResult{}, err
 			}
 		}
