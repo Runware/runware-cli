@@ -12,14 +12,16 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/pkg/volumeformat"
 )
 
 const (
-	maxRenewals   = 3
-	maxRenewParts = 128
+	maxRenewals      = 3
+	maxRenewParts    = 128
+	maxPartRetryTime = 5 * time.Minute
 )
 
 // partResult is an acknowledged part: its ack, ciphertext CRC and length.
@@ -269,8 +271,17 @@ func (r *runner) transferPart(ctx context.Context, j partJob) error {
 // sendPart seals and sends one part: under a fresh salt on retry, with a renewed token when it expired.
 func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []byte) (partResult, error) {
 	var failed Secret
+	var stopRetryTimer context.CancelFunc
+	defer func() {
+		if stopRetryTimer != nil {
+			stopRetryTimer()
+		}
+	}()
 	attempts, renewals := 0, 0
 	for {
+		if cause := context.Cause(ctx); cause != nil {
+			return partResult{}, cause
+		}
 		target, err := r.target(ctx, f, part, failed)
 		if err != nil {
 			return partResult{}, err
@@ -285,6 +296,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 		}
 		crc := volumeformat.NewCRC64NVME()
 		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, crc), sealer.Len())
+		tokenExpired := errors.Is(err, ErrPartTokenExpired)
 		switch {
 		case err == nil:
 			return partResult{
@@ -294,7 +306,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			}, nil
 		case ctx.Err() != nil:
 			return partResult{}, context.Cause(ctx)
-		case errors.Is(err, ErrPartTokenExpired):
+		case tokenExpired:
 			if renewals++; renewals > maxRenewals {
 				return partResult{}, err
 			}
@@ -305,6 +317,13 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			if attempts++; attempts >= maxUploadAttempts {
 				return partResult{}, fmt.Errorf("%w: %w", errUploadRetriesExhausted, err)
 			}
+		}
+		if stopRetryTimer == nil {
+			retryCtx, cancel := context.WithTimeoutCause(ctx, maxPartRetryTime, errUploadRetriesExhausted)
+			stopRetryTimer = cancel
+			ctx = retryCtx
+		}
+		if !tokenExpired {
 			if err := r.sleep(ctx, uploadBackoff(attempts)); err != nil {
 				return partResult{}, err
 			}
