@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -224,6 +226,72 @@ func TestUploadAPIStopsRetriesOnCancellation(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) || calls != 1 || pauses != 0 {
 		t.Fatalf("error = %v, requests = %d, pauses = %d; want cancellation without a retry", err, calls, pauses)
+	}
+}
+
+func TestAbortDeadlinePreservesLastServerError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		unavailable := &ProblemError{Status: http.StatusServiceUnavailable}
+		api := &failingAbort{err: unavailable}
+		r := runner{
+			api:   api,
+			sleep: sleepContext,
+		}
+		start := time.Now()
+		err := r.abort(t.Context(), ErrSourceChanged)
+		if elapsed := time.Since(start); elapsed != 15*time.Second || api.calls < 2 || api.calls >= maxUploadAttempts {
+			t.Errorf("abort took %v and made %d attempts, want retries within a 15 second deadline", elapsed, api.calls)
+		}
+		if !errors.Is(err, ErrSourceChanged) || !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, unavailable) {
+			t.Errorf("error = %v, want the source change, deadline and last server error", err)
+		}
+	})
+}
+
+type lostCompletionResponse struct {
+	API
+	called bool
+}
+
+func (a *lostCompletionResponse) CompleteUpload(ctx context.Context, ref UploadRef) (UploadResult, error) {
+	if !a.called {
+		a.called = true
+		if _, err := a.API.CompleteUpload(ctx, ref); err != nil {
+			return UploadResult{}, err
+		}
+	}
+	return UploadResult{}, io.ErrUnexpectedEOF
+}
+
+func TestLostCompletionDoesNotReportConfirmedAbort(t *testing.T) {
+	for _, name := range []string{"cancelled during backoff", "retry limit reached"} {
+		t.Run(name, func(t *testing.T) {
+			e := newTestEnv(t)
+			file := singleFile(t, e, "weights.bin", patterned(20, 1))
+			vol := e.cloud.newVolume("model-weights", "")
+			opts := e.options(vol, file)
+			opts.API = &lostCompletionResponse{API: e.cloud}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			want := errUploadRetriesExhausted
+			if name == "cancelled during backoff" {
+				want = context.Canceled
+				opts.sleep = func(ctx context.Context, _ time.Duration) error {
+					cancel()
+					return context.Cause(ctx)
+				}
+			}
+			_, err := Run(ctx, opts)
+			if !errors.Is(err, want) || !strings.Contains(err.Error(), "the upload may already have completed") {
+				t.Fatalf("error = %v, want %v and the uncertain completion warning", err, want)
+			}
+			if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.uploadState() != fakeCompleted || e.cloud.count("abort") != 1 {
+				t.Errorf("calls = %v, state = %q, want one published file and one abort attempt", e.cloud.callLog(), e.cloud.uploadState())
+			}
+			if dirs := e.uploadDirs(); len(dirs) != 0 {
+				t.Errorf("resume state left on disk: %v", dirs)
+			}
+		})
 	}
 }
 

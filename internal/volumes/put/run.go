@@ -63,19 +63,20 @@ func Run(ctx context.Context, o Options) (Summary, error) {
 }
 
 type runner struct {
-	o         Options
-	org       [16]byte
-	api       API
-	keys      Keys
-	tr        Transport
-	now       func() time.Time
-	sleep     func(context.Context, time.Duration) error
-	stateDir  string
-	parallel  int
-	progress  *progress
-	ref       UploadRef
-	expiresAt time.Time
-	journal   *journal
+	o                   Options
+	org                 [16]byte
+	api                 API
+	keys                Keys
+	tr                  Transport
+	now                 func() time.Time
+	sleep               func(context.Context, time.Duration) error
+	stateDir            string
+	parallel            int
+	progress            *progress
+	ref                 UploadRef
+	expiresAt           time.Time
+	journal             *journal
+	completionAttempted bool
 }
 
 func newRunner(o Options) (*runner, error) {
@@ -263,6 +264,9 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 	_, abortErr := retryUploadAPI(actx, r.sleep, func() (struct{}, error) {
 		err := r.api.AbortUpload(actx, r.ref)
 		if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
+			if r.completionAttempted {
+				cause = fmt.Errorf("%w (the upload may already have completed; check the Volume's latest files)", cause)
+			}
 			return struct{}{}, nil
 		}
 		return struct{}{}, err
@@ -300,6 +304,7 @@ func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source
 		}
 	}
 	res, err := retryUploadAPI(ctx, r.sleep, func() (UploadResult, error) {
+		r.completionAttempted = true
 		return r.api.CompleteUpload(ctx, r.ref)
 	})
 	if err != nil {
@@ -523,16 +528,20 @@ func pointerFile(pointer string) (int, bool) {
 
 func retryUploadAPI[T any](ctx context.Context, sleep func(context.Context, time.Duration) error, call func() (T, error)) (T, error) {
 	var empty T
+	var lastErr error
 	for attempt := 1; ; attempt++ {
 		if ctx.Err() != nil {
-			return empty, context.Cause(ctx)
+			return empty, errors.Join(context.Cause(ctx), lastErr)
 		}
 		res, err := call()
 		if err == nil {
 			return res, nil
 		}
 		if ctx.Err() != nil {
-			return empty, context.Cause(ctx)
+			if errors.Is(err, ctx.Err()) || errors.Is(err, context.Cause(ctx)) {
+				err = lastErr
+			}
+			return empty, errors.Join(context.Cause(ctx), err)
 		}
 		if !retryable(err) || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionExpired) {
 			return empty, err
@@ -540,8 +549,9 @@ func retryUploadAPI[T any](ctx context.Context, sleep func(context.Context, time
 		if attempt == maxUploadAttempts {
 			return empty, fmt.Errorf("%w: %w", errUploadRetriesExhausted, err)
 		}
+		lastErr = err
 		if err := sleep(ctx, uploadBackoff(attempt)); err != nil {
-			return empty, err
+			return empty, errors.Join(err, lastErr)
 		}
 	}
 }
