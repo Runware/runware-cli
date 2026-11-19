@@ -1,7 +1,6 @@
 package put
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 const (
 	uploadsDirName = "uploads"
 	journalName    = "journal.jsonl"
+	journalVersion = 1
 )
 
 // Journal record types; session, file and declared records are synced before they are used.
@@ -30,6 +30,7 @@ const (
 
 type sessionRecord struct {
 	Type         string    `json:"type"`
+	Version      int       `json:"version"`
 	Upload       string    `json:"uploadId"`
 	Volume       string    `json:"volume"`
 	Environment  string    `json:"environment,omitempty"`
@@ -41,15 +42,18 @@ type sessionRecord struct {
 }
 
 type fileRecord struct {
-	Type      string `json:"type"`
-	Index     int    `json:"index"`
-	Path      string `json:"path"`
-	Mode      uint32 `json:"mode"`
-	Size      int64  `json:"size"`
-	SHA256    string `json:"sha256"`
-	DataKey   []byte `json:"dataKey,omitempty"`
-	SealedKey []byte `json:"sealedKey,omitempty"`
-	Attempt   string `json:"attemptId,omitempty"`
+	Type   string `json:"type"`
+	Index  int    `json:"index"`
+	Path   string `json:"path"`
+	Mode   uint32 `json:"mode"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+}
+
+type fileKeyRecord struct {
+	DataKey   []byte `json:"dataKey"`
+	SealedKey []byte `json:"sealedKey"`
+	Attempt   string `json:"attemptId"`
 }
 
 type declaredRecord struct {
@@ -82,11 +86,6 @@ type completeRecord struct {
 	Index int    `json:"index"`
 }
 
-type recordIndex struct {
-	Type  string `json:"type"`
-	Index int    `json:"index"`
-}
-
 // journal is the private resume state of one session, removed when the session completes or aborts.
 type journal struct {
 	mu   sync.Mutex
@@ -105,6 +104,7 @@ func createJournal(stateDir string, rec sessionRecord) (*journal, error) {
 		return nil, fmt.Errorf("create the resume state directory: %w", err)
 	}
 	rec.Type = recordSession
+	rec.Version = journalVersion
 	line, err := encodeLine(rec)
 	if err != nil {
 		return nil, err
@@ -162,57 +162,26 @@ func (j *journal) write(durable bool, recs []any) error {
 	return nil
 }
 
-// discardFileKeys rewrites the journal once before transfer, without the keys of reused files.
-func (j *journal) discardFileKeys(reused map[int]struct{}) error {
-	if len(reused) == 0 {
-		return nil
-	}
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	path := filepath.Join(j.dir, journalName)
-	data, err := os.ReadFile(path)
+func fileKeyName(index int) string { return fmt.Sprintf("file-%d.key", index) }
+
+func (j *journal) saveFileKeys(index int, rec fileKeyRecord) error {
+	line, err := encodeLine(rec)
 	if err != nil {
-		return fmt.Errorf("read the resume state before removing unused keys: %w", err)
+		return err
 	}
-	defer clear(data)
-	kept := make([]byte, 0, len(data))
-	defer func() { clear(kept) }()
-	for line := range bytes.Lines(data) {
-		var header recordIndex
-		if err := json.Unmarshal(line, &header); err != nil {
-			return fmt.Errorf("read a resume state record: %w", err)
-		}
-		if _, ok := reused[header.Index]; ok && header.Type == recordFile {
-			line, err = recordWithoutKeys(line)
-			if err != nil {
-				return err
-			}
-		}
-		kept = append(kept, line...)
-	}
-	if err := j.closeLocked(); err != nil {
-		return fmt.Errorf("close the resume state before removing unused keys: %w", err)
-	}
-	if err := writeFileAtomic(j.dir, journalName, kept); err != nil {
-		return fmt.Errorf("remove unused keys from the resume state: %w", err)
-	}
-	syncDir(j.dir)
-	j.file, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return fmt.Errorf("reopen the resume state: %w", err)
+	defer clear(line)
+	if err := writeFileAtomic(j.dir, fileKeyName(index), line); err != nil {
+		return fmt.Errorf("save the file's resume keys: %w", err)
 	}
 	return nil
 }
 
-func recordWithoutKeys(line []byte) ([]byte, error) {
-	var rec fileRecord
-	if err := json.Unmarshal(line, &rec); err != nil {
-		return nil, fmt.Errorf("read a file's resume state: %w", err)
+func (j *journal) discardFileKeys(index int) error {
+	if err := os.Remove(filepath.Join(j.dir, fileKeyName(index))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove the file's resume keys: %w", err)
 	}
-	clear(rec.DataKey)
-	clear(rec.SealedKey)
-	rec.DataKey, rec.SealedKey, rec.Attempt = nil, nil, ""
-	return encodeLine(rec)
+	syncDir(j.dir)
+	return nil
 }
 
 // close syncs and closes the journal without removing it.

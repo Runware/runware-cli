@@ -289,20 +289,14 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source, before FileList) (Summary, error) {
 	files, err := r.declare(ctx, sess, sources)
 	defer clearKeys(files)
-	reused := make(map[int]struct{})
-	var todo []*fileState
-	for _, f := range files {
-		if f.reused {
-			reused[f.index] = struct{}{}
-		} else {
-			todo = append(todo, f)
-		}
-	}
-	if cleanupErr := r.journal.discardFileKeys(reused); cleanupErr != nil {
-		return Summary{}, cleanupErr
-	}
 	if err != nil {
 		return Summary{}, err
+	}
+	var todo []*fileState
+	for _, f := range files {
+		if !f.reused {
+			todo = append(todo, f)
+		}
 	}
 	if err := r.uploadFiles(ctx, todo); err != nil {
 		return Summary{}, err
@@ -352,30 +346,37 @@ func (r *runner) declare(ctx context.Context, sess KeySession, sources []Source)
 			files = append(files, f)
 			batch = append(batch, f)
 			attempt := fk.Attempt()
+			attemptID := hex.EncodeToString(attempt[:])
+			sealed := fk.Sealed()
+			if err := r.journal.saveFileKeys(i, fileKeyRecord{
+				DataKey:   fk.DataKey(),
+				SealedKey: sealed,
+				Attempt:   attemptID,
+			}); err != nil {
+				return files, fileErr(src.Abs, err)
+			}
 			digest := hex.EncodeToString(src.SHA256[:])
 			decls.Files = append(decls.Files, FileDeclaration{
 				Path:      src.Target,
 				Mode:      src.Mode,
 				Size:      src.Size,
 				SHA256:    digest,
-				SealedKey: base64.RawURLEncoding.EncodeToString(fk.Sealed()),
-				AttemptID: hex.EncodeToString(attempt[:]),
+				SealedKey: base64.RawURLEncoding.EncodeToString(sealed),
+				AttemptID: attemptID,
 			})
 			recs = append(recs, fileRecord{
-				Type:      recordFile,
-				Index:     i,
-				Path:      src.Target,
-				Mode:      src.Mode,
-				Size:      src.Size,
-				SHA256:    digest,
-				DataKey:   fk.DataKey(),
-				SealedKey: fk.Sealed(),
-				Attempt:   hex.EncodeToString(attempt[:]),
+				Type:   recordFile,
+				Index:  i,
+				Path:   src.Target,
+				Mode:   src.Mode,
+				Size:   src.Size,
+				SHA256: digest,
 			})
 		}
 		if err := r.journal.logSync(recs...); err != nil {
 			return files, err
 		}
+		syncDir(r.journal.dir)
 		got, err := retryUploadAPI(ctx, r.sleep, func() (DeclarationResult, error) {
 			return r.api.DeclareFiles(ctx, r.ref, decls)
 		})
@@ -405,9 +406,6 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 		case stateReused:
 			f.reused = true
 			f.key.Clear()
-			if err := unchanged(f.src); err != nil {
-				return err
-			}
 		case stateUploading:
 			if err := f.prepare(a); err != nil {
 				return fileErr(f.src.Abs, err)
@@ -423,7 +421,24 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 			Layout: a.File.Layout,
 		})
 	}
-	return r.journal.logSync(recs...)
+	if err := r.journal.logSync(recs...); err != nil {
+		return err
+	}
+	for _, f := range batch {
+		if f.reused {
+			if err := r.journal.discardFileKeys(f.index); err != nil {
+				return fileErr(f.src.Abs, err)
+			}
+		}
+	}
+	for _, f := range batch {
+		if f.reused {
+			if err := unchanged(f.src); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (r *runner) summarize(files []*fileState, before FileList, res UploadResult) Summary {

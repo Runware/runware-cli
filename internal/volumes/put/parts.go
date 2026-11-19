@@ -397,9 +397,15 @@ func (r *runner) completeFile(ctx context.Context, f *fileState) error {
 		return fileErr(f.src.Abs, fmt.Errorf("%w: the completed file is %q, not verified", ErrProtocol, done.State))
 	}
 	f.key.Clear()
-	r.progress.fileDone()
-	return r.journal.log(completeRecord{
+	if err := r.journal.logSync(completeRecord{
 		Type:  recordComplete,
 		Index: f.index,
-	})
+	}); err != nil {
+		return fileErr(f.src.Abs, err)
+	}
+	if err := r.journal.discardFileKeys(f.index); err != nil {
+		return fileErr(f.src.Abs, err)
+	}
+	r.progress.fileDone()
+	return nil
 }

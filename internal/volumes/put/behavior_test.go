@@ -805,8 +805,18 @@ func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
 	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
 		t.Errorf("calls = %v, state = %q, want an open session and no completion", e.cloud.callLog(), e.cloud.uploadState())
 	}
-	if acks := readJournal(t, e.configDir).ofType(recordAck); len(acks) != 1 || acks[0]["index"] != float64(0) {
+	snap := readJournal(t, e.configDir)
+	if acks := snap.ofType(recordAck); len(acks) != 1 || acks[0]["index"] != float64(0) {
 		t.Error("the journal does not contain the first file's acknowledgement")
+	}
+	if done := snap.ofType(recordComplete); len(done) != 1 || done[0]["index"] != float64(0) {
+		t.Fatal("the first file is not recorded as complete in the journal")
+	}
+	if _, ok := snap.Keys[0]; ok {
+		t.Error("the completed file still has resume keys")
+	}
+	if len(snap.Keys[1].DataKey) != 32 {
+		t.Error("the interrupted file lost its resume key")
 	}
 	if !e.keys.allCleared() {
 		t.Error("a key was not cleared after the interrupt")
@@ -896,17 +906,12 @@ func TestRetainedJournalDropsReusedFileKeys(t *testing.T) {
 		t.Fatalf("error = %v, want a refused part and failed abort", err)
 	}
 
-	var retained, scrubbed bool
-	for _, record := range readJournal(t, e.configDir).ofType(recordFile) {
-		switch record["path"] {
-		case "known.bin":
-			scrubbed = record["dataKey"] == nil && record["sealedKey"] == nil && record["attemptId"] == nil
-		case "missing.bin":
-			retained = len(decodeStd(t, record["dataKey"])) == 32
-		}
+	snap := readJournal(t, e.configDir)
+	if _, ok := snap.Keys[0]; ok {
+		t.Error("the reused file still has resume keys")
 	}
-	if !scrubbed || !retained {
-		t.Errorf("reused keys discarded = %t, in-flight key retained = %t", scrubbed, retained)
+	if len(snap.Keys[1].DataKey) != 32 {
+		t.Error("the in-flight file lost its resume key")
 	}
 }
 
@@ -1142,6 +1147,9 @@ func TestJournalSavedBeforeDeclare(t *testing.T) {
 	if len(sessions) != 1 {
 		t.Fatalf("%d session records before the declaration, want 1", len(sessions))
 	}
+	if sessions[0]["version"] != float64(1) {
+		t.Error("the journal does not start with format version 1")
+	}
 	material := e.keys.keyMaterial()
 	if got := decodeStd(t, sessions[0]["sessionKey"]); !bytes.Equal(got, material[0]) {
 		t.Error("the saved session key is not the session's sealing key")
@@ -1156,11 +1164,15 @@ func TestJournalSavedBeforeDeclare(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if rec["path"] != d.Path || !bytes.Equal(decodeStd(t, rec["sealedKey"]), sealed) || rec["attemptId"] != d.AttemptID {
+		keys := snap.Keys[i]
+		if rec["path"] != d.Path || !bytes.Equal(keys.SealedKey, sealed) || keys.Attempt != d.AttemptID {
 			t.Errorf("file record %d is not the declaration of %s", i, d.Path)
 		}
-		if len(decodeStd(t, rec["dataKey"])) != 32 {
+		if len(keys.DataKey) != 32 {
 			t.Errorf("file record %d holds no 32-byte data key", i)
+		}
+		if rec["dataKey"] != nil || rec["sealedKey"] != nil || rec["attemptId"] != nil {
+			t.Errorf("file record %d holds keys in the append-only journal", i)
 		}
 	}
 }

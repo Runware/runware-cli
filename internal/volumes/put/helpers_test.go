@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"path"
@@ -266,6 +267,7 @@ func totalCiphertext(t *testing.T, files []VolumeFile) int64 {
 type journalSnapshot struct {
 	Dir     string
 	Records []map[string]any
+	Keys    map[int]fileKeyRecord
 	DirMode fs.FileMode
 	Mode    fs.FileMode
 }
@@ -296,7 +298,10 @@ func readJournal(t *testing.T, configDir string) journalSnapshot {
 		return journalSnapshot{}
 	}
 	defer func() { _ = file.Close() }()
-	snap := journalSnapshot{Dir: dir}
+	snap := journalSnapshot{
+		Dir:  dir,
+		Keys: make(map[int]fileKeyRecord),
+	}
 	if info, err := os.Stat(dir); err == nil {
 		snap.DirMode = info.Mode().Perm()
 	}
@@ -312,6 +317,31 @@ func readJournal(t *testing.T, configDir string) journalSnapshot {
 			continue
 		}
 		snap.Records = append(snap.Records, rec)
+		if rec["type"] == recordFile {
+			rawIndex, ok := rec["index"].(float64)
+			if !ok {
+				t.Error("a file record has no numeric index")
+				continue
+			}
+			index := int(rawIndex)
+			data, err := os.ReadFile(filepath.Join(dir, fileKeyName(index)))
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				t.Errorf("read resume keys: %v", err)
+				continue
+			}
+			var keys fileKeyRecord
+			if err := json.Unmarshal(data, &keys); err != nil {
+				t.Errorf("decode resume keys: %v", err)
+				continue
+			}
+			snap.Keys[index] = keys
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Errorf("read the journal: %v", err)
 	}
 	return snap
 }
