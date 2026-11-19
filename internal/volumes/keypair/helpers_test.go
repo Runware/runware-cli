@@ -230,8 +230,7 @@ func (v *vectors) spec() statementSpec {
 	}
 }
 
-// readMarks returns the highest sequence per mark in the record in dir, or nil when there is none.
-func readMarks(t *testing.T, dir string) map[string]uint64 {
+func readSequenceRecord(t *testing.T, dir string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(dir, sequenceFile))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -239,6 +238,16 @@ func readMarks(t *testing.T, dir string) map[string]uint64 {
 	}
 	if err != nil {
 		t.Fatal(err)
+	}
+	return data
+}
+
+// readMarks returns the highest sequence per mark in the record in dir, or nil when there is none.
+func readMarks(t *testing.T, dir string) map[string]uint64 {
+	t.Helper()
+	data := readSequenceRecord(t, dir)
+	if data == nil {
+		return nil
 	}
 	marks := map[string]uint64{}
 	for line := range bytes.Lines(data) {

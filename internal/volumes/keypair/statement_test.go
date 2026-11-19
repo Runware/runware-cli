@@ -360,7 +360,7 @@ type acceptCase struct {
 }
 
 // TestVerifyStatementAccepts keeps the refusals honest: the boundary statements are accepted
-// and the sequence is recorded, unchanged for a weekly re-sign.
+// and the sequence is recorded, unchanged for a re-sign.
 func TestVerifyStatementAccepts(t *testing.T) {
 	v := loadVectors(t)
 	cases := []acceptCase{
@@ -405,6 +405,7 @@ func TestVerifyStatementAccepts(t *testing.T) {
 				want[orgKey(testOtherOrg)] = tc.otherMark
 			}
 
+			before := readSequenceRecord(t, dir)
 			statement := join(baseSpec(v).fields())
 			st, err := verifier.Verify(statement, sign(t, key, statement), testOrg)
 			if err != nil {
@@ -418,6 +419,9 @@ func TestVerifyStatementAccepts(t *testing.T) {
 			}
 			if got := readMarks(t, dir); !maps.Equal(got, want) {
 				t.Fatalf("recorded %v, want %v", got, want)
+			}
+			if tc.mark == testSequence && !bytes.Equal(before, readSequenceRecord(t, dir)) {
+				t.Fatal("verifying the recorded sequence changed the record")
 			}
 		})
 	}

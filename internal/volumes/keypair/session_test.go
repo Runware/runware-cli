@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/runware/runware-cli/pkg/volumeformat"
 )
@@ -429,7 +430,11 @@ func TestClearDuringSealFile(t *testing.T) {
 			}
 		})
 	}
-	<-ready
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no SealFile call succeeded before the timeout")
+	}
 	s.Clear()
 	wg.Wait()
 
