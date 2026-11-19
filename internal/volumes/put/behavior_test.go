@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -779,6 +780,21 @@ func TestAbortsOnFatalPartRefusal(t *testing.T) {
 	}
 }
 
+type cancelOnSecondPart struct {
+	Transport
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (c *cancelOnSecondPart) PutPart(ctx context.Context, target Target, body io.Reader, length int64) (Secret, error) {
+	c.calls++
+	if c.calls == 2 {
+		c.cancel()
+		return "", context.Cause(ctx)
+	}
+	return c.Transport.PutPart(ctx, target, body, length)
+}
+
 func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
 	e := newTestEnv(t)
 	first := singleFile(t, e, "first.bin", patterned(5000, 1))
@@ -786,13 +802,12 @@ func TestInterruptKeepsTheSessionAndAcknowledgedParts(t *testing.T) {
 	vol := e.cloud.newVolume("model-weights", "")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	e.cloud.onPut = func(req partRequest) {
-		if req.Path == "second.bin" {
-			cancel()
-		}
-	}
 	opts := e.options(vol, first, second)
 	opts.Parallelism = 1
+	opts.Transport = &cancelOnSecondPart{
+		Transport: opts.Transport,
+		cancel:    cancel,
+	}
 
 	_, err := Run(ctx, opts)
 
