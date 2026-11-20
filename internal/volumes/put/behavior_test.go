@@ -138,6 +138,9 @@ func TestStorageFailureAbortsAfterRetries(t *testing.T) {
 	if !errors.Is(err, ErrPartStorageUnavailable) || !errors.Is(err, errUploadRetriesExhausted) {
 		t.Fatalf("error = %v, want a storage failure", err)
 	}
+	if !strings.HasSuffix(err.Error(), "; run put again") {
+		t.Errorf("error = %q, want it to end by telling the user to run put again", err)
+	}
 	if got := len(e.cloud.putLog()); got != maxUploadAttempts {
 		t.Errorf("%d tries, want %d", got, maxUploadAttempts)
 	}

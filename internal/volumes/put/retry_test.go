@@ -285,6 +285,9 @@ func TestLostCompletionDoesNotReportConfirmedAbort(t *testing.T) {
 			if !errors.Is(err, want) || !strings.Contains(err.Error(), "the upload may already have completed") {
 				t.Fatalf("error = %v, want %v and the uncertain completion warning", err, want)
 			}
+			if strings.Contains(err.Error(), "run put again") {
+				t.Errorf("error = %q, want no rerun hint when the upload may have completed", err)
+			}
 			if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.uploadState() != fakeCompleted || e.cloud.count("abort") != 1 {
 				t.Errorf("calls = %v, state = %q, want one published file and one abort attempt", e.cloud.callLog(), e.cloud.uploadState())
 			}
