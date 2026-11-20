@@ -176,21 +176,30 @@ func (d denySource) writeCache(path string, b []byte) {
 }
 
 // parse returns the patterns in text, dropping comments, blank lines,
-// patterns that do not compile and patterns that match the empty string,
-// which would match every line (with a warning that does not show them).
+// patterns that do not compile, patterns that match the empty string, which
+// would match every line, and patterns with a control character, which a
+// shell that read \b as a backspace wrote and which then match nothing
+// (with a warning that does not show them).
 func (d denySource) parse(text string) []*regexp.Regexp {
 	var out []*regexp.Regexp
 	bad := 0
 	for _, line := range listLines(text) {
 		re, err := regexp.Compile(line)
-		if err != nil || re.MatchString("") {
+		if err != nil || re.MatchString("") || hasControl(line) {
 			bad++
 			continue
 		}
 		out = append(out, re)
 	}
 	if bad > 0 {
-		logf(d.stderr, "checkpublic: warning: skipped %d deny list pattern(s) that are not valid regular expressions or match empty text.\n", bad)
+		logf(d.stderr, "checkpublic: warning: skipped %d deny list pattern(s) that are not valid regular expressions, match empty text or hold a control character.\n", bad)
 	}
 	return out
+}
+
+// hasControl reports whether s holds a control character other than a tab.
+func hasControl(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool {
+		return r < 0x20 && r != '\t' || r == 0x7f
+	})
 }

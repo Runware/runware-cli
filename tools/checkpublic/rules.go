@@ -9,10 +9,12 @@ import (
 	"sync"
 )
 
-// allowMarker, followed by a reason on the same line, exempts that line from
-// every rule except the credential and deny-list rules (see neverAllowed). Use it for a
-// line that has to name a pattern, such as a test of a rule or a guard like
-// the published-spec test. A marker without a reason exempts nothing.
+// allowMarker, followed by a reason on the same line, exempts that line of a
+// file, commit message or branch name from every rule except the credential
+// and deny-list rules (see neverAllowed). It exempts nothing in a post (a PR
+// title, description or comment), which would publish it. Use it for a line
+// that has to name a pattern, such as a test of a rule or a guard like the
+// published-spec test. A marker without a reason exempts nothing.
 const allowMarker = "checkpublic:allow"
 
 // allowed matches the marker followed by a reason: optionally a colon, then
@@ -47,6 +49,7 @@ const (
 	rulePublicIP     = "public-ip"
 	ruleMaskedKey    = "masked-key"
 	ruleDenyList     = "deny-list"
+	ruleTicketKey    = "ticket-key"
 )
 
 // hit is one rule match on one line.
@@ -68,6 +71,10 @@ type rule struct {
 	// its own. It replaces boundary groups in re, which would consume the
 	// separator that the next match needs.
 	bounded func(line string, start, end int) bool
+	// post, when set, applies the rule only to what is posted on GitHub
+	// (a PR title, description or comment), not to code, commits or a
+	// branch name.
+	post bool
 }
 
 // Scanner holds the rules and the public repository allowlist.
@@ -160,8 +167,19 @@ func builtinRules() []rule {
 		},
 		{
 			name:    ruleInternalLink,
-			message: "links to an internal tool (Jira, Notion, Slack, Google Docs or Google Drive); bare ticket keys are fine, links are not",
+			message: "links to an internal tool (Jira, Notion, Slack, Google Docs or Google Drive)",
 			re:      regexp.MustCompile(`(?i)\b(?:[a-z0-9-]+\.)*(?:atlassian\.net|notion\.so|notion\.site|slack\.com|docs\.google\.com|drive\.google\.com)\b`),
+		},
+		{
+			// A Runware ticket key, of the RUNSERV project, in any case and
+			// also inside Markdown _emphasis_, where \b sees no boundary. A
+			// key followed by -slug or /slug is a branch name, which may
+			// carry one.
+			name:    ruleTicketKey,
+			message: "has a ticket key; a PR title, description or comment explains the change without it, and the key can stay in the branch name",
+			re:      regexp.MustCompile(`(?i)(?:\b|_)(RUNSERV-[0-9]+)`),
+			bounded: notBranchName,
+			post:    true,
 		},
 		{
 			name:    ruleInternalHost,
@@ -250,6 +268,17 @@ func checkRepo(s *Scanner, m []string, _ string) bool {
 // for the tap in the homebrew-name repository: brew install runware/tap/x.
 func checkShortRepo(s *Scanner, m []string, file string) bool {
 	return checkRepo(s, m, file) && !s.IsPublicRepo("homebrew-"+m[1])
+}
+
+// notBranchName reports whether the ticket key at line[start:end] is not the
+// start of a branch name: RUNSERV-12-fix or RUNSERV-12/fix. Only a letter
+// after the - or / makes one, so a range or list of keys stays a finding.
+func notBranchName(line string, _, end int) bool {
+	if end+1 >= len(line) || line[end] != '-' && line[end] != '/' {
+		return true
+	}
+	c := line[end+1] | 0x20
+	return c < 'a' || c > 'z'
 }
 
 // publicInternalHosts are .internal names that are public knowledge and
@@ -511,13 +540,22 @@ func submatches(line string, idx []int) []string {
 
 // ScanLine returns the rule matches on one line of file ("" for free text).
 func (s *Scanner) ScanLine(file, line string) []hit {
-	allow := allowed.MatchString(line)
+	return s.scanLine(file, line, false)
+}
+
+// scanLine is ScanLine that also applies the post rules when post is set.
+func (s *Scanner) scanLine(file, line string, post bool) []hit {
+	// The marker is for a line of a file: a post would publish it.
+	allow := !post && allowed.MatchString(line)
 	s.denyRules()
 	original := line
 	repoLine := mergeSubject.ReplaceAllLiteralString(line, "Merge pull request")
 	var hits []hit
 	seen := map[string]struct{}{}
 	for _, r := range s.rules {
+		if r.post && !post {
+			continue
+		}
 		if _, never := neverAllowed[r.name]; allow && !never {
 			continue
 		}
@@ -534,7 +572,7 @@ func (s *Scanner) ScanLine(file, line string) []hit {
 				continue
 			}
 			match := strings.TrimLeft(m[0], " \t\"'([<,;:=|")
-			if r.name == ruleRepo || r.name == rulePublicIP {
+			if r.name == ruleRepo || r.name == rulePublicIP || r.name == ruleTicketKey {
 				match = m[1]
 			}
 			key := r.name + "\x00" + strings.ToLower(match)
