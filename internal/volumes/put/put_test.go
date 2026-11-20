@@ -304,6 +304,7 @@ func TestPutRefusesBadStatementBeforeDeclare(t *testing.T) {
 				opts.Organization = tc.organization
 			}
 			if tc.real {
+				t.Setenv(keypair.StatementKeyEnv, "")
 				v, err := keypair.NewVerifier(testServerlessURL, e.configDir)
 				if err != nil {
 					t.Fatal(err)

@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/runware/runware-cli/pkg/volumeformat"
@@ -106,10 +107,11 @@ type Verifier struct {
 }
 
 // NewVerifier returns the verifier for the platform at serverlessBaseURL, recording
-// accepted sequences in configDir. A platform this release has no keys for refuses
-// every statement.
+// accepted sequences in configDir. The production host uses the keys this release ships;
+// another host uses the keys in StatementKeyEnv when it is set. A platform with no keys
+// refuses every statement.
 func NewVerifier(serverlessBaseURL, configDir string) (*Verifier, error) {
-	keys, err := parseKeys(selectKeys(verificationKeys, serverlessBaseURL))
+	keys, err := verifierKeys(verificationKeys, serverlessBaseURL, os.Getenv)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +133,9 @@ func newVerifier(keys map[uint32]*ecdsa.PublicKey, host, configDir string, now f
 // its not-after and no lower in sequence than any accepted before, and records its sequence.
 func (v *Verifier) Verify(statement, signature []byte, organization [16]byte) (Statement, error) {
 	if len(v.keys) == 0 {
+		if v.seq.host != productionHost && v.seq.host != "" {
+			return Statement{}, refuse("there are no verification keys for %s; set %s to its statement keys", v.seq.host, StatementKeyEnv)
+		}
 		return Statement{}, refuse("this release has no verification keys for the platform")
 	}
 	fields, err := splitFields(statement)
