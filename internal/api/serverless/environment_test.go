@@ -251,6 +251,20 @@ func environmentScopedCalls() []environmentCall {
 			},
 		},
 		{
+			operation: "TestAppOidcConnector",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.StartAppOidcConnectorTest(ctx, testAppID, "aws-prod")
+				return err
+			},
+		},
+		{
+			operation: "GetAppOidcConnectorTest",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.GetAppOidcConnectorTest(ctx, testAppID, "aws-prod", id.String())
+				return err
+			},
+		},
+		{
 			operation: "AttachAppSecret",
 			call: func(ctx context.Context, c *Client) error {
 				return c.AttachAppSecret(ctx, testAppID, SecretAttach{

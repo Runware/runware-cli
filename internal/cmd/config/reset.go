@@ -13,17 +13,18 @@ func newResetCmd(logger *log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "reset",
 		Short: "Reset configuration defaults",
-		Example: `  # reset all config defaults (API key and presets are preserved)
+		Example: `  # reset all config defaults (API key, organization and presets are preserved)
   runware config reset`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Preserve the API key and presets.
+			// Preserve the API key, organization and presets.
 			existing, err := config.FileConfig()
 			if err != nil {
 				return fmt.Errorf("failed to read config: %w", err)
 			}
 			cfg := &config.Config{
-				APIKey:  existing.APIKey,
-				Presets: existing.Presets,
+				APIKey:       existing.APIKey,
+				Organization: existing.Organization,
+				Presets:      existing.Presets,
 				Defaults: config.Defaults{
 					OutputDir: config.DefaultOutputDir,
 					Format:    config.DefaultFormat,

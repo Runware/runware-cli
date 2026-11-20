@@ -66,6 +66,11 @@ const (
 	colIssuer                   = "Issuer"
 	colSubject                  = "Subject"
 	colSubjectPattern           = "Subject pattern"
+	colTestID                   = "Test"
+	colIdentity                 = "Identity"
+	colStage                    = "Stage"
+	colCode                     = "Code"
+	colTroubleshooting          = "Troubleshooting"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -1026,4 +1031,38 @@ func (r oidcConnectorDetachedResult) Headers() []string {
 
 func (r oidcConnectorDetachedResult) Rows() [][]any {
 	return [][]any{{r.AppID, r.Name}}
+}
+
+// oidcConnectorTestResult is the outcome of a connector trust test, for
+// table/json/yaml display. It holds no token or credential.
+type oidcConnectorTestResult serverlessapi.OidcConnectorTest
+
+func (r oidcConnectorTestResult) Headers() []string {
+	return []string{colField, colValue}
+}
+
+func (r oidcConnectorTestResult) Rows() [][]any {
+	rows := [][]any{
+		{colTestID, r.Id.String()},
+		{colStatus, string(r.Status)},
+	}
+	if r.Identity != nil {
+		rows = append(rows, []any{colIdentity, *r.Identity})
+	}
+	if r.Reason != nil {
+		rows = append(rows, []any{colStatusReason, string(*r.Reason)})
+	}
+	if r.Stage != nil {
+		rows = append(rows, []any{colStage, string(*r.Stage)})
+	}
+	if r.Code != nil {
+		rows = append(rows, []any{colCode, *r.Code})
+	}
+	if r.Message != nil {
+		rows = append(rows, []any{colMessage, *r.Message})
+	}
+	if r.Troubleshooting != nil {
+		rows = append(rows, []any{colTroubleshooting, *r.Troubleshooting})
+	}
+	return rows
 }

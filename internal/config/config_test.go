@@ -261,6 +261,46 @@ func TestConfigPath(t *testing.T) {
 	}
 }
 
+func TestOrganizationPrecedence(t *testing.T) {
+	const (
+		fileOrg = "0b9d2c6e-5a1f-4c3e-9e7a-2f4b8d1c6a35"
+		envOrg  = "5d0a7c1e-8b3f-4f62-a9d4-3e6b1c2f7a80"
+	)
+	configDir = t.TempDir()
+	t.Setenv("RUNWARE_API_KEY", "")
+	t.Setenv(OrganizationFromEnvVar, "")
+
+	if id, source := GetOrganization(); id != "" || source != "" {
+		t.Errorf("unset: GetOrganization() = %q, %q, want none", id, source)
+	}
+
+	if err := Save(&Config{Organization: fileOrg}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	data, err := os.ReadFile(ConfigPath())
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), "organization: "+fileOrg) {
+		t.Errorf("config file does not hold the organization key:\n%s", data)
+	}
+	if id, source := GetOrganization(); id != fileOrg || source != OrganizationFromConfig {
+		t.Errorf("config: GetOrganization() = %q, %q, want the file's from config", id, source)
+	}
+
+	t.Setenv(OrganizationFromEnvVar, envOrg)
+	if id, source := GetOrganization(); id != envOrg || source != OrganizationFromEnvVar {
+		t.Errorf("RUNWARE_ORGANIZATION: GetOrganization() = %q, %q, want the env value from RUNWARE_ORGANIZATION", id, source)
+	}
+	file, err := FileConfig()
+	if err != nil {
+		t.Fatalf("FileConfig() error: %v", err)
+	}
+	if file.Organization != fileOrg {
+		t.Errorf("FileConfig().Organization = %q, want the file's %q: the environment must not leak into the file", file.Organization, fileOrg)
+	}
+}
+
 func TestEnvironmentPrecedence(t *testing.T) {
 	configDir = t.TempDir()
 	t.Setenv("RUNWARE_API_KEY", "")

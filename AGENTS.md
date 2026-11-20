@@ -35,6 +35,8 @@ make check-public    # Check this branch for text that must not be public
 - `internal/config/`: Config loading/saving (~/.runware/config.yaml)
 - `internal/output/`: Output formatting (table/json/yaml)
 - `internal/cache/`: Caching layer
+- `internal/volumes/keypair/`: Volumes key-pair statement verification and per-file data-key sealing
+- `internal/volumes/put/`: Volumes upload engine for file discovery, hashing, encryption, and the resume journal
 - `pkg/volumeformat/` - Shared Volumes encrypted file format, standard library only and importable by other consumers
 
 ## This repository is public
