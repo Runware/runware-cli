@@ -22,9 +22,10 @@ const productionHost = "api.serverless.runware.ai"
 // verification keys for a non-production API host. Its value is a comma-separated list of
 // <version>:<key> entries, where version is the decimal signing key version and key is the
 // standard base64 of the DER (SubjectPublicKeyInfo) encoding of a P-256 public key; two
-// entries carry the current and the next version during a rollover. It is ignored when the
-// serverless base URL is the production host, so the environment cannot change what a
-// production upload trusts.
+// entries carry the current and the next version during a rollover. Only a local
+// development build, made with the volumesdevkeys build tag (make build), reads it; a
+// release build never does, so the environment cannot change what a released CLI trusts.
+// Even a development build ignores it when the serverless base URL is the production host.
 const StatementKeyEnv = "RUNWARE_VOLUMES_STATEMENT_KEY"
 
 // verificationKeys maps a platform's serverless API host to the PEM public keys of its
@@ -67,13 +68,13 @@ func selectKeys(table map[string]map[uint32]string, baseURL string) map[uint32]s
 	return table[platformHost(baseURL)]
 }
 
-// verifierKeys returns the keys that verify statements for the platform at baseURL. The
-// production host always gets the shipped keys and never calls getenv; any other host that
-// parses gets the keys in StatementKeyEnv when it is set, and the shipped keys for that
-// host, if any, otherwise.
+// verifierKeys returns the keys that verify statements for the platform at baseURL. A
+// release build gives every host the shipped keys for that host, if any, and never calls
+// getenv. In a development build the production host still gets only the shipped keys; any
+// other host that parses gets the keys in StatementKeyEnv when it is set.
 func verifierKeys(table map[string]map[uint32]string, baseURL string, getenv func(string) string) (map[uint32]*ecdsa.PublicKey, error) {
 	host := platformHost(baseURL)
-	if host == productionHost || host == "" {
+	if !devKeysEnabled || host == productionHost || host == "" {
 		return parseKeys(selectKeys(table, baseURL))
 	}
 	if override := getenv(StatementKeyEnv); override != "" {
