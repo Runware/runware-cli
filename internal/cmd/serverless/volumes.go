@@ -121,7 +121,7 @@ func printPutSummary(w io.Writer, format output.Format, s put.Summary) error {
 	}
 	var b strings.Builder
 	for _, f := range s.Files {
-		fmt.Fprintf(&b, "  %-8s %s  %d bytes  sha256 %s\n", f.Action, f.Path, f.Size, f.SHA256)
+		fmt.Fprintf(&b, "  %-8s %s  %d bytes  %d sent  sha256 %s\n", f.Action, f.Path, f.Size, f.BytesSent, f.SHA256)
 	}
 	_, err := io.WriteString(w, b.String())
 	return err

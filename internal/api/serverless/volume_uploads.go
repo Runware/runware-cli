@@ -38,7 +38,7 @@ var (
 
 // volumeSecretKeys are the JSON members of a Volumes answer that carry a data
 // key, a part token, an acknowledgement or an upload address. The debug log
-// replaces them, on success and problem answers alike.
+// replaces them, on success and problem answers alike, in any letter case.
 var volumeSecretKeys = map[string]struct{}{
 	"value":         {},
 	"token":         {},
@@ -48,6 +48,9 @@ var volumeSecretKeys = map[string]struct{}{
 	"dataKey":       {},
 	"encapsulation": {},
 }
+
+// volumeBodyOmitted stands in the debug log for a body that is not JSON.
+const volumeBodyOmitted = "[omitted: not JSON]"
 
 // VolumeUploads drives the Volumes upload routes for the put engine.
 type VolumeUploads struct {
@@ -258,11 +261,20 @@ func (v *VolumeUploads) logResponse(ctx context.Context, resp *http.Response, bo
 		return
 	}
 	path, status := responsePathStatus(resp)
+	// A body that is not JSON, such as one cut at maxVolumeAnswerBytes,
+	// cannot be checked for secrets, so it is left out of the log.
+	logged := ""
+	if len(body) > 0 {
+		logged = volumeBodyOmitted
+		if redacted, ok := redactJSONKeys(body, volumeSecretKeys); ok {
+			logged = string(redacted)
+		}
+	}
 	logger.Debug("serverless response", //nolint:errcheck,gosec
 		"path", path,
 		"status", status,
 		"bodyBytes", len(body),
-		"body", string(redactJSONKeys(body, volumeSecretKeys)),
+		"body", logged,
 	)
 }
 

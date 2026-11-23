@@ -307,7 +307,7 @@ func TestVolumesPutSummaryIsTheSameInEveryFormat(t *testing.T) {
 	}
 	for _, format := range []string{formatYAML, "table"} {
 		s := formats[format]
-		if s.ManifestSHA256 != j.ManifestSHA256 || s.Added != j.Added || s.Replaced != j.Replaced || s.Reused != j.Reused || s.BytesSent != j.BytesSent || len(s.Files) != len(j.Files) {
+		if s.ManifestSHA256 != j.ManifestSHA256 || s.Added != j.Added || s.Replaced != j.Replaced || s.Reused != j.Reused || s.BytesSent != j.BytesSent || !slices.Equal(s.Files, j.Files) {
 			t.Errorf("%s summary %+v differs from json %+v", format, s, j)
 		}
 	}
@@ -326,14 +326,16 @@ func parseTextSummary(t *testing.T, text string) put.Summary {
 			mustScan(t, line, "  Files: %d added, %d replaced, %d reused", &s.Added, &s.Replaced, &s.Reused)
 		case strings.HasPrefix(strings.TrimSpace(line), "Bytes sent:"):
 			mustScan(t, fields[2], "%d", &s.BytesSent)
-		case len(fields) == 6 && fields[4] == "sha256":
-			var size int64
+		case len(fields) == 8 && fields[5] == "sent" && fields[6] == "sha256":
+			var size, sent int64
 			mustScan(t, fields[2], "%d", &size)
+			mustScan(t, fields[4], "%d", &sent)
 			s.Files = append(s.Files, put.FileResult{
-				Action: fields[0],
-				Path:   fields[1],
-				Size:   size,
-				SHA256: fields[5],
+				Action:    fields[0],
+				Path:      fields[1],
+				Size:      size,
+				SHA256:    fields[7],
+				BytesSent: sent,
 			})
 		}
 	}

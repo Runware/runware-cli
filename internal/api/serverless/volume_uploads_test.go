@@ -480,7 +480,11 @@ func TestVolumeUploadsDotNamesStayOneSegment(t *testing.T) {
 func TestVolumeUploadsDebugLogRedactsEverySecretMember(t *testing.T) {
 	var answer strings.Builder
 	answer.WriteString(`{"nested":{`)
-	for i, key := range []string{"value", "token", "ack", "url", "sealedKey", "dataKey", "encapsulation"} {
+	keys := []string{"value", "token", "ack", "url", "sealedKey", "dataKey", "encapsulation"}
+	// encoding/json matches member names without regard to case, so every
+	// case variant is a secret too.
+	keys = append(keys, "Token", "URL", "SealedKey", "DATAKEY")
+	for i, key := range keys {
 		if i > 0 {
 			answer.WriteString(",")
 		}
@@ -503,6 +507,35 @@ func TestVolumeUploadsDebugLogRedactsEverySecretMember(t *testing.T) {
 		}
 		if strings.Contains(logged.String(), "SECRET-") {
 			t.Errorf("status %d: debug log shows a secret: %s", status, logged.String())
+		}
+	}
+}
+
+// TestVolumeUploadsDebugLogOmitsABodyThatIsNotJSON: an answer cut at
+// maxVolumeAnswerBytes, or one that is malformed, cannot be checked for
+// secrets, so the debug log leaves the body out.
+func TestVolumeUploadsDebugLogOmitsABodyThatIsNotJSON(t *testing.T) {
+	for name, answer := range map[string]string{
+		"truncated": `{"token":"SECRET-TOKEN","pad":"` + strings.Repeat("x", maxVolumeAnswerBytes) + `"}`,
+		"malformed": `{"token":"SECRET-TOKEN",`,
+	} {
+		var logged bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, answer)
+		}))
+		v := newClient("test-key", srv.URL, logger, srv.Client()).VolumeUploads()
+		_, err := v.RenewParts(context.Background(), testUploadRef, testFileID, []int{1})
+		srv.Close()
+		if !errors.Is(err, put.ErrProtocol) {
+			t.Errorf("%s: err = %v, want put.ErrProtocol", name, err)
+		}
+		if strings.Contains(logged.String(), "SECRET-") {
+			t.Errorf("%s: debug log shows a secret", name)
+		}
+		if !strings.Contains(logged.String(), volumeBodyOmitted) {
+			t.Errorf("%s: debug log does not say the body was omitted: %.200s", name, logged.String())
 		}
 	}
 }

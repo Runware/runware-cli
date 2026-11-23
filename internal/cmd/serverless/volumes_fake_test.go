@@ -167,6 +167,7 @@ func newPutFake(t *testing.T) *putFake {
 
 	// Nothing reaches a real credential or service.
 	t.Setenv("HOME", f.home)
+	t.Setenv("USERPROFILE", f.home) // os.UserHomeDir reads it on Windows
 	t.Setenv("RUNWARE_API_KEY", "test-key")
 	t.Setenv("RUNWARE_SERVERLESS_BASE_URL", f.api.URL)
 	t.Setenv(config.OrganizationFromEnvVar, f.org.String())
