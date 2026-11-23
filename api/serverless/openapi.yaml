@@ -341,6 +341,70 @@ paths:
           $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /v1/apps/{appId}/tasks/{taskId}/cancel:
+    post:
+      tags:
+        - Tasks
+      summary: Cancel a queued task
+      description: |
+        Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+      operationId: cancelTask
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/AppEnvironment'
+        - name: taskId
+          in: path
+          required: true
+          description: Task identifier, supplied by the caller when the task was submitted.
+          schema:
+            $ref: '#/components/schemas/TaskId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/TaskConflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/apps/{appId}/tasks/cancel:
+    post:
+      tags:
+        - Tasks
+      summary: Cancel all queued tasks of an app
+      description: |
+        Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+      operationId: cancelQueuedTasks
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/AppEnvironment'
+      responses:
+        '200':
+          description: How many tasks this call canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanceledTasks'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/apps:
     get:
       tags:
@@ -3593,6 +3657,21 @@ components:
                 title: Conflict
                 status: 409
                 detail: a rollout is already in progress
+    TaskConflict:
+      description: |
+        `task-not-cancelable` means the task is already running, completed or failed, so it cannot be canceled. Nothing is changed. Read the task with `GET /v1/apps/{appId}/tasks/{taskId}` for its status.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          examples:
+            task-not-cancelable:
+              summary: The task has already started
+              value:
+                type: https://docs.runware.ai/serverless/errors#task-not-cancelable
+                title: Conflict
+                status: 409
+                detail: The task has already started or finished, so it cannot be canceled
     AppConflict:
       description: |
         `conflict` means the app's state refuses the request. `environment-cap-reached` means the request would take the environment past its resolved worker or GPU cap: what the environment's other apps hold (each the larger of its live workers and its keep-warm floor, counted as at least one while initializing and as `minWorkers` while active), plus the workers this request starts (at least one, or its keep-warm floor when higher) and their GPUs. Nothing is changed. After a cap is lowered this can refuse deploys until workers fall or the cap is raised. Stop or scale down another app, or raise the cap, then retry. `environment-paused` means the environment's spend this UTC month has reached its monthly budget with `pauseAtBudget` on. Nothing is changed. Raise the budget past the spend, or wait for the month to turn, then retry.
@@ -4487,10 +4566,23 @@ components:
       default: all
     TaskStatus:
       type: string
+      description: |
+        `canceled` is a task canceled before any worker started it. It never ran, and it has no `output` or `error`.
       enum:
         - pending
         - completed
         - failed
+        - canceled
+    CanceledTasks:
+      type: object
+      required:
+        - canceled
+      properties:
+        canceled:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Tasks this call canceled, not counting any canceled earlier.
     SecretType:
       type: string
       description: |

@@ -775,6 +775,7 @@ func (e SourceUploadState) Valid() bool {
 
 // Defines values for TaskStatus.
 const (
+	TaskStatusCanceled  TaskStatus = "canceled"
 	TaskStatusCompleted TaskStatus = "completed"
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusPending   TaskStatus = "pending"
@@ -783,6 +784,8 @@ const (
 // Valid indicates whether the value is a known member of the TaskStatus enum.
 func (e TaskStatus) Valid() bool {
 	switch e {
+	case TaskStatusCanceled:
+		return true
 	case TaskStatusCompleted:
 		return true
 	case TaskStatusFailed:
@@ -1678,6 +1681,12 @@ type BuildSource struct {
 
 // BuildStatus Build/validation lifecycle status.
 type BuildStatus string
+
+// CanceledTasks defines model for CanceledTasks.
+type CanceledTasks struct {
+	// Canceled Tasks this call canceled, not counting any canceled earlier.
+	Canceled int64 `json:"canceled"`
+}
 
 // CatalogEntry defines model for CatalogEntry.
 type CatalogEntry struct {
@@ -2575,7 +2584,9 @@ type Task struct {
 
 	// Output Inference result payload on success. Null otherwise. May be any JSON value, including an object, array, string, number, boolean, or null.
 	Output interface{} `json:"output,omitempty"`
-	Status TaskStatus  `json:"status"`
+
+	// Status `canceled` is a task canceled before any worker started it. It never ran, and it has no `output` or `error`.
+	Status TaskStatus `json:"status"`
 }
 
 // TaskId Client-generated task identifier, canonical lowercase UUID. One id is one task: resubmitting it is answered with the task it already names rather than starting a second, so a request whose response was lost can be sent again without paying for the work twice. Reusing an id for a different request returns the first task, so the id is the caller's to keep unique.
@@ -2590,7 +2601,7 @@ type TaskInvocation struct {
 	TaskId TaskId `json:"taskId"`
 }
 
-// TaskStatus defines model for TaskStatus.
+// TaskStatus `canceled` is a task canceled before any worker started it. It never ran, and it has no `output` or `error`.
 type TaskStatus string
 
 // TriggeredBy Who performed an action: the authenticated user (JWT) or the API key. `kind` says which, so `id` (that actor's UUID) is resolvable to the right thing. `displayName` is its name captured at write time, so it renders as it was even if the user or key is later renamed. Used as `Build.triggeredBy` and `Version.author`.
@@ -3060,6 +3071,9 @@ type SourceUploadReplayConflict = ProblemDetails
 // TaskAccepted defines model for TaskAccepted.
 type TaskAccepted = Task
 
+// TaskConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type TaskConflict = ProblemDetails
+
 // TaskNotFound RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type TaskNotFound = ProblemDetails
 
@@ -3357,8 +3371,20 @@ type ListTasksParams struct {
 	Status *TaskStatus `form:"status,omitempty" json:"status,omitempty"`
 }
 
+// CancelQueuedTasksParams defines parameters for CancelQueuedTasks.
+type CancelQueuedTasksParams struct {
+	// Environment The environment the request addresses. An app id names one copy per environment, so this parameter completes the app's address: `appId` together with `environment` selects the copy. The app list and the app summary are limited to the environment, and an app, build, endpoint, worker, event, usage or attached-secret cursor is valid only in the environment it came from. A metric query that names no app covers the whole organization, and a log query covers this environment; a metric query expanded by app returns only the apps live in this environment. Omitted means `production`. A name the organization has no live environment under returns `404`.
+	Environment *AppEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
 // GetTaskParams defines parameters for GetTask.
 type GetTaskParams struct {
+	// Environment The environment the request addresses. An app id names one copy per environment, so this parameter completes the app's address: `appId` together with `environment` selects the copy. The app list and the app summary are limited to the environment, and an app, build, endpoint, worker, event, usage or attached-secret cursor is valid only in the environment it came from. A metric query that names no app covers the whole organization, and a log query covers this environment; a metric query expanded by app returns only the apps live in this environment. Omitted means `production`. A name the organization has no live environment under returns `404`.
+	Environment *AppEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// CancelTaskParams defines parameters for CancelTask.
+type CancelTaskParams struct {
 	// Environment The environment the request addresses. An app id names one copy per environment, so this parameter completes the app's address: `appId` together with `environment` selects the copy. The app list and the app summary are limited to the environment, and an app, build, endpoint, worker, event, usage or attached-secret cursor is valid only in the environment it came from. A metric query that names no app covers the whole organization, and a log query covers this environment; a metric query expanded by app returns only the apps live in this environment. Omitted means `production`. A name the organization has no live environment under returns `404`.
 	Environment *AppEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
 }
@@ -4338,12 +4364,26 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CancelQueuedTasks Cancel all queued tasks of an app
+	//
+	// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+	//
+	// Corresponds with POST /v1/apps/{appId}/tasks/cancel (the `CancelQueuedTasks` operationId).
+	CancelQueuedTasks(ctx context.Context, appId AppId, params *CancelQueuedTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetTask Get a task
 	//
 	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
 	GetTask(ctx context.Context, appId AppId, taskId TaskId, params *GetTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelTask Cancel a queued task
+	//
+	// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+	//
+	// Corresponds with POST /v1/apps/{appId}/tasks/{taskId}/cancel (the `CancelTask` operationId).
+	CancelTask(ctx context.Context, appId AppId, taskId TaskId, params *CancelTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListVersions List versions
 	//
@@ -5661,6 +5701,23 @@ func (c *Client) ListTasks(ctx context.Context, appId AppId, params *ListTasksPa
 	return c.Client.Do(req)
 }
 
+// CancelQueuedTasks Cancel all queued tasks of an app
+//
+// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+//
+// Corresponds with POST /v1/apps/{appId}/tasks/cancel (the `CancelQueuedTasks` operationId).
+func (c *Client) CancelQueuedTasks(ctx context.Context, appId AppId, params *CancelQueuedTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelQueuedTasksRequest(c.Server, appId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetTask Get a task
 //
 // Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
@@ -5668,6 +5725,23 @@ func (c *Client) ListTasks(ctx context.Context, appId AppId, params *ListTasksPa
 // Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
 func (c *Client) GetTask(ctx context.Context, appId AppId, taskId TaskId, params *GetTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTaskRequest(c.Server, appId, taskId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CancelTask Cancel a queued task
+//
+// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+//
+// Corresponds with POST /v1/apps/{appId}/tasks/{taskId}/cancel (the `CancelTask` operationId).
+func (c *Client) CancelTask(ctx context.Context, appId AppId, taskId TaskId, params *CancelTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelTaskRequest(c.Server, appId, taskId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -9185,6 +9259,67 @@ func NewListTasksRequest(server string, appId AppId, params *ListTasksParams) (*
 	return req, nil
 }
 
+// NewCancelQueuedTasksRequest constructs an http.Request for the CancelQueuedTasks method
+func NewCancelQueuedTasksRequest(server string, appId AppId, params *CancelQueuedTasksParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/tasks/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetTaskRequest constructs an http.Request for the GetTask method
 func NewGetTaskRequest(server string, appId AppId, taskId TaskId, params *GetTaskParams) (*http.Request, error) {
 	var err error
@@ -9246,6 +9381,74 @@ func NewGetTaskRequest(server string, appId AppId, taskId TaskId, params *GetTas
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCancelTaskRequest constructs an http.Request for the CancelTask method
+func NewCancelTaskRequest(server string, appId AppId, taskId TaskId, params *CancelTaskParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appId", appId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "taskId", taskId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/apps/%s/tasks/%s/cancel", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -12275,6 +12478,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 	ListTasksWithResponse(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*ListTasksResponse, error)
 
+	// CancelQueuedTasksWithResponse Cancel all queued tasks of an app
+	//
+	// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/apps/{appId}/tasks/cancel (the `CancelQueuedTasks` operationId).
+	CancelQueuedTasksWithResponse(ctx context.Context, appId AppId, params *CancelQueuedTasksParams, reqEditors ...RequestEditorFn) (*CancelQueuedTasksResponse, error)
+
 	// GetTaskWithResponse Get a task
 	//
 	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
@@ -12283,6 +12495,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
 	GetTaskWithResponse(ctx context.Context, appId AppId, taskId TaskId, params *GetTaskParams, reqEditors ...RequestEditorFn) (*GetTaskResponse, error)
+
+	// CancelTaskWithResponse Cancel a queued task
+	//
+	// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/apps/{appId}/tasks/{taskId}/cancel (the `CancelTask` operationId).
+	CancelTaskWithResponse(ctx context.Context, appId AppId, taskId TaskId, params *CancelTaskParams, reqEditors ...RequestEditorFn) (*CancelTaskResponse, error)
 
 	// ListVersionsWithResponse List versions
 	//
@@ -16167,6 +16388,89 @@ func (r ListTasksResponse) ContentType() string {
 	return ""
 }
 
+type CancelQueuedTasksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CanceledTasks
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CancelQueuedTasksResponse) GetJSON200() *CanceledTasks {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CancelQueuedTasksResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CancelQueuedTasksResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CancelQueuedTasksResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CancelQueuedTasksResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r CancelQueuedTasksResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CancelQueuedTasksResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelQueuedTasksResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelQueuedTasksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelQueuedTasksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelQueuedTasksResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetTaskResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -16244,6 +16548,96 @@ func (r GetTaskResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetTaskResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CancelTaskResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Task
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *TaskConflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *BadGateway
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CancelTaskResponse) GetJSON200() *Task {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CancelTaskResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CancelTaskResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CancelTaskResponse) GetApplicationproblemJSON409() *TaskConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CancelTaskResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CancelTaskResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r CancelTaskResponse) GetApplicationproblemJSON502() *BadGateway {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CancelTaskResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelTaskResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelTaskResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelTaskResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelTaskResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -20668,6 +21062,21 @@ func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, appId A
 	return ParseListTasksResponse(rsp)
 }
 
+// CancelQueuedTasksWithResponse Cancel all queued tasks of an app
+//
+// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/apps/{appId}/tasks/cancel (the `CancelQueuedTasks` operationId).
+func (c *ClientWithResponses) CancelQueuedTasksWithResponse(ctx context.Context, appId AppId, params *CancelQueuedTasksParams, reqEditors ...RequestEditorFn) (*CancelQueuedTasksResponse, error) {
+	rsp, err := c.CancelQueuedTasks(ctx, appId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelQueuedTasksResponse(rsp)
+}
+
 // GetTaskWithResponse Get a task
 //
 // Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
@@ -20681,6 +21090,21 @@ func (c *ClientWithResponses) GetTaskWithResponse(ctx context.Context, appId App
 		return nil, err
 	}
 	return ParseGetTaskResponse(rsp)
+}
+
+// CancelTaskWithResponse Cancel a queued task
+//
+// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/apps/{appId}/tasks/{taskId}/cancel (the `CancelTask` operationId).
+func (c *ClientWithResponses) CancelTaskWithResponse(ctx context.Context, appId AppId, taskId TaskId, params *CancelTaskParams, reqEditors ...RequestEditorFn) (*CancelTaskResponse, error) {
+	rsp, err := c.CancelTask(ctx, appId, taskId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelTaskResponse(rsp)
 }
 
 // ListVersionsWithResponse List versions
@@ -24370,6 +24794,74 @@ func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 	return response, nil
 }
 
+// ParseCancelQueuedTasksResponse parses an HTTP response from a CancelQueuedTasksWithResponse call
+func ParseCancelQueuedTasksResponse(rsp *http.Response) (*CancelQueuedTasksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelQueuedTasksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CanceledTasks
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetTaskResponse parses an HTTP response from a GetTaskWithResponse call
 func ParseGetTaskResponse(rsp *http.Response) (*GetTaskResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -24404,6 +24896,81 @@ func ParseGetTaskResponse(rsp *http.Response) (*GetTaskResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelTaskResponse parses an HTTP response from a CancelTaskWithResponse call
+func ParseCancelTaskResponse(rsp *http.Response) (*CancelTaskResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelTaskResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Task
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest TaskConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ValidationError

@@ -66,8 +66,9 @@ running, and retrying work. A page can be empty and still have nextCursor.`,
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of tasks to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending, completed, or failed)")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending, completed, failed, or canceled)")
 	cmd.AddCommand(newAppsTasksShowCmd(logger))
+	cmd.AddCommand(newAppsTasksCancelCmd(logger))
 	return cmd
 }
 
@@ -102,5 +103,61 @@ func newAppsTasksShowCmd(logger *log.Logger) *cobra.Command {
 }
 
 func parseTaskStatus(status string) (*serverlessapi.TaskStatus, error) {
-	return parseValidFlag[serverlessapi.TaskStatus]("--status", status, "pending, completed, or failed")
+	return parseValidFlag[serverlessapi.TaskStatus]("--status", status, "pending, completed, failed, or canceled")
+}
+
+func newAppsTasksCancelCmd(logger *log.Logger) *cobra.Command {
+	var all bool
+
+	cmd := &cobra.Command{
+		Use:   "cancel <appId> [taskId]",
+		Short: "Cancel a queued task, or all queued tasks of an application",
+		Long: `Cancel a task that no worker has started. It never runs and uses no GPU time.
+
+A task that is already running, completed, or failed cannot be canceled.
+
+With --all, the application's queue is emptied and every queued task is
+canceled, so resuming a stopped application starts no worker for them.
+Canceling a single task leaves its message queued until a worker skips it.`,
+		Example: `  # cancel one queued task
+  runware serverless apps tasks cancel my-app 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+  # cancel every queued task of an app
+  runware serverless apps tasks cancel my-app --all`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			if all == (len(args) == 2) {
+				return fmt.Errorf("give either a task id or --all")
+			}
+
+			client := newServerlessClient(cmd, logger)
+			if all {
+				spin := cmdutil.NewSpinner(fmt.Sprintf("Canceling queued tasks of %s...", appID))
+				spin.Start()
+				canceled, err := client.CancelQueuedTasks(cmd.Context(), appID)
+				spin.Stop()
+				if err != nil {
+					return err
+				}
+				return output.Print(cmdutil.FormatFor(cmd), tasksCanceledResult{
+					AppID:    appID,
+					Canceled: canceled,
+				})
+			}
+
+			taskID := args[1]
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Canceling task %s...", taskID))
+			spin.Start()
+			task, err := client.CancelTask(cmd.Context(), appID, taskID)
+			spin.Stop()
+			if err != nil {
+				return err
+			}
+			return output.Print(cmdutil.FormatFor(cmd), taskResult(*task))
+		},
+	}
+
+	cmd.Flags().BoolVar(&all, "all", false, "Cancel every queued task of the application")
+	return cmd
 }
