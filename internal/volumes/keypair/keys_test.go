@@ -327,3 +327,11 @@ func TestVerifierKeysIgnoresTheOverrideWithoutAHost(t *testing.T) {
 		}
 	}
 }
+
+// TestPlatformHostRejectsAHostIDNACannotMap: a non-ASCII host IDNA refuses to map has no
+// platform host, so it never takes the override and gets no shipped keys.
+func TestPlatformHostRejectsAHostIDNACannotMap(t *testing.T) {
+	if got := platformHost("https://⒈.com"); got != "" {
+		t.Fatalf("platformHost = %q, want \"\"", got)
+	}
+}

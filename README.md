@@ -401,6 +401,8 @@ make setup          # Once per clone: install the pre-push check (again after pu
 make check-public   # Check this branch for text that must not be public
 ```
 
+`make build` and `make run` compile with the `volumesdevkeys` build tag, which lets a Shared Volumes upload to an API host other than production trust the statement verification keys in `RUNWARE_VOLUMES_STATEMENT_KEY` (comma-separated `<version>:<base64 DER public key>` entries). Point a local build at a local API this way. A binary from `make install`, `make build-all` or a release ignores the variable and refuses such a host with "no verification keys"; the production host never reads it.
+
 ## Shell completions
 
 `runware completion` generates a completion script for your shell. Once installed, press `Tab` to complete commands, flags, model AIR identifiers, and — for `runware run` — schema-driven parameter names like `positivePrompt=`, `width=`, or `messages.0.role=`.

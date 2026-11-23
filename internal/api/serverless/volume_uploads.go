@@ -73,21 +73,26 @@ type volumeFilePage struct {
 }
 
 // LatestFiles reads every page of the Volume's latest files, starting again
-// when the list changes between two pages.
+// when the list changes between two pages. When the attempts run out on a
+// later page's 400, the error keeps that problem, since the 400 may be about
+// something other than a stale cursor.
 func (v *VolumeUploads) LatestFiles(ctx context.Context, volume put.VolumeRef) (put.FileList, error) {
+	var last error
 	for range volumeFileListAttempts {
 		list, changed, err := v.readFiles(ctx, volume)
-		if err != nil {
-			return put.FileList{}, err
-		}
 		if !changed {
+			if err != nil {
+				return put.FileList{}, err
+			}
 			return list, nil
 		}
+		last = err
 	}
-	return put.FileList{}, errVolumeFilesKeptChanging
+	return put.FileList{}, errors.Join(errVolumeFilesKeptChanging, last)
 }
 
-// readFiles reads the pages once; changed reports that the list changed under it.
+// readFiles reads the pages once; changed reports that the list may have
+// changed under it, with the later page's 400 problem as err when that is why.
 func (v *VolumeUploads) readFiles(ctx context.Context, volume put.VolumeRef) (put.FileList, bool, error) {
 	var list put.FileList
 	seen := make(map[string]struct{})
@@ -104,7 +109,7 @@ func (v *VolumeUploads) readFiles(ctx context.Context, volume put.VolumeRef) (pu
 			// A cursor issued before an upload completed answers 400: the
 			// list changed, so start again from the first page.
 			if p, ok := errors.AsType[*put.ProblemError](err); ok && !first && p.Status == http.StatusBadRequest {
-				return put.FileList{}, true, nil
+				return put.FileList{}, true, err
 			}
 			return put.FileList{}, false, err
 		}
@@ -195,7 +200,7 @@ func joinPath(segments ...string) string {
 }
 
 // do sends one Volumes request and decodes a want answer into out; any other
-// status is a *VolumeAPIProblem, which unwraps to a *put.ProblemError.
+// status is a *VolumeAPIError, which unwraps to a *put.ProblemError.
 func (v *VolumeUploads) do(ctx context.Context, method, path, environment string, query url.Values, body any, want int, out any) error {
 	c := v.c
 	if c.apiKey == "" {
@@ -244,7 +249,7 @@ func (v *VolumeUploads) do(ctx context.Context, method, path, environment string
 	}
 	v.logResponse(ctx, resp, answer)
 	if resp.StatusCode != want {
-		return &VolumeAPIProblem{Problem: volumeProblem(resp.StatusCode, answer)}
+		return &VolumeAPIError{Problem: volumeProblem(resp.StatusCode, answer)}
 	}
 	if out == nil {
 		return nil
@@ -278,17 +283,17 @@ func (v *VolumeUploads) logResponse(ctx context.Context, resp *http.Response, bo
 	)
 }
 
-// VolumeAPIProblem is a problem the Volumes API answered, as opposed to the
+// VolumeAPIError is a problem the Volumes API answered, as opposed to the
 // upload endpoint a part is sent to. It unwraps to the *put.ProblemError the
 // engine reads, so a caller can tell an API refusal (the API key, the Volume)
 // from a refused part.
-type VolumeAPIProblem struct {
+type VolumeAPIError struct {
 	Problem *put.ProblemError
 }
 
-func (e *VolumeAPIProblem) Error() string { return e.Problem.Error() }
+func (e *VolumeAPIError) Error() string { return e.Problem.Error() }
 
-func (e *VolumeAPIProblem) Unwrap() error { return e.Problem }
+func (e *VolumeAPIError) Unwrap() error { return e.Problem }
 
 // volumeProblemBody is the part of an RFC 9457 problem the put engine reads.
 type volumeProblemBody struct {

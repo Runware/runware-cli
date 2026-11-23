@@ -2,6 +2,7 @@ package serverless
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -565,8 +566,37 @@ func TestVolumesPutPrintsNoSecret(t *testing.T) {
 				if verbose && !strings.Contains(out, "serverless response") {
 					t.Error("the verbose run logged no response, so it checked nothing")
 				}
+				if verbose && !strings.Contains(out, "volume part upload") {
+					t.Error("the verbose run logged no part upload, so it checked nothing")
+				}
 			})
 		}
+	}
+}
+
+// TestVolumesPutStopsWhenTheKeySetupFails: a put whose statement keys cannot be
+// set up fails with that error before any request reaches the Volumes API.
+func TestVolumesPutStopsWhenTheKeySetupFails(t *testing.T) {
+	f := newPutFake(t)
+	f.newVolume("", testVolume)
+	newVolumeKeys = func(string, string) (put.Keys, error) {
+		return nil, errors.New("the statement keys could not be set up")
+	}
+	r := f.run(formatJSON, false, testVolume, newTree(t, testTree))
+	if r.err == nil || !strings.Contains(r.err.Error(), "the statement keys could not be set up") {
+		t.Fatalf("err = %v, want the key setup error", r.err)
+	}
+	if calls := f.callLog(); len(calls) != 0 {
+		t.Fatalf("requests reached the Volumes API: %v", calls)
+	}
+}
+
+// TestNewVerifiedVolumeKeysPassesAVerifierErrorOn: newVerifiedVolumeKeys returns
+// the error NewVerifier gives, here for a missing state directory.
+func TestNewVerifiedVolumeKeysPassesAVerifierErrorOn(t *testing.T) {
+	keys, err := newVerifiedVolumeKeys("https://api.example.com", "")
+	if err == nil || keys != nil {
+		t.Fatalf("keys = %v, err = %v, want the verifier's error", keys, err)
 	}
 }
 

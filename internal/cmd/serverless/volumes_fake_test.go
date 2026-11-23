@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -187,7 +188,7 @@ func newPutFake(t *testing.T) *putFake {
 		return fakeKeys{signer: &signer.PublicKey}, nil
 	}
 	client := f.upload.Client()
-	newPartTransport = func() put.Transport { return put.NewHTTPTransport(client) }
+	newPartTransport = func(logger *slog.Logger) put.Transport { return put.NewHTTPTransport(client).WithLogger(logger) }
 	t.Cleanup(func() { newVolumeKeys, newPartTransport = oldKeys, oldTransport })
 	return f
 }

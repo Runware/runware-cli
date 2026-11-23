@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -28,6 +29,25 @@ var errPartStalled = errors.New("the part upload made no progress")
 type HTTPTransport struct {
 	client *http.Client
 	stall  time.Duration
+	logger *slog.Logger
+}
+
+// WithLogger logs each part's number, HTTP status and byte count at debug
+// level; never the upload address, the part token or the acknowledgement.
+func (t *HTTPTransport) WithLogger(logger *slog.Logger) *HTTPTransport {
+	t.logger = logger
+	return t
+}
+
+func (t *HTTPTransport) logPart(ctx context.Context, target Target, status int, length int64) {
+	if t.logger == nil || !t.logger.Enabled(ctx, slog.LevelDebug) {
+		return
+	}
+	t.logger.Debug("volume part upload", //nolint:errcheck,gosec
+		"partNumber", target.PartNumber,
+		"status", status,
+		"bytes", length,
+	)
 }
 
 // NewHTTPTransport copies client without a total timeout; nil uses a dedicated HTTP/1.1 client.
@@ -94,6 +114,7 @@ func (t *HTTPTransport) PutPart(ctx context.Context, target Target, body io.Read
 		return "", fmt.Errorf("send part %d: %w", target.PartNumber, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	t.logPart(ctx, target, resp.StatusCode, length)
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswerBytes))
 	if err != nil {
 		return "", fmt.Errorf("read the answer for part %d: %w", target.PartNumber, err)

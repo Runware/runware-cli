@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,14 +35,19 @@ const (
 
 // Seams the command tests replace: the statement keys, whose verifier in a
 // release holds only the platform's keys, and the part transport, which sends
-// only over HTTPS.
+// only over HTTPS and logs each part's number, status and size under --debug.
 var (
 	newVolumeKeys    = newVerifiedVolumeKeys
-	newPartTransport = func() put.Transport { return put.NewHTTPTransport(nil) }
+	newPartTransport = func(logger *slog.Logger) put.Transport {
+		return put.NewHTTPTransport(nil).WithLogger(logger)
+	}
 )
 
 // newVerifiedVolumeKeys verifies statements with the release keys for the
 // platform at serverlessBaseURL, recording accepted sequences in stateDir.
+// A release ships no keys for the production host yet, so every statement
+// from it is refused: the volumes group must stay hidden until the production
+// verification keys ship.
 func newVerifiedVolumeKeys(serverlessBaseURL, stateDir string) (put.Keys, error) {
 	verifier, err := keypair.NewVerifier(serverlessBaseURL, stateDir)
 	if err != nil {
@@ -51,7 +57,9 @@ func newVerifiedVolumeKeys(serverlessBaseURL, stateDir string) (put.Keys, error)
 }
 
 // newVolumesCmd returns the "serverless volumes" command group for Shared
-// Volumes. It is hidden, and every command in it inherits that.
+// Volumes. It is hidden, and every command in it inherits that. Keep it
+// hidden until the production verification keys ship (see
+// newVerifiedVolumeKeys).
 func newVolumesCmd(logger *log.Logger) *cobra.Command {
 	cmd := stubGroup("volumes", "Manage Shared Volumes")
 	cmd.Hidden = true
@@ -95,7 +103,7 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 				ConfigDir:    configDir,
 				API:          client.VolumeUploads(),
 				Keys:         keys,
-				Transport:    newPartTransport(),
+				Transport:    newPartTransport(slog.New(logger)),
 				Progress:     stderr,
 				ProgressTTY:  isTerminal(stderr),
 			})
@@ -136,7 +144,7 @@ func putError(volume put.VolumeRef, err error) error {
 	if p, ok := errors.AsType[*put.ProblemError](err); ok && p.Slug == volumeSlugUploadNotOpen {
 		return fmt.Errorf("the upload session is no longer open: it was completed, aborted or reached its deadline; run put again (%w)", err)
 	}
-	a, ok := errors.AsType[*serverlessapi.VolumeAPIProblem](err)
+	a, ok := errors.AsType[*serverlessapi.VolumeAPIError](err)
 	if !ok {
 		return err
 	}

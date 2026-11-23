@@ -430,6 +430,24 @@ func TestVolumeUploadsLatestFilesGivesUpWhenTheListKeepsChanging(t *testing.T) {
 	}
 }
 
+// TestVolumeUploadsLatestFilesKeepsALaterPage400: a later page's 400 that keeps
+// coming back is reported with the API's problem, not only as a changing list.
+func TestVolumeUploadsLatestFilesKeepsALaterPage400(t *testing.T) {
+	bad := `{"type":"https://docs.runware.ai/serverless/errors#bad-request","title":"Bad Request","status":400,"detail":"limit is out of range"}`
+	var ex []volumeExchange
+	for range volumeFileListAttempts {
+		ex = append(ex,
+			filesPage("", http.StatusOK, `{"manifestSha256":"`+testDigest+`","data":[],"nextCursor":"c1"}`),
+			filesPage("c1", http.StatusBadRequest, bad),
+		)
+	}
+	v := volumeServer(t, ex...)
+	_, err := v.LatestFiles(context.Background(), testVolumeRef)
+	if p, ok := errors.AsType[*put.ProblemError](err); !ok || p.Detail != "limit is out of range" {
+		t.Fatalf("err = %v, want the 400 problem", err)
+	}
+}
+
 func TestVolumeUploadsLatestFilesStopsOnARepeatedCursor(t *testing.T) {
 	page := `{"manifestSha256":"` + testDigest + `","data":[],"nextCursor":"c1"}`
 	v := volumeServer(t,
