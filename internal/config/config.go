@@ -316,11 +316,11 @@ func ListPresets() []string {
 	return names
 }
 
-// MaskKey masks an API key for display, showing the first 16 characters followed by "•••••".
+// MaskKey masks an API key for display, showing "•••••" followed by the last 4 characters.
 // If the key is shorter than 16 characters, only "•••••" is shown.
 func MaskKey(key string) string {
 	if len(key) < 16 {
 		return MaskedKeySuffix
 	}
-	return key[:16] + "-" + MaskedKeySuffix
+	return MaskedKeySuffix + key[len(key)-4:]
 }

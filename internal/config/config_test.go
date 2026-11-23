@@ -12,8 +12,8 @@ func TestMaskKey(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"abcdEFGHijklMNOPqrstUVWXyz0123456", "abcdEFGHijklMNOP-" + MaskedKeySuffix},
-		{"abcdEFGHijklMNOP", "abcdEFGHijklMNOP-" + MaskedKeySuffix},
+		{"abcdEFGHijklMNOPqrstUVWXyz0123456", MaskedKeySuffix + "3456"},
+		{"abcdEFGHijklMNOP", MaskedKeySuffix + "MNOP"},
 		{"short", MaskedKeySuffix},
 		{"123456789012345", MaskedKeySuffix},
 		{"", MaskedKeySuffix},
