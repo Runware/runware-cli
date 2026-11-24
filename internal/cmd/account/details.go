@@ -117,9 +117,20 @@ func newDetailsCmd(logger *log.Logger) *cobra.Command {
 	}
 }
 
+// keyIdentLength is the length of a key's public ident, the part of the key
+// before its secret half.
+const keyIdentLength = 16
+
 // newAccountDetailsResult maps the API response to what the command prints.
-// API keys are printed as they come: see api.APIKeyInfo.APIKey.
+// Each key keeps its public ident and shows "*" for the rest (see
+// api.APIKeyInfo.APIKey), so the secret half is hidden even if the API ever
+// sends it.
 func newAccountDetailsResult(result *api.AccountResult) accountDetailsResult {
+	keys := make([]api.APIKeyInfo, len(result.APIKeys))
+	for i, k := range result.APIKeys {
+		k.APIKey = hideSecretHalf(k.APIKey)
+		keys[i] = k
+	}
 	return accountDetailsResult{
 		OrganizationName: result.OrganizationName,
 		OrganizationUUID: result.OrganizationUUID.String(),
@@ -127,6 +138,16 @@ func newAccountDetailsResult(result *api.AccountResult) accountDetailsResult {
 		Balance:          result.Balance,
 		Usage:            result.Usage,
 		Team:             result.Team,
-		APIKeys:          result.APIKeys,
+		APIKeys:          keys,
 	}
+}
+
+// hideSecretHalf keeps the first keyIdentLength characters of key and
+// replaces every character after them with "*".
+func hideSecretHalf(key string) string {
+	r := []rune(key)
+	if len(r) <= keyIdentLength {
+		return key
+	}
+	return string(r[:keyIdentLength]) + strings.Repeat("*", len(r)-keyIdentLength)
 }
