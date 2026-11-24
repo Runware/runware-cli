@@ -30,13 +30,16 @@ func TestDetailsPrintsTheKeyIdentAsTheAPISendsIt(t *testing.T) {
 	}
 }
 
+// maskSecretHalfCase is a key the API sends and what the command prints.
+type maskSecretHalfCase struct {
+	name string
+	sent string
+	want string
+}
+
 func TestDetailsMasksTheSecretHalf(t *testing.T) {
 	ident := "abcdEFGHijklMNOP"
-	cases := []struct {
-		name string
-		sent string
-		want string
-	}{
+	cases := []maskSecretHalfCase{
 		{
 			name: "ident and stars, as the API sends it",
 			sent: ident + strings.Repeat("*", 16),
