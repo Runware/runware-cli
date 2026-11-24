@@ -245,6 +245,42 @@ func TestDeployWithoutSourceChangesOnlyTheMounts(t *testing.T) {
 	}
 }
 
+// A mounts-only update pins its version in the write, or pins nothing when the
+// list is unchanged, so --wait cannot watch the pin move. The stub keeps the pin
+// where it was, which polled forever before.
+func TestDeployWithoutSourceWaitSaysTheRolloutContinues(t *testing.T) {
+	stub := &mountStub{
+		t:      t,
+		exists: true,
+	}
+	stub.serve()
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	cmd.PersistentFlags().String("format", testTableFormat, "")
+	cmd.SetArgs([]string{testIDFlag, testAppID, testMountFlag, testMountWeights, "--wait", "--timeout", "5s"})
+	if _, err := captureStdout(t, cmd.Execute); err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	if want := "the rollout continues in the background"; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+// Shared Volumes are in a closed beta: the flags work but stay out of the help.
+func TestDeployHidesTheMountFlags(t *testing.T) {
+	cmd := newDeployCmd(log.New(io.Discard))
+	for _, name := range []string{mountFlag, noMountsFlag} {
+		if !cmd.Flags().Lookup(name).Hidden {
+			t.Errorf("--%s is visible", name)
+		}
+	}
+	if help := cmd.Long + cmd.Example; strings.Contains(help, "--mount") || strings.Contains(help, "--no-mounts") {
+		t.Errorf("help names a hidden mount flag")
+	}
+}
+
 // Leaving --mount and --no-mounts out keeps the mounts: the update sends no
 // mounts field.
 func TestDeployUpdateWithoutMountFlagsKeepsTheMounts(t *testing.T) {

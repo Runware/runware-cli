@@ -210,8 +210,7 @@ is 409.
 Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
 --scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
 --min-available-workers, --available-workers-pct, --volume, --secret,
---env-var and --env-file. --mount works on create and on update; --no-mounts
-needs an existing application.
+--env-var and --env-file.
 
 On an existing copy, a create-only flag is accepted when its value matches the
 app, and a changed value is rejected; one error names every changed flag.
@@ -288,24 +287,6 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
---volume and --mount are different things. --volume <path> is a node-local
-folder the app writes to, empty on a new node, set at create only. --mount
-<volume>:<path> mounts a Shared Volume of the same environment read-only at
-<path>: files uploaded beforehand with 'volumes put'. Each worker mounts the
-Volume's latest files when it starts, so new files reach workers started
-after an upload without a new deploy, and running workers keep the files they
-started with until they stop. Repeat --mount for more than one; the same
-Volume may be mounted at two paths. --volume and --mount entries share a
-limit of 30 and may not equal or contain one another. These path checks run
-before the source is uploaded.
-
-On an existing application, --mount replaces its mounts in the version the
-deploy records, --no-mounts removes them, and leaving both out keeps them.
-Without a source, --mount or --no-mounts records a version with the image the
-app runs now and rolls it out like a configuration change. A rollback with
-'apps versions activate' restores a version's mounts, not earlier Volume
-files.
-
 --secret NAME, or NAME=ENV_VAR, attaches an existing secret of the same
 environment at create so the first rollout carries it. Repeat the flag for
 more than one. Attach or detach later with 'secrets attach' and
@@ -343,16 +324,6 @@ paths and an invoke example once the application is active.`,
   # keep downloaded model weights on persistent node-local storage
   runware serverless deploy model.py --id my-app --gpu-type l40s \
     --volume /root/.cache/huggingface
-
-  # mount the Shared Volume model-weights read-only at /models
-  runware serverless deploy model.py --id my-app --gpu-type l40s \
-    --mount model-weights:/models
-
-  # change the mounts of an existing application without a new source
-  runware serverless deploy --id my-app --mount model-weights:/models --mount tokenizer:/tok
-
-  # remove every mount of an existing application
-  runware serverless deploy --id my-app --no-mounts
 
   # attach an existing secret and keep one idle worker warm
   runware serverless deploy ./app.py --id my-app --gpu-type h100 \
@@ -518,7 +489,7 @@ paths and an invoke example once the application is active.`,
 				versionBefore   *uuid.UUID
 				canCompare      bool
 			)
-			if update && wait {
+			if update && wait && !sourceless {
 				endpointsBefore, versionBefore, canCompare = endpointComparisonBase(cmd.Context(), client, id)
 			}
 
@@ -613,6 +584,14 @@ paths and an invoke example once the application is active.`,
 			}
 			spin.Stop()
 
+			// A mounts-only update pins its version in the write itself, and an
+			// unchanged list pins nothing, so the pin cannot tell when workers
+			// roll. Say what is left instead of waiting on it.
+			rolloutNote, rollsLater := activateWaitNote(app.Status)
+			if wait && sourceless && rollsLater {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; %s.\n", app.AppId, app.Status, rolloutNote)
+			}
+
 			// The endpoint rows are the outgoing version's until the submitted one
 			// activates, and a source update on an already-active app answers
 			// `active` throughout its build — so the wait above returns at once and
@@ -640,7 +619,7 @@ paths and an invoke example once the application is active.`,
 			}); err != nil {
 				return err
 			}
-			if !wait {
+			if !wait || (sourceless && rollsLater) {
 				return nil
 			}
 			return appFailedErr(cmd.Context(), client, app, defaultEnvironment(cmd))
@@ -654,6 +633,9 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringArrayVar(&mounts, mountFlag, nil, "Shared Volume of the same environment to mount read-only, as <volume>:<path>; replaces the mounts on an update (repeatable)")
 	cmd.Flags().BoolVar(&removeMounts, noMountsFlag, false, "Remove every Shared Volume mount of an existing application")
 	cmd.MarkFlagsMutuallyExclusive(mountFlag, noMountsFlag)
+	// Shared Volumes are in a closed beta, and the CLI cannot fill one yet.
+	_ = cmd.Flags().MarkHidden(mountFlag)
+	_ = cmd.Flags().MarkHidden(noMountsFlag)
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
