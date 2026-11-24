@@ -45,9 +45,11 @@ type Preset struct {
 
 // Config is the full configuration structure.
 type Config struct {
-	APIKey   string            `yaml:"api_key,omitempty"`
-	Defaults Defaults          `yaml:"defaults"`
-	Presets  map[string]Preset `yaml:"presets,omitempty"`
+	APIKey string `yaml:"api_key,omitempty"`
+	// Organization is the organization id Volume uploads seal data keys for; RUNWARE_ORGANIZATION overrides it.
+	Organization string            `yaml:"organization,omitempty"`
+	Defaults     Defaults          `yaml:"defaults"`
+	Presets      map[string]Preset `yaml:"presets,omitempty"`
 }
 
 var configDir string
@@ -78,6 +80,23 @@ func GetEnvironment() (name, source string) {
 	}
 	if v := Get().Defaults.Environment; v != "" {
 		return v, EnvironmentFromConfig
+	}
+	return "", ""
+}
+
+// Where GetOrganization found the organization id.
+const (
+	OrganizationFromEnvVar = "RUNWARE_ORGANIZATION"
+	OrganizationFromConfig = "config"
+)
+
+// GetOrganization returns the organization id and where it was found: RUNWARE_ORGANIZATION, else the config file.
+func GetOrganization() (id, source string) {
+	if v := os.Getenv(OrganizationFromEnvVar); v != "" {
+		return v, OrganizationFromEnvVar
+	}
+	if v := Get().Organization; v != "" {
+		return v, OrganizationFromConfig
 	}
 	return "", ""
 }
@@ -297,11 +316,12 @@ func ListPresets() []string {
 	return names
 }
 
-// MaskKey masks an API key for display, showing the first 16 characters followed by "•••••".
+// MaskKey masks an API key for display, showing "•••••" followed by the last 4 characters.
 // If the key is shorter than 16 characters, only "•••••" is shown.
 func MaskKey(key string) string {
-	if len(key) < 16 {
+	r := []rune(key)
+	if len(r) < 16 {
 		return MaskedKeySuffix
 	}
-	return key[:16] + "-" + MaskedKeySuffix
+	return MaskedKeySuffix + string(r[len(r)-4:])
 }

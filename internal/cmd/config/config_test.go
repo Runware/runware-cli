@@ -72,6 +72,35 @@ func TestResetPreservesPresetsAndAPIKey(t *testing.T) {
 	}
 }
 
+// TestResetPreservesOrganization verifies that `config reset` keeps the organization id.
+func TestResetPreservesOrganization(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("RUNWARE_API_KEY", "")
+	if err := config.Init(); err != nil {
+		t.Fatalf("config.Init() error: %v", err)
+	}
+
+	const org = "0b9d2c6e-5a1f-4c3e-9e7a-2f4b8d1c6a35"
+	if err := config.Save(&config.Config{Organization: org}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	cmd := newResetCmd(log.New(io.Discard))
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("reset RunE error: %v", err)
+	}
+
+	onDisk, err := config.FileConfig()
+	if err != nil {
+		t.Fatalf("FileConfig() error: %v", err)
+	}
+	if onDisk.Organization != org {
+		t.Errorf("organization after reset = %q, want %q (should be preserved)", onDisk.Organization, org)
+	}
+}
+
 // TestResetDoesNotPersistEnvAPIKey verifies that an API key supplied only via
 // RUNWARE_API_KEY is not written into the config file by `config reset`.
 func TestResetDoesNotPersistEnvAPIKey(t *testing.T) {
@@ -323,6 +352,17 @@ func TestShowNamesTheConfiguredEnvironment(t *testing.T) {
 				t.Fatalf("config show = %s, want environment %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestShowShowsOnlyTheLastFourCharactersOfTheKey(t *testing.T) {
+	withConfigHome(t)
+	t.Setenv("RUNWARE_API_KEY", "abcdEFGHijklMNOPqrstUVWXyz0123456")
+
+	got := showOutput(t, testJSON)
+
+	if want := `"api_key": "` + config.MaskedKeySuffix + `3456"`; !strings.Contains(got, want) {
+		t.Fatalf("config show = %s, want %s", got, want)
 	}
 }
 

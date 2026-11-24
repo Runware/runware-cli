@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -112,15 +113,42 @@ func newDetailsCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			spin.Stop()
-			return output.Print(cmdutil.FormatFor(cmd), accountDetailsResult{
-				OrganizationName: result.OrganizationName,
-				OrganizationUUID: result.OrganizationUUID.String(),
-				AIRSource:        result.AIRSource,
-				Balance:          result.Balance,
-				Usage:            result.Usage,
-				Team:             result.Team,
-				APIKeys:          result.APIKeys,
-			})
+			return output.Print(cmdutil.FormatFor(cmd), newAccountDetailsResult(result))
 		},
 	}
+}
+
+// keyIdentLength is the length of a key's public ident, the part of the key
+// before its secret half.
+const keyIdentLength = 16
+
+// newAccountDetailsResult maps the API response to what the command prints.
+// Each key keeps its public ident and shows "*" for the rest (see
+// api.APIKeyInfo.APIKey).
+func newAccountDetailsResult(result *api.AccountResult) accountDetailsResult {
+	keys := make([]api.APIKeyInfo, len(result.APIKeys))
+	for i, k := range result.APIKeys {
+		k.APIKey = maskSecretHalf(k.APIKey)
+		keys[i] = k
+	}
+	return accountDetailsResult{
+		OrganizationName: result.OrganizationName,
+		OrganizationUUID: result.OrganizationUUID.String(),
+		AIRSource:        result.AIRSource,
+		Balance:          result.Balance,
+		Usage:            result.Usage,
+		Team:             result.Team,
+		APIKeys:          keys,
+	}
+}
+
+// maskSecretHalf keeps the first keyIdentLength characters of key and
+// replaces every character after them with "*". A key with nothing after the
+// ident is not one the API sends, so it shows only config.MaskedKeySuffix.
+func maskSecretHalf(key string) string {
+	r := []rune(key)
+	if len(r) <= keyIdentLength {
+		return config.MaskedKeySuffix
+	}
+	return string(r[:keyIdentLength]) + strings.Repeat("*", len(r)-keyIdentLength)
 }
