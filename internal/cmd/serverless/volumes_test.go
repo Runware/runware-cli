@@ -530,6 +530,66 @@ func TestVolumesPutPrintsTheCauseNotTheAbort(t *testing.T) {
 	}
 }
 
+// TestVolumesPutKeepsTheLineBesideTheAuthHint: when the key is revoked during
+// an upload, the text format prints the step that failed and the failed abort
+// with the hint about the API key, and JSON keeps the API's code.
+func TestVolumesPutKeepsTheLineBesideTheAuthHint(t *testing.T) {
+	f := newPutFake(t)
+	f.newVolume("", testVolume)
+	f.onDeclare = func() { f.keyRevoked = true }
+	r := f.run(formatJSON, false, testVolume, newTree(t, testTree))
+	if r.err == nil {
+		t.Fatal("put succeeded with the key revoked")
+	}
+	text := printedError(t, r.err)
+	for _, want := range []string{r.err.Error(), "could not confirm the upload was aborted", "Authentication failed", "runware auth status"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("printed %q, want it to hold %q", text, want)
+		}
+	}
+	if got := printedJSONError(t, r.err); got["code"] == nil {
+		t.Errorf("printed %v, want the API's code", got)
+	}
+}
+
+// TestVolumesPutBlamesTheFailureNotTheAbortFor404: a failure whose abort is
+// answered 404 says nothing about the Volume being missing; the 404 is the
+// abort's, not the failure's. The session-wide failure is the case where the
+// abort's 404 would otherwise be read as the Volume's.
+func TestVolumesPutBlamesTheFailureNotTheAbortFor404(t *testing.T) {
+	cases := map[string]struct {
+		setup func(f *putFake)
+		want  string
+	}{
+		"refused part": {
+			setup: func(f *putFake) { f.refusePart = true },
+			want:  "part token was refused",
+		},
+		"session-wide failure": {
+			setup: func(f *putFake) { f.shortDeclaration = true },
+			want:  "answers for",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newPutFake(t)
+			f.newVolume("", testVolume)
+			tc.setup(f)
+			f.refuseAbortStatus = http.StatusNotFound
+			r := f.run(formatJSON, false, testVolume, newTree(t, testTree))
+			if r.err == nil {
+				t.Fatal("put succeeded")
+			}
+			if !strings.Contains(r.err.Error(), "could not confirm the upload was aborted") {
+				t.Fatalf("error %q does not say the abort failed, so this test proves nothing", r.err)
+			}
+			if text := printedError(t, r.err); strings.Contains(text, "was not found") || !strings.Contains(text, tc.want) {
+				t.Errorf("printed %q, want %q and no word about a missing Volume", text, tc.want)
+			}
+		})
+	}
+}
+
 func TestVolumesPutRefusalsAreOneActionableLine(t *testing.T) {
 	cases := []struct {
 		name  string

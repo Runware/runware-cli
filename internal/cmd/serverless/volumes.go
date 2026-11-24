@@ -157,7 +157,7 @@ func printPutSummary(w io.Writer, format output.Format, s put.Summary) error {
 // answer that caused the failure also reaches cmdutil.PrintError as a
 // *transport.RunwareError, which prints it like any other serverless error:
 // JSON and YAML get the API's code and problem type, and the text format the
-// code, or for a 401 or 403 only the CLI's auth hint.
+// code, and for a 401 or 403 the CLI's auth hint after the line.
 func putError(volume put.VolumeRef, err error) error {
 	cause := putCause(err)
 	_, abortFailed := errors.AsType[*put.AbortFailedError](err)
@@ -173,8 +173,8 @@ func putError(volume put.VolumeRef, err error) error {
 	if ok && a.API != nil {
 		// The RunwareError's message is the API's alone; keep the whole
 		// line, which names the file and step that failed and any hint
-		// above. The text format replaces it with the hint on an auth error,
-		// as it does for every serverless command.
+		// above. On an auth error the text format prints it before the
+		// hint, since putFailedError is a cmdutil.ExplainedError.
 		api := *a.API
 		api.Message = failed.line
 		failed.api = &api
@@ -222,6 +222,10 @@ type putFailedError struct {
 }
 
 func (e *putFailedError) Error() string { return e.line }
+
+// Explained marks the line as put's own, which the text format keeps beside
+// the auth hint.
+func (e *putFailedError) Explained() {}
 
 func (e *putFailedError) Unwrap() []error {
 	if e.api == nil {

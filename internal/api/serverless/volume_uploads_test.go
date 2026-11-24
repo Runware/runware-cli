@@ -10,8 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -445,6 +447,8 @@ func TestVolumeUploadsCompletionOutlastsTheDefaultTimeout(t *testing.T) {
 	t.Cleanup(srv.Close)
 	client := srv.Client()
 	client.Timeout = timeout
+	deadlines := &deadlineRecorder{next: client.Transport}
+	client.Transport = deadlines
 	v := newClient("test-key", srv.URL, nil, client).VolumeUploads()
 	ctx := context.Background()
 
@@ -460,6 +464,41 @@ func TestVolumeUploadsCompletionOutlastsTheDefaultTimeout(t *testing.T) {
 	if client.Timeout != timeout {
 		t.Fatalf("the client's timeout changed to %v", client.Timeout)
 	}
+	// A fixed bound, so a much longer completion limit fails too.
+	got := deadlines.remaining()
+	if len(got) != 3 {
+		t.Fatalf("sent %d requests, want 3", len(got))
+	}
+	for _, left := range got[1:] {
+		if left <= 0 || left > 10*time.Minute {
+			t.Errorf("time left per request = %v, want each completion limited to at most 10 minutes", got)
+		}
+	}
+}
+
+// deadlineRecorder records how long each request had left before its
+// deadline when it was sent.
+type deadlineRecorder struct {
+	next http.RoundTripper
+	mu   sync.Mutex
+	left []time.Duration
+}
+
+func (d *deadlineRecorder) RoundTrip(r *http.Request) (*http.Response, error) {
+	left := time.Duration(-1)
+	if deadline, ok := r.Context().Deadline(); ok {
+		left = time.Until(deadline)
+	}
+	d.mu.Lock()
+	d.left = append(d.left, left)
+	d.mu.Unlock()
+	return d.next.RoundTrip(r)
+}
+
+func (d *deadlineRecorder) remaining() []time.Duration {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.left)
 }
 
 func TestVolumeUploadsKeyPairNotReadyIsTheSentinel(t *testing.T) {

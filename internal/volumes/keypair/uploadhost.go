@@ -5,8 +5,9 @@ import "strings"
 // The upload host rule lives beside productionHost and platformHost so that the statement
 // keys and the upload addresses decide "production" from one normalisation of the host.
 
-// platformDomain is the registrable domain of productionHost. The production API hands out
-// upload addresses only on hosts under it.
+// platformDomain is the registrable domain of productionHost. The upload host rule requires
+// the production API to hand out upload addresses only on hosts under it, so a production
+// build must not ship verification keys before that holds.
 const platformDomain = "runware.ai"
 
 // AllowsUploadTarget reports whether a part may be sent to targetURL, an upload address the

@@ -137,6 +137,8 @@ type putFake struct {
 	missingOnComplete  bool // file completion answers that the file is not found
 	refuseOpenStatus   int  // opening the session answers this status when set
 	refuseAbortStatus  int  // aborting the session answers this status when set
+	keyRevoked         bool // every Volumes API call answers 401, as for a revoked key
+	shortDeclaration   bool // the declaration answers one file fewer than declared
 	changeBetweenPages bool
 	pagesChanged       bool
 	onDeclare          func()
@@ -335,7 +337,7 @@ func (f *putFake) serveAPI(w http.ResponseWriter, r *http.Request) {
 		call += "?environment=" + env
 	}
 	f.calls = append(f.calls, call)
-	if r.Header.Get("Authorization") != "Bearer test-key" {
+	if r.Header.Get("Authorization") != "Bearer test-key" || f.keyRevoked {
 		writeProblem(w, http.StatusUnauthorized, "unauthorized", "no key", nil)
 		return
 	}
@@ -578,6 +580,9 @@ func (f *putFake) declare(w http.ResponseWriter, r *http.Request, vol *fakeVolum
 	}
 	if f.onDeclare != nil {
 		f.onDeclare()
+	}
+	if f.shortDeclaration {
+		answers = answers[1:]
 	}
 	writeJSON(w, http.StatusOK, put.DeclarationResult{Files: answers})
 }

@@ -375,8 +375,14 @@ func TestCompletionRetryTimeBudget(t *testing.T) {
 						t.Errorf("started another attempt %v after the first", s.Sub(start))
 					}
 				}
-				if elapsed := time.Since(start); elapsed > maxCompletionRetryTime+api.stall+maxUploadBackoff {
+				elapsed := time.Since(start)
+				if elapsed > maxCompletionRetryTime+api.stall+maxUploadBackoff {
 					t.Errorf("retried for %v over %d attempts, want the retry window plus one attempt", elapsed, len(api.starts))
+				}
+				// A fixed bound, so a longer window fails too: a 15 minute
+				// window fits three 5 minute stalls.
+				if elapsed >= 20*time.Minute || len(api.starts) != 3 {
+					t.Errorf("retried for %v over %d attempts, want 3 attempts in under 20 minutes", elapsed, len(api.starts))
 				}
 			})
 		})
