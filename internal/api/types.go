@@ -142,7 +142,9 @@ type TeamMember struct {
 
 // APIKeyInfo describes a single API key on the account.
 type APIKeyInfo struct {
-	Name        string    `json:"name"`
+	Name string `json:"name"`
+	// APIKey is the key's public ident (its first 16 characters) followed by
+	// "*" for the secret half, which the API never returns.
 	APIKey      string    `json:"apiKey"`
 	Description string    `json:"description,omitempty"`
 	Enabled     bool      `json:"enabled"`

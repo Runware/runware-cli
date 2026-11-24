@@ -112,17 +112,21 @@ func newDetailsCmd(logger *log.Logger) *cobra.Command {
 			}
 
 			spin.Stop()
-			return output.Print(cmdutil.FormatFor(cmd), accountDetailsResult{
-				OrganizationName: result.OrganizationName,
-				OrganizationUUID: result.OrganizationUUID.String(),
-				AIRSource:        result.AIRSource,
-				Balance:          result.Balance,
-				Usage:            result.Usage,
-				Team:             result.Team,
-				// The API sends each key as its public ident (the first 16
-				// characters) and "*" for the secret half, so print it as is.
-				APIKeys: result.APIKeys,
-			})
+			return output.Print(cmdutil.FormatFor(cmd), newAccountDetailsResult(result))
 		},
+	}
+}
+
+// newAccountDetailsResult maps the API response to what the command prints.
+// API keys are printed as they come: see api.APIKeyInfo.APIKey.
+func newAccountDetailsResult(result *api.AccountResult) accountDetailsResult {
+	return accountDetailsResult{
+		OrganizationName: result.OrganizationName,
+		OrganizationUUID: result.OrganizationUUID.String(),
+		AIRSource:        result.AIRSource,
+		Balance:          result.Balance,
+		Usage:            result.Usage,
+		Team:             result.Team,
+		APIKeys:          result.APIKeys,
 	}
 }
