@@ -136,6 +136,7 @@ type putFake struct {
 	missingOnDeclare   bool // declaration answers that the Volume is not found
 	missingOnComplete  bool // file completion answers that the file is not found
 	refuseOpenStatus   int  // opening the session answers this status when set
+	refuseAbortStatus  int  // aborting the session answers this status when set
 	changeBetweenPages bool
 	pagesChanged       bool
 	onDeclare          func()
@@ -375,6 +376,10 @@ func (f *putFake) serveAPI(w http.ResponseWriter, r *http.Request) {
 func (f *putFake) serveUpload(w http.ResponseWriter, r *http.Request, vol *fakeVolume, up *fakeUpload, rest []string) {
 	switch {
 	case len(rest) == 0 && r.Method == http.MethodDelete:
+		if f.refuseAbortStatus != 0 {
+			writeProblem(w, f.refuseAbortStatus, "refused", "the abort was refused", nil)
+			return
+		}
 		if up.state == fakeCompleted {
 			writeProblem(w, http.StatusConflict, "volume-upload-not-open", "the upload session is not open", nil)
 			return

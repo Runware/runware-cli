@@ -467,15 +467,7 @@ func TestVolumesPutPrintsAnAPIRefusalWithItsFields(t *testing.T) {
 	if r.err == nil {
 		t.Fatal("put succeeded with the session refused")
 	}
-	var structured bytes.Buffer
-	cmdutil.PrintErrorTo(log.New(io.Discard), &structured, output.FormatJSON, r.err)
-	var printed struct {
-		Errors []map[string]any `json:"errors"`
-	}
-	if err := json.Unmarshal(structured.Bytes(), &printed); err != nil || len(printed.Errors) != 1 {
-		t.Fatalf("printed %s, want one error (%v)", structured.String(), err)
-	}
-	got := printed.Errors[0]
+	got := printedJSONError(t, r.err)
 	if got["code"] != "forbidden" || got["problemType"] != fakeProblemBase+"refused" {
 		t.Errorf("printed fields %v, want the API's code and problem type", got)
 	}
@@ -484,6 +476,57 @@ func TestVolumesPutPrintsAnAPIRefusalWithItsFields(t *testing.T) {
 	}
 	if text := printedError(t, r.err); !strings.Contains(text, "code=forbidden") {
 		t.Errorf("printed %q, want the API's code", text)
+	}
+}
+
+// printedJSONError is the one error the CLI prints for err with --format json.
+func printedJSONError(t *testing.T, err error) map[string]any {
+	t.Helper()
+	var structured bytes.Buffer
+	cmdutil.PrintErrorTo(log.New(io.Discard), &structured, output.FormatJSON, err)
+	var printed errorOutput
+	if jerr := json.Unmarshal(structured.Bytes(), &printed); jerr != nil || len(printed.Errors) != 1 {
+		t.Fatalf("printed %s, want one error (%v)", structured.String(), jerr)
+	}
+	return printed.Errors[0]
+}
+
+// TestVolumesPutPrintsALimitRefusalWithItsFields: a limit the API names keeps
+// the API's fields under the engine's explanation of the limit.
+func TestVolumesPutPrintsALimitRefusalWithItsFields(t *testing.T) {
+	f := newPutFake(t)
+	f.newVolume("", testVolume)
+	f.maxFileBytes = 10000
+	r := f.run(formatJSON, false, testVolume, newTree(t, testTree))
+	if r.err == nil {
+		t.Fatal("put succeeded over the file size limit")
+	}
+	got := printedJSONError(t, r.err)
+	msg, _ := got["message"].(string)
+	if got["code"] != "conflict" || !strings.HasSuffix(fmt.Sprint(got["problemType"]), "volume-limit-exceeded") || !strings.Contains(msg, "maxFileBytes") {
+		t.Errorf("printed %v, want the API's code and problem type and the limit in the message", got)
+	}
+}
+
+// TestVolumesPutPrintsTheCauseNotTheAbort: when the abort after a failure is
+// refused too, the printed fields are the failure's, not the abort's.
+func TestVolumesPutPrintsTheCauseNotTheAbort(t *testing.T) {
+	f := newPutFake(t)
+	f.newVolume("", testVolume)
+	f.refusePart = true
+	f.refuseAbortStatus = http.StatusUnauthorized
+	r := f.run(formatJSON, false, testVolume, newTree(t, testTree))
+	if r.err == nil {
+		t.Fatal("put succeeded with every part refused")
+	}
+	if !strings.Contains(r.err.Error(), "could not confirm the upload was aborted") {
+		t.Fatalf("error %q does not say the abort failed, so this test proves nothing", r.err)
+	}
+	if got := printedJSONError(t, r.err); got["code"] != nil {
+		t.Errorf("printed %v, want no API code: the abort's refusal is not the failure", got)
+	}
+	if text := printedError(t, r.err); strings.Contains(text, "Authentication failed") || !strings.Contains(text, "part token was refused") {
+		t.Errorf("printed %q, want the part refusal and no word about the API key", text)
 	}
 }
 

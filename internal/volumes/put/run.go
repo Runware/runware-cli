@@ -278,8 +278,11 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 		return struct{}{}, err
 	})
 	if abortErr != nil {
-		cause = fmt.Errorf("%w (could not confirm the upload was aborted; the session may stay open until %s: %w)",
-			cause, r.expiresAt.Format(time.RFC3339), abortErr)
+		cause = &AbortFailedError{
+			Cause:     cause,
+			Abort:     abortErr,
+			ExpiresAt: r.expiresAt,
+		}
 	}
 	if r.journal != nil {
 		if err := r.journal.remove(); err != nil {
@@ -514,8 +517,9 @@ func explainDeclare(err error, batch []*fileState) error {
 func explain(err error) error {
 	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugLimitExceeded && p.Limit != "" {
 		return &LimitError{
-			Limit: p.Limit,
-			Cap:   p.Cap,
+			Limit:   p.Limit,
+			Cap:     p.Cap,
+			Problem: err,
 		}
 	}
 	return err

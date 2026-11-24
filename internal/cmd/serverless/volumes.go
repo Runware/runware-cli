@@ -153,34 +153,53 @@ func printPutSummary(w io.Writer, format output.Format, s put.Summary) error {
 // on its status: a refused part comes from the upload endpoint, where a 404
 // says nothing about the Volume. A 404 about one file (its completion, its
 // part tokens) is about that file or session, not the Volume. A Volumes API
-// answer also reaches cmdutil.PrintError as a *transport.RunwareError, which
-// prints it like any other serverless error, with the auth hint on a 401 or
-// 403.
+// answer that caused the failure also reaches cmdutil.PrintError as a
+// *transport.RunwareError, which prints it like any other serverless error:
+// JSON and YAML get the API's code and problem type, and the text format the
+// code, or for a 401 or 403 only the CLI's auth hint.
 func putError(volume put.VolumeRef, err error) error {
-	err = explainPutError(volume, err)
-	a, ok := errors.AsType[*serverlessapi.VolumeAPIError](err)
-	if !ok || a.API == nil {
-		return err
+	cause := putCause(err)
+	_, abortFailed := errors.AsType[*put.AbortFailedError](err)
+	explained := explainPutError(volume, err)
+	a, ok := errors.AsType[*serverlessapi.VolumeAPIError](cause)
+	if (!ok || a.API == nil) && !abortFailed {
+		return explained
 	}
-	// The RunwareError's message is the API's alone; keep the whole line,
-	// which names the file and step that failed and any hint above.
-	api := *a.API
-	api.Message = err.Error()
-	return &putAPIError{
-		err: err,
-		api: &api,
+	failed := &putFailedError{
+		line:  explained.Error(),
+		cause: cause,
 	}
+	if ok && a.API != nil {
+		// The RunwareError's message is the API's alone; keep the whole
+		// line, which names the file and step that failed and any hint
+		// above. The text format replaces it with the hint on an auth error,
+		// as it does for every serverless command.
+		api := *a.API
+		api.Message = failed.line
+		failed.api = &api
+	}
+	return failed
+}
+
+// putCause is the failure in err, without the note about a failed abort,
+// whose API answer is about the session rather than the failure.
+func putCause(err error) error {
+	if af, ok := errors.AsType[*put.AbortFailedError](err); ok {
+		return af.Cause
+	}
+	return err
 }
 
 func explainPutError(volume put.VolumeRef, err error) error {
-	if p, ok := errors.AsType[*put.ProblemError](err); ok && p.Slug == volumeSlugUploadNotOpen {
+	cause := putCause(err)
+	if p, ok := errors.AsType[*put.ProblemError](cause); ok && p.Slug == volumeSlugUploadNotOpen {
 		return fmt.Errorf("the upload session is no longer open: it was completed, aborted or reached its deadline; run put again (%w)", err)
 	}
-	a, ok := errors.AsType[*serverlessapi.VolumeAPIError](err)
+	a, ok := errors.AsType[*serverlessapi.VolumeAPIError](cause)
 	if !ok || a.Problem.Status != http.StatusNotFound {
 		return err
 	}
-	if _, perFile := errors.AsType[*put.FileError](err); perFile {
+	if _, perFile := errors.AsType[*put.FileError](cause); perFile {
 		return err
 	}
 	env := volume.Environment
@@ -190,17 +209,25 @@ func explainPutError(volume put.VolumeRef, err error) error {
 	return fmt.Errorf("volume %q was not found in environment %s, or Shared Volumes is not enabled for the organization; check the name and --env (%w)", volume.Name, env, err)
 }
 
-// putAPIError is a put error caused by a Volumes API answer. It unwraps to
-// api first, so cmdutil.PrintError finds that RunwareError, whose message is
-// the whole line, before the API's own one inside err.
-type putAPIError struct {
-	err error
-	api *transport.RunwareError
+// putFailedError is the whole line put prints, unwrapping only to the
+// failure: a refused abort is a note in the line, so cmdutil.PrintError never
+// takes the abort's API answer for the failure's. It unwraps to api first, so
+// PrintError finds that RunwareError, whose message is the whole line, before
+// the API's own one inside cause.
+type putFailedError struct {
+	line  string
+	api   *transport.RunwareError
+	cause error
 }
 
-func (e *putAPIError) Error() string { return e.err.Error() }
+func (e *putFailedError) Error() string { return e.line }
 
-func (e *putAPIError) Unwrap() []error { return []error{e.api, e.err} }
+func (e *putFailedError) Unwrap() []error {
+	if e.api == nil {
+		return []error{e.cause}
+	}
+	return []error{e.api, e.cause}
+}
 
 // isTerminal reports whether w is a terminal.
 func isTerminal(w io.Writer) bool {
