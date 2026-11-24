@@ -1,14 +1,21 @@
 package serverless
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/log"
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/output"
 )
 
 const (
@@ -29,16 +36,19 @@ func connectorTestBody(status, extra string) string {
 }
 
 // connectorTestStub answers a test start with start, then each poll with the
-// next of polls (the last one repeats), or with pollRefusal when it has a
-// status, and counts the polls.
+// next of polls (the last one repeats), except that the first refusedPolls
+// polls get pollRefusal and the truncatedPolls after them a body cut short,
+// and counts the polls.
 type connectorTestStub struct {
-	mu          sync.Mutex
-	start       stubResponse
-	polls       []string
-	pollRefusal stubResponse
-	header      http.Header
-	gets        int
-	query       map[string][]string
+	mu             sync.Mutex
+	start          stubResponse
+	polls          []string
+	pollRefusal    stubResponse
+	refusedPolls   int
+	truncatedPolls int
+	header         http.Header
+	gets           int
+	query          map[string][]string
 }
 
 func (s *connectorTestStub) handler(t *testing.T) http.HandlerFunc {
@@ -60,13 +70,21 @@ func (s *connectorTestStub) handler(t *testing.T) http.HandlerFunc {
 			_, _ = w.Write([]byte(s.start.body))
 		case "GET " + testConnectorTestGet:
 			s.gets++
-			if s.pollRefusal.status != 0 {
+			if s.gets <= s.refusedPolls {
 				w.Header().Set("Content-Type", testProblemJSON)
 				w.WriteHeader(s.pollRefusal.status)
 				_, _ = w.Write([]byte(s.pollRefusal.body))
 				return
 			}
-			body := s.polls[min(s.gets-1, len(s.polls)-1)]
+			if s.gets <= s.refusedPolls+s.truncatedPolls {
+				// The declared length is never met, so the client's read of the
+				// body fails with io.ErrUnexpectedEOF.
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Content-Length", "1000")
+				_, _ = w.Write([]byte(`{"id":`))
+				return
+			}
+			body := s.polls[min(s.gets-1-s.refusedPolls-s.truncatedPolls, len(s.polls)-1)]
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(body))
 		default:
@@ -86,6 +104,18 @@ func pendingStart() stubResponse {
 
 func problemBody(status int, detail string) string {
 	return fmt.Sprintf(`{"type":"about:blank","title":%q,"status":%d,"detail":%q}`, http.StatusText(status), status, detail)
+}
+
+// printedError is what the CLI writes to the terminal for err: for an API
+// error, its message alone, so a hint kept only in err.Error() never shows.
+func printedError(t *testing.T, err error) string {
+	t.Helper()
+	if err == nil {
+		t.Fatal("err = nil, want an error")
+	}
+	var text bytes.Buffer
+	cmdutil.PrintErrorTo(log.New(&text), io.Discard, output.FormatTable, err)
+	return text.String()
 }
 
 func runConnectorTest(t *testing.T, stub *connectorTestStub, extra ...string) serverlessRun {
@@ -219,7 +249,7 @@ func TestAppsConnectorsTestRefusals(t *testing.T) {
 		{
 			name:   "running test",
 			status: http.StatusConflict,
-			want:   []string{"already running", "run the test again", "a test of this connector is running"},
+			want:   []string{"a test of connector " + testConnectorName + " on " + testAppID + " is already running", "run the test again", "a test of this connector is running"},
 		},
 		{
 			// A 422 is also any request the API's schema refuses, so the CLI adds
@@ -259,12 +289,10 @@ func TestAppsConnectorsTestRefusals(t *testing.T) {
 
 			run := runConnectorTest(t, stub)
 
-			if run.err == nil {
-				t.Fatal("err = nil, want a refusal")
-			}
+			printed := printedError(t, run.err)
 			for _, want := range tc.want {
-				if !strings.Contains(run.err.Error(), want) {
-					t.Errorf("error missing %q:\n%s", want, run.err)
+				if !strings.Contains(printed, want) {
+					t.Errorf("printed error missing %q:\n%s", want, printed)
 				}
 			}
 			if run.stdout != "" || stub.gets != 0 {
@@ -286,8 +314,8 @@ func TestAppsConnectorsTestNotFoundHintKeepsTheEnvironment(t *testing.T) {
 	run := runConnectorTest(t, stub, "--env", testEnvironment)
 
 	want := "runware serverless apps connectors list " + testAppID + " --env " + testEnvironment
-	if run.err == nil || !strings.Contains(run.err.Error(), want) {
-		t.Fatalf("err = %v, want it to suggest %q", run.err, want)
+	if printed := printedError(t, run.err); !strings.Contains(printed, want) {
+		t.Fatalf("printed error = %q, want it to suggest %q", printed, want)
 	}
 }
 
@@ -303,11 +331,12 @@ func TestAppsConnectorsTestAddsNoDiagnosisToASchemaRefusal(t *testing.T) {
 
 	run := runConnectorTest(t, stub)
 
-	if run.err == nil || !strings.Contains(run.err.Error(), detail) {
-		t.Fatalf("err = %v, want the API's detail", run.err)
+	printed := printedError(t, run.err)
+	if !strings.Contains(printed, detail) {
+		t.Fatalf("printed error = %q, want the API's detail", printed)
 	}
-	if strings.Contains(run.err.Error(), "generic") || strings.Contains(run.err.Error(), "aws and gcp") {
-		t.Fatalf("err = %v, want no connector-kind diagnosis", run.err)
+	if strings.Contains(printed, "generic") || strings.Contains(printed, "aws and gcp") {
+		t.Fatalf("printed error = %q, want no connector-kind diagnosis", printed)
 	}
 }
 
@@ -320,40 +349,194 @@ func TestAppsConnectorsTestStopsWaitingAtTheTimeout(t *testing.T) {
 	begin := time.Now()
 	run := runConnectorTest(t, stub, "--timeout", "100ms")
 
-	if run.err == nil || !strings.Contains(run.err.Error(), "timed out waiting for the connector test after 100ms") {
-		t.Fatalf("err = %v, want the timeout", run.err)
-	}
-	if !strings.Contains(run.err.Error(), "test "+testConnectorTestID+" keeps running") {
-		t.Errorf("err = %v, want it to name the test that keeps running", run.err)
+	printed := printedError(t, run.err)
+	for _, want := range []string{"timed out waiting for the connector test after 100ms", "test " + testConnectorTestID} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("printed error = %q, want %q", printed, want)
+		}
 	}
 	if time.Since(begin) > 5*time.Second {
 		t.Fatalf("took %s, want the command to stop at the timeout", time.Since(begin))
 	}
 }
 
-// A poll the API refuses ends the wait; the error keeps the API's detail and
-// names the test, which goes on without the command.
-func TestAppsConnectorsTestNamesTheTestWhenAPollFails(t *testing.T) {
+// A poll the API refuses for good ends the wait; the printed error keeps the
+// API's detail and names the test.
+func TestAppsConnectorsTestNamesTheTestWhenAPollIsRefused(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusNotFound,
+			body:   problemBody(http.StatusNotFound, "OIDC connector test not found"),
+		},
+		refusedPolls: 1,
+	}
+
+	run := runConnectorTest(t, stub)
+
+	printed := printedError(t, run.err)
+	for _, want := range []string{"OIDC connector test not found", "test " + testConnectorTestID} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("printed error missing %q:\n%s", want, printed)
+		}
+	}
+	if stub.gets != 1 {
+		t.Errorf("polls = %d, want 1", stub.gets)
+	}
+}
+
+// A poll the server fails is retried: the test goes on whatever the API's
+// availability, so a restart during the wait does not fail the command.
+func TestAppsConnectorsTestRetriesAPollTheServerFailed(t *testing.T) {
 	stub := &connectorTestStub{
 		start: pendingStart(),
 		pollRefusal: stubResponse{
 			status: http.StatusServiceUnavailable,
 			body:   problemBody(http.StatusServiceUnavailable, "the API is restarting"),
 		},
+		refusedPolls: 2,
+		polls:        []string{connectorTestBody("ok", `"identity":"`+testConnectorTestRole+`"`)},
+	}
+
+	run := runConnectorTest(t, stub)
+
+	if run.err != nil {
+		t.Fatalf("err = %v, want the result after the failed polls", run.err)
+	}
+	if stub.gets != 3 {
+		t.Errorf("polls = %d, want 3 (two refused, then ok)", stub.gets)
+	}
+	if !strings.Contains(run.stdout, testConnectorTestRole) {
+		t.Errorf("stdout missing the identity:\n%s", run.stdout)
+	}
+}
+
+// Polls the server keeps failing are retried until --timeout, and the timeout
+// says what the last one answered.
+func TestAppsConnectorsTestTimeoutNamesTheLastFailedPoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusServiceUnavailable,
+			body:   problemBody(http.StatusServiceUnavailable, "the API is restarting"),
+		},
+		refusedPolls: 1 << 20,
+	}
+
+	run := runConnectorTest(t, stub, "--timeout", "100ms")
+
+	printed := printedError(t, run.err)
+	for _, want := range []string{"timed out waiting for the connector test after 100ms", "the last poll failed: the API is restarting", "test " + testConnectorTestID} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("printed error = %q, want %q", printed, want)
+		}
+	}
+	if stub.gets < 2 {
+		t.Errorf("polls = %d, want the failed poll retried", stub.gets)
+	}
+}
+
+// A poll whose answer is cut off mid-body is retried: the connection failed,
+// not the API.
+func TestAppsConnectorsTestRetriesAPollCutOffMidBody(t *testing.T) {
+	stub := &connectorTestStub{
+		start:          pendingStart(),
+		truncatedPolls: 1,
+		polls:          []string{connectorTestBody("ok", `"identity":"`+testConnectorTestRole+`"`)},
+	}
+
+	run := runConnectorTest(t, stub)
+
+	if run.err != nil {
+		t.Fatalf("err = %v, want the result after the cut-off poll", run.err)
+	}
+	if stub.gets != 2 {
+		t.Errorf("polls = %d, want 2 (one cut off, then ok)", stub.gets)
+	}
+}
+
+// A status the client maps to a server error by default, such as 410, is not
+// transient, so the poll is not retried.
+func TestAppsConnectorsTestDoesNotRetryAGonePoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusGone,
+			body:   problemBody(http.StatusGone, "gone"),
+		},
+		refusedPolls: 1 << 20,
+	}
+
+	run := runConnectorTest(t, stub, "--timeout", "5s")
+
+	if run.err == nil {
+		t.Fatal("err = nil, want the refusal")
+	}
+	if stub.gets != 1 {
+		t.Errorf("polls = %d, want 1", stub.gets)
+	}
+}
+
+// A poll the API refuses for the credential is not retried.
+func TestAppsConnectorsTestDoesNotRetryAnUnauthorizedPoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		pollRefusal: stubResponse{
+			status: http.StatusUnauthorized,
+			body:   problemBody(http.StatusUnauthorized, "Missing or invalid credentials"),
+		},
+		refusedPolls: 1 << 20,
 	}
 
 	run := runConnectorTest(t, stub)
 
 	if run.err == nil {
-		t.Fatal("err = nil, want the failed poll")
-	}
-	for _, want := range []string{"the API is restarting", "test " + testConnectorTestID + " keeps running"} {
-		if !strings.Contains(run.err.Error(), want) {
-			t.Errorf("error missing %q:\n%s", want, run.err)
-		}
+		t.Fatal("err = nil, want the refusal")
 	}
 	if stub.gets != 1 {
 		t.Errorf("polls = %d, want 1", stub.gets)
+	}
+}
+
+// An answer the client cannot decode is not retried: the next would be the same.
+func TestAppsConnectorsTestDoesNotRetryAnUndecodablePoll(t *testing.T) {
+	stub := &connectorTestStub{
+		start: pendingStart(),
+		polls: []string{"{not json"},
+	}
+
+	run := runConnectorTest(t, stub, "--timeout", "5s")
+
+	if run.err == nil {
+		t.Fatal("err = nil, want the decode failure")
+	}
+	if stub.gets != 1 {
+		t.Errorf("polls = %d, want 1", stub.gets)
+	}
+}
+
+// What the error says of a test the command stopped waiting for depends on
+// its deadline: still running before it, overdue past it.
+func TestConnectorTestRunningNote(t *testing.T) {
+	deadline := time.Date(2026, 11, 18, 10, 2, 0, 0, time.UTC)
+	test := &serverlessapi.OidcConnectorTest{
+		DeadlineAt: deadline,
+	}
+
+	before := connectorTestRunningNote(test, deadline.Add(-time.Second))
+	if !strings.Contains(before, "may still be running; the API ends it by 2026-11-18T10:02:00Z at the latest") {
+		t.Errorf("before the deadline = %q, want it possibly running until the deadline", before)
+	}
+	after := connectorTestRunningNote(test, deadline.Add(30*time.Second))
+	if !strings.Contains(after, "its deadline 2026-11-18T10:02:00Z has passed, so the API should have ended it") {
+		t.Errorf("past the deadline = %q, want the deadline passed", after)
+	}
+	if strings.Contains(after, "may still be running") {
+		t.Errorf("past the deadline = %q, want no claim that it still runs", after)
+	}
+	none := connectorTestRunningNote(&serverlessapi.OidcConnectorTest{}, deadline)
+	if strings.Contains(none, "deadline") {
+		t.Errorf("without a deadline = %q, want no deadline claimed", none)
 	}
 }
 
