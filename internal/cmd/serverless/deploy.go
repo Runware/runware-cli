@@ -37,7 +37,8 @@ const appNameFlag = "name"
 // createOnlyDeployFlags apply to CreateApp only. On an existing app a flag is
 // accepted when its value matches the app, and a changed value is rejected, so
 // a leftover create invocation cannot wipe environment variables or silently
-// no-op. --volume never matches: the app read does not return volumes.
+// no-op. --volume never matches: the app read does not return volumes. --mount
+// is not here: it replaces the mounts of the version an update records.
 var createOnlyDeployFlags = []string{
 	"gpu-type",
 	appNameFlag,
@@ -49,7 +50,7 @@ var createOnlyDeployFlags = []string{
 	"fallback-gpu-type",
 	"min-available-workers",
 	"available-workers-pct",
-	"volume",
+	volumeFlag,
 	"secret",
 	envVarFlag,
 	"env-file",
@@ -97,6 +98,12 @@ func validateDeployArgs(cmd *cobra.Command, args []string, containerDir, from st
 	}
 	if chosen != 1 {
 		if chosen == 0 {
+			// A mounts change records a version with the image the app runs
+			// now, so it needs no source; resolveDeployTarget refuses it on a
+			// create.
+			if cmd.Flags().Changed(mountFlag) || cmd.Flags().Changed(noMountsFlag) {
+				return refuseCodeOnlyFlags(cmd, "pass a source to use it, or leave it out to change only the mounts")
+			}
 			return fmt.Errorf("%s", deploySourceChoice)
 		}
 		return fmt.Errorf("%s, not more than one", deploySourceChoice)
@@ -173,6 +180,8 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		containerDir        string
 		from                string
 		volumes             []string
+		mounts              []string
+		noMounts            bool
 		secrets             []string
 		envVars             []string
 		envFiles            []string
@@ -199,7 +208,7 @@ is 409.
 Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
 --scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
 --min-available-workers, --available-workers-pct, --volume, --secret,
---env-var and --env-file.
+--env-var and --env-file. --mount and --no-mounts work on create and on update.
 
 On an existing copy, a create-only flag is accepted when its value matches the
 app, and a changed value is rejected; one error names every changed flag.
@@ -276,6 +285,24 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
+--volume and --mount are different things. --volume <path> is a node-local
+folder the app writes to, empty on a new node, set at create only. --mount
+<volume>:<path> mounts a Shared Volume of the same environment read-only at
+<path>: files uploaded beforehand with 'volumes put'. Each worker mounts the
+Volume's latest files when it starts, so new files reach workers started
+after an upload without a new deploy, and running workers keep the files they
+started with until they stop. Repeat --mount for more than one; the same
+Volume may be mounted at two paths. --volume and --mount entries share a
+limit of 30 and may not equal or contain one another. These path checks run
+before the source is uploaded.
+
+On an existing application, --mount replaces its mounts in the version the
+deploy records, --no-mounts removes them, and leaving both out keeps them.
+Without a source, --mount or --no-mounts records a version with the image the
+app runs now and rolls it out like a configuration change. A rollback with
+'apps versions activate' restores a version's mounts, not earlier Volume
+files.
+
 --secret NAME, or NAME=ENV_VAR, attaches an existing secret of the same
 environment at create so the first rollout carries it. Repeat the flag for
 more than one. Attach or detach later with 'secrets attach' and
@@ -313,6 +340,16 @@ paths and an invoke example once the application is active.`,
   # keep downloaded model weights on persistent node-local storage
   runware serverless deploy model.py --id my-app --gpu-type l40s \
     --volume /root/.cache/huggingface
+
+  # mount the Shared Volume model-weights read-only at /models
+  runware serverless deploy model.py --id my-app --gpu-type l40s \
+    --mount model-weights:/models
+
+  # change the mounts of an existing application without a new source
+  runware serverless deploy --id my-app --mount model-weights:/models --mount tokenizer:/tok
+
+  # remove every mount of an existing application
+  runware serverless deploy --id my-app --no-mounts
 
   # attach an existing secret and keep one idle worker warm
   runware serverless deploy ./app.py --id my-app --gpu-type h100 \
@@ -404,6 +441,9 @@ paths and an invoke example once the application is active.`,
 			if id == "" {
 				return fmt.Errorf("--id is required")
 			}
+			// A mounts-only update: validateDeployArgs let it through without
+			// a source.
+			sourceless := len(args) == 0 && srcDir == "" && containerDir == ""
 			if err := validateGPUsPerWorkerFlag(cmd, gpusPerWorker); err != nil {
 				return err
 			}
@@ -434,16 +474,37 @@ paths and an invoke example once the application is active.`,
 				return err
 			}
 
-			archive, source, err := buildDeployArchive(srcDir, containerDir, baseImage, requirements, args)
+			// Before the archive and the upload: a path mistake should cost
+			// nothing.
+			appVolumes, appMounts, err := buildSandboxPaths(volumes, mounts)
 			if err != nil {
 				return err
+			}
+			if noMounts {
+				empty := []serverlessapi.VolumeMount{}
+				appMounts = &empty
+			}
+
+			var (
+				archive []byte
+				source  deploySource
+			)
+			if !sourceless {
+				archive, source, err = buildDeployArchive(srcDir, containerDir, baseImage, requirements, args)
+				if err != nil {
+					return err
+				}
 			}
 
 			client := newServerlessClient(cmd, logger)
 
-			update, err := resolveDeployTarget(cmd, client, id, gpuType, from)
+			update, err := resolveDeployTarget(cmd, client, id, gpuType, from, sourceless)
 			if err != nil {
 				return err
+			}
+			if !update && noMounts {
+				// A new application has no mounts to remove.
+				appMounts = nil
 			}
 
 			// The set the app serves now, to compare against what the new version
@@ -460,15 +521,10 @@ paths and an invoke example once the application is active.`,
 			}
 
 			var (
-				appVolumes *[]serverlessapi.AppVolume
 				appEnv     *map[string]string
 				appSecrets *[]serverlessapi.SecretAttach
 			)
 			if !update {
-				appVolumes, err = buildVolumes(volumes)
-				if err != nil {
-					return err
-				}
 				appEnv, err = buildEnvironmentVariables(envFiles, envVars, manifestEnv)
 				if err != nil {
 					return err
@@ -479,25 +535,32 @@ paths and an invoke example once the application is active.`,
 				}
 			}
 
-			spin := cmdutil.NewSpinner(fmt.Sprintf("Uploading source for %s...", id))
-			spin.Start()
-			sourceID, err := uploadSource(cmd.Context(), client, archive, source.sourceType)
-			spin.Stop()
-			if err != nil {
-				return err
+			var appSource *serverlessapi.AppSourceUpsert
+			if !sourceless {
+				spin := cmdutil.NewSpinner(fmt.Sprintf("Uploading source for %s...", id))
+				spin.Start()
+				sourceID, err := uploadSource(cmd.Context(), client, archive, source.sourceType)
+				spin.Stop()
+				if err != nil {
+					return err
+				}
+				upsert, err := source.appSource(sourceID)
+				if err != nil {
+					return fmt.Errorf("build application source: %w", err)
+				}
+				appSource = &upsert
 			}
 
-			appSource, err := source.appSource(sourceID)
-			if err != nil {
-				return fmt.Errorf("build application source: %w", err)
-			}
-
-			var app *serverlessapi.App
+			var (
+				app  *serverlessapi.App
+				spin *cmdutil.Spinner
+			)
 			if update {
 				spin = cmdutil.NewSpinner(fmt.Sprintf("Updating application %s...", id))
 				spin.Start()
 				app, err = client.UpdateApp(cmd.Context(), id, serverlessapi.AppUpdate{
-					AppSource: &appSource,
+					AppSource: appSource,
+					Mounts:    appMounts,
 				})
 			} else {
 				spin = cmdutil.NewSpinner(fmt.Sprintf("Creating application %s...", id))
@@ -505,8 +568,9 @@ paths and an invoke example once the application is active.`,
 				app, err = client.CreateApp(cmd.Context(), serverlessapi.AppCreate{
 					AppId:                id,
 					AppName:              name,
-					AppSource:            appSource,
+					AppSource:            *appSource,
 					Volumes:              appVolumes,
+					Mounts:               appMounts,
 					EnvironmentVariables: appEnv,
 					Secrets:              appSecrets,
 					Configuration: serverlessapi.WorkerConfigCreate{
@@ -568,7 +632,10 @@ paths and an invoke example once the application is active.`,
 				}
 			}
 
-			if err := output.Print(cmdutil.FormatFor(cmd), appResult(*app)); err != nil {
+			if err := output.Print(cmdutil.FormatFor(cmd), deployResult{
+				appResult: appResult(*app),
+				mounts:    appMounts,
+			}); err != nil {
 				return err
 			}
 			if !wait {
@@ -581,7 +648,10 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&srcDir, "src-dir", "", "Directory to package as the application source (default: the working directory; code deploys only)")
 	cmd.Flags().StringVar(&containerDir, "container", "", "Directory whose root contains Dockerfile and container.yaml")
 	cmd.Flags().StringVar(&from, "from", "", "URL of a packaged source to fetch and deploy as a new application, reading its "+manifestFile)
-	cmd.Flags().StringArrayVar(&volumes, "volume", nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
+	cmd.Flags().StringArrayVar(&volumes, volumeFlag, nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
+	cmd.Flags().StringArrayVar(&mounts, mountFlag, nil, "Shared Volume of the same environment to mount read-only, as <volume>:<path>; replaces the mounts on an update (repeatable)")
+	cmd.Flags().BoolVar(&noMounts, noMountsFlag, false, "Remove every Shared Volume mount of an existing application")
+	cmd.MarkFlagsMutuallyExclusive(mountFlag, noMountsFlag)
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&envFiles, "env-file", nil, "File of KEY=VALUE lines to read environment variables from (repeatable)")
@@ -610,8 +680,9 @@ paths and an invoke example once the application is active.`,
 // resolveDeployTarget reports whether the deploy updates an existing copy or
 // creates one. Before the archive is uploaded it refuses a copy that is still
 // deleting, create-only flags on an update, and an unknown --env or a missing
-// --gpu-type on a create.
-func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, gpuType, from string) (update bool, err error) {
+// --gpu-type on a create. A sourceless deploy only changes the mounts of an
+// existing copy, so it is refused when there is none.
+func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, gpuType, from string, sourceless bool) (update bool, err error) {
 	app, err := existingApp(cmd.Context(), client, id)
 	if err != nil {
 		return false, err
@@ -627,6 +698,12 @@ func resolveDeployTarget(cmd *cobra.Command, client *serverlessapi.Client, id, g
 			)
 		}
 		return true, validateUpdateDeployFlags(cmd, app)
+	}
+	if sourceless {
+		return false, fmt.Errorf(
+			"application %q does not exist in this environment, and a deploy without a source only changes the mounts of an existing one; %s to create it",
+			id, deploySourceChoice,
+		)
 	}
 	if err := requireEnvironment(cmd.Context(), client, commandEnvironment(cmd)); err != nil {
 		return false, err

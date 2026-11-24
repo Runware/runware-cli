@@ -640,11 +640,14 @@ func TestVersionResult_NilBuildID(t *testing.T) {
 		VersionNumber: 1,
 		CreatedAt:     time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
 	}).Rows()
-	if len(rows) != 5 {
-		t.Fatalf("expected 5 rows, got %d", len(rows))
+	if len(rows) != 6 {
+		t.Fatalf("expected 6 rows, got %d", len(rows))
 	}
 	if rows[3][1] != "" {
 		t.Fatalf("nil BuildId should render empty, got %#v", rows[3][1])
+	}
+	if rows[4][0] != colMounts || rows[4][1] != noMounts {
+		t.Fatalf("no mounts should render none, got %#v", rows[4])
 	}
 	if rows[0][1] != int32(1) {
 		t.Fatalf("version number: got %#v", rows[0][1])
@@ -776,8 +779,8 @@ func TestWorkerResult_NilOptionalFields(t *testing.T) {
 		CreatedAt:        created,
 		StatusOccurredAt: created,
 	}).Rows()
-	if len(rows) != 12 {
-		t.Fatalf("expected 12 rows, got %d", len(rows))
+	if len(rows) != 13 {
+		t.Fatalf("expected 13 rows, got %d", len(rows))
 	}
 	if rows[4][1] != "" {
 		t.Fatalf("nil NodeName should render empty, got %#v", rows[4][1])
@@ -785,10 +788,13 @@ func TestWorkerResult_NilOptionalFields(t *testing.T) {
 	if rows[5][1] != "" {
 		t.Fatalf("nil GpuType should render empty, got %#v", rows[5][1])
 	}
-	if rows[8][1] != "" {
-		t.Fatalf("nil LastSeenAt should render empty, got %#v", rows[8][1])
+	if rows[8][0] != colMounts || rows[8][1] != noValue {
+		t.Fatalf("no mounts should render %q, got %#v", noValue, rows[8])
 	}
-	if rows[11][1] != "" {
-		t.Fatalf("nil StatusReason should render empty, got %#v", rows[11][1])
+	if rows[9][1] != "" {
+		t.Fatalf("nil LastSeenAt should render empty, got %#v", rows[9][1])
+	}
+	if rows[12][1] != "" {
+		t.Fatalf("nil StatusReason should render empty, got %#v", rows[12][1])
 	}
 }

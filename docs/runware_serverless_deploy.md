@@ -19,7 +19,7 @@ is 409.
 Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
 --scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
 --min-available-workers, --available-workers-pct, --volume, --secret,
---env-var and --env-file.
+--env-var and --env-file. --mount and --no-mounts work on create and on update.
 
 On an existing copy, a create-only flag is accepted when its value matches the
 app, and a changed value is rejected; one error names every changed flag.
@@ -96,6 +96,24 @@ the checkpointed state, so an unmounted download is copied into every
 checkpoint and fetched again on every cold start. A volume keeps it out of
 both.
 
+--volume and --mount are different things. --volume <path> is a node-local
+folder the app writes to, empty on a new node, set at create only. --mount
+<volume>:<path> mounts a Shared Volume of the same environment read-only at
+<path>: files uploaded beforehand with 'volumes put'. Each worker mounts the
+Volume's latest files when it starts, so new files reach workers started
+after an upload without a new deploy, and running workers keep the files they
+started with until they stop. Repeat --mount for more than one; the same
+Volume may be mounted at two paths. --volume and --mount entries share a
+limit of 30 and may not equal or contain one another. These path checks run
+before the source is uploaded.
+
+On an existing application, --mount replaces its mounts in the version the
+deploy records, --no-mounts removes them, and leaving both out keeps them.
+Without a source, --mount or --no-mounts records a version with the image the
+app runs now and rolls it out like a configuration change. A rollback with
+'apps versions activate' restores a version's mounts, not earlier Volume
+files.
+
 --secret NAME, or NAME=ENV_VAR, attaches an existing secret of the same
 environment at create so the first rollout carries it. Repeat the flag for
 more than one. Attach or detach later with 'secrets attach' and
@@ -142,6 +160,16 @@ runware serverless deploy [file] [flags]
   runware serverless deploy model.py --id my-app --gpu-type l40s \
     --volume /root/.cache/huggingface
 
+  # mount the Shared Volume model-weights read-only at /models
+  runware serverless deploy model.py --id my-app --gpu-type l40s \
+    --mount model-weights:/models
+
+  # change the mounts of an existing application without a new source
+  runware serverless deploy --id my-app --mount model-weights:/models --mount tokenizer:/tok
+
+  # remove every mount of an existing application
+  runware serverless deploy --id my-app --no-mounts
+
   # attach an existing secret and keep one idle worker warm
   runware serverless deploy ./app.py --id my-app --gpu-type h100 \
     --secret HF_TOKEN=HUGGING_FACE_HUB_TOKEN --min-available-workers 1
@@ -186,7 +214,9 @@ runware serverless deploy [file] [flags]
       --max-workers int32             Maximum number of workers (default 1)
       --min-available-workers int32   Minimum idle workers kept as a buffer
       --min-workers int32             Minimum number of workers
+      --mount stringArray             Shared Volume of the same environment to mount read-only, as <volume>:<path>; replaces the mounts on an update (repeatable)
       --name string                   Display name (defaults to --id)
+      --no-mounts                     Remove every Shared Volume mount of an existing application
       --poll-interval duration        Polling interval when waiting for the application (default 2s)
       --requirement stringArray       Additional pip package to install (repeatable; code deploys only)
       --scaling-delay int32           Scaling delay in seconds (default 10)
