@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -123,12 +124,11 @@ const keyIdentLength = 16
 
 // newAccountDetailsResult maps the API response to what the command prints.
 // Each key keeps its public ident and shows "*" for the rest (see
-// api.APIKeyInfo.APIKey), so the secret half is hidden even if the API ever
-// sends it.
+// api.APIKeyInfo.APIKey).
 func newAccountDetailsResult(result *api.AccountResult) accountDetailsResult {
 	keys := make([]api.APIKeyInfo, len(result.APIKeys))
 	for i, k := range result.APIKeys {
-		k.APIKey = hideSecretHalf(k.APIKey)
+		k.APIKey = maskSecretHalf(k.APIKey)
 		keys[i] = k
 	}
 	return accountDetailsResult{
@@ -142,12 +142,13 @@ func newAccountDetailsResult(result *api.AccountResult) accountDetailsResult {
 	}
 }
 
-// hideSecretHalf keeps the first keyIdentLength characters of key and
-// replaces every character after them with "*".
-func hideSecretHalf(key string) string {
+// maskSecretHalf keeps the first keyIdentLength characters of key and
+// replaces every character after them with "*". A key with nothing after the
+// ident is not one the API sends, so it shows only config.MaskedKeySuffix.
+func maskSecretHalf(key string) string {
 	r := []rune(key)
 	if len(r) <= keyIdentLength {
-		return key
+		return config.MaskedKeySuffix
 	}
 	return string(r[:keyIdentLength]) + strings.Repeat("*", len(r)-keyIdentLength)
 }
