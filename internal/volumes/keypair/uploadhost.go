@@ -2,6 +2,9 @@ package keypair
 
 import "strings"
 
+// The upload host rule lives beside productionHost and platformHost so that the statement
+// keys and the upload addresses decide "production" from one normalisation of the host.
+
 // platformDomain is the registrable domain of productionHost. The production API hands out
 // upload addresses only on hosts under it.
 const platformDomain = "runware.ai"
