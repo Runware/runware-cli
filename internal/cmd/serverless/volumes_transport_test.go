@@ -18,7 +18,7 @@ import (
 // replaces the seam.
 var releasedPartTransport = newPartTransport
 
-// sendPart sends one part with the transport newTransport makes for a local upload
+// sendPart sends one part with the transport newTransport makes to a local upload
 // endpoint, and returns how many requests reached the endpoint and the error.
 func sendPart(t *testing.T, newTransport func(*http.Client) put.Transport) (int32, error) {
 	t.Helper()
@@ -37,24 +37,36 @@ func sendPart(t *testing.T, newTransport func(*http.Client) put.Transport) (int3
 	return requests.Load(), err
 }
 
-// TestPartTransportHoldsProductionToThePlatformDomain: the transport the command makes for
-// the production API refuses an upload address off the platform's domain and sends nothing.
-func TestPartTransportHoldsProductionToThePlatformDomain(t *testing.T) {
-	// The released transport dials with its own client, which would not trust the local
-	// endpoint, so a request that got through would fail differently from ErrProtocol.
-	requests, err := sendPart(t, func(*http.Client) put.Transport {
-		return releasedPartTransport(config.DefaultServerlessBaseURL, nil)
+// sendReleased sends one part to a local upload endpoint with the transport the command
+// makes for serverlessBaseURL. That transport dials with its own client, which does not
+// trust the local endpoint, so an address it accepts fails the TLS handshake instead.
+func sendReleased(t *testing.T, serverlessBaseURL string) error {
+	t.Helper()
+	_, err := sendPart(t, func(*http.Client) put.Transport {
+		return releasedPartTransport(serverlessBaseURL, nil)
 	})
-	if !errors.Is(err, put.ErrProtocol) {
+	return err
+}
+
+// TestPartTransportHoldsProductionToThePlatformDomain: the transport the command makes for
+// the production API refuses an upload address off the platform's domain before dialing.
+func TestPartTransportHoldsProductionToThePlatformDomain(t *testing.T) {
+	if err := sendReleased(t, config.DefaultServerlessBaseURL); !errors.Is(err, put.ErrProtocol) {
 		t.Fatalf("error = %v, want ErrProtocol", err)
-	}
-	if requests != 0 {
-		t.Fatalf("%d requests reached a refused upload address", requests)
 	}
 }
 
-// TestPartTransportSendsAnywhereOffProduction: the transport the command makes for any
-// other API host sends to the upload address it is given.
+// TestPartTransportAcceptsAnyHostOffProduction: the transport the command makes for any
+// other API host accepts the upload address and dials it.
+func TestPartTransportAcceptsAnyHostOffProduction(t *testing.T) {
+	err := sendReleased(t, "https://api.example.test")
+	if err == nil || errors.Is(err, put.ErrProtocol) {
+		t.Fatalf("error = %v, want a dial error, not ErrProtocol", err)
+	}
+}
+
+// TestPartTransportSendsAnywhereOffProduction: with a client that trusts the endpoint, the
+// part transport for any other API host sends to the upload address it is given.
 func TestPartTransportSendsAnywhereOffProduction(t *testing.T) {
 	requests, err := sendPart(t, func(client *http.Client) put.Transport {
 		return newHTTPPartTransport(client, "https://api.example.test", nil)
