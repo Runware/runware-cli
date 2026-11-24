@@ -123,6 +123,14 @@ func parseMountSpec(raw string) (name, mountPath string, err error) {
 	return name, mountPath, nil
 }
 
+// reservedSandboxPaths are the platform's own paths in the sandbox. The server
+// refuses a --volume or --mount on one, under one or over one.
+var reservedSandboxPaths = []string{
+	"/data/liquid-components",
+	"/data/liquid-large-data",
+	"/var/run/secrets/runware/oidc",
+}
+
 // validateMountPath returns the cleaned mountPath, or an error naming the flag
 // value and what is wrong with it. `seen` holds the already-accepted paths.
 func validateMountPath(flag, raw, mountPath string, seen []sandboxPath) (string, error) {
@@ -150,6 +158,12 @@ func validateMountPath(flag, raw, mountPath string, seen []sandboxPath) (string,
 	for component := range strings.SplitSeq(strings.TrimPrefix(clean, "/"), "/") {
 		if len(component) > maxVolumePathComponent {
 			return "", fmt.Errorf("--%s %q: path component exceeds %d bytes", flag, raw, maxVolumePathComponent)
+		}
+	}
+
+	for _, reserved := range reservedSandboxPaths {
+		if clean == reserved || strings.HasPrefix(clean, reserved+"/") || strings.HasPrefix(reserved, clean+"/") {
+			return "", fmt.Errorf("--%s %q: %s is reserved by the platform; use a path that neither is, contains nor is inside it", flag, raw, reserved)
 		}
 	}
 

@@ -85,13 +85,13 @@ func TestBuildVolumes_Rejects(t *testing.T) {
 			// The pair that motivates the whole check: one contains the other,
 			// so the same node directory would be mounted into the sandbox twice.
 			name:  "overlapping",
-			paths: []string{"/data", testMountPath},
+			paths: []string{"/srv", "/srv/weights"},
 			want:  "overlaps",
 		},
 		{
 			// ...in either order.
 			name:  "overlapping reversed",
-			paths: []string{testMountPath, "/data"},
+			paths: []string{"/srv/weights", "/srv"},
 			want:  "overlaps",
 		},
 	}

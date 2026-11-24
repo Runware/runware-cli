@@ -181,7 +181,7 @@ func newDeployCmd(logger *log.Logger) *cobra.Command {
 		from                string
 		volumes             []string
 		mounts              []string
-		noMounts            bool
+		removeMounts        bool
 		secrets             []string
 		envVars             []string
 		envFiles            []string
@@ -480,7 +480,7 @@ paths and an invoke example once the application is active.`,
 			if err != nil {
 				return err
 			}
-			if noMounts {
+			if removeMounts {
 				empty := []serverlessapi.VolumeMount{}
 				appMounts = &empty
 			}
@@ -502,9 +502,8 @@ paths and an invoke example once the application is active.`,
 			if err != nil {
 				return err
 			}
-			if !update && noMounts {
-				// A new application has no mounts to remove.
-				appMounts = nil
+			if !update && removeMounts {
+				return fmt.Errorf("--%s applies to an existing application; %s does not exist yet", noMountsFlag, id)
 			}
 
 			// The set the app serves now, to compare against what the new version
@@ -650,7 +649,7 @@ paths and an invoke example once the application is active.`,
 	cmd.Flags().StringVar(&from, "from", "", "URL of a packaged source to fetch and deploy as a new application, reading its "+manifestFile)
 	cmd.Flags().StringArrayVar(&volumes, volumeFlag, nil, "Absolute path inside the app backed by persistent node-local storage; immutable after create (repeatable)")
 	cmd.Flags().StringArrayVar(&mounts, mountFlag, nil, "Shared Volume of the same environment to mount read-only, as <volume>:<path>; replaces the mounts on an update (repeatable)")
-	cmd.Flags().BoolVar(&noMounts, noMountsFlag, false, "Remove every Shared Volume mount of an existing application")
+	cmd.Flags().BoolVar(&removeMounts, noMountsFlag, false, "Remove every Shared Volume mount of an existing application")
 	cmd.MarkFlagsMutuallyExclusive(mountFlag, noMountsFlag)
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil, "Secret of the same environment to attach at create, as NAME or NAME=ENV_VAR (repeatable)")
 	cmd.Flags().StringArrayVar(&envVars, envVarFlag, nil, "Environment variable as KEY=VALUE (repeatable)")

@@ -152,13 +152,13 @@ func (r appShowResult) Rows() [][]any {
 	for _, row := range rows {
 		out = append(out, row)
 		if len(row) > 0 && row[0] == colActiveVersion {
-			out = append(out, []any{colServingVersion, r.serving})
 			// Only the app read fills mounts, so this row lives here and
-			// not on every printed app; without an active version there
-			// are no mounts to show.
-			if r.ActiveVersionId != nil {
-				out = append(out, []any{colMounts, formatMounts(r.Mounts)})
-			}
+			// not on every printed app. Without an active version the read
+			// returns the latest version's mounts, such as after a create
+			// whose first rollout failed.
+			out = append(out,
+				[]any{colServingVersion, r.serving},
+				[]any{colMounts, formatMounts(r.Mounts)})
 		}
 	}
 	return out

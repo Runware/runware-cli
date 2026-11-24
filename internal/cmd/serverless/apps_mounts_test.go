@@ -36,6 +36,8 @@ type mountStub struct {
 	// appMounts is the mounts array the app read returns; the writes, like the
 	// API's, return none.
 	appMounts string
+	// unpinned makes the app read return a null activeVersionId.
+	unpinned bool
 	// versions and workers are the list bodies the stub serves.
 	versions string
 	workers  string
@@ -64,6 +66,9 @@ func (s *mountStub) serve() {
 				return
 			}
 			body := activeAppBody(newVersionID)
+			if s.unpinned {
+				body = activeAppBody("")
+			}
 			if s.appMounts != "" {
 				body = strings.TrimSuffix(strings.TrimSpace(body), "}") + `,"mounts":` + s.appMounts + `}`
 			}
@@ -261,6 +266,21 @@ func TestDeployUpdateWithoutMountFlagsKeepsTheMounts(t *testing.T) {
 	}
 }
 
+// --no-mounts has nothing to remove on a new application, so a create refuses
+// it instead of dropping it.
+func TestDeployRefusesNoMountsOnACreate(t *testing.T) {
+	stub := &mountStub{t: t}
+	stub.serve()
+
+	_, err := runMountDeploy(t, sourceArgs(t, testGPUTypeFlag, testGPUType, testNoMountsFlag)...)
+	if err == nil || !strings.Contains(err.Error(), "--no-mounts applies to an existing application") {
+		t.Fatalf("err = %v, want the --no-mounts refusal", err)
+	}
+	if stub.write != nil || stub.uploads != 0 {
+		t.Fatalf("write = %v, uploads = %d, want neither", stub.write, stub.uploads)
+	}
+}
+
 func TestDeployWithoutSourceRefusesACreate(t *testing.T) {
 	stub := &mountStub{t: t}
 	stub.serve()
@@ -284,8 +304,8 @@ func TestDeployRefusesMountMistakesBeforeAnyRequest(t *testing.T) {
 	}{
 		{
 			name: "mount inside a node-local volume",
-			args: sourceArgs(t, testGPUTypeFlag, testGPUType, testVolumeFlag, "/data", testMountFlag, "model-weights:/data/models"),
-			want: `--mount "model-weights:/data/models" overlaps --volume "/data"; give the mount a path`,
+			args: sourceArgs(t, testGPUTypeFlag, testGPUType, testVolumeFlag, "/srv", testMountFlag, "model-weights:/srv/models"),
+			want: `--mount "model-weights:/srv/models" overlaps --volume "/srv"; give the mount a path`,
 		},
 		{
 			name: "two mounts at one path",
@@ -306,6 +326,16 @@ func TestDeployRefusesMountMistakesBeforeAnyRequest(t *testing.T) {
 			name: "invalid Volume name",
 			args: sourceArgs(t, testMountFlag, "Model:/models"),
 			want: "lowercase letters",
+		},
+		{
+			name: "mount over a reserved path",
+			args: sourceArgs(t, testMountFlag, "model-weights:/data"),
+			want: "/data/liquid-components is reserved by the platform",
+		},
+		{
+			name: "mount inside a reserved path",
+			args: sourceArgs(t, testMountFlag, "model-weights:/var/run/secrets/runware/oidc/x"),
+			want: "/var/run/secrets/runware/oidc is reserved by the platform",
 		},
 		{
 			name: "mount and no-mounts",
@@ -353,21 +383,27 @@ func TestDeployReportsTheAPIRefusalOfAMount(t *testing.T) {
 	}
 }
 
-// apps show prints the mounts the app read returns, marks a deleted Volume's,
-// prints "none" when it returns none, and reads no version to find them.
+// apps show prints the mounts the app read returns, also without an active
+// version, marks a deleted Volume's, prints "none" when it returns none, and
+// reads no version to find them.
 func TestAppsShowPrintsTheActiveVersionMounts(t *testing.T) {
 	for _, tc := range []struct {
 		name, appMounts, want string
+		unpinned              bool
 	}{
-		{"mounted", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true}]`, testMountWeights},
-		{"deleted", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true,"deleted":true}]`, testMountWeights + deletedMountSuffix},
-		{noMounts, "", noMounts},
+		{"mounted", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true}]`, testMountWeights, false},
+		{"deleted", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true,"deleted":true}]`, testMountWeights + deletedMountSuffix, false},
+		{noMounts, "", noMounts, false},
+		// After a create whose first rollout failed there is no active
+		// version, and the read returns the latest version's mounts.
+		{"unpinned", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true}]`, testMountWeights, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &mountStub{
 				t:         t,
 				exists:    true,
 				appMounts: tc.appMounts,
+				unpinned:  tc.unpinned,
 				workers:   `{"data":[],"summary":{"total":0}}`,
 			}
 			stub.serve()
