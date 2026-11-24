@@ -281,6 +281,21 @@ func TestDeployRefusesNoMountsOnACreate(t *testing.T) {
 	}
 }
 
+// --no-mounts=false removes nothing, so without a source it is a deploy with
+// nothing to send and must be refused before any request.
+func TestDeployRefusesNoMountsFalseWithoutASource(t *testing.T) {
+	stub := &mountStub{t: t, exists: true}
+	stub.serve()
+
+	_, err := runMountDeploy(t, testIDFlag, testAppID, testNoMountsFlag+"=false")
+	if err == nil || !strings.Contains(err.Error(), deploySourceChoice) {
+		t.Fatalf("err = %v, want the source choice refusal", err)
+	}
+	if stub.write != nil || stub.uploads != 0 {
+		t.Fatalf("write = %v, uploads = %d, want neither", stub.write, stub.uploads)
+	}
+}
+
 func TestDeployWithoutSourceRefusesACreate(t *testing.T) {
 	stub := &mountStub{t: t}
 	stub.serve()

@@ -19,7 +19,8 @@ is 409.
 Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
 --scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
 --min-available-workers, --available-workers-pct, --volume, --secret,
---env-var and --env-file. --mount and --no-mounts work on create and on update.
+--env-var and --env-file. --mount works on create and on update; --no-mounts
+needs an existing application.
 
 On an existing copy, a create-only flag is accepted when its value matches the
 app, and a changed value is rejected; one error names every changed flag.

@@ -101,7 +101,9 @@ func validateDeployArgs(cmd *cobra.Command, args []string, containerDir, from st
 			// A mounts change records a version with the image the app runs
 			// now, so it needs no source; resolveDeployTarget refuses it on a
 			// create.
-			if cmd.Flags().Changed(mountFlag) || cmd.Flags().Changed(noMountsFlag) {
+			// --no-mounts=false removes nothing, so only a true value counts.
+			removeMounts, _ := cmd.Flags().GetBool(noMountsFlag)
+			if cmd.Flags().Changed(mountFlag) || removeMounts {
 				return refuseCodeOnlyFlags(cmd, "pass a source to use it, or leave it out to change only the mounts")
 			}
 			return fmt.Errorf("%s", deploySourceChoice)
@@ -208,7 +210,8 @@ is 409.
 Create-only flags are --gpu-type, --name, --max-workers, --idle-ttl,
 --scaling-delay, --min-workers, --gpus-per-worker, --fallback-gpu-type,
 --min-available-workers, --available-workers-pct, --volume, --secret,
---env-var and --env-file. --mount and --no-mounts work on create and on update.
+--env-var and --env-file. --mount works on create and on update; --no-mounts
+needs an existing application.
 
 On an existing copy, a create-only flag is accepted when its value matches the
 app, and a changed value is rejected; one error names every changed flag.
