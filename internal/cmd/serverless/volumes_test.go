@@ -503,8 +503,8 @@ func TestVolumesPutPrintsALimitRefusalWithItsFields(t *testing.T) {
 	}
 	got := printedJSONError(t, r.err)
 	msg, _ := got["message"].(string)
-	if got["code"] != "conflict" || !strings.HasSuffix(fmt.Sprint(got["problemType"]), "volume-limit-exceeded") || !strings.Contains(msg, "maxFileBytes") {
-		t.Errorf("printed %v, want the API's code and problem type and the limit in the message", got)
+	if got["code"] != "conflict" || !strings.HasSuffix(fmt.Sprint(got["problemType"]), "volume-limit-exceeded") || !strings.Contains(msg, "over the limit of 10000 bytes") {
+		t.Errorf("printed %v, want the API's code and problem type and the engine's explanation in the message", got)
 	}
 }
 

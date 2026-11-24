@@ -149,7 +149,8 @@ func printPutSummary(w io.Writer, format output.Format, s put.Summary) error {
 }
 
 // putError turns the answers the engine passes through as they are into one
-// actionable line, keeping the engine's error. Only a Volumes API answer maps
+// actionable line, keeping the engine's error, less the error of a failed
+// abort, which stays only as text in the line. Only a Volumes API answer maps
 // on its status: a refused part comes from the upload endpoint, where a 404
 // says nothing about the Volume. A 404 about one file (its completion, its
 // part tokens) is about that file or session, not the Volume. A Volumes API
