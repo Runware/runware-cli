@@ -230,7 +230,13 @@ func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, 
 		if cause := context.Cause(ctx); cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause)) {
 			err = cause
 		}
-		return Summary{}, r.abort(ctx, err)
+		// A fresh put is the next step unless the completion request was sent, which may have published the files.
+		rerun := errors.Is(err, errUploadRetriesExhausted) && !r.completionAttempted
+		err = r.abort(ctx, err)
+		if rerun {
+			err = fmt.Errorf("%w; run put again", err)
+		}
+		return Summary{}, err
 	}
 	if err := r.journal.remove(); err != nil {
 		r.warn("%v", err)
