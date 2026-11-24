@@ -118,6 +118,8 @@ type putFake struct {
 	keysDirs []string
 	// keysBaseURLs are the base URLs the statement keys were chosen for.
 	keysBaseURLs []string
+	// transportBaseURLs are the base URLs the part transport was made for.
+	transportBaseURLs []string
 
 	// Knobs a test sets before a run.
 	pageSize           int
@@ -188,7 +190,12 @@ func newPutFake(t *testing.T) *putFake {
 		return fakeKeys{signer: &signer.PublicKey}, nil
 	}
 	client := f.upload.Client()
-	newPartTransport = func(logger *slog.Logger) put.Transport { return put.NewHTTPTransport(client).WithLogger(logger) }
+	newPartTransport = func(baseURL string, logger *slog.Logger) put.Transport {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.transportBaseURLs = append(f.transportBaseURLs, baseURL)
+		return newHTTPPartTransport(client, baseURL, logger)
+	}
 	t.Cleanup(func() { newVolumeKeys, newPartTransport = oldKeys, oldTransport })
 	return f
 }

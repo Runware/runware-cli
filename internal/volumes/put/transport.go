@@ -27,9 +27,17 @@ var errPartStalled = errors.New("the part upload made no progress")
 
 // HTTPTransport sends parts over HTTPS with the part token as a bearer token and never follows a redirect.
 type HTTPTransport struct {
-	client *http.Client
-	stall  time.Duration
-	logger *slog.Logger
+	client      *http.Client
+	stall       time.Duration
+	logger      *slog.Logger
+	allowTarget func(targetURL string) bool
+}
+
+// WithTargetCheck sends a part only to an upload address allow accepts; any other is a
+// protocol error and nothing is sent. Without a check every https address is used.
+func (t *HTTPTransport) WithTargetCheck(allow func(targetURL string) bool) *HTTPTransport {
+	t.allowTarget = allow
+	return t
 }
 
 // WithLogger logs each part's number, HTTP status and byte count at debug
@@ -89,6 +97,9 @@ func (t *HTTPTransport) PutPart(ctx context.Context, target Target, body io.Read
 	u, err := url.Parse(target.URL)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return "", fmt.Errorf("%w: part %d has no https upload address", ErrProtocol, target.PartNumber)
+	}
+	if t.allowTarget != nil && !t.allowTarget(target.URL) {
+		return "", fmt.Errorf("%w: part %d upload address is not on the platform's domain", ErrProtocol, target.PartNumber)
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)

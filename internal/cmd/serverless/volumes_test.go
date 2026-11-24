@@ -616,6 +616,10 @@ func TestVolumesPutKeepsItsStateInTheConfigVolumesDirectory(t *testing.T) {
 	if urls := f.keysBaseURLs; len(urls) != 1 || urls[0] != f.api.URL {
 		t.Errorf("the statement keys were chosen for %v, want [%s]", urls, f.api.URL)
 	}
+	// The part transport's upload host check is made for the same API host.
+	if urls := f.transportBaseURLs; len(urls) != 1 || urls[0] != f.api.URL {
+		t.Errorf("the part transport was made for %v, want [%s]", urls, f.api.URL)
+	}
 
 	// The journal of an upload in progress is there too.
 	var journals []string

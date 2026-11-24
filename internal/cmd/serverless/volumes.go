@@ -35,13 +35,24 @@ const (
 
 // Seams the command tests replace: the statement keys, whose verifier in a
 // release holds only the platform's keys, and the part transport, which sends
-// only over HTTPS and logs each part's number, status and size under --debug.
+// only over HTTPS, for the production API only to the platform's domain, and
+// logs each part's number, status and size under --debug.
 var (
 	newVolumeKeys    = newVerifiedVolumeKeys
-	newPartTransport = func(logger *slog.Logger) put.Transport {
-		return put.NewHTTPTransport(nil).WithLogger(logger)
+	newPartTransport = func(serverlessBaseURL string, logger *slog.Logger) put.Transport {
+		return newHTTPPartTransport(nil, serverlessBaseURL, logger)
 	}
 )
+
+// newHTTPPartTransport sends parts with client (nil for the default) and, when
+// serverlessBaseURL is the production API, only to the platform's domain.
+func newHTTPPartTransport(client *http.Client, serverlessBaseURL string, logger *slog.Logger) *put.HTTPTransport {
+	return put.NewHTTPTransport(client).
+		WithLogger(logger).
+		WithTargetCheck(func(target string) bool {
+			return keypair.AllowsUploadTarget(serverlessBaseURL, target)
+		})
+}
 
 // newVerifiedVolumeKeys verifies statements with the release keys for the
 // platform at serverlessBaseURL, recording accepted sequences in stateDir.
@@ -85,7 +96,8 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 			if configDir == "" {
 				return errors.New("the CLI config directory is not set")
 			}
-			keys, err := newVolumeKeys(config.GetServerlessBaseURL(), filepath.Join(configDir, volumesStateDir))
+			baseURL := config.GetServerlessBaseURL()
+			keys, err := newVolumeKeys(baseURL, filepath.Join(configDir, volumesStateDir))
 			if err != nil {
 				return err
 			}
@@ -103,7 +115,7 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 				ConfigDir:    configDir,
 				API:          client.VolumeUploads(),
 				Keys:         keys,
-				Transport:    newPartTransport(slog.New(logger)),
+				Transport:    newPartTransport(baseURL, slog.New(logger)),
 				Progress:     stderr,
 				ProgressTTY:  isTerminal(stderr),
 			})
