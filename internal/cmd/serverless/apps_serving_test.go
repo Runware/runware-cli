@@ -121,7 +121,10 @@ func TestAppsShowServingVersion(t *testing.T) {
 						t.Errorf("query = %s, want versionId=all state=live and no status", q.Encode())
 					}
 					if tc.cancel {
+						// Hold the response until the client gives up: returning
+						// sends a 200, which can reach it before it sees the cancel.
 						cancel()
+						<-r.Context().Done()
 						return
 					}
 					if tc.fail {

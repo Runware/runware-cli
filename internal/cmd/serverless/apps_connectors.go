@@ -169,11 +169,13 @@ The outcome is one of:
                   and they say nothing about the trust setup
 
 The command exits non-zero unless the outcome is ok. A result normally arrives
-within a minute and always within two; --timeout stops waiting sooner.
+within a minute and always within two; a --timeout below two minutes stops
+waiting sooner. A poll that fails on a server or network error is retried until
+--timeout.
 
-One test of an application's connectors runs at a time in an environment, and an
-organization may start 20 tests an hour (60 that end in platform_error). Past
-either the API refuses, and the refusal says when to retry.`,
+One test of each connector runs at a time for an application in an environment,
+and an organization may start 20 tests an hour (60 that end in platform_error).
+Past either the API refuses, and the refusal says when to retry.`,
 		Example: `  runware serverless apps connectors test my-app aws-prod
 
   # the staging copy of the application
@@ -204,12 +206,12 @@ either the API refuses, and the refusal says when to retry.`,
 			if test.Status == serverlessapi.OidcConnectorTestStatusPending {
 				waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
 				defer cancel()
-				id := test.Id.String()
-				spin.SetMessage(fmt.Sprintf("Waiting for the result of test %s...", id))
-				test, err = client.WaitAppOidcConnectorTest(waitCtx, app, name, test, pollInterval)
+				started := test
+				spin.SetMessage(fmt.Sprintf("Waiting for the result of test %s...", started.Id))
+				test, err = client.WaitAppOidcConnectorTest(waitCtx, app, name, started, pollInterval)
 				if err != nil {
 					spin.Stop()
-					return connectorTestWaitErr(waitCtx, err, id, timeout)
+					return connectorTestWaitErr(waitCtx, err, started, timeout)
 				}
 			}
 			spin.Stop()
@@ -239,7 +241,7 @@ func connectorTestStartError(err error, app, name, listCmd string) error {
 	case http.StatusNotFound:
 		hint = fmt.Sprintf("connector %s was not found on %s: check the application id and that the connector is attached to it in this environment ('%s')", name, app, listCmd)
 	case http.StatusConflict:
-		hint = fmt.Sprintf("a connector test of %s is already running in this environment: wait for it to end, within two minutes, and run the test again", app)
+		hint = fmt.Sprintf("a test of connector %s on %s is already running in this environment: wait for it to end, within two minutes of its start, and run the test again", name, app)
 	case http.StatusTooManyRequests:
 		hint = "the organization has started as many connector tests as an hour allows"
 	default:
@@ -271,15 +273,35 @@ func (e *connectorTestWaitError) Unwrap() error { return e.cause }
 // connectorTestWaitErr names the test a wait gave up on. An API error keeps
 // its type, with the note on its message, so its structured output and status
 // survive.
-func connectorTestWaitErr(waitCtx context.Context, err error, id string, timeout time.Duration) error {
-	note := fmt.Sprintf("test %s keeps running and ends within two minutes of its start", id)
+func connectorTestWaitErr(waitCtx context.Context, err error, test *serverlessapi.OidcConnectorTest, timeout time.Duration) error {
+	note := connectorTestRunningNote(test, time.Now())
 	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
 		out := *re
 		out.Message = re.Message + "\n" + note
 		return &connectorTestWaitError{msg: out.Message, cause: &out}
 	}
-	msg := waitTimeoutErr(waitCtx, err, "the connector test", timeout).Error() + "; " + note
+	msg := waitTimeoutErr(waitCtx, err, "the connector test", timeout).Error()
+	if last, ok := errors.AsType[*serverlessapi.LastPollError](err); ok {
+		msg += fmt.Sprintf(" (the last poll failed: %v)", last.Last)
+	}
+	msg += "; " + note
 	return &connectorTestWaitError{msg: msg, cause: err}
+}
+
+// connectorTestRunningNote says what the command knows of a test it stopped
+// waiting for at now: only that it was pending when last read. Before its
+// deadline it may still be running; past it, the API should have ended it as a
+// platform_error with reason deadline. The clock is the client's, so the note
+// claims neither.
+func connectorTestRunningNote(test *serverlessapi.OidcConnectorTest, now time.Time) string {
+	if test.DeadlineAt.IsZero() {
+		return fmt.Sprintf("test %s was pending when last read and may still be running", test.Id)
+	}
+	deadline := test.DeadlineAt.UTC().Format(time.RFC3339)
+	if now.Before(test.DeadlineAt) {
+		return fmt.Sprintf("test %s was pending when last read and may still be running; the API ends it by %s at the latest", test.Id, deadline)
+	}
+	return fmt.Sprintf("test %s was pending when last read; its deadline %s has passed, so the API should have ended it", test.Id, deadline)
 }
 
 // connectorTestFailedErr is the exit status of a finished test: nil for ok, and
