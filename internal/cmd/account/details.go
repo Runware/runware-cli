@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/api"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -119,8 +120,20 @@ func newDetailsCmd(logger *log.Logger) *cobra.Command {
 				Balance:          result.Balance,
 				Usage:            result.Usage,
 				Team:             result.Team,
-				APIKeys:          result.APIKeys,
+				APIKeys:          maskAPIKeys(result.APIKeys),
 			})
 		},
 	}
+}
+
+// maskAPIKeys returns a copy of keys with each key masked by config.MaskKey,
+// so the command never prints more of a key than auth status does, whatever
+// the API sends.
+func maskAPIKeys(keys []api.APIKeyInfo) []api.APIKeyInfo {
+	masked := make([]api.APIKeyInfo, len(keys))
+	for i, k := range keys {
+		k.APIKey = config.MaskKey(k.APIKey)
+		masked[i] = k
+	}
+	return masked
 }

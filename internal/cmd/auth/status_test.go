@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/gorilla/websocket"
 	"github.com/runware/runware-cli/internal/api/transport"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -245,6 +246,21 @@ func TestStatus_ReportsKeyState(t *testing.T) {
 				t.Errorf("status = %q, want %q", got.Status, tc.wantStatus)
 			}
 		})
+	}
+}
+
+func TestStatus_ShowsOnlyTheLastFourCharactersOfTheKey(t *testing.T) {
+	down := httptest.NewServer(http.NotFoundHandler())
+	down.Close()
+	useAPI(t, "abcdEFGHijklMNOPqrstUVWXyz0123456", down.URL)
+
+	got, err := runStatus(context.Background(), t, transport.SchemeHTTP)
+
+	if err != nil {
+		t.Fatalf("auth status: %v", err)
+	}
+	if want := config.MaskedKeySuffix + "3456"; got.APIKey != want {
+		t.Errorf("api_key = %q, want %q", got.APIKey, want)
 	}
 }
 

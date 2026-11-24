@@ -355,6 +355,17 @@ func TestShowNamesTheConfiguredEnvironment(t *testing.T) {
 	}
 }
 
+func TestShowShowsOnlyTheLastFourCharactersOfTheKey(t *testing.T) {
+	withConfigHome(t)
+	t.Setenv("RUNWARE_API_KEY", "abcdEFGHijklMNOPqrstUVWXyz0123456")
+
+	got := showOutput(t, testJSON)
+
+	if want := `"api_key": "` + config.MaskedKeySuffix + `3456"`; !strings.Contains(got, want) {
+		t.Fatalf("config show = %s, want %s", got, want)
+	}
+}
+
 // showNamesEnvironment reports whether `config show` output in format names
 // environment.
 func showNamesEnvironment(output, format, environment string) bool {
