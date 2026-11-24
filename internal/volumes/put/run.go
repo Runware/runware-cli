@@ -28,6 +28,11 @@ const (
 	maxUploadBackoff    = 30 * time.Second
 	baseBackoff         = 500 * time.Millisecond
 	abortTimeout        = 15 * time.Second
+	// maxCompletionRetryTime bounds the retries of a file or session
+	// completion: no attempt starts once it has passed since the first one
+	// started. Each attempt may take minutes, so the attempt count alone
+	// would let a stalled connection hold put for over an hour.
+	maxCompletionRetryTime = 15 * time.Minute
 )
 
 var errUploadRetriesExhausted = errors.New("the upload retry limit was reached")
@@ -312,10 +317,7 @@ func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source
 			return Summary{}, err
 		}
 	}
-	res, err := retryUploadAPI(ctx, r.sleep, func() (UploadResult, error) {
-		r.completionAttempted = true
-		return r.api.CompleteUpload(ctx, r.ref)
-	})
+	res, err := r.completeUpload(ctx)
 	if err != nil {
 		return Summary{}, fmt.Errorf("complete the upload: %w", explain(err))
 	}
@@ -536,12 +538,30 @@ func pointerFile(pointer string) (int, bool) {
 	return i, err == nil && i >= 0
 }
 
+// completeUpload applies the session, retrying within maxCompletionRetryTime.
+func (r *runner) completeUpload(ctx context.Context) (UploadResult, error) {
+	return retryUploadAPIWithin(ctx, r.sleep, maxCompletionRetryTime, func() (UploadResult, error) {
+		r.completionAttempted = true
+		return r.api.CompleteUpload(ctx, r.ref)
+	})
+}
+
 func retryUploadAPI[T any](ctx context.Context, sleep func(context.Context, time.Duration) error, call func() (T, error)) (T, error) {
+	return retryUploadAPIWithin(ctx, sleep, 0, call)
+}
+
+// retryUploadAPIWithin is retryUploadAPI that, when window is not zero, starts
+// no attempt once window has passed since the first one started.
+func retryUploadAPIWithin[T any](ctx context.Context, sleep func(context.Context, time.Duration) error, window time.Duration, call func() (T, error)) (T, error) {
 	var empty T
 	var lastErr error
+	start := time.Now()
 	for attempt := 1; ; attempt++ {
 		if ctx.Err() != nil {
 			return empty, errors.Join(context.Cause(ctx), lastErr)
+		}
+		if attempt > 1 && window > 0 && time.Since(start) >= window {
+			return empty, fmt.Errorf("%w: %w", errUploadRetriesExhausted, lastErr)
 		}
 		res, err := call()
 		if err == nil {

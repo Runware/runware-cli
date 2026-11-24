@@ -318,3 +318,67 @@ func TestUploadAPIPreservesAuthErrorsWithoutRetrying(t *testing.T) {
 		})
 	}
 }
+
+var errCompletionStalled = errors.New("the completion request timed out")
+
+// stalledCompletion answers every completion after a stall with a timeout.
+type stalledCompletion struct {
+	API
+	stall  time.Duration
+	starts []time.Time
+}
+
+func (s *stalledCompletion) wait(ctx context.Context) error {
+	s.starts = append(s.starts, time.Now())
+	if err := sleepContext(ctx, s.stall); err != nil {
+		return err
+	}
+	return errCompletionStalled
+}
+
+func (s *stalledCompletion) CompleteFile(ctx context.Context, _ UploadRef, _ string, _ FileCompletion) (UploadFile, error) {
+	return UploadFile{}, s.wait(ctx)
+}
+
+func (s *stalledCompletion) CompleteUpload(ctx context.Context, _ UploadRef) (UploadResult, error) {
+	return UploadResult{}, s.wait(ctx)
+}
+
+// TestCompletionRetryTimeBudget: when every completion stalls until the
+// request limit, put stops retrying after maxCompletionRetryTime, not after
+// maxUploadAttempts stalls.
+func TestCompletionRetryTimeBudget(t *testing.T) {
+	calls := map[string]func(ctx context.Context, r *runner) error{
+		"file": func(ctx context.Context, r *runner) error {
+			return r.completeFile(ctx, &fileState{src: &Source{Abs: "weights.bin"}})
+		},
+		"session": func(ctx context.Context, r *runner) error {
+			_, err := r.completeUpload(ctx)
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				api := &stalledCompletion{stall: 5 * time.Minute}
+				r := &runner{
+					api:   api,
+					sleep: sleepContext,
+				}
+				start := time.Now()
+				err := call(t.Context(), r)
+				if !errors.Is(err, errUploadRetriesExhausted) || !errors.Is(err, errCompletionStalled) {
+					t.Fatalf("error = %v, want retry exhaustion and the last timeout", err)
+				}
+				for _, s := range api.starts[1:] {
+					if s.Sub(start) >= maxCompletionRetryTime {
+						t.Errorf("started another attempt %v after the first", s.Sub(start))
+					}
+				}
+				if elapsed := time.Since(start); elapsed > maxCompletionRetryTime+api.stall+maxUploadBackoff {
+					t.Errorf("retried for %v over %d attempts, want the retry window plus one attempt", elapsed, len(api.starts))
+				}
+			})
+		})
+	}
+}
