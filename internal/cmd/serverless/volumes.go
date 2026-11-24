@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/api/transport"
 	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/coredump"
@@ -149,32 +150,57 @@ func printPutSummary(w io.Writer, format output.Format, s put.Summary) error {
 
 // putError turns the answers the engine passes through as they are into one
 // actionable line, keeping the engine's error. Only a Volumes API answer maps
-// on its status: a refused part comes from the upload endpoint, where a 401 or
-// 404 says nothing about the API key or the Volume. A 404 about one file (its
-// completion, its part tokens) is about that file or session, not the Volume.
+// on its status: a refused part comes from the upload endpoint, where a 404
+// says nothing about the Volume. A 404 about one file (its completion, its
+// part tokens) is about that file or session, not the Volume. A Volumes API
+// answer also reaches cmdutil.PrintError as a *transport.RunwareError, which
+// prints it like any other serverless error, with the auth hint on a 401 or
+// 403.
 func putError(volume put.VolumeRef, err error) error {
+	err = explainPutError(volume, err)
+	a, ok := errors.AsType[*serverlessapi.VolumeAPIError](err)
+	if !ok || a.API == nil {
+		return err
+	}
+	// The RunwareError's message is the API's alone; keep the whole line,
+	// which names the file and step that failed and any hint above.
+	api := *a.API
+	api.Message = err.Error()
+	return &putAPIError{
+		err: err,
+		api: &api,
+	}
+}
+
+func explainPutError(volume put.VolumeRef, err error) error {
 	if p, ok := errors.AsType[*put.ProblemError](err); ok && p.Slug == volumeSlugUploadNotOpen {
 		return fmt.Errorf("the upload session is no longer open: it was completed, aborted or reached its deadline; run put again (%w)", err)
 	}
 	a, ok := errors.AsType[*serverlessapi.VolumeAPIError](err)
-	if !ok {
+	if !ok || a.Problem.Status != http.StatusNotFound {
+		return err
+	}
+	if _, perFile := errors.AsType[*put.FileError](err); perFile {
 		return err
 	}
 	env := volume.Environment
 	if env == "" {
 		env = "production"
 	}
-	switch a.Problem.Status {
-	case http.StatusNotFound:
-		if _, perFile := errors.AsType[*put.FileError](err); perFile {
-			return err
-		}
-		return fmt.Errorf("volume %q was not found in environment %s, or Shared Volumes is not enabled for the organization; check the name and --env (%w)", volume.Name, env, err)
-	case http.StatusUnauthorized:
-		return fmt.Errorf("the API key was refused; run 'runware auth status' to verify your credentials (%w)", err)
-	}
-	return err
+	return fmt.Errorf("volume %q was not found in environment %s, or Shared Volumes is not enabled for the organization; check the name and --env (%w)", volume.Name, env, err)
 }
+
+// putAPIError is a put error caused by a Volumes API answer. It unwraps to
+// api first, so cmdutil.PrintError finds that RunwareError, whose message is
+// the whole line, before the API's own one inside err.
+type putAPIError struct {
+	err error
+	api *transport.RunwareError
+}
+
+func (e *putAPIError) Error() string { return e.err.Error() }
+
+func (e *putAPIError) Unwrap() []error { return []error{e.api, e.err} }
 
 // isTerminal reports whether w is a terminal.
 func isTerminal(w io.Writer) bool {

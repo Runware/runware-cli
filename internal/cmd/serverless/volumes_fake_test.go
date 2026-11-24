@@ -135,6 +135,7 @@ type putFake struct {
 	closeOnComplete    bool // file completion answers that the session is not open
 	missingOnDeclare   bool // declaration answers that the Volume is not found
 	missingOnComplete  bool // file completion answers that the file is not found
+	refuseOpenStatus   int  // opening the session answers this status when set
 	changeBetweenPages bool
 	pagesChanged       bool
 	onDeclare          func()
@@ -446,6 +447,10 @@ func (f *putFake) listFiles(w http.ResponseWriter, r *http.Request, vol *fakeVol
 }
 
 func (f *putFake) openUpload(w http.ResponseWriter, r *http.Request, volKey string) {
+	if f.refuseOpenStatus != 0 {
+		writeProblem(w, f.refuseOpenStatus, "refused", "the session was refused", nil)
+		return
+	}
 	var open put.UploadOpen
 	if err := json.NewDecoder(r.Body).Decode(&open); err != nil {
 		writeProblem(w, http.StatusBadRequest, "bad-request", "bad body", nil)

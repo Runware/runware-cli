@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/runware/runware-cli/internal/agents"
 	"github.com/runware/runware-cli/internal/api/transport"
@@ -28,7 +29,14 @@ const (
 	volumeFileListAttempts = 3
 	// maxVolumeAnswerBytes bounds a Volumes API answer the client reads.
 	maxVolumeAnswerBytes = 16 << 20
-	problemTypeSeparator = "#"
+	// volumeCompletionTimeout bounds completeVolumeUploadFile and
+	// completeVolumeUpload. Completing a file completes its object in storage
+	// and checks its checksum, which can take minutes for a large file, and a
+	// retry after a completion whose answer was lost can fail the file for
+	// good (volume-upload-completion-unrecoverable), so these calls must not
+	// time out at the client's default.
+	volumeCompletionTimeout = 5 * time.Minute
+	problemTypeSeparator    = "#"
 )
 
 var (
@@ -162,20 +170,29 @@ func (v *VolumeUploads) RenewParts(ctx context.Context, upload put.UploadRef, fi
 // CompleteFile completes one file with its ciphertext checksum and part acknowledgements.
 func (v *VolumeUploads) CompleteFile(ctx context.Context, upload put.UploadRef, fileID string, completion put.FileCompletion) (put.UploadFile, error) {
 	var f put.UploadFile
-	err := v.do(ctx, http.MethodPost, uploadPath(upload, "files", fileID, "complete"), upload.Volume.Environment, nil, completion, http.StatusOK, &f)
+	err := v.withMinTimeout(volumeCompletionTimeout).do(ctx, http.MethodPost, uploadPath(upload, "files", fileID, "complete"), upload.Volume.Environment, nil, completion, http.StatusOK, &f)
 	return f, err
 }
 
 // CompleteUpload applies the session to the Volume's latest files.
 func (v *VolumeUploads) CompleteUpload(ctx context.Context, upload put.UploadRef) (put.UploadResult, error) {
 	var res put.UploadResult
-	err := v.do(ctx, http.MethodPost, uploadPath(upload, "complete"), upload.Volume.Environment, nil, nil, http.StatusOK, &res)
+	err := v.withMinTimeout(volumeCompletionTimeout).do(ctx, http.MethodPost, uploadPath(upload, "complete"), upload.Volume.Environment, nil, nil, http.StatusOK, &res)
 	return res, err
 }
 
 // AbortUpload aborts the session.
 func (v *VolumeUploads) AbortUpload(ctx context.Context, upload put.UploadRef) error {
 	return v.do(ctx, http.MethodDelete, uploadPath(upload), upload.Volume.Environment, nil, nil, http.StatusNoContent, nil)
+}
+
+// withMinTimeout returns the adapter on a copy of the client whose HTTP
+// client allows each request at least d. Only do reads the copy, and do sends
+// through its doer, not its generated client.
+func (v *VolumeUploads) withMinTimeout(d time.Duration) *VolumeUploads {
+	c := *v.c
+	c.doer = doerWithMinTimeout(c.doer, d)
+	return &VolumeUploads{c: &c}
 }
 
 func volumePath(name string, rest ...string) string {
@@ -249,7 +266,7 @@ func (v *VolumeUploads) do(ctx context.Context, method, path, environment string
 	}
 	v.logResponse(ctx, resp, answer)
 	if resp.StatusCode != want {
-		return &VolumeAPIError{Problem: volumeProblem(resp.StatusCode, answer)}
+		return newVolumeAPIError(resp.StatusCode, answer)
 	}
 	if out == nil {
 		return nil
@@ -286,14 +303,30 @@ func (v *VolumeUploads) logResponse(ctx context.Context, resp *http.Response, bo
 // VolumeAPIError is a problem the Volumes API answered, as opposed to the
 // upload endpoint a part is sent to. It unwraps to the *put.ProblemError the
 // engine reads, so a caller can tell an API refusal (the API key, the Volume)
-// from a refused part.
+// from a refused part, and to the *transport.RunwareError every other
+// serverless call returns, so the CLI prints it with the API's fields.
 type VolumeAPIError struct {
 	Problem *put.ProblemError
+	API     *transport.RunwareError
+}
+
+func newVolumeAPIError(status int, body []byte) *VolumeAPIError {
+	// problemFromBody always returns a *transport.RunwareError.
+	api, _ := errors.AsType[*transport.RunwareError](problemFromBody(body, status))
+	return &VolumeAPIError{
+		Problem: volumeProblem(status, body),
+		API:     api,
+	}
 }
 
 func (e *VolumeAPIError) Error() string { return e.Problem.Error() }
 
-func (e *VolumeAPIError) Unwrap() error { return e.Problem }
+func (e *VolumeAPIError) Unwrap() []error {
+	if e.API == nil {
+		return []error{e.Problem}
+	}
+	return []error{e.Problem, e.API}
+}
 
 // volumeProblemBody is the part of an RFC 9457 problem the put engine reads.
 type volumeProblemBody struct {

@@ -360,6 +360,108 @@ func TestVolumeUploadsProblemsReachTheEngine(t *testing.T) {
 	}
 }
 
+// TestVolumeUploadsProblemsAreRunwareErrors: a Volumes problem also reaches the
+// CLI's error printing as the RunwareError every other serverless call returns.
+func TestVolumeUploadsProblemsAreRunwareErrors(t *testing.T) {
+	cases := []struct {
+		name        string
+		status      int
+		answer      string
+		code        transport.ErrorCode
+		problemType string
+		message     string
+	}{
+		{
+			name:        "forbidden",
+			status:      http.StatusForbidden,
+			answer:      `{"type":"https://docs.runware.ai/serverless/errors#forbidden","title":"Forbidden","status":403,"detail":"the key may not upload"}`,
+			code:        transport.CodeAuth,
+			problemType: "https://docs.runware.ai/serverless/errors#forbidden",
+			message:     "the key may not upload",
+		},
+		{
+			name:    "rate limited",
+			status:  http.StatusTooManyRequests,
+			answer:  `{"title":"Too Many Requests","status":429}`,
+			code:    transport.CodeRateLimit,
+			message: "Too Many Requests",
+		},
+		{
+			name:    "not a problem body",
+			status:  http.StatusBadGateway,
+			answer:  `<html>bad gateway</html>`,
+			code:    transport.CodeServerError,
+			message: "HTTP 502: Bad Gateway",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := volumeServer(t, volumeExchange{
+				method: http.MethodPost,
+				path:   "/v1/volumes/weights/uploads/" + testUploadID + "/files",
+				query:  testEnvQuery,
+				status: tc.status,
+				answer: tc.answer,
+			})
+			_, err := v.DeclareFiles(context.Background(), testUploadRef, put.FileDeclarations{})
+			re, ok := errors.AsType[*transport.RunwareError](err)
+			if !ok {
+				t.Fatalf("err = %v, want a *transport.RunwareError", err)
+			}
+			if re.StatusCode != tc.status || re.Code != tc.code || re.ProblemType != tc.problemType || re.Message != tc.message {
+				t.Fatalf("RunwareError = %+v, want status %d, code %s, problem type %q, message %q", re, tc.status, tc.code, tc.problemType, tc.message)
+			}
+			if _, ok := errors.AsType[*put.ProblemError](err); !ok {
+				t.Fatal("the engine's *put.ProblemError is gone")
+			}
+		})
+	}
+}
+
+// TestVolumeUploadsCompletionOutlastsTheDefaultTimeout: completing a file or
+// the session may take longer than the client's request timeout, since a
+// retry of a lost file completion can fail the file; other calls keep it.
+func TestVolumeUploadsCompletionOutlastsTheDefaultTimeout(t *testing.T) {
+	const (
+		timeout = 100 * time.Millisecond
+		delay   = 4 * timeout
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(delay):
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/files/"+testFileID+"/complete"):
+			_, _ = io.WriteString(w, `{"id":"`+testFileID+`","path":"a","state":"verified"}`)
+		case strings.HasSuffix(r.URL.Path, "/complete"):
+			_, _ = io.WriteString(w, `{"changed":true,"manifestSha256":"`+testDigest+`"}`)
+		default:
+			_, _ = io.WriteString(w, `{"uploadTargets":[]}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	client := srv.Client()
+	client.Timeout = timeout
+	v := newClient("test-key", srv.URL, nil, client).VolumeUploads()
+	ctx := context.Background()
+
+	if _, err := v.RenewParts(ctx, testUploadRef, testFileID, []int{1}); err == nil {
+		t.Fatal("RenewParts outlasted the client's timeout, so this test proves nothing")
+	}
+	if f, err := v.CompleteFile(ctx, testUploadRef, testFileID, put.FileCompletion{}); err != nil || f.State != "verified" {
+		t.Fatalf("CompleteFile = %+v, %v", f, err)
+	}
+	if res, err := v.CompleteUpload(ctx, testUploadRef); err != nil || !res.Changed {
+		t.Fatalf("CompleteUpload = %+v, %v", res, err)
+	}
+	if client.Timeout != timeout {
+		t.Fatalf("the client's timeout changed to %v", client.Timeout)
+	}
+}
+
 func TestVolumeUploadsKeyPairNotReadyIsTheSentinel(t *testing.T) {
 	v := volumeServer(t, volumeExchange{
 		method: http.MethodGet,

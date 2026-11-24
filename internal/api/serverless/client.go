@@ -302,11 +302,24 @@ func (c *Client) createInner() *gen.ClientWithResponses {
 // when its Timeout is shorter than minTimeout. A zero Timeout (no deadline) is left
 // unchanged.
 func (c *Client) innerWithMinTimeout(minTimeout time.Duration) *gen.ClientWithResponses {
-	hc, ok := c.doer.(*http.Client)
-	if !ok || hc.Timeout == 0 || hc.Timeout >= minTimeout {
+	doer := doerWithMinTimeout(c.doer, minTimeout)
+	if doer == c.doer {
 		return c.inner
 	}
-	return c.innerWithTimeout(minTimeout)
+	return newGeneratedClient(c.apiKey, c.baseURL, doer)
+}
+
+// doerWithMinTimeout returns doer, or a clone of it with minTimeout when it is
+// an *http.Client whose Timeout is shorter. A zero Timeout (no deadline) is
+// left unchanged.
+func doerWithMinTimeout(doer gen.HttpRequestDoer, minTimeout time.Duration) gen.HttpRequestDoer {
+	hc, ok := doer.(*http.Client)
+	if !ok || hc.Timeout == 0 || hc.Timeout >= minTimeout {
+		return doer
+	}
+	cloned := *hc
+	cloned.Timeout = minTimeout
+	return &cloned
 }
 
 // innerWithTimeout returns a generated client over a clone of the HTTP client

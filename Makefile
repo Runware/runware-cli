@@ -10,8 +10,10 @@ LDFLAGS = \
 GOFLAGS = -trimpath
 
 # A local build reads RUNWARE_VOLUMES_STATEMENT_KEY for a non-production host.
-# Only build and run set this tag; the cross-platform targets and the release
-# (GoReleaser) never do, so a released binary trusts only its shipped keys.
+# Only build and run set this tag, and test and lint check the code it adds;
+# the cross-platform targets and the release (GoReleaser) never set it, so a
+# released binary trusts only its shipped keys. CI runs the tagged test and
+# lint steps too.
 DEV_TAGS = -tags volumesdevkeys
 
 BINARY=runware
@@ -52,6 +54,7 @@ test:
 
 lint: check-go-fix
 	golangci-lint run
+	golangci-lint run --build-tags volumesdevkeys ./internal/volumes/keypair/...
 
 fix:
 	go fix ./...

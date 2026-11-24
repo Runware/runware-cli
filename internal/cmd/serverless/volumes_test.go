@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/output"
 	"github.com/runware/runware-cli/internal/volumes/put"
 	"gopkg.in/yaml.v3"
 )
@@ -420,14 +423,20 @@ func TestVolumesPutRefusesAStatementBeforeDeclaring(t *testing.T) {
 }
 
 // TestVolumesPutBlamesTheAPIKeyOnlyForAnAPIRefusal: a 401 from the Volumes API
-// points at the API key, and a 401 for one part (a refused part token) does not.
+// prints the CLI's hint about the API key, and a 401 for one part (a refused
+// part token) does not.
 func TestVolumesPutBlamesTheAPIKeyOnlyForAnAPIRefusal(t *testing.T) {
 	t.Run("API key refused", func(t *testing.T) {
 		f := newPutFake(t)
 		f.newVolume("", testVolume)
 		t.Setenv("RUNWARE_API_KEY", "another-key")
 		r := f.run(formatJSON, false, testVolume, newTree(t, testTree))
-		requireOneLine(t, r.err, "API key was refused", "runware auth status")
+		if r.err == nil {
+			t.Fatal("put succeeded with the API key refused")
+		}
+		if printed := printedError(t, r.err); !strings.Contains(printed, "Authentication failed") || !strings.Contains(printed, "runware auth status") {
+			t.Fatalf("printed %q, want the hint about the API key", printed)
+		}
 	})
 	t.Run("part token refused", func(t *testing.T) {
 		f := newPutFake(t)
@@ -441,7 +450,41 @@ func TestVolumesPutBlamesTheAPIKeyOnlyForAnAPIRefusal(t *testing.T) {
 		if msg := r.err.Error(); strings.Contains(msg, "API key") || !strings.Contains(msg, "part token was refused") {
 			t.Fatalf("error = %q, want the part refusal and no word about the API key", msg)
 		}
+		if printed := printedError(t, r.err); strings.Contains(printed, "Authentication failed") || strings.Contains(printed, "auth status") {
+			t.Fatalf("printed %q, want no word about the API key", printed)
+		}
 	})
+}
+
+// TestVolumesPutPrintsAnAPIRefusalWithItsFields: a Volumes API refusal prints
+// like any other serverless error, with the API's code and problem type, and
+// keeps the step that failed in its message.
+func TestVolumesPutPrintsAnAPIRefusalWithItsFields(t *testing.T) {
+	f := newPutFake(t)
+	f.newVolume("", testVolume)
+	f.refuseOpenStatus = http.StatusForbidden
+	r := f.run(formatJSON, false, testVolume, newTree(t, testTree))
+	if r.err == nil {
+		t.Fatal("put succeeded with the session refused")
+	}
+	var structured bytes.Buffer
+	cmdutil.PrintErrorTo(log.New(io.Discard), &structured, output.FormatJSON, r.err)
+	var printed struct {
+		Errors []map[string]any `json:"errors"`
+	}
+	if err := json.Unmarshal(structured.Bytes(), &printed); err != nil || len(printed.Errors) != 1 {
+		t.Fatalf("printed %s, want one error (%v)", structured.String(), err)
+	}
+	got := printed.Errors[0]
+	if got["code"] != "forbidden" || got["problemType"] != fakeProblemBase+"refused" {
+		t.Errorf("printed fields %v, want the API's code and problem type", got)
+	}
+	if msg, _ := got["message"].(string); !strings.Contains(msg, "open the upload") || !strings.Contains(msg, "the session was refused") {
+		t.Errorf("printed message %q, want the step and the API's detail", msg)
+	}
+	if text := printedError(t, r.err); !strings.Contains(text, "code=forbidden") {
+		t.Errorf("printed %q, want the API's code", text)
+	}
 }
 
 func TestVolumesPutRefusalsAreOneActionableLine(t *testing.T) {
