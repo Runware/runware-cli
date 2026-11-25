@@ -164,6 +164,59 @@ func TestIndependentPutLeavesSavedSessionAvailable(t *testing.T) {
 	}
 }
 
+func TestIndependentPutPreservesOverlappingLegacySession(t *testing.T) {
+	e := newTestEnv(t)
+	vol := e.cloud.newVolume("weights", "")
+	first := singleFile(t, e, "first.txt", []byte("first"))
+	second := singleFile(t, e, "second.txt", []byte("second"))
+	opts := e.options(vol, first, second)
+	saveLegacyDeclarations(t, opts)
+
+	if _, err := Run(t.Context(), e.options(vol, first)); err != nil {
+		t.Fatalf("independent put: %v", err)
+	}
+	if e.cloud.count("open") != 2 || e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 1 {
+		t.Fatalf("calls = %v, journals = %v, want the legacy journal kept", e.cloud.callLog(), e.uploadDirs())
+	}
+	if _, err := Run(t.Context(), opts); err != nil {
+		t.Fatalf("legacy resume: %v", err)
+	}
+	if e.cloud.count("open") != 2 || e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 0 {
+		t.Fatalf("calls = %v, journals = %v, want the original session resumed", e.cloud.callLog(), e.uploadDirs())
+	}
+}
+
+func TestResumeRefusesFreshPutAfterUnconfirmedPublication(t *testing.T) {
+	e := newTestEnv(t)
+	vol := e.cloud.newVolume("weights", "")
+	singleFile(t, e, "model.bin", []byte("original"))
+	opts := e.options(vol, e.srcDir)
+	opts.API = &lostCompletionResponse{API: e.cloud}
+	if _, err := Run(t.Context(), opts); !errors.Is(err, errUploadRetriesExhausted) {
+		t.Fatalf("first put = %v, want publication retries exhausted", err)
+	}
+	extra := singleFile(t, e, "extra.bin", []byte("additional"))
+	opts.API = e.cloud
+
+	_, err := Run(t.Context(), opts)
+	if err == nil || !strings.Contains(err.Error(), "may have published") ||
+		!strings.Contains(err.Error(), "paths differ") {
+		t.Fatalf("resume = %v, want the path mismatch and publication uncertainty", err)
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.count("open") != 1 || len(e.uploadDirs()) != 1 {
+		t.Fatalf("files = %v, calls = %v, journals = %v, want only the original publication and its saved state",
+			files, e.cloud.callLog(), e.uploadDirs())
+	}
+
+	if err := os.Remove(extra); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := Run(t.Context(), opts)
+	if err != nil || !sum.recovered || sum.BytesSent != 0 || e.cloud.count("open") != 1 || len(e.uploadDirs()) != 0 {
+		t.Fatalf("recovery = %+v, error = %v, calls = %v, want the original result without retransmitting", sum, err, e.cloud.callLog())
+	}
+}
+
 func TestResumeRefusesChangeAfterUnappliedPublication(t *testing.T) {
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
@@ -204,7 +257,7 @@ func TestResumeReportsUncertainPublicationIfSourceDisappearsDuringHash(t *testin
 	if err == nil || !strings.Contains(err.Error(), "may have published") || !strings.Contains(err.Error(), file) {
 		t.Fatalf("resume = %v, want publication uncertainty naming %s", err, file)
 	}
-	if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.count("open") != 1 || len(e.uploadDirs()) != 0 {
+	if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.count("open") != 1 || len(e.uploadDirs()) != 1 {
 		t.Fatalf("files = %v, calls = %v, journals = %v, want the original publication only", files, e.cloud.callLog(), e.uploadDirs())
 	}
 }

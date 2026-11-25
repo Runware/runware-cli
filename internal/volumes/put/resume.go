@@ -76,11 +76,11 @@ func (r *runner) matchesTargets(s *savedSession, targets map[string]struct{}) bo
 		return len(s.sources) > 0
 	}
 	for _, file := range s.files {
-		if _, ok := targets[file.rec.Path]; ok {
-			return true
+		if _, ok := targets[file.rec.Path]; !ok {
+			return false
 		}
 	}
-	return len(s.files) == 0
+	return true
 }
 
 // resume continues a matching saved session without opening a new one or
@@ -116,23 +116,19 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 		}
 	}()
 	for _, s := range saved {
+		if s.session.Invocation != "" && s.session.Invocation != r.invocation &&
+			!matchesSavedSources(s, sources) {
+			s.release()
+			continue
+		}
 		p, err := r.planResume(s, sources)
 		if err != nil {
-			// Matching target names alone cannot identify a copied session.
-			if errors.Is(err, ErrSourceChanged) && s.session.Invocation != "" && s.session.Invocation != r.invocation {
-				s.release()
-				continue
-			}
-			reason := err.Error()
-			if errors.Is(err, ErrSourceChanged) {
-				reason = sourceChangeReason(err)
-			}
-			aborted := r.abortSaved(ctx, s, reason)
+			aborted := r.abortSaved(ctx, s, resumeFailureReason(err))
 			s.release()
+			if plan == nil && s.publishing && !aborted {
+				return true, Summary{}, uncertainPublication(err)
+			}
 			if plan == nil && errors.Is(err, ErrSourceChanged) {
-				if s.publishing && !aborted {
-					return true, Summary{}, uncertainSourceChange(err)
-				}
 				return true, Summary{}, err
 			}
 			continue
@@ -297,6 +293,32 @@ func matchesSource(rec fileRecord, src *Source) bool {
 	return src.Size == rec.Size && src.Mode == rec.Mode && hex.EncodeToString(src.SHA256[:]) == rec.SHA256
 }
 
+// A copied journal can match a different local invocation only by its full source set.
+func matchesSavedSources(s *savedSession, sources []Source) bool {
+	for i := range sources {
+		src := &sources[i]
+		rec, ok := s.sources[src.Target]
+		if !ok || !matchesSource(rec, src) {
+			return false
+		}
+	}
+	return true
+}
+
+func resumeFailureReason(err error) string {
+	if errors.Is(err, ErrSourceChanged) {
+		return sourceChangeReason(err)
+	}
+	return err.Error()
+}
+
+func uncertainPublication(err error) error {
+	if errors.Is(err, ErrSourceChanged) {
+		return uncertainSourceChange(err)
+	}
+	return fmt.Errorf("%w (the earlier upload may have published. Check the Volume's files before running put again)", err)
+}
+
 func sourceChangeReason(err error) string {
 	file, ok := errors.AsType[*FileError](err)
 	if !ok {
@@ -309,8 +331,8 @@ func uncertainSourceChange(err error) error {
 	return fmt.Errorf("%s and the earlier upload may have published. Check the Volume's files before running put again", sourceChangeReason(err))
 }
 
-// abortSaved aborts a saved session that cannot continue, then removes its state; the state stays while
-// the session stays open.
+// abortSaved removes state on a confirmed abort. An unconfirmed publication
+// keeps its journal so a later invocation can still recover the result.
 func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string) bool {
 	actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abortTimeout)
 	defer cancel()
@@ -320,7 +342,9 @@ func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string)
 	})
 	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
 		r.warn("the saved upload session %s is closed and cannot be resumed because %s", s.session.Upload, reason)
-		r.removeState(s.dir, s.lock, "closed")
+		if !s.publishing {
+			r.removeState(s.dir, s.lock, "closed")
+		}
 		return false
 	}
 	if err == nil {
