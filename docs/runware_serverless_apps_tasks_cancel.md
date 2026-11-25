@@ -4,7 +4,7 @@ Cancel a queued task, or all queued tasks of an application
 
 ### Synopsis
 
-Cancel a task that no worker has started. It never runs and uses no GPU time.
+Cancel a task that no worker has started. Workers that check for a canceled task skip it.
 
 A task that is already running, completed, or failed cannot be canceled.
 

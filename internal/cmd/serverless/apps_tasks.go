@@ -112,7 +112,7 @@ func newAppsTasksCancelCmd(logger *log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cancel <appId> [taskId]",
 		Short: "Cancel a queued task, or all queued tasks of an application",
-		Long: `Cancel a task that no worker has started. It never runs and uses no GPU time.
+		Long: `Cancel a task that no worker has started. Workers that check for a canceled task skip it.
 
 A task that is already running, completed, or failed cannot be canceled.
 
