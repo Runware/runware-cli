@@ -122,7 +122,7 @@ func TestRetryUsesNewSealer(t *testing.T) {
 	}
 }
 
-func TestStorageFailureAbortsAfterRetries(t *testing.T) {
+func TestStorageFailureKeepsSessionAfterRetries(t *testing.T) {
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -138,17 +138,17 @@ func TestStorageFailureAbortsAfterRetries(t *testing.T) {
 	if !errors.Is(err, ErrPartStorageUnavailable) || !errors.Is(err, errUploadRetriesExhausted) {
 		t.Fatalf("error = %v, want a storage failure", err)
 	}
-	if !strings.HasSuffix(err.Error(), "; run put again") {
-		t.Errorf("error = %q, want it to end by telling the user to run put again", err)
+	if !strings.Contains(err.Error(), "run put again with the same paths to resume") {
+		t.Errorf("error = %q, want resume instructions", err)
 	}
 	if got := len(e.cloud.putLog()); got != maxUploadAttempts {
 		t.Errorf("%d tries, want %d", got, maxUploadAttempts)
 	}
-	if e.cloud.count("abort") != 1 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeAborted {
-		t.Errorf("calls = %v, state = %q, want the session aborted", e.cloud.callLog(), e.cloud.uploadState())
+	if e.cloud.count("abort") != 0 || e.cloud.count("complete") != 0 || e.cloud.uploadState() != fakeOpen {
+		t.Errorf("calls = %v, state = %q, want the session open", e.cloud.callLog(), e.cloud.uploadState())
 	}
-	if dirs := e.uploadDirs(); len(dirs) != 0 {
-		t.Errorf("resume state left after retries: %v", dirs)
+	if dirs := e.uploadDirs(); len(dirs) != 1 {
+		t.Errorf("want one saved session after retries, found: %v", dirs)
 	}
 }
 

@@ -907,9 +907,8 @@ func TestInterruptedResumeKeepsTheSession(t *testing.T) {
 	rec.requireSafe(t)
 }
 
-// A resumed put that runs out of part retries aborts the session, removes its state and says to run
-// put again, which then starts a new session.
-func TestResumeOutOfRetriesAbortsAndSaysToRunPutAgain(t *testing.T) {
+// A resumed put that runs out of part retries keeps its acknowledged parts for the next run.
+func TestResumeOutOfRetriesKeepsSession(t *testing.T) {
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -931,20 +930,20 @@ func TestResumeOutOfRetriesAbortsAndSaysToRunPutAgain(t *testing.T) {
 	_, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir))
 	failing.Store(false)
 
-	if !errors.Is(err, errUploadRetriesExhausted) || !strings.HasSuffix(err.Error(), "; run put again") {
+	if !errors.Is(err, errUploadRetriesExhausted) || !strings.Contains(err.Error(), "run put again with the same paths to resume") {
 		t.Fatalf("error = %v, want retry exhaustion ending by telling the user to run put again", err)
 	}
-	if e.cloud.count("abort") != 1 || e.cloud.uploadState() != fakeAborted || len(e.uploadDirs()) != 0 {
-		t.Fatalf("calls = %v, state = %q, resume state = %v; want the session aborted and its state removed",
+	if e.cloud.count("abort") != 0 || e.cloud.uploadState() != fakeOpen || len(e.uploadDirs()) != 1 {
+		t.Fatalf("calls = %v, state = %q, resume state = %v; want the session and state kept",
 			e.cloud.callLog(), e.cloud.uploadState(), e.uploadDirs())
 	}
 
 	if _, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir)); err != nil {
-		t.Fatalf("put after the abort: %v", err)
+		t.Fatalf("put after the outage: %v", err)
 	}
 	requireFiles(t, e, vol, expectedFiles(t, dir, ""))
-	if e.cloud.count("open") != 2 {
-		t.Errorf("calls = %v, want a new session after the abort", e.cloud.callLog())
+	if e.cloud.count("open") != 1 || okPuts(e, bigName, 1) != 1 {
+		t.Errorf("calls = %v, want the same session and no resend of the first part", e.cloud.callLog())
 	}
 	rec.requireSafe(t)
 }

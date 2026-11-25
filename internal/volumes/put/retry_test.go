@@ -263,7 +263,7 @@ func (a *lostCompletionResponse) CompleteUpload(ctx context.Context, ref UploadR
 	return UploadResult{}, io.ErrUnexpectedEOF
 }
 
-func TestLostCompletionDoesNotReportConfirmedAbort(t *testing.T) {
+func TestLostCompletionCanBeRecovered(t *testing.T) {
 	for _, name := range []string{"cancelled during backoff", "retry limit reached"} {
 		t.Run(name, func(t *testing.T) {
 			e := newTestEnv(t)
@@ -282,17 +282,20 @@ func TestLostCompletionDoesNotReportConfirmedAbort(t *testing.T) {
 				}
 			}
 			_, err := Run(ctx, opts)
-			if !errors.Is(err, want) || !strings.Contains(err.Error(), "the upload may already have completed") {
+			if !errors.Is(err, want) || !strings.Contains(err.Error(), "publication may have completed") {
 				t.Fatalf("error = %v, want %v and the uncertain completion warning", err, want)
 			}
-			if strings.Contains(err.Error(), "run put again") {
-				t.Errorf("error = %q, want no rerun hint when the upload may have completed", err)
+			if e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 1 {
+				t.Fatalf("calls = %v, state = %v, want the journal kept for the result", e.cloud.callLog(), e.uploadDirs())
 			}
-			if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.uploadState() != fakeCompleted || e.cloud.count("abort") != 1 {
-				t.Errorf("calls = %v, state = %q, want one published file and one abort attempt", e.cloud.callLog(), e.cloud.uploadState())
+			if _, err := Run(t.Context(), e.options(vol, file)); err != nil {
+				t.Fatalf("recover completion: %v", err)
 			}
-			if dirs := e.uploadDirs(); len(dirs) != 0 {
-				t.Errorf("resume state left on disk: %v", dirs)
+			if e.cloud.count("open") != 1 || len(e.cloud.putLog()) != 1 || len(e.uploadDirs()) != 0 {
+				t.Fatalf("calls = %v, state = %v, want one upload and no remaining journal", e.cloud.callLog(), e.uploadDirs())
+			}
+			if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.uploadState() != fakeCompleted {
+				t.Fatalf("files = %v, state = %q, want the original publication", files, e.cloud.uploadState())
 			}
 		})
 	}

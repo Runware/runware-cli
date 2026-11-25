@@ -79,6 +79,7 @@ type fakeVolume struct {
 }
 
 type fakeUploadFile struct {
+	answer put.DeclarationAnswer
 	id     string
 	decl   put.FileDeclaration
 	parts  int64
@@ -535,6 +536,26 @@ func (f *putFake) declare(w http.ResponseWriter, r *http.Request, vol *fakeVolum
 	}
 	answers := make([]put.DeclarationAnswer, 0, len(decls.Files))
 	for _, d := range decls.Files {
+		var existing *fakeUploadFile
+		for _, file := range up.files {
+			if file.decl.Path == d.Path {
+				existing = file
+				break
+			}
+		}
+		if existing != nil {
+			if existing.decl != d {
+				writeProblem(w, http.StatusConflict, "volume-upload-path-declared", "the file was declared differently", nil)
+				return
+			}
+			answer := existing.answer
+			answer.File.State = existing.state
+			if existing.state != fakeUploading {
+				answer.UploadTargets = nil
+			}
+			answers = append(answers, answer)
+			continue
+		}
 		file := &fakeUploadFile{
 			id:   uuid.NewString(),
 			decl: d,
@@ -577,6 +598,7 @@ func (f *putFake) declare(w http.ResponseWriter, r *http.Request, vol *fakeVolum
 				answer.UploadTargets = append(answer.UploadTargets, f.target(file.id, n))
 			}
 		}
+		file.answer = answer
 		answers = append(answers, answer)
 	}
 	if f.onDeclare != nil {

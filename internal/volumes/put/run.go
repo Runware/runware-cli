@@ -140,6 +140,13 @@ func organizationHelp() string {
 }
 
 func (r *runner) run(ctx context.Context) (Summary, error) {
+	saved := r.sweep()
+	defer func() {
+		for _, s := range saved {
+			clear(s.session.SessionKey)
+			_ = s.lock.Close()
+		}
+	}()
 	sources, err := Walk(r.o.Paths, r.o.To)
 	if err != nil {
 		return Summary{}, err
@@ -148,7 +155,7 @@ func (r *runner) run(ctx context.Context) (Summary, error) {
 	if err != nil {
 		return Summary{}, fmt.Errorf("read the Volume's files: %w", err)
 	}
-	if resumed, sum, err := r.resume(ctx, sources, before); resumed {
+	if resumed, sum, err := r.resume(ctx, saved, sources, before); resumed {
 		return sum, err
 	}
 	sess, err := r.openKeys(ctx)
@@ -234,7 +241,9 @@ func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, 
 		ID:     id.String(),
 	}
 	r.expiresAt = up.ExpiresAt
-	if err := r.begin(sess, id, up); err != nil {
+	err = r.begin(sess, id, up)
+	defer r.journal.release()
+	if err != nil {
 		return Summary{}, r.abort(ctx, err)
 	}
 	sum, err := r.transfer(ctx, sess, sources, before)
@@ -317,6 +326,11 @@ func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source
 func (r *runner) publish(ctx context.Context, files []*fileState, sources []Source, before FileList) (Summary, error) {
 	for i := range sources {
 		if err := unchanged(&sources[i]); err != nil {
+			return Summary{}, err
+		}
+	}
+	if !r.completionAttempted {
+		if err := r.journal.logSync(recordType{Type: recordPublish}); err != nil {
 			return Summary{}, err
 		}
 	}
@@ -410,7 +424,7 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 	recs := make([]any, 0, len(batch))
 	for i, f := range batch {
 		a := &got.Files[i]
-		if a.File.Path != decls[i].Path || a.File.ID == "" {
+		if a.File.Path != decls[i].Path || a.File.ID == "" || (f.id != "" && f.id != a.File.ID) {
 			return fileErr(f.src.Abs, fmt.Errorf("%w: the answer is for another file", ErrProtocol))
 		}
 		f.id = a.File.ID
@@ -418,9 +432,17 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 		case stateReused:
 			f.reused = true
 			f.key.Clear()
+		case stateVerified:
+			if r.resumed == nil {
+				return fileErr(f.src.Abs, fmt.Errorf("%w: a new file was already verified", ErrProtocol))
+			}
+			f.verified = true
+			f.key.Clear()
 		case stateUploading:
-			if err := f.prepare(a); err != nil {
-				return fileErr(f.src.Abs, err)
+			if f.targets == nil {
+				if err := f.prepare(a); err != nil {
+					return fileErr(f.src.Abs, err)
+				}
 			}
 		default:
 			return fileErr(f.src.Abs, fmt.Errorf("%w: the file was declared as %q", ErrProtocol, a.File.State))
@@ -437,14 +459,14 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 		return err
 	}
 	for _, f := range batch {
-		if f.reused {
+		if f.reused || f.verified {
 			if err := r.journal.discardFileKeys(f.index); err != nil {
 				return fileErr(f.src.Abs, err)
 			}
 		}
 	}
 	for _, f := range batch {
-		if f.reused {
+		if f.reused || f.verified {
 			if err := unchanged(f.src); err != nil {
 				return err
 			}

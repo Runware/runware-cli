@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	uploadsDirName = "uploads"
-	journalName    = "journal.jsonl"
-	journalVersion = 1
+	uploadsDirName  = "uploads"
+	journalName     = "journal.jsonl"
+	sessionLockName = "session.lock"
+	journalVersion  = 1
 )
 
 // Journal record types; session, file, declared and part records are synced before they are used.
@@ -26,6 +27,7 @@ const (
 	recordPart     = "part"
 	recordAck      = "ack"
 	recordComplete = "complete"
+	recordPublish  = "publish"
 )
 
 type sessionRecord struct {
@@ -91,6 +93,7 @@ type journal struct {
 	mu   sync.Mutex
 	dir  string
 	file *os.File
+	lock *os.File
 }
 
 // createJournal returns the owned journal for cleanup even if writing its first record fails.
@@ -108,6 +111,10 @@ func createJournal(stateDir string, rec sessionRecord) (*journal, error) {
 		return nil, fmt.Errorf("create the session's resume state directory: %w", err)
 	}
 	j := &journal{dir: dir}
+	j.lock, err = lockSession(dir, true)
+	if err != nil {
+		return j, fmt.Errorf("lock the resume state: %w", err)
+	}
 	rec.Type = recordSession
 	rec.Version = journalVersion
 	line, err := encodeLine(rec)
@@ -135,13 +142,8 @@ func encodeLine(rec any) ([]byte, error) {
 	return append(line, '\n'), nil
 }
 
-// log appends records without a sync.
-func (j *journal) log(recs ...any) error { return j.write(false, recs) }
-
 // logSync appends records and syncs them.
-func (j *journal) logSync(recs ...any) error { return j.write(true, recs) }
-
-func (j *journal) write(durable bool, recs []any) error {
+func (j *journal) logSync(recs ...any) error {
 	var batch []byte
 	for _, rec := range recs {
 		line, err := encodeLine(rec)
@@ -158,12 +160,16 @@ func (j *journal) write(durable bool, recs []any) error {
 	if _, err := j.file.Write(batch); err != nil {
 		return fmt.Errorf("write the resume state: %w", err)
 	}
-	if durable {
-		if err := j.file.Sync(); err != nil {
-			return fmt.Errorf("sync the resume state: %w", err)
-		}
+	if err := j.file.Sync(); err != nil {
+		return fmt.Errorf("sync the resume state: %w", err)
 	}
 	return nil
+}
+
+func (j *journal) release() {
+	if j != nil && j.lock != nil {
+		_ = j.lock.Close()
+	}
 }
 
 func fileKeyName(index int) string { return fmt.Sprintf("file-%d.key", index) }

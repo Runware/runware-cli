@@ -27,10 +27,12 @@ var errBadJournal = errors.New("the resume state cannot be read")
 
 // savedSession is one session's resume state as its journal holds it.
 type savedSession struct {
-	dir     string
-	session sessionRecord
-	files   map[int]*savedFile // by journal index
-	order   []int              // journal indexes in the order they were saved
+	dir        string
+	lock       *os.File
+	session    sessionRecord
+	files      map[int]*savedFile // by journal index
+	order      []int              // journal indexes in the order they were saved
+	publishing bool
 	// validLen is the length of the journal's complete lines; a torn tail after it is cut on reopen.
 	validLen int64
 }
@@ -55,6 +57,7 @@ func loadSaved(dir string) (*savedSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errBadJournal, err)
 	}
+	defer clear(data)
 	s := &savedSession{
 		dir:   dir,
 		files: map[int]*savedFile{},
@@ -132,6 +135,8 @@ func (s *savedSession) apply(line []byte, first bool) error {
 				f.complete = true
 			}
 		}
+	case recordPublish:
+		s.publishing = true
 	default:
 		return fmt.Errorf("%w: unknown record %q", errBadJournal, t.Type)
 	}
@@ -161,13 +166,17 @@ func reopenJournal(s *savedSession) (*journal, error) {
 			}
 		}
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open the resume state: %w", err)
 	}
 	if err := f.Truncate(s.validLen); err != nil {
 		_ = f.Close()
 		return nil, fmt.Errorf("write the resume state: %w", err)
+	}
+	if _, err := f.Seek(s.validLen, 0); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("seek in the resume state: %w", err)
 	}
 	return &journal{
 		dir:  s.dir,
@@ -304,5 +313,5 @@ func (s *savedSession) sessionID() (uuid.UUID, error) {
 
 // keyless reports whether a saved file no longer needs its keys: it completed, or its content was reused.
 func (f *savedFile) keyless() bool {
-	return f.complete || (f.declared != nil && f.declared.State == stateReused)
+	return f.complete || (f.declared != nil && (f.declared.State == stateReused || f.declared.State == stateVerified))
 }

@@ -38,6 +38,7 @@ type fileState struct {
 	key      FileKey
 	id       string
 	reused   bool
+	verified bool
 	layout   volumeformat.Layout
 	identity volumeformat.FileIdentity
 
@@ -260,7 +261,7 @@ func (r *runner) transferPart(ctx context.Context, j partJob) error {
 	}
 	f.results[j.part-1] = res
 	r.progress.addBytes(res.Len)
-	if err := r.journal.log(ackRecord{
+	if err := r.journal.logSync(ackRecord{
 		Type:      recordAck,
 		Index:     f.index,
 		Part:      j.part,

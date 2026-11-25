@@ -47,8 +47,25 @@ func (p *resumePlan) clear() {
 // reports false when put should open a new session instead. It removes expired state, and aborts a saved
 // session that cannot continue: a file changed since it was saved, a key that no longer opens, or
 // a newer session for the same Volume. A resumed session fetches no key-pair statement and opens nothing.
-func (r *runner) resume(ctx context.Context, sources []Source, before FileList) (bool, Summary, error) {
-	saved := r.sweep()
+func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []Source, before FileList) (bool, Summary, error) {
+	if len(saved) == 0 {
+		return false, Summary{}, nil
+	}
+	targets := make(map[string]struct{}, len(sources))
+	for _, src := range sources {
+		targets[src.Target] = struct{}{}
+	}
+	saved = slices.DeleteFunc(slices.Clone(saved), func(s *savedSession) bool {
+		if len(s.files) == 0 {
+			return false
+		}
+		for _, file := range s.files {
+			if _, ok := targets[file.rec.Path]; ok {
+				return false
+			}
+		}
+		return true
+	})
 	if len(saved) == 0 {
 		return false, Summary{}, nil
 	}
@@ -102,22 +119,34 @@ func (r *runner) sweep() []*savedSession {
 			continue
 		}
 		dir := filepath.Join(root, entry.Name())
+		info, statErr := entry.Info()
+		lock, err := lockSession(dir, false)
+		if err != nil || lock == nil {
+			continue
+		}
 		s, err := loadSaved(dir)
 		if err == nil {
 			_, err = s.sessionID()
 		}
 		if err != nil {
-			if info, statErr := entry.Info(); statErr == nil && now.Sub(info.ModTime()) > unreadableStateAge {
+			if statErr == nil && now.Sub(info.ModTime()) > unreadableStateAge {
 				r.removeState(dir, "unreadable")
 			}
+			_ = lock.Close()
 			continue
 		}
 		if !now.Before(s.session.ExpiresAt) {
 			r.removeState(dir, "expired")
+			clear(s.session.SessionKey)
+			_ = lock.Close()
 			continue
 		}
 		if s.session.Organization == org && s.session.Volume == r.o.Volume.Name && s.session.Environment == r.o.Volume.Environment {
+			s.lock = lock
 			mine = append(mine, s)
+		} else {
+			clear(s.session.SessionKey)
+			_ = lock.Close()
 		}
 	}
 	return mine
@@ -143,6 +172,9 @@ func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, str
 	}
 	if len(s.session.SessionKey) != 32 || s.session.KeyPair == "" {
 		return nil, "the session sealing key was lost"
+	}
+	if s.publishing && len(sources) != len(s.files) {
+		return nil, "the paths differ from the upload sent for publication"
 	}
 	byTarget := make(map[string]*Source, len(sources))
 	for i := range sources {
@@ -199,7 +231,12 @@ func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string)
 		Volume: r.o.Volume,
 		ID:     s.session.Upload,
 	})
-	if p, ok := errors.AsType[*ProblemError](err); err == nil || (ok && p.Slug == slugUploadNotOpen) {
+	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
+		r.warn("the saved upload session %s is closed and cannot be resumed because %s; starting a new one", s.session.Upload, reason)
+		r.removeState(s.dir, "closed")
+		return
+	}
+	if err == nil {
 		r.warn("aborted the saved upload session %s, which cannot be resumed because %s; starting a new one", s.session.Upload, reason)
 		r.removeState(s.dir, "aborted")
 		return
@@ -216,6 +253,7 @@ func (r *runner) resumeSession(ctx context.Context, p *resumePlan, sources []Sou
 		ID:     p.session.String(),
 	}
 	r.expiresAt = p.saved.session.ExpiresAt
+	r.completionAttempted = p.saved.publishing
 	j, err := reopenJournal(p.saved)
 	if err != nil {
 		return Summary{}, err
@@ -275,6 +313,8 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 		switch sf.declared.State {
 		case stateReused:
 			f.reused = true
+		case stateVerified:
+			f.verified = true
 		case stateUploading:
 			n, err := r.restoreFile(f, sf)
 			if err != nil {
@@ -283,6 +323,10 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 			acked += n
 			if sf.complete {
 				done[f] = struct{}{}
+			} else if int64(n) != f.layout.PartCount {
+				// A restored snapshot may predate verification. Replay the original
+				// declaration before renewing any missing part of that file.
+				undeclared = append(undeclared, f)
 			}
 		default:
 			return Summary{}, fileErr(src.Abs, fmt.Errorf("%w: the file was saved as %q", ErrProtocol, sf.declared.State))
@@ -295,7 +339,7 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 	}
 	var todo []*fileState
 	for _, f := range files {
-		if _, ok := done[f]; !ok && !f.reused {
+		if _, ok := done[f]; !ok && !f.reused && !f.verified {
 			todo = append(todo, f)
 		}
 	}
