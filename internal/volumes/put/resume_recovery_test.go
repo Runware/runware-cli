@@ -186,6 +186,16 @@ func TestIndependentPutPreservesOverlappingLegacySession(t *testing.T) {
 	}
 }
 
+func TestEmptyLegacySessionDoesNotMatchTargets(t *testing.T) {
+	r := runner{invocation: "current"}
+	targets := map[string]struct{}{
+		"first.txt": {},
+	}
+	if r.matchesTargets(&savedSession{}, targets) {
+		t.Fatal("an empty legacy journal cannot identify this put")
+	}
+}
+
 func TestResumeRefusesFreshPutAfterUnconfirmedPublication(t *testing.T) {
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
@@ -288,11 +298,15 @@ func TestResumeRefusesChangeAfterUnappliedPublication(t *testing.T) {
 		t.Fatalf("first put = %v, want publication retries exhausted", err)
 	}
 	rewrite(t, file, []byte("changed"))
-	if _, err := Run(t.Context(), e.options(vol, file)); !errors.Is(err, ErrSourceChanged) {
+	api := &transientAbort{API: e.cloud}
+	opts.API = api
+	if _, err := Run(t.Context(), opts); !errors.Is(err, ErrSourceChanged) {
 		t.Fatalf("resume = %v, want a source-change error", err)
 	}
-	if files, _ := e.cloud.latest(vol); len(files) != 0 || e.cloud.count("open") != 1 || e.cloud.count("abort") != 1 {
-		t.Fatalf("files = %v, calls = %v, want one aborted session and no publication", files, e.cloud.callLog())
+	if files, _ := e.cloud.latest(vol); len(files) != 0 || e.cloud.count("open") != 1 ||
+		e.cloud.count("abort") != 2 || api.calls != 3 || len(e.uploadDirs()) != 0 {
+		t.Fatalf("files = %v, calls = %v, abort attempts = %d, journals = %v, want a confirmed abort without publication",
+			files, e.cloud.callLog(), api.calls, e.uploadDirs())
 	}
 }
 

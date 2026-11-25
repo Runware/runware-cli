@@ -80,7 +80,7 @@ func (r *runner) matchesTargets(s *savedSession, targets map[string]struct{}) bo
 			return false
 		}
 	}
-	return true
+	return len(s.files) > 0
 }
 
 // resume continues a matching saved session without opening a new one or
@@ -340,13 +340,11 @@ func uncertainSourceChange(err error) error {
 // abortSaved removes state on a confirmed abort. An unconfirmed publication
 // keeps its journal so a later invocation can still recover the result.
 func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string) bool {
-	actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abortTimeout)
-	defer cancel()
-	err := r.api.AbortUpload(actx, UploadRef{
+	closed, err := r.abortUpload(ctx, UploadRef{
 		Volume: r.o.Volume,
 		ID:     s.session.Upload,
 	})
-	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
+	if closed {
 		if s.publishing {
 			return false
 		}

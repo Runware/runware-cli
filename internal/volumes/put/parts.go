@@ -268,7 +268,7 @@ func (r *runner) transferPart(ctx context.Context, j partJob) error {
 	}
 	f.results[j.part-1] = res
 	r.progress.addBytes(res.Len)
-	if err := r.journal.logSync(ackRecord{
+	if err := r.journal.logAck(ackRecord{
 		Type:      recordAck,
 		Index:     f.index,
 		Part:      j.part,

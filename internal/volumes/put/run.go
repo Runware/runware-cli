@@ -316,24 +316,30 @@ func (r *runner) begin(sess KeySession, id uuid.UUID, up Upload) error {
 	return err
 }
 
-// abort tries to close the session and removes the local journal even if the server is unreachable.
-func (r *runner) abort(ctx context.Context, cause error) error {
+// abortUpload retries an abort for a bounded time. It reports closed when the
+// session was already closed and the API cannot confirm whether it published.
+func (r *runner) abortUpload(ctx context.Context, ref UploadRef) (closed bool, err error) {
 	actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abortTimeout)
 	defer cancel()
-	_, abortErr := retryUploadAPI(actx, r.sleep, func() (struct{}, error) {
-		err := r.api.AbortUpload(actx, r.ref)
+	return retryUploadAPI(actx, r.sleep, func() (bool, error) {
+		err := r.api.AbortUpload(actx, ref)
 		if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
-			if r.completionAttempted {
-				if errors.Is(cause, ErrSourceChanged) {
-					cause = uncertainSourceChange(cause)
-				} else {
-					cause = fmt.Errorf("%w (the upload may already have completed; check the Volume's latest files)", cause)
-				}
-			}
-			return struct{}{}, nil
+			return true, nil
 		}
-		return struct{}{}, err
+		return false, err
 	})
+}
+
+// abort tries to close the session and removes the local journal even if the server is unreachable.
+func (r *runner) abort(ctx context.Context, cause error) error {
+	closed, abortErr := r.abortUpload(ctx, r.ref)
+	if closed && r.completionAttempted {
+		if errors.Is(cause, ErrSourceChanged) {
+			cause = uncertainSourceChange(cause)
+		} else {
+			cause = fmt.Errorf("%w (the upload may already have completed; check the Volume's latest files)", cause)
+		}
+	}
 	if abortErr != nil {
 		if r.completionAttempted && errors.Is(cause, ErrSourceChanged) {
 			cause = uncertainSourceChange(cause)

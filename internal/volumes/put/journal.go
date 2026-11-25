@@ -100,10 +100,11 @@ type actionRecord struct {
 
 // journal is the private resume state of one session, removed when the session completes or aborts.
 type journal struct {
-	mu   sync.Mutex
-	dir  string
-	file *os.File
-	lock *os.File
+	mu       sync.Mutex
+	dir      string
+	file     *os.File
+	lock     *os.File
+	writeErr error
 }
 
 // createJournal returns the owned journal for cleanup even if writing its first record fails.
@@ -154,6 +155,17 @@ func encodeLine(rec any) ([]byte, error) {
 
 // logSync appends records and syncs them.
 func (j *journal) logSync(recs ...any) error {
+	return j.appendRecords(true, recs...)
+}
+
+// logAck records an acknowledgement without its own sync. A crash can lose it:
+// the part digest is already durable, and resuming can resend the same plaintext
+// with a fresh salt or replay the declaration of a file the API already verified.
+func (j *journal) logAck(rec ackRecord) error {
+	return j.appendRecords(false, rec)
+}
+
+func (j *journal) appendRecords(durable bool, recs ...any) error {
 	var batch []byte
 	for _, rec := range recs {
 		line, err := encodeLine(rec)
@@ -167,11 +179,19 @@ func (j *journal) logSync(recs ...any) error {
 	if j.file == nil {
 		return errors.New("write the resume state: the journal is closed")
 	}
-	if _, err := j.file.Write(batch); err != nil {
-		return fmt.Errorf("write the resume state: %w", err)
+	if j.writeErr != nil {
+		return j.writeErr
 	}
-	if err := j.file.Sync(); err != nil {
-		return fmt.Errorf("sync the resume state: %w", err)
+	if _, err := j.file.Write(batch); err != nil {
+		// A short write can leave a torn last line. Further appends would
+		// hide it from the recovery that truncates a torn tail.
+		j.writeErr = fmt.Errorf("write the resume state: %w", err)
+		return j.writeErr
+	}
+	if durable {
+		if err := j.file.Sync(); err != nil {
+			return fmt.Errorf("sync the resume state: %w", err)
+		}
 	}
 	return nil
 }
