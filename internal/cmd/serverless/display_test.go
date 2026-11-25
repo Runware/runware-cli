@@ -646,8 +646,8 @@ func TestVersionResult_NilBuildID(t *testing.T) {
 	if rows[3][1] != "" {
 		t.Fatalf("nil BuildId should render empty, got %#v", rows[3][1])
 	}
-	if rows[4][0] != colMounts || rows[4][1] != noMounts {
-		t.Fatalf("no mounts should render none, got %#v", rows[4])
+	if rows[4][0] != colMounts || rows[4][1] != noValue {
+		t.Fatalf("omitted mounts should render %q, got %#v", noValue, rows[4])
 	}
 	if rows[0][1] != int32(1) {
 		t.Fatalf("version number: got %#v", rows[0][1])

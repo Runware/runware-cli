@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/log"
+
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
 const (
@@ -38,6 +40,8 @@ type mountStub struct {
 	appMounts string
 	// unpinned makes the app read return a null activeVersionId.
 	unpinned bool
+	// status is what the app read and write answer; active when empty.
+	status string
 	// versions and workers are the list bodies the stub serves.
 	versions string
 	workers  string
@@ -65,9 +69,9 @@ func (s *mountStub) serve() {
 				_, _ = io.WriteString(w, `{"type":"about:blank","title":"Not Found","status":404}`)
 				return
 			}
-			body := activeAppBody(newVersionID)
+			body := s.withStatus(activeAppBody(newVersionID))
 			if s.unpinned {
-				body = activeAppBody("")
+				body = s.withStatus(activeAppBody(""))
 			}
 			if s.appMounts != "" {
 				body = strings.TrimSuffix(strings.TrimSpace(body), "}") + `,"mounts":` + s.appMounts + `}`
@@ -92,7 +96,7 @@ func (s *mountStub) serve() {
 			if r.Method == http.MethodPost {
 				w.WriteHeader(http.StatusCreated)
 			}
-			_, _ = io.WriteString(w, activeAppBody(newVersionID))
+			_, _ = io.WriteString(w, s.withStatus(activeAppBody(newVersionID)))
 		case r.Method == http.MethodGet && r.URL.Path == appPath+"/versions":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, s.versions)
@@ -110,6 +114,14 @@ func (s *mountStub) serve() {
 	s.t.Cleanup(api.Close)
 	s.t.Setenv("RUNWARE_API_KEY", "test-key")
 	s.t.Setenv("RUNWARE_SERVERLESS_BASE_URL", api.URL)
+}
+
+// withStatus answers body with the stub's status in place of active.
+func (s *mountStub) withStatus(body string) string {
+	if s.status == "" {
+		return body
+	}
+	return strings.Replace(body, `"status":"active"`, `"status":"`+s.status+`"`, 1)
 }
 
 // mountedVersionBody is a version that mounts model-weights at /models.
@@ -215,7 +227,7 @@ func TestDeployWithoutSourceChangesOnlyTheMounts(t *testing.T) {
 			name:       "no mounts",
 			args:       []string{testNoMountsFlag},
 			wantMounts: `[]`,
-			wantOut:    "none",
+			wantOut:    noMounts,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -265,6 +277,59 @@ func TestDeployWithoutSourceWaitSaysTheRolloutContinues(t *testing.T) {
 	}
 	if want := "the rollout continues in the background"; !strings.Contains(stderr.String(), want) {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+// A mounts-only update of a stopping app is recorded for the resume. --wait
+// takes that from the write's answer and returns, where polling the app would
+// wait out the drain.
+func TestDeployWithoutSourceWaitReturnsOnAStoppingApp(t *testing.T) {
+	stub := &mountStub{
+		t:      t,
+		exists: true,
+		status: string(serverlessapi.AppStatusStopping),
+	}
+	stub.serve()
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	cmd.PersistentFlags().String("format", testTableFormat, "")
+	cmd.SetArgs([]string{testIDFlag, testAppID, testMountFlag, testMountWeights, "--wait", "--timeout", "5s"})
+	if _, err := captureStdout(t, cmd.Execute); err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	if want := "the version is recorded and applied on resume"; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if last := stub.requests[len(stub.requests)-1]; last != http.MethodPatch+" "+testAppsPath+"/"+testAppID {
+		t.Fatalf("requests = %v, want none after the write", stub.requests)
+	}
+}
+
+// The write does not answer mounts, so JSON and YAML take the ones the deploy
+// sent, as the table does.
+func TestDeployPrintsTheSentMountsInJSON(t *testing.T) {
+	stub := &mountStub{
+		t:      t,
+		exists: true,
+	}
+	stub.serve()
+
+	cmd := newDeployCmd(log.New(io.Discard))
+	cmd.SetErr(io.Discard)
+	cmd.PersistentFlags().String("format", "json", "")
+	cmd.SetArgs([]string{testIDFlag, testAppID, testMountFlag, testMountWeights})
+	out, err := captureStdout(t, cmd.Execute)
+	if err != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	var app serverlessapi.App
+	if err := json.Unmarshal([]byte(out), &app); err != nil {
+		t.Fatalf("decode %q: %v", out, err)
+	}
+	if got := formatMounts(app.Mounts); got != testMountWeights {
+		t.Fatalf("mounts = %q, want %q", got, testMountWeights)
 	}
 }
 
@@ -435,8 +500,8 @@ func TestDeployReportsTheAPIRefusalOfAMount(t *testing.T) {
 }
 
 // apps show prints the mounts the app read returns, also without an active
-// version, marks a deleted Volume's, prints "none" when it returns none, and
-// reads no version to find them.
+// version, marks a deleted Volume's, and reads no version to find them. A read
+// that omits mounts may mean none or no beta access, so it prints neither.
 func TestAppsShowPrintsTheActiveVersionMounts(t *testing.T) {
 	for _, tc := range []struct {
 		name, appMounts, want string
@@ -444,7 +509,7 @@ func TestAppsShowPrintsTheActiveVersionMounts(t *testing.T) {
 	}{
 		{"mounted", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true}]`, testMountWeights, false},
 		{"deleted", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true,"deleted":true}]`, testMountWeights + deletedMountSuffix, false},
-		{noMounts, "", noMounts, false},
+		{"omitted", "", noValue, false},
 		// After a create whose first rollout failed there is no active
 		// version, and the read returns the latest version's mounts.
 		{"unpinned", `[{"kind":"volume","name":"model-weights","mountPath":"/models","readOnly":true}]`, testMountWeights, true},

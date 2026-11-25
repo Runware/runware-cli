@@ -566,7 +566,14 @@ paths and an invoke example once the application is active.`,
 			appID := app.AppId
 			waitCtx, cancelWait := waitContext(cmd.Context(), timeout)
 			defer cancelWait()
-			if wait && !serverlessapi.AppDeployTerminal(app.Status) {
+			// A mounts-only update pins its version in the write itself, and an
+			// unchanged list pins nothing, so the pin cannot tell when workers
+			// roll; on a stopping app the change waits for the resume, and polling
+			// would only wait out the drain. The write's answer decides, and the
+			// command says what is left instead of waiting on it.
+			rolloutNote, rollsLater := activateWaitNote(app.Status)
+			waitOnApp := wait && (!sourceless || !rollsLater)
+			if waitOnApp && !serverlessapi.AppDeployTerminal(app.Status) {
 				var lastStatus string
 				app, err = waitForAppDeploy(waitCtx, client, appID, pollInterval, func(appStatus, buildStatus string) {
 					msg := deployWaitMessage(appID, appStatus, buildStatus)
@@ -584,11 +591,7 @@ paths and an invoke example once the application is active.`,
 			}
 			spin.Stop()
 
-			// A mounts-only update pins its version in the write itself, and an
-			// unchanged list pins nothing, so the pin cannot tell when workers
-			// roll. Say what is left instead of waiting on it.
-			rolloutNote, rollsLater := activateWaitNote(app.Status)
-			if wait && sourceless && rollsLater {
+			if wait && !waitOnApp {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Application %s is %s; %s.\n", app.AppId, app.Status, rolloutNote)
 			}
 
@@ -613,13 +616,10 @@ paths and an invoke example once the application is active.`,
 				}
 			}
 
-			if err := output.Print(cmdutil.FormatFor(cmd), deployResult{
-				appResult: appResult(*app),
-				mounts:    appMounts,
-			}); err != nil {
+			if err := output.Print(cmdutil.FormatFor(cmd), newDeployResult(*app, appMounts)); err != nil {
 				return err
 			}
-			if !wait || (sourceless && rollsLater) {
+			if !waitOnApp {
 				return nil
 			}
 			return appFailedErr(cmd.Context(), client, app, defaultEnvironment(cmd))

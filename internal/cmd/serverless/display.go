@@ -172,6 +172,17 @@ type deployResult struct {
 	mounts *[]serverlessapi.VolumeMount `json:"-" yaml:"-"`
 }
 
+// newDeployResult puts the mounts a deploy sent on the app it prints, so JSON
+// and YAML carry them as the table does. A read after --wait may still answer
+// the outgoing version's mounts while the new version builds, so the sent ones
+// win. Without mounts sent, the app keeps what the API answered.
+func newDeployResult(app serverlessapi.App, mounts *[]serverlessapi.VolumeMount) deployResult {
+	if mounts != nil {
+		app.Mounts = mounts
+	}
+	return deployResult{appResult: appResult(app), mounts: mounts}
+}
+
 func (r deployResult) Rows() [][]any {
 	rows := r.appResult.Rows()
 	if r.mounts == nil {
@@ -180,7 +191,10 @@ func (r deployResult) Rows() [][]any {
 	return append(rows, []any{colMounts, formatMounts(r.mounts)})
 }
 
-// noMounts is the table value of a version or app that mounts no Shared Volume.
+// noMounts is the table value of a mount list the CLI knows is empty: one a
+// deploy sent. A read omits the list both when there are no mounts and when
+// Shared Volumes are not available to the organization, so an omitted list
+// prints noValue instead.
 const noMounts = "none"
 
 // deletedMountSuffix marks a mount whose Volume has been deleted since. It
@@ -192,7 +206,10 @@ const deletedMountSuffix = " (deleted)"
 // a table value can be pasted back into a deploy. A mount of a deleted Volume
 // gets deletedMountSuffix.
 func formatMounts(mounts *[]serverlessapi.VolumeMount) string {
-	if mounts == nil || len(*mounts) == 0 {
+	if mounts == nil {
+		return noValue
+	}
+	if len(*mounts) == 0 {
 		return noMounts
 	}
 	parts := make([]string, 0, len(*mounts))
