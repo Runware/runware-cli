@@ -28,6 +28,7 @@ const (
 	recordAck      = "ack"
 	recordComplete = "complete"
 	recordPublish  = "publish"
+	recordAction   = "action"
 )
 
 type sessionRecord struct {
@@ -87,6 +88,12 @@ type ackRecord struct {
 type completeRecord struct {
 	Type  string `json:"type"`
 	Index int    `json:"index"`
+}
+
+type actionRecord struct {
+	Type   string `json:"type"`
+	Index  int    `json:"index"`
+	Action string `json:"action"`
 }
 
 // journal is the private resume state of one session, removed when the session completes or aborts.

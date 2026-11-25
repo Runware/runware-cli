@@ -100,3 +100,82 @@ func TestResumeRecoversVerifiedFileFromOlderSnapshot(t *testing.T) {
 		})
 	}
 }
+
+func TestIndependentPutLeavesSavedSessionAvailable(t *testing.T) {
+	e := newTestEnv(t)
+	vol := e.cloud.newVolume("weights", "")
+	first := filepath.Join(t.TempDir(), "model.bin")
+	second := filepath.Join(t.TempDir(), "model.bin")
+	writeFile(t, first, []byte("first"))
+	writeFile(t, second, []byte("second"))
+
+	opts := e.options(vol, first)
+	block := blockedPart{
+		Transport: opts.Transport,
+		started:   make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	opts.Transport = block
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := Run(ctx, opts)
+		result <- err
+	}()
+	select {
+	case <-block.started:
+	case err := <-result:
+		t.Fatalf("first put stopped before transfer: %v", err)
+	}
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first put = %v, want cancellation", err)
+	}
+
+	opts = e.options(vol, second)
+	block = blockedPart{
+		Transport: opts.Transport,
+		started:   make(chan struct{}),
+		release:   make(chan struct{}),
+	}
+	opts.Transport = block
+	go func() {
+		_, err := Run(t.Context(), opts)
+		result <- err
+	}()
+	select {
+	case <-block.started:
+	case err := <-result:
+		t.Fatalf("independent put stopped before transfer: %v", err)
+	}
+	_, err := Run(t.Context(), e.options(vol, first))
+	close(block.release)
+	if err != nil {
+		t.Errorf("resume: %v", err)
+	}
+	if err := <-result; err != nil {
+		t.Errorf("independent put: %v", err)
+	}
+	if e.cloud.count("open") != 2 || e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 0 {
+		t.Fatalf("calls = %v, journals = %v, want two sessions without aborts", e.cloud.callLog(), e.uploadDirs())
+	}
+}
+
+func TestResumeRefusesChangeAfterUnappliedPublication(t *testing.T) {
+	e := newTestEnv(t)
+	vol := e.cloud.newVolume("weights", "")
+	file := singleFile(t, e, "model.bin", []byte("original"))
+	opts := e.options(vol, file)
+	opts.API = &unavailableCompletion{API: e.cloud}
+	if _, err := Run(t.Context(), opts); !errors.Is(err, errUploadRetriesExhausted) {
+		t.Fatalf("first put = %v, want publication retries exhausted", err)
+	}
+	rewrite(t, file, []byte("changed"))
+	if _, err := Run(t.Context(), e.options(vol, file)); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("resume = %v, want a source-change error", err)
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 0 || e.cloud.count("open") != 1 || e.cloud.count("abort") != 1 {
+		t.Fatalf("files = %v, calls = %v, want one aborted session and no publication", files, e.cloud.callLog())
+	}
+}

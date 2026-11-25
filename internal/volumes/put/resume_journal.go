@@ -33,8 +33,17 @@ type savedSession struct {
 	files      map[int]*savedFile // by journal index
 	order      []int              // journal indexes in the order they were saved
 	publishing bool
+	actions    map[int]string
 	// validLen is the length of the journal's complete lines; a torn tail after it is cut on reopen.
 	validLen int64
+}
+
+func (s *savedSession) release() {
+	clear(s.session.SessionKey)
+	if s.lock != nil {
+		_ = s.lock.Close()
+		s.lock = nil
+	}
 }
 
 // savedFile is one journalled file: its key, its answer, and the digests and acknowledgements of its parts.
@@ -59,8 +68,9 @@ func loadSaved(dir string) (*savedSession, error) {
 	}
 	defer clear(data)
 	s := &savedSession{
-		dir:   dir,
-		files: map[int]*savedFile{},
+		dir:     dir,
+		files:   map[int]*savedFile{},
+		actions: map[int]string{},
 	}
 	s.validLen = int64(bytes.LastIndexByte(data, '\n') + 1)
 	lines := bytes.Split(data[:s.validLen], []byte("\n"))
@@ -134,6 +144,11 @@ func (s *savedSession) apply(line []byte, first bool) error {
 			if f, ok := s.files[rec.Index]; ok {
 				f.complete = true
 			}
+		}
+	case recordAction:
+		var rec actionRecord
+		if err = json.Unmarshal(line, &rec); err == nil {
+			s.actions[rec.Index] = rec.Action
 		}
 	case recordPublish:
 		s.publishing = true

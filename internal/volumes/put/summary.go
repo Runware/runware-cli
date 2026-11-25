@@ -35,6 +35,7 @@ type Summary struct {
 	Reused         int          `json:"reused"` // Files that reused content, including added or replaced paths.
 	BytesSent      int64        `json:"bytesSent"`
 	Files          []FileResult `json:"files"`
+	recovered      bool
 }
 
 // WriteText writes the summary as text.
@@ -49,7 +50,11 @@ func (s Summary) WriteText(w io.Writer) error {
 	if digest == "" {
 		digest = "none, the Volume has no files"
 	}
-	fmt.Fprintf(&b, "  Latest files digest: %s\n", digest)
+	label := "Latest files digest"
+	if s.recovered {
+		label = "Publication digest"
+	}
+	fmt.Fprintf(&b, "  %s: %s\n", label, digest)
 	fmt.Fprintf(&b, "  Files: %d added, %d replaced, %d reused\n", s.Added, s.Replaced, s.Reused)
 	fmt.Fprintf(&b, "  Bytes sent: %d (%s)\n", s.BytesSent, formatBytes(s.BytesSent))
 	_, err := io.WriteString(w, b.String())

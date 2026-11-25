@@ -43,27 +43,50 @@ func (p *resumePlan) clear() {
 	}
 }
 
-// resume continues a matching saved session without opening a new one or
-// fetching a key-pair statement.
-func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []Source, before FileList) (bool, Summary, error) {
-	if len(saved) == 0 {
-		return false, Summary{}, nil
-	}
+// resumeCandidates releases locks on sessions that address other source paths.
+func (r *runner) resumeCandidates(saved []*savedSession, sources []Source) []*savedSession {
 	targets := make(map[string]struct{}, len(sources))
 	for _, src := range sources {
 		targets[src.Target] = struct{}{}
 	}
-	saved = slices.DeleteFunc(slices.Clone(saved), func(s *savedSession) bool {
-		if s.session.Invocation != "" && s.session.Invocation == r.invocation {
+	var candidates []*savedSession
+	for _, s := range saved {
+		if r.matchesTargets(s, targets) {
+			candidates = append(candidates, s)
+		} else {
+			s.release()
+		}
+	}
+	return candidates
+}
+
+func (r *runner) matchesTargets(s *savedSession, targets map[string]struct{}) bool {
+	if s.session.Invocation != "" {
+		if s.session.Invocation == r.invocation {
+			return true
+		}
+		// A copied journal may be resumed from another directory.
+		if len(s.files) != len(targets) {
 			return false
 		}
 		for _, file := range s.files {
-			if _, ok := targets[file.rec.Path]; ok {
+			if _, ok := targets[file.rec.Path]; !ok {
 				return false
 			}
 		}
 		return len(s.files) > 0
-	})
+	}
+	for _, file := range s.files {
+		if _, ok := targets[file.rec.Path]; ok {
+			return true
+		}
+	}
+	return len(s.files) == 0
+}
+
+// resume continues a matching saved session without opening a new one or
+// fetching a key-pair statement.
+func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []Source, before FileList) (bool, Summary, error) {
 	if len(saved) == 0 {
 		return false, Summary{}, nil
 	}
@@ -71,21 +94,45 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 	err := hashSources(ctx, sources, cache, r.progress, r.o.onHash)
 	r.saveCache(cache)
 	if err != nil {
+		if errors.Is(err, ErrSourceChanged) {
+			for _, s := range saved {
+				if s.session.Invocation == r.invocation || s.session.Invocation == "" {
+					r.abortSaved(ctx, s, err.Error())
+				}
+			}
+		}
 		return true, Summary{}, err
 	}
 	slices.SortFunc(saved, func(a, b *savedSession) int { return b.session.CreatedAt.Compare(a.session.CreatedAt) })
 	var plan *resumePlan
-	for _, s := range saved {
+	defer func() {
 		if plan != nil {
-			r.abortSaved(ctx, s, "a newer session of this Volume is being resumed")
-			continue
+			plan.clear()
 		}
+	}()
+	for _, s := range saved {
 		p, err := r.planResume(s, sources)
 		if err != nil {
-			r.abortSaved(ctx, s, err.Error())
-			if errors.Is(err, ErrSourceChanged) && !s.publishing {
+			// Matching target names alone cannot identify a copied session.
+			if errors.Is(err, ErrSourceChanged) && s.session.Invocation != "" && s.session.Invocation != r.invocation {
+				s.release()
+				continue
+			}
+			aborted := r.abortSaved(ctx, s, err.Error())
+			s.release()
+			if errors.Is(err, ErrSourceChanged) {
+				if s.publishing && !aborted {
+					file, _ := errors.AsType[*FileError](err)
+					return true, Summary{}, fmt.Errorf("%s changed and the earlier upload may have published. Check the Volume's files before running put again", file.Path)
+				}
 				return true, Summary{}, err
 			}
+			continue
+		}
+		if plan != nil {
+			p.clear()
+			r.abortSaved(ctx, s, "a newer matching session is being resumed")
+			s.release()
 			continue
 		}
 		plan = p
@@ -93,7 +140,6 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 	if plan == nil {
 		return false, Summary{}, nil
 	}
-	defer plan.clear()
 	sum, err := r.resumeSession(ctx, plan, sources, before)
 	if errors.Is(err, ErrSourceChanged) {
 		if fe, ok := errors.AsType[*FileError](err); ok {
@@ -232,7 +278,7 @@ func matchesSource(rec fileRecord, src *Source) bool {
 
 // abortSaved aborts a saved session that cannot continue, then removes its state; the state stays while
 // the session stays open.
-func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string) {
+func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string) bool {
 	actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abortTimeout)
 	defer cancel()
 	err := r.api.AbortUpload(actx, UploadRef{
@@ -240,17 +286,18 @@ func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string)
 		ID:     s.session.Upload,
 	})
 	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
-		r.warn("the saved upload session %s is closed and cannot be resumed because %s; starting a new one", s.session.Upload, reason)
+		r.warn("the saved upload session %s is closed and cannot be resumed because %s", s.session.Upload, reason)
 		r.removeState(s.dir, s.lock, "closed")
-		return
+		return false
 	}
 	if err == nil {
-		r.warn("aborted the saved upload session %s, which cannot be resumed because %s; starting a new one", s.session.Upload, reason)
+		r.warn("aborted the saved upload session %s, which cannot be resumed because %s", s.session.Upload, reason)
 		r.removeState(s.dir, s.lock, "aborted")
-		return
+		return true
 	}
 	r.warn("the saved upload session %s cannot be resumed because %s, and could not be aborted, so it stays open until %s: %v",
 		s.session.Upload, reason, s.session.ExpiresAt.Format(time.RFC3339), err)
+	return false
 }
 
 // resumeSession continues a planned session and uses the fresh upload's
@@ -262,6 +309,7 @@ func (r *runner) resumeSession(ctx context.Context, p *resumePlan, sources []Sou
 	}
 	r.expiresAt = p.saved.session.ExpiresAt
 	r.completionAttempted = p.saved.publishing
+	r.publishActions = p.saved.actions
 	j, err := reopenJournal(p.saved)
 	if err != nil {
 		return Summary{}, err

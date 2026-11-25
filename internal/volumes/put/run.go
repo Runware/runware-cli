@@ -89,6 +89,7 @@ type runner struct {
 	expiresAt           time.Time
 	journal             *journal
 	completionAttempted bool
+	publishActions      map[int]string
 	resumed             map[int]*resumeFile // resumed files by journal index; nil unless a saved session is resumed
 }
 
@@ -160,14 +161,13 @@ func organizationHelp() string {
 }
 
 func (r *runner) run(ctx context.Context) (Summary, error) {
+	sources, err := Walk(r.o.Paths, r.o.To)
 	saved := r.sweep()
 	defer func() {
 		for _, s := range saved {
-			clear(s.session.SessionKey)
-			_ = s.lock.Close()
+			s.release()
 		}
 	}()
-	sources, err := Walk(r.o.Paths, r.o.To)
 	if err != nil {
 		if errors.Is(err, ErrNoFiles) || errors.Is(err, os.ErrNotExist) {
 			for _, s := range saved {
@@ -178,11 +178,12 @@ func (r *runner) run(ctx context.Context) (Summary, error) {
 		}
 		return Summary{}, err
 	}
+	candidates := r.resumeCandidates(saved, sources)
 	before, err := r.api.LatestFiles(ctx, r.o.Volume)
 	if err != nil {
 		return Summary{}, fmt.Errorf("read the Volume's files: %w", err)
 	}
-	if resumed, sum, err := r.resume(ctx, saved, sources, before); resumed {
+	if resumed, sum, err := r.resume(ctx, candidates, sources, before); resumed {
 		return sum, err
 	}
 	sess, err := r.openKeys(ctx)
@@ -357,8 +358,19 @@ func (r *runner) publish(ctx context.Context, files []*fileState, sources []Sour
 			return Summary{}, err
 		}
 	}
-	if !r.completionAttempted {
-		if err := r.journal.logSync(recordType{Type: recordPublish}); err != nil {
+	recovered := r.completionAttempted
+	if !recovered {
+		r.publishActions = compareFiles(files, before)
+		records := make([]any, 0, len(files)+1)
+		for _, f := range files {
+			records = append(records, actionRecord{
+				Type:   recordAction,
+				Index:  f.index,
+				Action: r.publishActions[f.index],
+			})
+		}
+		records = append(records, recordType{Type: recordPublish})
+		if err := r.journal.logSync(records...); err != nil {
 			return Summary{}, err
 		}
 	}
@@ -366,7 +378,7 @@ func (r *runner) publish(ctx context.Context, files []*fileState, sources []Sour
 	if err != nil {
 		return Summary{}, fmt.Errorf("complete the upload: %w", explain(err))
 	}
-	return r.summarize(files, before, res), nil
+	return r.summarize(files, res, recovered), nil
 }
 
 func clearKeys(files []*fileState) {
@@ -503,21 +515,39 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 	return nil
 }
 
-func (r *runner) summarize(files []*fileState, before FileList, res UploadResult) Summary {
+func compareFiles(files []*fileState, before FileList) map[int]string {
 	existing := make(map[string]VolumeFile, len(before.Files))
 	for _, file := range before.Files {
 		existing[file.Path] = file
 	}
+	actions := make(map[int]string, len(files))
+	for _, f := range files {
+		src := f.src
+		switch old, found := existing[src.Target]; {
+		case !found:
+			actions[f.index] = ActionAdded
+		case old.Mode != src.Mode || old.Size != src.Size || old.SHA256 != hex.EncodeToString(src.SHA256[:]):
+			actions[f.index] = ActionReplaced
+		default:
+			actions[f.index] = ActionUnchanged
+		}
+	}
+	return actions
+}
+
+func (r *runner) summarize(files []*fileState, res UploadResult, recovered bool) Summary {
 	s := Summary{
 		Volume:         r.o.Volume.Name,
 		Environment:    cmp.Or(r.o.Volume.Environment, productionEnvironment),
 		Changed:        res.Changed,
 		ManifestSHA256: res.ManifestSHA256,
+		recovered:      recovered,
 		Files:          make([]FileResult, 0, len(files)),
 	}
 	for _, f := range files {
 		fr := FileResult{
 			Path:      f.src.Target,
+			Action:    cmp.Or(r.publishActions[f.index], ActionUnchanged),
 			Size:      f.src.Size,
 			SHA256:    hex.EncodeToString(f.src.SHA256[:]),
 			BytesSent: f.sent.Load(),
@@ -525,15 +555,11 @@ func (r *runner) summarize(files []*fileState, before FileList, res UploadResult
 		if f.reused {
 			s.Reused++
 		}
-		switch old, found := existing[fr.Path]; {
-		case !found:
-			fr.Action = ActionAdded
+		switch fr.Action {
+		case ActionAdded:
 			s.Added++
-		case old.Mode != f.src.Mode || old.Size != fr.Size || old.SHA256 != fr.SHA256:
-			fr.Action = ActionReplaced
+		case ActionReplaced:
 			s.Replaced++
-		default:
-			fr.Action = ActionUnchanged
 		}
 		s.BytesSent += fr.BytesSent
 		s.Files = append(s.Files, fr)

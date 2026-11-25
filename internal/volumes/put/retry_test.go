@@ -288,8 +288,13 @@ func TestLostCompletionCanBeRecovered(t *testing.T) {
 			if e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 1 {
 				t.Fatalf("calls = %v, state = %v, want the journal kept for the result", e.cloud.callLog(), e.uploadDirs())
 			}
-			if _, err := Run(t.Context(), e.options(vol, file)); err != nil {
+			sum, err := Run(t.Context(), e.options(vol, file))
+			if err != nil {
 				t.Fatalf("recover completion: %v", err)
+			}
+			if !sum.Changed || sum.Added != 1 || sum.BytesSent != 0 ||
+				len(sum.Files) != 1 || sum.Files[0].Action != ActionAdded || !sum.recovered {
+				t.Fatalf("recovered summary = %+v, want the original publication and zero bytes resent", sum)
 			}
 			if e.cloud.count("open") != 1 || len(e.cloud.putLog()) != 1 || len(e.uploadDirs()) != 0 {
 				t.Fatalf("calls = %v, state = %v, want one upload and no remaining journal", e.cloud.callLog(), e.uploadDirs())
