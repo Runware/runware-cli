@@ -9,6 +9,9 @@ import (
 
 // fail keeps interrupted uploads and exhausted transient retries for resume.
 func (r *runner) fail(ctx context.Context, err error) error {
+	if errors.Is(err, ErrSourceChanged) {
+		return r.abort(ctx, err)
+	}
 	cause := context.Cause(ctx)
 	if cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause)) {
 		err = cause

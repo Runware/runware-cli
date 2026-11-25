@@ -149,6 +149,26 @@ func TestUploadCompletionRecoversAfterExtendedOutage(t *testing.T) {
 	checkUploadPauses(t, pauses)
 }
 
+func TestPublicationRetryRefusesChangedSource(t *testing.T) {
+	e := newTestEnv(t)
+	file := singleFile(t, e, "weights.bin", []byte("original"))
+	vol := e.cloud.newVolume("weights", "")
+	opts := e.options(vol, file)
+	api := &unavailableCompletion{API: e.cloud}
+	opts.API = api
+	opts.sleep = func(ctx context.Context, _ time.Duration) error {
+		rewrite(t, file, []byte("changed"))
+		api.elapsed = uploadTestOutage
+		return ctx.Err()
+	}
+	if _, err := Run(t.Context(), opts); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("put = %v, want the publication retry to detect the changed source", err)
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 0 || e.cloud.count("complete") != 0 || e.cloud.count("abort") != 1 {
+		t.Fatalf("files = %v, calls = %v, want an abort without publication", files, e.cloud.callLog())
+	}
+}
+
 type transientAbort struct {
 	API
 	calls int
@@ -361,7 +381,7 @@ func TestCompletionRetryTimeBudget(t *testing.T) {
 			return r.completeFile(ctx, &fileState{src: &Source{Abs: "weights.bin"}})
 		},
 		"session": func(ctx context.Context, r *runner) error {
-			_, err := r.completeUpload(ctx)
+			_, err := r.completeUpload(ctx, nil)
 			return err
 		},
 	}

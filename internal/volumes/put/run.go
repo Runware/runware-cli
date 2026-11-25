@@ -137,6 +137,7 @@ func invocationDigest(paths []string, destination string) string {
 		roots[i] = abs
 	}
 	slices.Sort(roots)
+	destination, _ = cleanTarget(destination)
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "%q %q", destination, roots)
 	return hex.EncodeToString(h.Sum(nil))
@@ -312,7 +313,11 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 		err := r.api.AbortUpload(actx, r.ref)
 		if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
 			if r.completionAttempted {
-				cause = fmt.Errorf("%w (the upload may already have completed; check the Volume's latest files)", cause)
+				if errors.Is(cause, ErrSourceChanged) {
+					cause = uncertainSourceChange(cause)
+				} else {
+					cause = fmt.Errorf("%w (the upload may already have completed; check the Volume's latest files)", cause)
+				}
 			}
 			return struct{}{}, nil
 		}
@@ -356,8 +361,10 @@ func (r *runner) publish(ctx context.Context, files []*fileState, sources []Sour
 		}
 	}
 	recovered := r.completionAttempted
-	if !recovered {
+	if len(r.publishActions) != len(files) {
 		r.publishActions = compareFiles(files, before)
+	}
+	if !recovered {
 		records := make([]any, 0, len(files)+1)
 		for _, f := range files {
 			records = append(records, actionRecord{
@@ -371,7 +378,7 @@ func (r *runner) publish(ctx context.Context, files []*fileState, sources []Sour
 			return Summary{}, err
 		}
 	}
-	res, err := r.completeUpload(ctx)
+	res, err := r.completeUpload(ctx, sources)
 	if err != nil {
 		return Summary{}, fmt.Errorf("complete the upload: %w", explain(err))
 	}
@@ -549,8 +556,13 @@ func pointerFile(pointer string) (int, bool) {
 }
 
 // completeUpload applies the session, retrying within maxCompletionRetryTime.
-func (r *runner) completeUpload(ctx context.Context) (UploadResult, error) {
+func (r *runner) completeUpload(ctx context.Context, sources []Source) (UploadResult, error) {
 	return retryUploadAPIWithin(ctx, r.sleep, maxCompletionRetryTime, func() (UploadResult, error) {
+		for i := range sources {
+			if err := unchanged(&sources[i]); err != nil {
+				return UploadResult{}, err
+			}
+		}
 		r.completionAttempted = true
 		return r.api.CompleteUpload(ctx, r.ref)
 	})
@@ -583,7 +595,7 @@ func retryUploadAPIWithin[T any](ctx context.Context, sleep func(context.Context
 			}
 			return empty, errors.Join(context.Cause(ctx), err)
 		}
-		if !retryable(err) || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionExpired) {
+		if !retryable(err) || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionExpired) || errors.Is(err, ErrSourceChanged) {
 			return empty, err
 		}
 		if attempt == maxUploadAttempts {

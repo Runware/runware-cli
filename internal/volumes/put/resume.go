@@ -96,7 +96,10 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 		if errors.Is(err, ErrSourceChanged) {
 			for _, s := range saved {
 				if s.session.Invocation == r.invocation || s.session.Invocation == "" {
-					r.abortSaved(ctx, s, err.Error())
+					aborted := r.abortSaved(ctx, s, sourceChangeReason(err))
+					if s.publishing && !aborted {
+						return true, Summary{}, uncertainSourceChange(err)
+					}
 				}
 			}
 		}
@@ -117,12 +120,15 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 				s.release()
 				continue
 			}
-			aborted := r.abortSaved(ctx, s, err.Error())
-			s.release()
+			reason := err.Error()
 			if errors.Is(err, ErrSourceChanged) {
+				reason = sourceChangeReason(err)
+			}
+			aborted := r.abortSaved(ctx, s, reason)
+			s.release()
+			if plan == nil && errors.Is(err, ErrSourceChanged) {
 				if s.publishing && !aborted {
-					file, _ := errors.AsType[*FileError](err)
-					return true, Summary{}, fmt.Errorf("%s changed and the earlier upload may have published. Check the Volume's files before running put again", file.Path)
+					return true, Summary{}, uncertainSourceChange(err)
 				}
 				return true, Summary{}, err
 			}
@@ -222,9 +228,6 @@ func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, err
 	if len(s.session.SessionKey) != 32 || s.session.KeyPair == "" {
 		return nil, errors.New("the session sealing key was lost")
 	}
-	if s.publishing && len(sources) != len(s.files) {
-		return nil, errors.New("the paths differ from the upload sent for publication")
-	}
 	byTarget := make(map[string]*Source, len(sources))
 	for i := range sources {
 		byTarget[sources[i].Target] = &sources[i]
@@ -280,11 +283,27 @@ func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, err
 		}
 		p.keys[index] = key
 	}
+	if s.publishing && len(sources) != len(s.files) {
+		p.clear()
+		return nil, errors.New("the paths differ from the upload sent for publication")
+	}
 	return p, nil
 }
 
 func matchesSource(rec fileRecord, src *Source) bool {
 	return src.Size == rec.Size && src.Mode == rec.Mode && hex.EncodeToString(src.SHA256[:]) == rec.SHA256
+}
+
+func sourceChangeReason(err error) string {
+	file, ok := errors.AsType[*FileError](err)
+	if !ok {
+		return "a source changed"
+	}
+	return file.Path + " changed"
+}
+
+func uncertainSourceChange(err error) error {
+	return fmt.Errorf("%s and the earlier upload may have published. Check the Volume's files before running put again", sourceChangeReason(err))
 }
 
 // abortSaved aborts a saved session that cannot continue, then removes its state; the state stays while
