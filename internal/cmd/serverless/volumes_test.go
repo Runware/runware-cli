@@ -331,7 +331,7 @@ func parseTextSummary(t *testing.T, text string) put.Summary {
 			mustScan(t, line, "  Files: %d added, %d replaced, %d reused", &s.Added, &s.Replaced, &s.Reused)
 		case strings.HasPrefix(strings.TrimSpace(line), "Bytes sent:"):
 			mustScan(t, fields[2], "%d", &s.BytesSent)
-		case len(fields) == 8 && fields[5] == "sent" && fields[6] == "sha256":
+		case (len(fields) == 8 || len(fields) == 9) && fields[5] == "sent" && fields[6] == "sha256":
 			var size, sent int64
 			mustScan(t, fields[2], "%d", &size)
 			mustScan(t, fields[4], "%d", &sent)
@@ -341,6 +341,7 @@ func parseTextSummary(t *testing.T, text string) put.Summary {
 				Size:      size,
 				SHA256:    fields[7],
 				BytesSent: sent,
+				Reused:    len(fields) == 9 && fields[8] == "reused",
 			})
 		}
 	}

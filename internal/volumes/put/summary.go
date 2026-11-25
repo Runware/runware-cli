@@ -59,9 +59,9 @@ func (s Summary) WriteText(w io.Writer) error {
 	fmt.Fprintf(&b, "  Files: %d added, %d replaced, %d reused\n", s.Added, s.Replaced, s.Reused)
 	fmt.Fprintf(&b, "  Bytes sent: %d (%s)\n", s.BytesSent, formatBytes(s.BytesSent))
 	for _, f := range s.Files {
-		fmt.Fprintf(&b, "  %q %s, %d bytes sent", f.Path, f.Action, f.BytesSent)
+		fmt.Fprintf(&b, "  %-8s %s  %d bytes  %d sent  sha256 %s", f.Action, f.Path, f.Size, f.BytesSent, f.SHA256)
 		if f.Reused {
-			b.WriteString(", reused")
+			b.WriteString("  reused")
 		}
 		b.WriteByte('\n')
 	}

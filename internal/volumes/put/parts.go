@@ -459,5 +459,6 @@ func (r *runner) completeFile(ctx context.Context, f *fileState) error {
 		return fileErr(f.src.Abs, err)
 	}
 	r.progress.fileDone()
+	r.progress.reportFile(f.src.Target, f.sent.Load(), false)
 	return nil
 }

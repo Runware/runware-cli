@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -139,15 +138,7 @@ func printPutSummary(w io.Writer, format output.Format, s put.Summary) error {
 	if format == output.FormatJSON || format == output.FormatYAML {
 		return output.PrintTo(w, format, s)
 	}
-	if err := s.WriteText(w); err != nil {
-		return err
-	}
-	var b strings.Builder
-	for _, f := range s.Files {
-		fmt.Fprintf(&b, "  %-8s %s  %d bytes  %d sent  sha256 %s\n", f.Action, f.Path, f.Size, f.BytesSent, f.SHA256)
-	}
-	_, err := io.WriteString(w, b.String())
-	return err
+	return s.WriteText(w)
 }
 
 // putError turns the answers the engine passes through as they are into one

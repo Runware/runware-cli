@@ -157,12 +157,13 @@ func TestDeduplicatedPutResumesBeforeDeclaringDuplicate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if sum.BytesSent != 0 || sum.Added != 2 || sum.Reused != 1 || sum.Files[0].Reused || !sum.Files[1].Reused ||
+			if sum.BytesSent != 0 || sum.Added != 2 || sum.Reused != 1 || len(sum.Files) != 2 || sum.Files[0].Reused || !sum.Files[1].Reused ||
 				e.cloud.count("open") != 1 || e.cloud.count("complete") != 1 || len(e.cloud.putLog()) != 1 {
 				t.Fatalf("summary = %+v, calls = %v, want reuse without resending the verified content", sum, e.cloud.callLog())
 			}
 			var out bytes.Buffer
-			if err := sum.WriteText(&out); err != nil || !strings.Contains(out.String(), `"second.txt" added, 0 bytes sent, reused`) {
+			if err := sum.WriteText(&out); err != nil || !strings.Contains(out.String(),
+				fmt.Sprintf("second.txt  6 bytes  0 sent  sha256 %s  reused", sum.Files[1].SHA256)) {
 				t.Fatalf("text summary = %q, err = %v", out.String(), err)
 			}
 			requireFiles(t, e, vol, expectedFiles(t, filepath.Dir(first), ""))

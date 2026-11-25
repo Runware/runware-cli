@@ -448,6 +448,9 @@ func (r *runner) accept(batch []*fileState, decls []FileDeclaration, got Declara
 				return err
 			}
 		}
+		if f.reused {
+			r.progress.reportFile(f.src.Target, 0, true)
+		}
 	}
 	return nil
 }
