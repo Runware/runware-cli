@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 )
 
 const redactedValue = "[redacted]"
@@ -53,34 +54,62 @@ func debugLogBody(status int, body []byte) string {
 	return string(body)
 }
 
+// valueKeys is the member redactJSONValues replaces.
+var valueKeys = map[string]struct{}{
+	"value": {},
+}
+
 // redactJSONValues replaces every object key "value" with "[redacted]".
 // Returns the original bytes if the body is not JSON or has no such key.
 func redactJSONValues(body []byte) []byte {
-	var v any
-	if err := json.Unmarshal(body, &v); err != nil {
-		return body
-	}
-	if !redactValueKeys(v) {
-		return body
-	}
-	out, err := json.Marshal(v)
-	if err != nil {
+	out, ok := redactJSONKeys(body, valueKeys)
+	if !ok {
 		return body
 	}
 	return out
 }
 
-func redactValueKeys(v any) bool {
+// redactJSONKeys replaces the value of every object member named in keys,
+// at any depth and in any letter case, with "[redacted]". A member name
+// matches without regard to case because encoding/json decodes it that way.
+// It returns the original bytes when there is no such member, and false
+// when the body is not JSON and so could not be checked.
+func redactJSONKeys(body []byte, keys map[string]struct{}) ([]byte, bool) {
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return nil, false
+	}
+	if !redactKeys(v, keys) {
+		return body, true
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+// isSecretKey reports whether name is one of keys, ignoring letter case.
+func isSecretKey(name string, keys map[string]struct{}) bool {
+	for k := range keys {
+		if strings.EqualFold(name, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func redactKeys(v any, keys map[string]struct{}) bool {
 	switch t := v.(type) {
 	case map[string]any:
 		changed := false
 		for k, child := range t {
-			if k == "value" {
+			if isSecretKey(k, keys) {
 				t[k] = redactedValue
 				changed = true
 				continue
 			}
-			if redactValueKeys(child) {
+			if redactKeys(child, keys) {
 				changed = true
 			}
 		}
@@ -88,7 +117,7 @@ func redactValueKeys(v any) bool {
 	case []any:
 		changed := false
 		for _, child := range t {
-			if redactValueKeys(child) {
+			if redactKeys(child, keys) {
 				changed = true
 			}
 		}

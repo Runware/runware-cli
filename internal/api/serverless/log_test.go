@@ -43,6 +43,16 @@ func TestRedactJSONValues_UnchangedWithoutValueKey(t *testing.T) {
 	}
 }
 
+func TestRedactJSONValues_AnyLetterCase(t *testing.T) {
+	in := []byte(`{"data":[{"key":"K","Value":"upper-secret"},{"key":"L","VALUE":"caps-secret"}]}`)
+	out := string(redactJSONValues(in))
+	for _, secret := range []string{"upper-secret", "caps-secret"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("%s leaked: %s", secret, out)
+		}
+	}
+}
+
 func TestRedactJSONValues_InvalidJSON(t *testing.T) {
 	in := []byte("not-json")
 	if got := string(redactJSONValues(in)); got != "not-json" {
