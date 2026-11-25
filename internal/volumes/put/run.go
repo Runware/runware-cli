@@ -334,18 +334,15 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 }
 
 func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source, before FileList) (Summary, error) {
-	files, err := r.declare(ctx, sess, sources)
-	defer clearKeys(files)
-	if err != nil {
-		return Summary{}, err
-	}
-	var todo []*fileState
-	for _, f := range files {
-		if !f.reused {
-			todo = append(todo, f)
+	files := make([]*fileState, len(sources))
+	for i := range sources {
+		files[i] = &fileState{
+			index: i,
+			src:   &sources[i],
 		}
 	}
-	if err := r.uploadFiles(ctx, todo); err != nil {
+	defer clearKeys(files)
+	if err := r.transferContents(ctx, sess.SealFile, files, files); err != nil {
 		return Summary{}, err
 	}
 	return r.publish(ctx, files, sources, before)
@@ -383,77 +380,10 @@ func (r *runner) publish(ctx context.Context, files []*fileState, sources []Sour
 
 func clearKeys(files []*fileState) {
 	for _, f := range files {
-		f.key.Clear()
-	}
-}
-
-// declare seals a key per file, saves it and declares the files in batches.
-func (r *runner) declare(ctx context.Context, sess KeySession, sources []Source) ([]*fileState, error) {
-	files := make([]*fileState, 0, len(sources))
-	for start := 0; start < len(sources); start += maxDeclarationBatch {
-		end := min(start+maxDeclarationBatch, len(sources))
-		batch := make([]*fileState, 0, end-start)
-		decls := FileDeclarations{Files: make([]FileDeclaration, 0, end-start)}
-		recs := make([]any, 0, end-start)
-		for i := start; i < end; i++ {
-			src := &sources[i]
-			if err := unchanged(src); err != nil {
-				return files, err
-			}
-			fk, err := sess.SealFile(src.SHA256, uint64(src.Size))
-			if err != nil {
-				return files, fileErr(src.Abs, fmt.Errorf("seal the data key: %w", err))
-			}
-			f := &fileState{
-				index: i,
-				src:   src,
-				key:   fk,
-			}
-			files = append(files, f)
-			batch = append(batch, f)
-			attempt := fk.Attempt()
-			attemptID := hex.EncodeToString(attempt[:])
-			sealed := fk.Sealed()
-			if err := r.journal.saveFileKeys(i, fileKeyRecord{
-				DataKey:   fk.DataKey(),
-				SealedKey: sealed,
-				Attempt:   attemptID,
-			}); err != nil {
-				return files, fileErr(src.Abs, err)
-			}
-			digest := hex.EncodeToString(src.SHA256[:])
-			decls.Files = append(decls.Files, FileDeclaration{
-				Path:      src.Target,
-				Mode:      src.Mode,
-				Size:      src.Size,
-				SHA256:    digest,
-				SealedKey: base64.RawURLEncoding.EncodeToString(sealed),
-				AttemptID: attemptID,
-			})
-			recs = append(recs, fileRecord{
-				Type:   recordFile,
-				Index:  i,
-				Path:   src.Target,
-				Mode:   src.Mode,
-				Size:   src.Size,
-				SHA256: digest,
-			})
-		}
-		if err := r.journal.logSync(recs...); err != nil {
-			return files, err
-		}
-		syncDir(r.journal.dir)
-		got, err := retryUploadAPI(ctx, r.sleep, func() (DeclarationResult, error) {
-			return r.api.DeclareFiles(ctx, r.ref, decls)
-		})
-		if err != nil {
-			return files, explainDeclare(err, batch)
-		}
-		if err := r.accept(batch, decls.Files, got); err != nil {
-			return files, err
+		if f.key != nil {
+			f.key.Clear()
 		}
 	}
-	return files, nil
 }
 
 // accept reads a batch's answers: a reused file is done, an uploading file takes its layout and targets.
@@ -551,6 +481,7 @@ func (r *runner) summarize(files []*fileState, res UploadResult, recovered bool)
 			Size:      f.src.Size,
 			SHA256:    hex.EncodeToString(f.src.SHA256[:]),
 			BytesSent: f.sent.Load(),
+			Reused:    f.reused,
 		}
 		if f.reused {
 			s.Reused++

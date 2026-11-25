@@ -22,6 +22,7 @@ const (
 // Journal record types; session, file, declared and part records are synced before they are used.
 const (
 	recordSession  = "session"
+	recordSource   = "source"
 	recordFile     = "file"
 	recordDeclared = "declared"
 	recordPart     = "part"

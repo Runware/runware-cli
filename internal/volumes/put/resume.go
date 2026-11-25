@@ -2,7 +2,6 @@ package put
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -66,15 +65,15 @@ func (r *runner) matchesTargets(s *savedSession, targets map[string]struct{}) bo
 			return true
 		}
 		// A copied journal may be resumed from another directory.
-		if len(s.files) != len(targets) {
+		if len(s.sources) != len(targets) {
 			return false
 		}
-		for _, file := range s.files {
-			if _, ok := targets[file.rec.Path]; !ok {
+		for path := range s.sources {
+			if _, ok := targets[path]; !ok {
 				return false
 			}
 		}
-		return len(s.files) > 0
+		return len(s.sources) > 0
 	}
 	for _, file := range s.files {
 		if _, ok := targets[file.rec.Path]; ok {
@@ -237,6 +236,18 @@ func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, err
 		keys:       map[int]*storedFileKey{},
 		byTarget:   map[string]*savedFile{},
 	}
+	for _, rec := range s.sources {
+		src, ok := byTarget[rec.Path]
+		if !ok {
+			p.clear()
+			return nil, fileErr(rec.Path, ErrSourceChanged)
+		}
+		if !matchesSource(rec, src) {
+			p.clear()
+			return nil, fileErr(src.Abs, ErrSourceChanged)
+		}
+		p.next = max(p.next, rec.Index+1)
+	}
 	for _, index := range s.order {
 		f := s.files[index]
 		src, ok := byTarget[f.rec.Path]
@@ -329,15 +340,8 @@ func (r *runner) resumeSession(ctx context.Context, p *resumePlan, sources []Sou
 // answered yet, sends the parts not acknowledged and completes the session.
 func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []Source, before FileList) (Summary, error) {
 	files := make([]*fileState, 0, len(sources))
-	defer func() {
-		for _, f := range files {
-			if f.key != nil {
-				f.key.Clear()
-			}
-		}
-	}()
+	defer func() { clearKeys(files) }()
 	r.resumed = map[int]*resumeFile{}
-	done := map[*fileState]struct{}{}
 	var undeclared []*fileState
 	next := p.next
 	acked := 0
@@ -345,17 +349,25 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 		src := &sources[i]
 		sf := p.byTarget[src.Target]
 		if sf == nil {
-			files = append(files, &fileState{
-				index: next,
-				src:   src,
-			})
-			undeclared = append(undeclared, files[len(files)-1])
-			next++
+			index, planned := p.saved.sources[src.Target]
+			if !planned {
+				index.Index = next
+				next++
+			}
+			f := &fileState{
+				index:   index.Index,
+				src:     src,
+				planned: planned,
+			}
+			files = append(files, f)
+			undeclared = append(undeclared, f)
 			continue
 		}
+		_, planned := p.saved.sources[src.Target]
 		f := &fileState{
-			index: sf.rec.Index,
-			src:   src,
+			index:   sf.rec.Index,
+			src:     src,
+			planned: planned,
 		}
 		if key := p.keys[sf.rec.Index]; key != nil {
 			f.key = key
@@ -378,7 +390,7 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 			}
 			acked += n
 			if sf.complete {
-				done[f] = struct{}{}
+				f.verified = true
 			} else if int64(n) != f.layout.PartCount {
 				// A restored snapshot may predate verification. Replay the original
 				// declaration before renewing any missing part of that file.
@@ -390,16 +402,10 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 	}
 	r.debug("volume upload: resuming session", "session", r.ref.ID, "files", len(files),
 		"undeclared", len(undeclared), "acknowledgedParts", acked)
-	if err := r.declareResumed(ctx, p, undeclared); err != nil {
-		return Summary{}, err
+	seal := func(digest [32]byte, size uint64) (FileKey, error) {
+		return sealStoredFile(p.sessionKey, p.session, r.org, digest, size)
 	}
-	var todo []*fileState
-	for _, f := range files {
-		if _, ok := done[f]; !ok && !f.reused && !f.verified {
-			todo = append(todo, f)
-		}
-	}
-	if err := r.uploadFiles(ctx, todo); err != nil {
+	if err := r.transferContents(ctx, seal, files, undeclared); err != nil {
 		return Summary{}, err
 	}
 	return r.publish(ctx, files, sources, before)
@@ -432,70 +438,6 @@ func (r *runner) restoreFile(f *fileState, sf *savedFile) (int, error) {
 		held:    true,
 	}
 	return acked, nil
-}
-
-// declareResumed declares the files the session has not answered: a saved file again with its saved
-// sealed key and attempt, which the API answers as a retry, and a new file under a fresh key sealed with
-// the stored session key, journalled before it is declared.
-func (r *runner) declareResumed(ctx context.Context, p *resumePlan, files []*fileState) error {
-	for start := 0; start < len(files); start += maxDeclarationBatch {
-		batch := files[start:min(start+maxDeclarationBatch, len(files))]
-		decls := FileDeclarations{Files: make([]FileDeclaration, 0, len(batch))}
-		var recs []any
-		for _, f := range batch {
-			if err := unchanged(f.src); err != nil {
-				return err
-			}
-			if f.key == nil {
-				key, err := sealStoredFile(p.sessionKey, p.session, r.org, f.src.SHA256, uint64(f.src.Size))
-				if err != nil {
-					return fileErr(f.src.Abs, fmt.Errorf("seal the data key: %w", err))
-				}
-				f.key = key
-				attempt := key.Attempt()
-				if err := r.journal.saveFileKeys(f.index, fileKeyRecord{
-					DataKey:   key.DataKey(),
-					SealedKey: key.Sealed(),
-					Attempt:   hex.EncodeToString(attempt[:]),
-				}); err != nil {
-					return fileErr(f.src.Abs, err)
-				}
-				recs = append(recs, fileRecord{
-					Type:   recordFile,
-					Index:  f.index,
-					Path:   f.src.Target,
-					Mode:   f.src.Mode,
-					Size:   f.src.Size,
-					SHA256: hex.EncodeToString(f.src.SHA256[:]),
-				})
-			}
-			attempt := f.key.Attempt()
-			decls.Files = append(decls.Files, FileDeclaration{
-				Path:      f.src.Target,
-				Mode:      f.src.Mode,
-				Size:      f.src.Size,
-				SHA256:    hex.EncodeToString(f.src.SHA256[:]),
-				SealedKey: base64.RawURLEncoding.EncodeToString(f.key.Sealed()),
-				AttemptID: hex.EncodeToString(attempt[:]),
-			})
-		}
-		if len(recs) > 0 {
-			if err := r.journal.logSync(recs...); err != nil {
-				return err
-			}
-			syncDir(r.journal.dir)
-		}
-		got, err := retryUploadAPI(ctx, r.sleep, func() (DeclarationResult, error) {
-			return r.api.DeclareFiles(ctx, r.ref, decls)
-		})
-		if err != nil {
-			return explainDeclare(err, batch)
-		}
-		if err := r.accept(batch, decls.Files, got); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // resumePart checks a part read for a resumed file against the digest journalled for it before: other

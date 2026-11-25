@@ -22,6 +22,7 @@ type FileResult struct {
 	Size      int64  `json:"size"`
 	SHA256    string `json:"sha256"`
 	BytesSent int64  `json:"bytesSent"`
+	Reused    bool   `json:"reused,omitempty"`
 }
 
 // Summary is what a put did to the Volume.
@@ -57,6 +58,13 @@ func (s Summary) WriteText(w io.Writer) error {
 	fmt.Fprintf(&b, "  %s: %s\n", label, digest)
 	fmt.Fprintf(&b, "  Files: %d added, %d replaced, %d reused\n", s.Added, s.Replaced, s.Reused)
 	fmt.Fprintf(&b, "  Bytes sent: %d (%s)\n", s.BytesSent, formatBytes(s.BytesSent))
+	for _, f := range s.Files {
+		fmt.Fprintf(&b, "  %q %s, %d bytes sent", f.Path, f.Action, f.BytesSent)
+		if f.Reused {
+			b.WriteString(", reused")
+		}
+		b.WriteByte('\n')
+	}
 	_, err := io.WriteString(w, b.String())
 	return err
 }

@@ -39,6 +39,7 @@ type fileState struct {
 	id       string
 	reused   bool
 	verified bool
+	planned  bool
 	layout   volumeformat.Layout
 	identity volumeformat.FileIdentity
 
