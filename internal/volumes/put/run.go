@@ -173,7 +173,10 @@ func (r *runner) run(ctx context.Context) (Summary, error) {
 		if errors.Is(err, ErrNoFiles) || errors.Is(err, os.ErrNotExist) {
 			for _, s := range saved {
 				if s.session.Invocation == r.invocation {
-					r.abortSaved(ctx, s, err.Error())
+					aborted := r.abortSaved(ctx, s, err.Error())
+					if s.publishing && !aborted {
+						return Summary{}, fmt.Errorf("%w (the earlier upload may have published. Check the Volume's files before running put again)", err)
+					}
 				}
 			}
 		}
@@ -324,6 +327,9 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 		return struct{}{}, err
 	})
 	if abortErr != nil {
+		if r.completionAttempted && errors.Is(cause, ErrSourceChanged) {
+			cause = uncertainSourceChange(cause)
+		}
 		cause = &AbortFailedError{
 			Cause:     cause,
 			Abort:     abortErr,
