@@ -815,6 +815,9 @@ func TestVolumesPutResumesAnInterruptedUpload(t *testing.T) {
 	}
 	f.mu.Unlock()
 	requireOneLine(t, first.err, "run put again with the same paths to resume")
+	if !errors.Is(first.err, context.Canceled) || !cmdutil.IsResumable(first.err) {
+		t.Fatalf("interrupt = %v, want an error that prints the resume instructions at exit 130", first.err)
+	}
 	if len(states) != 1 || states[0] != fakeOpen {
 		t.Fatalf("sessions = %v, want one session left open", states)
 	}

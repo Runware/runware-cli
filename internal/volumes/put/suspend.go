@@ -30,10 +30,24 @@ func (r *runner) suspend(cause error) error {
 			r.warn("%v", err)
 		}
 	}
+	deadline := r.expiresAt.Format(time.RFC3339)
+	hint := fmt.Sprintf("the upload session stays open until %s: run put again with the same paths to resume it", deadline)
 	if r.completionAttempted {
-		return fmt.Errorf("%w (publication may have completed: run put again with the same paths before %s to recover the result)",
-			cause, r.expiresAt.Format(time.RFC3339))
+		hint = fmt.Sprintf("publication may have completed: run put again with the same paths before %s to recover the result", deadline)
 	}
-	return fmt.Errorf("%w (the upload session stays open until %s: run put again with the same paths to resume it)",
-		cause, r.expiresAt.Format(time.RFC3339))
+	return &suspendedUploadError{
+		cause: cause,
+		hint:  hint,
+	}
 }
+
+type suspendedUploadError struct {
+	cause error
+	hint  string
+}
+
+func (e *suspendedUploadError) Error() string { return e.cause.Error() + " (" + e.hint + ")" }
+func (e *suspendedUploadError) Unwrap() error { return e.cause }
+
+// Resumable tells the CLI to print the recovery instructions when interrupted.
+func (*suspendedUploadError) Resumable() {}
