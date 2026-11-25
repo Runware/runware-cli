@@ -236,6 +236,9 @@ const (
 	AuditLogActionSourceDelete              AuditLogAction = "source.delete"
 	AuditLogActionVariableDelete            AuditLogAction = "variable.delete"
 	AuditLogActionVariablePut               AuditLogAction = "variable.put"
+	AuditLogActionVolumeUploadAbort         AuditLogAction = "volume.upload.abort"
+	AuditLogActionVolumeUploadComplete      AuditLogAction = "volume.upload.complete"
+	AuditLogActionVolumeUploadOpen          AuditLogAction = "volume.upload.open"
 )
 
 // Valid indicates whether the value is a known member of the AuditLogAction enum.
@@ -303,6 +306,12 @@ func (e AuditLogAction) Valid() bool {
 		return true
 	case AuditLogActionVariablePut:
 		return true
+	case AuditLogActionVolumeUploadAbort:
+		return true
+	case AuditLogActionVolumeUploadComplete:
+		return true
+	case AuditLogActionVolumeUploadOpen:
+		return true
 	default:
 		return false
 	}
@@ -364,14 +373,16 @@ func (e AuditLogStatus) Valid() bool {
 
 // Defines values for AuditLogTargetType.
 const (
-	AuditLogTargetTypeApp         AuditLogTargetType = "app"
-	AuditLogTargetTypeBuild       AuditLogTargetType = "build"
-	AuditLogTargetTypeConnector   AuditLogTargetType = "connector"
-	AuditLogTargetTypeEnvironment AuditLogTargetType = "environment"
-	AuditLogTargetTypeSecret      AuditLogTargetType = "secret"
-	AuditLogTargetTypeSource      AuditLogTargetType = "source"
-	AuditLogTargetTypeVariable    AuditLogTargetType = "variable"
-	AuditLogTargetTypeVersion     AuditLogTargetType = "version"
+	AuditLogTargetTypeApp          AuditLogTargetType = "app"
+	AuditLogTargetTypeBuild        AuditLogTargetType = "build"
+	AuditLogTargetTypeConnector    AuditLogTargetType = "connector"
+	AuditLogTargetTypeEnvironment  AuditLogTargetType = "environment"
+	AuditLogTargetTypeSecret       AuditLogTargetType = "secret"
+	AuditLogTargetTypeSource       AuditLogTargetType = "source"
+	AuditLogTargetTypeVariable     AuditLogTargetType = "variable"
+	AuditLogTargetTypeVersion      AuditLogTargetType = "version"
+	AuditLogTargetTypeVolume       AuditLogTargetType = "volume"
+	AuditLogTargetTypeVolumeUpload AuditLogTargetType = "volumeUpload"
 )
 
 // Valid indicates whether the value is a known member of the AuditLogTargetType enum.
@@ -392,6 +403,10 @@ func (e AuditLogTargetType) Valid() bool {
 	case AuditLogTargetTypeVariable:
 		return true
 	case AuditLogTargetTypeVersion:
+		return true
+	case AuditLogTargetTypeVolume:
+		return true
+	case AuditLogTargetTypeVolumeUpload:
 		return true
 	default:
 		return false
@@ -893,6 +908,195 @@ func (e UsageRegion) Valid() bool {
 	}
 }
 
+// Defines values for VolumeMountDeleted.
+const (
+	VolumeMountDeletedTrue VolumeMountDeleted = true
+)
+
+// Valid indicates whether the value is a known member of the VolumeMountDeleted enum.
+func (e VolumeMountDeleted) Valid() bool {
+	switch e {
+	case VolumeMountDeletedTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumeMountKind.
+const (
+	VolumeMountKindVolume VolumeMountKind = "volume"
+)
+
+// Valid indicates whether the value is a known member of the VolumeMountKind enum.
+func (e VolumeMountKind) Valid() bool {
+	switch e {
+	case VolumeMountKindVolume:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumeMountReadOnly.
+const (
+	VolumeMountReadOnlyTrue VolumeMountReadOnly = true
+)
+
+// Valid indicates whether the value is a known member of the VolumeMountReadOnly enum.
+func (e VolumeMountReadOnly) Valid() bool {
+	switch e {
+	case VolumeMountReadOnlyTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumePartLayoutSegmentBytes.
+const (
+	N1048576e06 VolumePartLayoutSegmentBytes = 1.048576e+06
+)
+
+// Valid indicates whether the value is a known member of the VolumePartLayoutSegmentBytes enum.
+func (e VolumePartLayoutSegmentBytes) Valid() bool {
+	switch e {
+	case N1048576e06:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumePartLayoutSegmentPlaintextBytes.
+const (
+	N104856e06 VolumePartLayoutSegmentPlaintextBytes = 1.04856e+06
+)
+
+// Valid indicates whether the value is a known member of the VolumePartLayoutSegmentPlaintextBytes enum.
+func (e VolumePartLayoutSegmentPlaintextBytes) Valid() bool {
+	switch e {
+	case N104856e06:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumeReferenceKind.
+const (
+	CurrentAppVersion VolumeReferenceKind = "current-app-version"
+	DeployInProgress  VolumeReferenceKind = "deploy-in-progress"
+	RollbackTarget    VolumeReferenceKind = "rollback-target"
+	RunningWorker     VolumeReferenceKind = "running-worker"
+)
+
+// Valid indicates whether the value is a known member of the VolumeReferenceKind enum.
+func (e VolumeReferenceKind) Valid() bool {
+	switch e {
+	case CurrentAppVersion:
+		return true
+	case DeployInProgress:
+		return true
+	case RollbackTarget:
+		return true
+	case RunningWorker:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumeStatus.
+const (
+	Live VolumeStatus = "live"
+)
+
+// Valid indicates whether the value is a known member of the VolumeStatus enum.
+func (e VolumeStatus) Valid() bool {
+	switch e {
+	case Live:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumeUploadFileFailure.
+const (
+	CompletionUnrecoverable VolumeUploadFileFailure = "completion-unrecoverable"
+	CrcMismatch             VolumeUploadFileFailure = "crc-mismatch"
+	CrcMissing              VolumeUploadFileFailure = "crc-missing"
+)
+
+// Valid indicates whether the value is a known member of the VolumeUploadFileFailure enum.
+func (e VolumeUploadFileFailure) Valid() bool {
+	switch e {
+	case CompletionUnrecoverable:
+		return true
+	case CrcMismatch:
+		return true
+	case CrcMissing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumeUploadFileState.
+const (
+	VolumeUploadFileStateAborted   VolumeUploadFileState = "aborted"
+	VolumeUploadFileStateExpired   VolumeUploadFileState = "expired"
+	VolumeUploadFileStateFailed    VolumeUploadFileState = "failed"
+	VolumeUploadFileStateReused    VolumeUploadFileState = "reused"
+	VolumeUploadFileStateUploading VolumeUploadFileState = "uploading"
+	VolumeUploadFileStateVerified  VolumeUploadFileState = "verified"
+)
+
+// Valid indicates whether the value is a known member of the VolumeUploadFileState enum.
+func (e VolumeUploadFileState) Valid() bool {
+	switch e {
+	case VolumeUploadFileStateAborted:
+		return true
+	case VolumeUploadFileStateExpired:
+		return true
+	case VolumeUploadFileStateFailed:
+		return true
+	case VolumeUploadFileStateReused:
+		return true
+	case VolumeUploadFileStateUploading:
+		return true
+	case VolumeUploadFileStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VolumeUploadState.
+const (
+	VolumeUploadStateAborted   VolumeUploadState = "aborted"
+	VolumeUploadStateCompleted VolumeUploadState = "completed"
+	VolumeUploadStateExpired   VolumeUploadState = "expired"
+	VolumeUploadStateOpen      VolumeUploadState = "open"
+)
+
+// Valid indicates whether the value is a known member of the VolumeUploadState enum.
+func (e VolumeUploadState) Valid() bool {
+	switch e {
+	case VolumeUploadStateAborted:
+		return true
+	case VolumeUploadStateCompleted:
+		return true
+	case VolumeUploadStateExpired:
+		return true
+	case VolumeUploadStateOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkerStateFilter.
 const (
 	WorkerStateFilterAll  WorkerStateFilter = "all"
@@ -1191,7 +1395,7 @@ type App struct {
 	// EnvironmentVariables The stored plain-text environment variables, which the next version is recorded from. A successful deploy, including a rollback, does not change them, so they can differ from the deployed snapshot. Populated on single-app responses (get, update, stop, resume, delete, deploy, favorite). List of apps returns an empty array to avoid an N+1 per page row. Use the `/environment-variables` endpoints to page the set.
 	EnvironmentVariables []EnvironmentVariable `json:"environmentVariables"`
 
-	// Health Whether the app's workload can serve, and why. `reason` covers more than capacity: a workload that is missing or being torn down also reports `state: unavailable`. Only `capacity_below_floor`, `demand_unserved` and `placement_refused` are the platform being short of workers, and only those refuse an invocation with `capacity-unavailable`. The others are refused with the plain `service-unavailable`, because retrying does not bring a removed workload back.
+	// Health Whether the app's workload can serve, and why. `reason` covers more than capacity: a workload that is missing or being torn down also reports `state: unavailable`. Only `capacity_below_floor`, `demand_unserved` and `placement_refused` are the platform being short of workers, and only those refuse an invocation with `capacity-unavailable`. The others, a workload that failed to start, is missing or is terminating, are refused with the plain `service-unavailable` and no `Retry-After`: the platform cannot promise that waiting helps, since a missing or terminating workload does not return on its own and a failed start usually does not (see the `503` response of the invoke operations for the exception).
 	//
 	// Populated on the app reads only: `GET /v1/apps/{appId}` and `GET /v1/apps`. Every other response that carries an app omits it, because the verdict is observed from the cluster rather than changed by the request: read the app again after a mutation.
 	//
@@ -1200,6 +1404,9 @@ type App struct {
 
 	// IsFavorite Whether the authenticated organization has favorited this app. Favorited apps sort ahead of non-favorited apps. Toggled via `PUT`/`DELETE` `/v1/apps/{appId}/favorite`.
 	IsFavorite bool `json:"isFavorite"`
+
+	// Mounts The Shared Volumes of the version an update copies, in byte order of `mountPath`, as that version's `mounts` lists them: the version `activeVersionId` names, or the latest version while it is null, such as after a create whose first rollout failed. Populated on the app reads only: `GET /v1/apps/{appId}` and `GET /v1/apps`. Every other response that carries an app omits it; read the app again after a mutation. Within those two reads it is omitted when that version mounts no Shared Volume, the app is deleted, or Shared Volumes are not available to the organization. Beta: Shared Volumes must be enabled for the organization, and this field may change before general availability.
+	Mounts *[]VolumeMount `json:"mounts,omitempty"`
 
 	// Runtime Observed state for one app at `calculatedAt`. Desired worker scale remains in `configuration`. Worker and GPU counts are always present. Traffic, duration, and queue fields are omitted when their backing data is unavailable.
 	Runtime AppRuntime `json:"runtime"`
@@ -1237,6 +1444,12 @@ type AppCreate struct {
 	// EnvironmentVariables Map with environment variables. Keys are the environment variable names, values are the environment variable values. Write values literally: do not use `$(NAME)` or `$$` in a value, as the platform does not guarantee how it treats either sequence. Use the dedicated `/environment-variables` endpoints to change them after the app exists. A code source's build imports the model file with these set, so a variable read at import is there at build time as well as at serve time. Secrets never reach a build.
 	// Each key must satisfy `EnvironmentVariableName`. POSIX-style, at most 128 characters. OpenAPI 3.0 cannot constrain map keys, so a bad one is rejected by the server rather than by the schema. Keys must also not collide with a secret's injected env var name on the same app (see `attachAppSecret`).
 	EnvironmentVariables *map[string]string `json:"environmentVariables,omitempty"`
+
+	// Mounts Shared Volumes of the app's environment, mounted read-only into the app's workers. Each worker mounts a Volume's latest files as of its creation. Node-local `volumes` and mounts share the 30-entry limit and path rules. Beta: Shared Volumes must be enabled for the organization, and this field may change before general availability. Without Shared Volume beta access, a non-empty array is refused with `422` pointing at `/mounts`, detail `Shared Volumes are not available to this organization`; an empty array mounts nothing and is accepted. A mount with `readOnly: false` is refused with `422` pointing at `/mounts/<n>/readOnly`; a mount of a missing or deleted Volume, or of one that has never had files, with `422` pointing at `/mounts/<n>/name`; a mount path that conflicts with another entry with `422` pointing at `/mounts/<n>/mountPath`; mounts on a GPU type whose workers cannot mount Shared Volumes with `422` pointing at `/mounts`. Mounts whose Volumes' latest files exceed `maxMountedBytesPerAppVersion` are refused with `409` type `volume-limit-exceeded`. A checkpoint is restored only on the same mounted files, paths and modes; otherwise the worker cold-starts.
+	//
+	//
+	// Example: [{"kind":"volume","mountPath":"/mnt/models","name":"model-weights"}]
+	Mounts *[]VolumeMount `json:"mounts,omitempty"`
 
 	// Secrets Existing secrets of this app's environment to attach to it, with an optional env-var name override per entry. This is the app's initial attachment set, so the first rollout carries the values into the worker. The secret must already exist and be `active`. This route does not create one. An unknown or inactive name returns `422` typed `secret-not-found`, and `errors[]` points at that entry's `secretName`. A `registry` secret returns `422` `secret-not-attachable`. Shape matches `POST /apps/{appId}/secrets` so create and attach share one contract. Each injected name must not collide with a key in `environmentVariables`. See `SecretAttach`. Each secret can also be attached to at most 25 deployments total, shared with every other route that attaches it. An entry that would push a secret past that returns `422`.
 	Secrets *[]SecretAttach `json:"secrets,omitempty"`
@@ -1278,6 +1491,9 @@ type AppEventType string
 type AppHealth struct {
 	// ApplicationLine The last line the application printed before a container exit, while the app cannot serve. The exit has to belong to the version the app runs now. A capacity shortfall includes one only when that exit was recorded at or after `since`. A start failure also includes that version's exit from the two minutes before `since`, because the exit commits before the observation that opens the spell. The same sentence is appended to that exit on `GET /v1/apps/{appId}/events`. Absent when the app can serve.
 	ApplicationLine *string `json:"applicationLine,omitempty"`
+
+	// DirectModelDownload A worker of this app is downloading the model directly because the fast download path is unreachable. Present only while a recent sample says so, and not on a start failure. It lags the worker by about a minute. A sample from a worker that stopped can remain for a few minutes. It is absent on the fast path, once the worker is ready, on a start failure, and when the platform has no recent sample. It is not part of `state` or `reason`, and it is not an explanation.
+	DirectModelDownload *DirectModelDownload `json:"directModelDownload,omitempty"`
 
 	// Explanations Why a worker the app asked for is waiting to be placed, and which worker limit currently holds the app, each with a next step. At most one of each. Omitted when nothing is waiting and no limit applies, and also when the platform has not observed the app in the last ten minutes, because an old explanation is not shown as current.
 	Explanations *[]AppHealthExplanation `json:"explanations,omitempty"`
@@ -1485,6 +1701,9 @@ type AppUpdate struct {
 	// EnvironmentVariables Replaces the app's environment variables. Keys are the variable names, values are the values. A key absent from the map is deleted. A null value omits that key from the new set. Write values literally: do not use `$(NAME)` or `$$` in a value, as the platform does not guarantee how it treats either sequence. The resolved map is snapshotted onto the version this update records. When the copied image is deployable the update pins and rolls, the same as a configuration change.
 	EnvironmentVariables *map[string]*string `json:"environmentVariables,omitempty"`
 
+	// Mounts Replaces the app's Shared Volume mounts in the version this update records, which then rolls out as a configuration change does. An empty array removes them; omitted keeps the mounts of the version the update copies. Beta: Shared Volumes must be enabled for the organization, and this field may change before general availability. Without Shared Volume beta access, a non-empty array is refused with `422` pointing at `/mounts`, detail `Shared Volumes are not available to this organization`. An empty array is accepted without access, so an app whose organization lost access can remove its mounts. Refusals are those of `AppCreate.mounts`, judged against the node-local `volumes` the new version keeps, except that the `409` for `maxMountedBytesPerAppVersion` answers only an update that makes its version current, or a source update when it records the version before its build; an update copied onto a build that is not ready is checked by the deploy that makes it current. An update that keeps mounts of a Volume deleted since is refused with `422` pointing at `/mounts`; send `mounts` to replace them. An update without `mounts` that moves `gpuType` or `gpusPerWorker` to one whose workers cannot mount Shared Volumes, while the app keeps mounts, is refused with `422` pointing at that field. An update that makes a version with mounts current while Shared Volumes are not available to the organization is refused with `409`.
+	Mounts *[]VolumeMount `json:"mounts,omitempty"`
+
 	// Secrets Replaces the app's secret attachments. Same `SecretAttach` shape as create and `POST /apps/{appId}/secrets`. An unknown or inactive name returns `422` typed `secret-not-found`, and `errors[]` points at that entry's `secretName`. A `registry` secret returns `422` `secret-not-attachable`. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name. A secrets-only change records a version and does not pin it. This field does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves. An app holds at most 100 environment bindings in total. This array cannot exceed that ceiling on its own. Each individual secret can also be attached to at most 25 deployments total, shared with every other route that attaches it.
 	Secrets *[]SecretAttach `json:"secrets,omitempty"`
 }
@@ -1526,7 +1745,7 @@ type AuditLog struct {
 	// Status `success` when the write committed, `denied` when a secret write was refused with `403` because the organization's tenancy is not active.
 	Status AuditLogStatus `json:"status"`
 
-	// Targets What the write acted on, by the identifier this API addresses it with: an app by `appId`, a version by its number, a secret, variable, connector or environment by name, and a build or source upload by id. `environment.defaults.update` names none.
+	// Targets What the write acted on, by the identifier this API addresses it with: an app by `appId`, a version by its number, a secret, variable, connector, environment or Volume by name, and a build, source upload or Volume upload session by id. `environment.defaults.update` names none.
 	Targets []AuditLogTarget `json:"targets"`
 }
 
@@ -1622,10 +1841,10 @@ type Build struct {
 	FailureSlug *string            `json:"failureSlug,omitempty"`
 	Id          openapi_types.UUID `json:"id"`
 
-	// LogTail The last lines of the build output that belong to the app's own code: what the model file printed and raised when the build imported it, the build's messages about the codebase and its requirements, and the output of the steps that install the declared requirements or, for a container source, run the Dockerfile. Output of the platform's own build steps is never included, on successful and failed builds alike. A failed build's tail always says why. When the build failed in a step that runs your code and its log could not be read in time, it keeps the output shown while the build ran and ends with one line saying that the build failed and its log could not be read in time. A build that succeeded while its log could not be read in time keeps the output shown while it ran, so its last lines may be missing. When the platform ended the build, it ends with one line stating the cause: out of memory, an eviction for memory or disk, preemption, a build machine that was drained or became unavailable, its time limit, or a kill the machine gave no reason for; when the build was taken off its machine and nothing is left to say how, the line says that the platform took it off the build machine, as happens on a drain, preemption or a lost machine. This line comes even after output that already explains the failure. Otherwise, when none of that output explains the failure, it ends with one line that names the platform step the build stopped in, or says that the build was stopped, most often at its time limit. When the build stopped during the image build and its output can still be read, a line before the last one names the step it stopped in and says whether the step's command was still running or had finished while the step's files were saved into the image. After the time limit, or when the platform took the build off its machine, the tail keeps the output from while the build ran and adds the cause with no step line. After an eviction for disk, the output is gone and the tail states only the cause. For a container source the step is the Dockerfile instruction as written, shortened when long, and a step the platform adds after the Dockerfile is named only as one; for a code source only the steps that install the declared requirements or check the base image's Python are named. At most 100 lines and 16 KiB; the cause is the last line and stays within those bounds. While the build runs it is the output so far under the same rules, refreshed as the build proceeds, and it carries no line about a failure. Null until the build has written output of that kind.
+	// LogTail The last lines of the build output that belong to the app's own code: what the model file printed and raised when the build imported it, the build's messages about the codebase and its requirements, and the output of the steps that install the declared requirements or, for a container source, run the Dockerfile. Output of the platform's own build steps is never included, on successful and failed builds alike. A failed build's tail always says why. When the build failed in a step that runs your code and its log could not be read in time, it keeps the output shown while the build ran and ends with one line saying that the build failed and its log could not be read in time. A build that succeeded while its log could not be read in time keeps the output shown while it ran, so its last lines may be missing. When the platform ended the build, it ends with one line stating the cause: the build using more memory than a build has, the build writing more to disk than a build may use, out of memory, an eviction for memory or disk, preemption, a build machine that was drained, became unavailable or could not download one of the platform's build images, a build the platform could not start on its machine, its time limit, or a kill the machine gave no reason for; when the build was taken off its machine and nothing is left to say how, the line says that the platform took it off the build machine, as happens on a drain, preemption or a lost machine. This line comes even after output that already explains the failure. Otherwise, when none of that output explains the failure, it ends with one line that names the platform step the build stopped in, or says that the build was stopped, most often at its time limit. When the build stopped during the image build and its output can still be read, a line before the last one names the step it stopped in and says whether the step's command was still running or had finished while the step's files were saved into the image. After the time limit, or when the platform took the build off its machine, the tail keeps the output from while the build ran and adds the cause with no step line. After an eviction for disk, the output is gone and the tail states only the cause. For a container source the step is the Dockerfile instruction as written, shortened when long, and a step the platform adds after the Dockerfile is named only as one; for a code source only the steps that install the declared requirements or check the base image's Python are named. At most 100 lines and 16 KiB; the cause is the last line and stays within those bounds. While the build runs it is the output so far under the same rules, refreshed as the build proceeds, and it carries no line about a failure. Null until the build has written output of that kind.
 	LogTail *string `json:"logTail,omitempty"`
 
-	// Phases Observed build phases with their timings, recorded once the build is terminal. Empty until then. Phase lists differ by `source.type`. Never assume a fixed list.
+	// Phases Observed build phases in execution order, updated on each status poll while the build runs. The phase still running has `outcome: running` and `completedAt` null. A phase that has finished has its final `outcome` and `completedAt`. A phase shorter than the poll interval can first appear already finished. Empty until the first phase has started. Phase lists differ by `source.type`. Never assume a fixed list. A superseded or stranded close marks a phase that was still running as `failed`. `superseded` is not a failure of the build; the phase outcome records that the step was cut short. That phase's `completedAt` is the time of the close, which can be later than the build last ran. A stranded close is the one recorded when a rollout ends without a verdict from the builder.
 	Phases []BuildPhase `json:"phases"`
 
 	// Source Where a build's source came from: `code` for a customer code submission, `container` for a customer wrapper Dockerfile. `repository` and `revision` are not yet recorded (both sources are zip uploads) and will be added when the platform stores that provenance.
@@ -1777,6 +1996,15 @@ type DeployRequest struct {
 	VersionNumber int32 `json:"versionNumber"`
 }
 
+// DirectModelDownload A worker of this app is downloading the model directly because the fast download path is unreachable. Present only while a recent sample says so, and not on a start failure. It lags the worker by about a minute. A sample from a worker that stopped can remain for a few minutes. It is absent on the fast path, once the worker is ready, on a start failure, and when the platform has no recent sample. It is not part of `state` or `reason`, and it is not an explanation.
+type DirectModelDownload struct {
+	// Message What the platform observed, in fixed wording. A worker is downloading the model directly because the fast download path is unreachable. The first response will take longer than a normal start.
+	Message string `json:"message"`
+
+	// NextStep What to do about it, in fixed wording. Wait for this worker to become ready. If you are starting several apps, start fewer at once until this clears, or the model's host may refuse the downloads.
+	NextStep string `json:"nextStep"`
+}
+
 // Endpoint defines model for Endpoint.
 type Endpoint struct {
 	// AppId Immutable app identifier. Unique among the authenticated organization's live apps in one environment: it cannot be changed after creation, it becomes available again once the app it named reaches `deleted`, and the same id may run once in each environment as a separate copy.
@@ -1808,7 +2036,7 @@ type EndpointRuntime struct {
 	// P99RequestDuration Latest-window p99 request duration in seconds (all requests, the duration histogram has no status class).
 	P99RequestDuration *float64 `json:"p99RequestDuration,omitempty"`
 
-	// RequestsPerMinute 5-minute request rate (`rate(rw_requests_total[5m]) * 60`), in req/min. Not derived from the 24h sparkline counts.
+	// RequestsPerMinute 5-minute request rate (`increase(rw_requests_total[5m]) / 5`), in req/min. Not derived from the 24h sparkline counts.
 	RequestsPerMinute *float64 `json:"requestsPerMinute,omitempty"`
 
 	// Status Badge derived from the latest-window error ratio (4xx + 5xx over requests). Not stored: there is no endpoint status column. Omitted when metrics cannot be read or the endpoint had no requests in the window. `healthy` is a zero ratio, `degraded` is below 0.05, `unhealthy` is 0.05 and above.
@@ -1996,6 +2224,9 @@ type GpuType struct {
 	// DeletedAt Retirement time, returned only in the Runware catalog view.
 	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 
+	// GpusPerWorker The `configuration.gpusPerWorker` counts an admitted pool of this type serves, in ascending order. A pool with no pin serves 1, 2, 4 and 8. A pool pinned to a set size serves only that count. `multiGpuSupport` false leaves only 1, and only when a pool serves 1. An empty array means no count is accepted. Read this before creating an app. A count absent from this array is rejected with a 422 naming `/configuration/gpusPerWorker` and detail `must be one of the gpusPerWorker counts GPU type "<id>" serves: <counts>`, or `GPU type "<id>" serves no gpusPerWorker count` when this array is empty. List and get leave out a count above 1 when every admitted pool of the type shares one cluster and that cluster has published worker shapes that omit it. Submitting that count is a 422 with detail `must be one of the worker shapes available for GPU type "<id>": <shapes>`, or `no multi-GPU worker shape is available for GPU type "<id>"` when that cluster grants none. A write of this object returns the pool-served counts, before that shape pass. A cluster that has published no shapes accepts a count this array lists. Admitted pools that span more than one cluster leave this array at the pool-served counts, and create checks the cluster of the pool it picks. `multiGpuSupport` false rejects a count above 1 on the primary type with detail `GPU type "<id>" does not support multiple GPUs per worker`, before this array is consulted. The same refusal for the fallback type is `fallback GPU type "<id>" does not support multiple GPUs per worker`.
+	GpusPerWorker []int32 `json:"gpusPerWorker"`
+
 	// Id Public catalog code referenced by `gpuType` in worker configuration (not the internal database row UUID).
 	Id GpuTypeId `json:"id"`
 
@@ -2004,7 +2235,7 @@ type GpuType struct {
 	// Example: 80 GB HBM
 	Memory string `json:"memory"`
 
-	// MultiGpuSupport Whether a worker on this GPU type may be granted more than one GPU. `false` means `gpusPerWorker` must be 1.
+	// MultiGpuSupport Whether a worker on this GPU type may be granted more than one GPU. `false` means a count above 1 is rejected, and `gpusPerWorker` on this object is at most `[1]`. `true` does not mean every count above 1 is accepted: `gpusPerWorker` lists the counts an admitted pool serves.
 	MultiGpuSupport bool `json:"multiGpuSupport"`
 
 	// Name Example: H100
@@ -2062,10 +2293,10 @@ type MetricSeries struct {
 	Query       string              `json:"query"`
 	Series      []MetricSeriesEntry `json:"series"`
 
-	// StepS Seconds between adjacent timestamps in `t`.
+	// StepS Closed-bucket width in seconds. Adjacent timestamps in `t` are this far apart. On `7d` and `30d` the last gap may be shorter: it is the open bucket, and its width is `t[last] - t[last-1]`.
 	StepS int64 `json:"step_s"`
 
-	// T The timestamp axis, shared by every series. Each value is the END of its bucket, in unix seconds: a point at `t[i]` is the aggregate over `(t[i] - step_s, t[i]]`, which is what the underlying range functions compute.
+	// T The timestamp axis, shared by every series. Each value is the END of its bucket, in unix seconds: a point at `t[i]` is the aggregate over `(t[i] - step_s, t[i]]`, which is what the underlying range functions compute. On `7d` and `30d` the last point covers `(t[last-1], t[last]]` when that gap is shorter than `step_s`: it is the bucket still in progress, redrawn every 5 minutes.
 	T    []int64 `json:"t"`
 	Unit string  `json:"unit"`
 
@@ -2224,6 +2455,12 @@ type Page struct {
 
 // ProblemDetails RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type ProblemDetails struct {
+	// Cap The organization's effective cap for the named limit.
+	Cap *int64 `json:"cap,omitempty"`
+
+	// Current The current value considered by Shared Volume admission.
+	Current *int64 `json:"current,omitempty"`
+
 	// Detail Human-readable explanation specific to this occurrence.
 	//
 	// Example: No app 'img-gen' exists for the authenticated organization.
@@ -2243,8 +2480,17 @@ type ProblemDetails struct {
 	// Example: /v1/apps/img-gen
 	Instance *string `json:"instance,omitempty"`
 
+	// Limit The violated Shared Volume limit on a volume-limit-exceeded conflict.
+	Limit *string `json:"limit,omitempty"`
+
 	// RequestId Extension member. Correlation id for this request, echoed in the `X-Request-Id` response header. Quote it when reporting problems.
 	RequestId *string `json:"requestId,omitempty"`
+
+	// Requested The requested value or increase, as identified by requestedIsIncrement.
+	Requested *int64 `json:"requested,omitempty"`
+
+	// RequestedIsIncrement Whether requested is an increase to current rather than an absolute value.
+	RequestedIsIncrement *bool `json:"requestedIsIncrement,omitempty"`
 
 	// Shortfall Extension member. Present on an `insufficient-credit` or a `credit-suspended` problem (`402`): the amount to add to the organization's balance before retrying. The request is unchanged by the refusal and succeeds as sent once the credit is there. Read this rather than parsing `detail`.
 	Shortfall *MoneyAmount `json:"shortfall,omitempty"`
@@ -2554,7 +2800,7 @@ type SourceUploadTransfer struct {
 	union json.RawMessage
 }
 
-// Task defines model for Task.
+// Task Keep successful application response bodies and their stored JSON representations at or below 64 MiB each. Exceeding either limit can fail the task. Previously stored results can be larger.
 type Task struct {
 	// AppId Immutable app identifier. Unique among the authenticated organization's live apps in one environment: it cannot be changed after creation, it becomes available again once the app it named reaches `deleted`, and the same id may run once in each environment as a separate copy.
 	AppId       AppId      `json:"appId"`
@@ -2573,12 +2819,18 @@ type Task struct {
 	// Id Task identifier, supplied by the caller when the task was submitted.
 	Id string `json:"id"`
 
-	// Output Inference result payload on success. Null otherwise. May be any JSON value, including an object, array, string, number, boolean, or null.
+	// Output Inference result payload on success. Null otherwise. May be any JSON value, including an object, array, string, number, boolean, or null. For a code app this is the value the handler returned, or the value `encode_response` returned when the app defines one: it is not wrapped, and a single request's value is that return rather than a one-element list of it. For a container app this is the response body the container returned. Absent on a listed task whose `outputOmitted` is `true`.
 	Output interface{} `json:"output,omitempty"`
-	Status TaskStatus  `json:"status"`
+
+	// OutputOmitted `true` on an entry of `GET /v1/apps/{appId}/tasks` whose `status` is `completed` but whose `output` is absent because the listing omitted it. The listing omits an output if its stored JSON exceeds 128 KiB or is larger than the page's output budget. A deeply nested output is also omitted. An output can also be omitted if it grows after its size is measured. Read it with `GET /v1/apps/{appId}/tasks/{taskId}`. Absent everywhere else.
+	OutputOmitted *bool `json:"outputOmitted,omitempty"`
+
+	// QueueDepth Messages still waiting on this app's inference queue, present only on the `202` from `invoke-sync` when the wait window expired and the broker could be read. It is the broker's ready count at that moment, and it leaves out work a worker has already taken. Zero means the queue was empty, including an app whose queue has not been declared. Omitted on every other task response, and omitted when the count could not be read: a missing field is not an empty queue. `runtime.queueDepth` on the app is a different reading, the last stored sample of ready and unacknowledged messages.
+	QueueDepth *int64     `json:"queueDepth,omitempty"`
+	Status     TaskStatus `json:"status"`
 }
 
-// TaskId Client-generated task identifier, canonical lowercase UUID. One id is one task: resubmitting it is answered with the task it already names rather than starting a second, so a request whose response was lost can be sent again without paying for the work twice. Reusing an id for a different request returns the first task, so the id is the caller's to keep unique.
+// TaskId Client-generated task identifier, canonical lowercase UUID. Retry with the same id to recover an existing task without starting a second one. The retry can return `503` while broker acceptance is uncertain. Use a unique id for each new request.
 type TaskId = openapi_types.UUID
 
 // TaskInvocation The request body for both invoke routes. The endpoint's own input schema describes `payload`, never the whole body, so no platform field can collide with one of the app's own. Unknown top-level members are rejected rather than ignored: the envelope is the platform's to extend, and silently accepting a stray member would make a later addition breaking.
@@ -2586,7 +2838,7 @@ type TaskInvocation struct {
 	// Payload The body the endpoint's handler receives, validated against the endpoint's declared input schema. An endpoint that declares none takes it unvalidated.
 	Payload map[string]interface{} `json:"payload"`
 
-	// TaskId Client-generated task identifier, canonical lowercase UUID. One id is one task: resubmitting it is answered with the task it already names rather than starting a second, so a request whose response was lost can be sent again without paying for the work twice. Reusing an id for a different request returns the first task, so the id is the caller's to keep unique.
+	// TaskId Client-generated task identifier, canonical lowercase UUID. Retry with the same id to recover an existing task without starting a second one. The retry can return `503` while broker acceptance is uncertain. Use a unique id for each new request.
 	TaskId TaskId `json:"taskId"`
 }
 
@@ -2724,6 +2976,9 @@ type Version struct {
 	GpuType *GpuTypeId         `json:"gpuType,omitempty"`
 	Id      openapi_types.UUID `json:"id"`
 
+	// Mounts The Shared Volumes this version mounts, in byte order of `mountPath`. Each `name` is the Volume's current name; a Volume deleted since keeps its last name and is marked `deleted`, and a deploy or rollback of this version is then refused. The version saves the Volume, not its files: each worker mounts the Volume's latest files as of its creation, so a rollback to this version does not restore earlier files. Omitted when the version mounts no Shared Volume, or when Shared Volumes are not available to the organization. Beta: Shared Volumes must be enabled for the organization, and this field may change before general availability.
+	Mounts *[]VolumeMount `json:"mounts,omitempty"`
+
 	// VersionNumber Monotonically increasing per app.
 	VersionNumber int32 `json:"versionNumber"`
 }
@@ -2758,6 +3013,481 @@ type VersionKeySetDiff struct {
 	Removed *[]string `json:"removed,omitempty"`
 }
 
+// Volume A Volume has one latest file set and no versions. Each worker that mounts it gets the latest files as of the worker's creation.
+type Volume struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Description Free text, at most 1024 characters, that neither starts nor ends with whitespace: ASCII whitespace, U+0085, U+1680, U+2000 to U+200A except U+2007, U+2028, U+2029, U+205F or U+3000. Line breaks inside are kept. NUL is refused anywhere.
+	Description *VolumeDescription `json:"description,omitempty"`
+
+	// Environment The Volume's environment, the only one whose apps mount it.
+	Environment EnvironmentName `json:"environment"`
+
+	// FileCount Number of latest files, zero before the first upload.
+	FileCount int64 `json:"fileCount"`
+
+	// Id Immutable identity of one Volume. A Volume created later under a reused name gets a new id.
+	Id VolumeId `json:"id"`
+
+	// LogicalBytes Logical size of the latest files, zero before the first upload. Not the organization's deduplicated stored bytes, which count shared content once.
+	LogicalBytes int64 `json:"logicalBytes"`
+
+	// ManifestSha256 Digest of the latest file list, the SHA-256 of the latest manifest. It changes exactly when the latest files change, so a client compares it to see whether they did. It is not an identifier: no route or mount accepts it. Absent before the first upload that adds files.
+	ManifestSha256 *VolumeSha256 `json:"manifestSha256,omitempty"`
+
+	// Name Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 63 characters.
+	//
+	//
+	// Example: model-weights
+	Name VolumeName `json:"name"`
+
+	// Status A Volume a route returns is always `live`: one being deleted or deleted is not returned. The enum is open for later states.
+	Status    VolumeStatus `json:"status"`
+	UpdatedAt time.Time    `json:"updatedAt"`
+}
+
+// VolumeAttemptId A random 128-bit id the client generates with each file's fresh data key, as 32 lowercase hexadecimal characters. It is associated data of the sealed key and of every segment, and is unique among the attempt ids the organization has recorded: abort and expiry keep it, so it is never used again.
+type VolumeAttemptId = string
+
+// VolumeBlobReference Content already verified in this organization that a `reused` file points to. It names the content by its plaintext SHA-256 and size, never by a storage location, and comes with no key. Draft: this part of the upload contract may still change before it is final.
+type VolumeBlobReference struct {
+	// Sha256 SHA-256 digest as 64 lowercase hexadecimal characters.
+	Sha256 VolumeSha256 `json:"sha256"`
+	Size   int64        `json:"size"`
+}
+
+// VolumeCrc64Nvme CRC64/NVME as 16 lowercase hexadecimal characters, big-endian. The check value of `123456789` is `ae8b14860a799888`.
+type VolumeCrc64Nvme = string
+
+// VolumeCreate defines model for VolumeCreate.
+type VolumeCreate struct {
+	// Description Free text, at most 1024 characters, that neither starts nor ends with whitespace: ASCII whitespace, U+0085, U+1680, U+2000 to U+200A except U+2007, U+2028, U+2029, U+205F or U+3000. Line breaks inside are kept. NUL is refused anywhere.
+	Description *VolumeDescription `json:"description,omitempty"`
+
+	// Name Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 63 characters.
+	//
+	//
+	// Example: model-weights
+	Name VolumeName `json:"name"`
+}
+
+// VolumeDescription Free text, at most 1024 characters, that neither starts nor ends with whitespace: ASCII whitespace, U+0085, U+1680, U+2000 to U+200A except U+2007, U+2028, U+2029, U+205F or U+3000. Line breaks inside are kept. NUL is refused anywhere.
+type VolumeDescription = string
+
+// VolumeEncapsulation The session's X-Wing encapsulation to the key pair's public key: its 1120-byte ciphertext, unpadded base64url in canonical form (the unused low bits of the last character are zero). A later KEM, introduced with a new KEM identifier, changes this length.
+type VolumeEncapsulation = string
+
+// VolumeFile defines model for VolumeFile.
+type VolumeFile struct {
+	// Mode Permission bits as a decimal integer, keeping only read and execute (a subset of `0o555`, which is 365); the platform sets the owner. The schema bounds the value only; the server checks the bits after validation and refuses a mode with any write or special bit with `422`. Changing only a file's mode is a change to the Volume's files.
+	//
+	//
+	// Example: 292
+	Mode VolumeFileMode `json:"mode"`
+
+	// Path Path of a regular file relative to the Volume root, at most 2046 bytes of UTF-8, each component at most 255 bytes; `maxLength` bounds characters, and the server refuses a longer encoding or component with `422`. The 2046 bytes keep a file's absolute path in the workload, a `mountPath` of up to 2048 bytes plus `/` plus this path, within the Linux `PATH_MAX` of 4096 bytes including the terminating NUL. It is normalized: no leading or trailing `/`, no empty, `.` or `..` component and no control character: C0, DEL, C1 (U+0080 to U+009F), U+2028 or U+2029. A Volume holds regular files only, so there are no symlinks, devices or empty directories. Paths travel only in request and response bodies, never in a URL.
+	//
+	//
+	// Example: unet/diffusion_pytorch_model.safetensors
+	Path VolumeFilePath `json:"path"`
+
+	// Sha256 SHA-256 digest as 64 lowercase hexadecimal characters.
+	Sha256 VolumeSha256 `json:"sha256"`
+	Size   int64        `json:"size"`
+}
+
+// VolumeFileCompletion Draft: this part of the upload contract may still change before it is final.
+type VolumeFileCompletion struct {
+	// Crc64nvme CRC64/NVME of the whole ciphertext object, every segment's tag included, as the client computed it over the bytes it sent.
+	Crc64nvme VolumeCrc64Nvme `json:"crc64nvme"`
+
+	// Parts Every part of the layout, each with the acknowledgement the upload endpoint returned.
+	Parts []struct {
+		// Ack The upload endpoint's acknowledgement of the part, as it returned it, opaque to the client. It is not a storage ETag; this API maps it to the stored part at completion.
+		Ack        string `json:"ack"`
+		PartNumber int32  `json:"partNumber"`
+	} `json:"parts"`
+}
+
+// VolumeFileDeclaration One file to add or replace, with its data key sealed by the client and its attempt id. It never names a key pair: the session's key pair applies.
+type VolumeFileDeclaration struct {
+	// AttemptId A random 128-bit id the client generates with each file's fresh data key, as 32 lowercase hexadecimal characters. It is associated data of the sealed key and of every segment, and is unique among the attempt ids the organization has recorded: abort and expiry keep it, so it is never used again.
+	AttemptId VolumeAttemptId `json:"attemptId"`
+
+	// Mode Permission bits as a decimal integer, keeping only read and execute (a subset of `0o555`, which is 365); the platform sets the owner. The schema bounds the value only; the server checks the bits after validation and refuses a mode with any write or special bit with `422`. Changing only a file's mode is a change to the Volume's files.
+	//
+	//
+	// Example: 292
+	Mode VolumeFileMode `json:"mode"`
+
+	// Path Path of a regular file relative to the Volume root, at most 2046 bytes of UTF-8, each component at most 255 bytes; `maxLength` bounds characters, and the server refuses a longer encoding or component with `422`. The 2046 bytes keep a file's absolute path in the workload, a `mountPath` of up to 2048 bytes plus `/` plus this path, within the Linux `PATH_MAX` of 4096 bytes including the terminating NUL. It is normalized: no leading or trailing `/`, no empty, `.` or `..` component and no control character: C0, DEL, C1 (U+0080 to U+009F), U+2028 or U+2029. A Volume holds regular files only, so there are no symlinks, devices or empty directories. Paths travel only in request and response bodies, never in a URL.
+	//
+	//
+	// Example: unet/diffusion_pytorch_model.safetensors
+	Path VolumeFilePath `json:"path"`
+
+	// SealedKey A file's fresh 32-byte data key, wrapped by the client under the session sealing key with AES-256-GCM: the 12-byte random nonce, the 32-byte ciphertext and the 16-byte tag, 60 bytes, unpadded base64url. Its associated data binds the label `runware-volumes-v1/data-key`, the organization, the session, the plaintext SHA-256, the size and the attempt id, so a key moved to another file fails to unwrap. This API cannot open it; only the worker preparing the file does. Draft: the order of nonce, ciphertext and tag is fixed with the encryption format's test vectors.
+	SealedKey VolumeSealedKey `json:"sealedKey"`
+
+	// Sha256 SHA-256 of the plaintext, which with `size` identifies the content within the organization. If the plaintext the client encrypts does not hash to this value, the file changed during the upload, and the client aborts the whole session.
+	Sha256 VolumeSha256 `json:"sha256"`
+
+	// Size Plaintext size in bytes. Checked against `maxFileBytes` here, before any part is sent.
+	Size int64 `json:"size"`
+}
+
+// VolumeFileDeclarationAnswer The declared file with what the client needs next. An `uploading` file carries its approved `layout` and `uploadTargets`. A `reused` file carries `blob`: there is nothing to send, and its sealed key was discarded. A `verified` file, answered to an identical retry, carries neither. No answer carries a key. Draft: this part of the upload contract may still change before it is final.
+type VolumeFileDeclarationAnswer struct {
+	// Blob Content already verified in this organization that a `reused` file points to. It names the content by its plaintext SHA-256 and size, never by a storage location, and comes with no key. Draft: this part of the upload contract may still change before it is final.
+	Blob *VolumeBlobReference `json:"blob,omitempty"`
+
+	// File One declared file of a session. It never carries key material, sealed keys included, or a part token. Draft: this part of the upload contract may still change before it is final.
+	File VolumeUploadFile `json:"file"`
+
+	// UploadTargets Upload targets for the first parts of the layout, at most 16; get the rest, and replace expired tokens, through `POST .../files/{fileId}/parts`.
+	UploadTargets *[]VolumeUploadTarget `json:"uploadTargets,omitempty"`
+}
+
+// VolumeFileDeclarationBatch defines model for VolumeFileDeclarationBatch.
+type VolumeFileDeclarationBatch struct {
+	// Files Files to add or replace, each path and attempt id at most once, at most 100 per batch. The bound keeps a declaration body and its answer under the request limits; a larger batch is refused with `422` at `/files`.
+	Files []VolumeFileDeclaration `json:"files"`
+}
+
+// VolumeFileDeclarationResult Draft: this part of the upload contract may still change before it is final.
+type VolumeFileDeclarationResult struct {
+	Files []VolumeFileDeclarationAnswer `json:"files"`
+}
+
+// VolumeFileMode Permission bits as a decimal integer, keeping only read and execute (a subset of `0o555`, which is 365); the platform sets the owner. The schema bounds the value only; the server checks the bits after validation and refuses a mode with any write or special bit with `422`. Changing only a file's mode is a change to the Volume's files.
+//
+// Example: 292
+type VolumeFileMode = int32
+
+// VolumeFilePage defines model for VolumeFilePage.
+type VolumeFilePage struct {
+	Data []VolumeFile `json:"data"`
+
+	// ManifestSha256 Digest of the file list this page was read from. Absent when the Volume has no files yet.
+	ManifestSha256 *VolumeSha256 `json:"manifestSha256,omitempty"`
+
+	// NextCursor Cursor for the next page. Null when there are no more items.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// VolumeFilePath Path of a regular file relative to the Volume root, at most 2046 bytes of UTF-8, each component at most 255 bytes; `maxLength` bounds characters, and the server refuses a longer encoding or component with `422`. The 2046 bytes keep a file's absolute path in the workload, a `mountPath` of up to 2048 bytes plus `/` plus this path, within the Linux `PATH_MAX` of 4096 bytes including the terminating NUL. It is normalized: no leading or trailing `/`, no empty, `.` or `..` component and no control character: C0, DEL, C1 (U+0080 to U+009F), U+2028 or U+2029. A Volume holds regular files only, so there are no symlinks, devices or empty directories. Paths travel only in request and response bodies, never in a URL.
+//
+// Example: unet/diffusion_pytorch_model.safetensors
+type VolumeFilePath = string
+
+// VolumeId Immutable identity of one Volume. A Volume created later under a reused name gets a new id.
+type VolumeId = openapi_types.UUID
+
+// VolumeKeyPairId One of the organization's Volumes key pairs, as named in its signed statement.
+type VolumeKeyPairId = openapi_types.UUID
+
+// VolumeKeyPairStatement The organization's newest Volumes key pair, as the platform signed and stored it. `statement` is the exact signed message: the canonical, length-prefixed encoding of the label `runware-volumes-v1/key-pair-statement`, the KEM identifier (the pinned X-Wing draft revision), the signing key version, the organization, the key pair id, the sequence number, issued-at, not-after and the X-Wing public key (1216 bytes). Verify `signature` over these exact bytes before reading any of them, and use only values read from them. Draft: the byte encoding of each field and the pinned KEM identifier are fixed with the encryption format and its test vectors.
+type VolumeKeyPairStatement struct {
+	// Signature The platform signing key's ECDSA P-256 SHA-256 signature over `statement`, DER-encoded (at most 72 bytes), unpadded base64url.
+	Signature string `json:"signature"`
+
+	// Statement The signed message, unpadded base64url. It holds the 1216-byte public key, so it is at least that long; its total length depends on the field encoding, which is not frozen, and this draft caps it at 4096 bytes.
+	Statement string `json:"statement"`
+}
+
+// VolumeLimits defines model for VolumeLimits.
+type VolumeLimits struct {
+	// MaxFileBytes Largest file in bytes; defaults to 250 GiB, the same as `maxMountedBytesPerAppVersion`, so any uploaded file can be mounted. An organization override raises both together, up to 1 TiB.
+	MaxFileBytes int64 `json:"maxFileBytes"`
+
+	// MaxFilesPerVolume Most files one Volume holds; a Volume has a single current file set and no versions.
+	MaxFilesPerVolume int64 `json:"maxFilesPerVolume"`
+
+	// MaxMountedBytesPerAppVersion Logical bytes of the Volumes one app version mounts, checked at deploy; defaults to 250 GiB, and an organization override raises it up to 1 TiB. Also checked at upload completion, which is refused when it would grow a Volume past the cap of any current app version mounting it. Never checked at worker start, so scale-out and crash replacement never fail on it.
+	MaxMountedBytesPerAppVersion int64 `json:"maxMountedBytesPerAppVersion"`
+
+	// MaxStoredBytes Organization stored quota in bytes; defaults to and cannot exceed 1 TiB.
+	MaxStoredBytes int64 `json:"maxStoredBytes"`
+
+	// UploadSessionTtlSeconds Fixed upload-session lifetime in seconds, counted from creation, the same for every organization (24 hours by default); activity and part-token renewal never extend it. No part token outlives the session deadline.
+	UploadSessionTtlSeconds int64 `json:"uploadSessionTtlSeconds"`
+}
+
+// VolumeMount A Shared Volume of the app's own environment, mounted read-only into every worker of the app version. The app version saves the Volume id, not its files: each worker mounts the Volume's latest files as of its creation, so workers created after an upload get the new files while running workers keep theirs until they stop. A rollback restores the app version's image and settings, not earlier Volume files. A missing or deleted Volume, or one that has never had files, refuses the create, update, deploy or rollback with `422`, and a worker never starts with an empty folder in its place. A Volume emptied by removing every file is still mounted: an empty folder is its latest state. Each app version's mounted Volumes must fit `maxMountedBytesPerAppVersion` at their sizes when an update, an environment variable write, a deploy or a rollback makes the version current, or when a create or a source update records it before its build; otherwise `409` with type `volume-limit-exceeded`. The build's rollout does not check again. A version recorded without being made current, such as a rename's, is checked when it is deployed. A Volume mounted at two paths is counted once. Mounts need a GPU type whose workers can mount Shared Volumes; otherwise `422` pointing at `/mounts`. A checkpoint is restored only over the same files: its identity covers each mounted Volume's `manifestSha256`, mount path and mode, so a worker whose mounts differ cold-starts, and a restore never pairs weights held in memory with different files. Mounts share the app's 30-entry limit and its path rules with node-local `volumes`: a mount path may not equal or overlap a node-local one or another mount.
+type VolumeMount struct {
+	// Deleted Set on the app and version reads when the mounted Volume has been deleted since; absent while it is live. Its `name` is then the deleted Volume's, which a new Volume may have taken since: sending these mounts again mounts whichever Volume has that name now, while a deploy or rollback of the version is refused with `422`. Beta: this field may change before general availability.
+	Deleted *VolumeMountDeleted `json:"deleted,omitempty"`
+	Kind    VolumeMountKind     `json:"kind"`
+
+	// MountPath Absolute path inside the sandboxed application. It is normalized: segments of `A-Z`, `a-z`, `0-9`, `.`, `_`, `+`, `@` and `-` separated by single `/`, with no empty, `.` or `..` segment and no trailing `/`. The reserved paths and the per-segment limit of `AppVolume.mountPath` apply as well.
+	MountPath string `json:"mountPath"`
+
+	// Name Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 63 characters.
+	//
+	//
+	// Example: model-weights
+	Name VolumeName `json:"name"`
+
+	// ReadOnly Always true in v1; false is refused with `422`.
+	ReadOnly *VolumeMountReadOnly `json:"readOnly,omitempty"`
+}
+
+// VolumeMountDeleted Set on the app and version reads when the mounted Volume has been deleted since; absent while it is live. Its `name` is then the deleted Volume's, which a new Volume may have taken since: sending these mounts again mounts whichever Volume has that name now, while a deploy or rollback of the version is refused with `422`. Beta: this field may change before general availability.
+type VolumeMountDeleted bool
+
+// VolumeMountKind defines model for VolumeMount.Kind.
+type VolumeMountKind string
+
+// VolumeMountReadOnly Always true in v1; false is refused with `422`.
+type VolumeMountReadOnly bool
+
+// VolumeName Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 63 characters.
+//
+// Example: model-weights
+type VolumeName = string
+
+// VolumePage defines model for VolumePage.
+type VolumePage struct {
+	Data []Volume `json:"data"`
+
+	// NextCursor Cursor for the next page. Null when there are no more items.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// VolumePartLayout The approved part layout, fixed at declaration before anything is encrypted and preserved by every renewal; the client uses it as given rather than computing it. The file is sealed in segments: each holds `segmentPlaintextBytes` of plaintext and its 16-byte tag, `segmentBytes` in all, except the last, which holds the remainder. A file of n plaintext bytes has the larger of 1 and n divided by `segmentPlaintextBytes`, rounded up, segments, so a size-0 file is exactly one segment holding only its 16-byte GCM tag. Every part starts with its own random 16-byte salt, followed by whole segments sealed under a key derived with HKDF from the file's data key, that salt and the part's 1-based part number (1 for the first part, not 0). A part sealed again on resume repeats no key and nonce pair as long as the client draws a fresh random salt for every attempt at a part. Every part but the last holds `segmentsPerPart` segments, so a part never splits a segment, and the last holds the rest, at least one. `segmentsPerPart` is the larger of 64 and the segment count divided by 10,000, rounded up, so a 250 GiB file, or a 1 TiB one under an override, fits in 10,000 parts. `partCount` is the segment count divided by `segmentsPerPart`, rounded up, and `ciphertextBytes` is the plaintext size plus 16 bytes per segment and 16 bytes per part, so a size-0 file is one 32-byte part. Each part token binds its part's exact length, salt included, so the upload endpoint refuses a body of any other length. Parts may be sent in parallel, in any order, and again; a part sent again has the same length and may be sealed again under a fresh salt.
+//
+// Draft: the key derivation's exact inputs are fixed with the encryption format's test vectors.
+type VolumePartLayout struct {
+	// CiphertextBytes Size of the whole ciphertext object, the plaintext size plus 16 bytes per segment and 16 bytes per part; 32 for a size-0 file.
+	CiphertextBytes int64 `json:"ciphertextBytes"`
+	PartCount       int32 `json:"partCount"`
+
+	// PartSizeBytes Every part but the last is this long: its 16-byte salt and `segmentsPerPart` times `segmentBytes`.
+	PartSizeBytes int64 `json:"partSizeBytes"`
+
+	// SegmentBytes One sealed segment, tag included.
+	SegmentBytes          VolumePartLayoutSegmentBytes          `json:"segmentBytes"`
+	SegmentPlaintextBytes VolumePartLayoutSegmentPlaintextBytes `json:"segmentPlaintextBytes"`
+	SegmentsPerPart       int32                                 `json:"segmentsPerPart"`
+}
+
+// VolumePartLayoutSegmentBytes One sealed segment, tag included.
+type VolumePartLayoutSegmentBytes int32
+
+// VolumePartLayoutSegmentPlaintextBytes defines model for VolumePartLayout.SegmentPlaintextBytes.
+type VolumePartLayoutSegmentPlaintextBytes int32
+
+// VolumePartTokenRequest defines model for VolumePartTokenRequest.
+type VolumePartTokenRequest struct {
+	// PartNumbers Parts to issue part tokens for, at most 128 per request.
+	PartNumbers []int32 `json:"partNumbers"`
+}
+
+// VolumeReference One use of the Volume by an app of its environment.
+type VolumeReference struct {
+	// AppDeleted True when the use belongs to a deleted app rather than a replacement with the same ID.
+	AppDeleted bool `json:"appDeleted,omitempty"`
+
+	// AppId Immutable app identifier. Unique among the authenticated organization's live apps in one environment: it cannot be changed after creation, it becomes available again once the app it named reaches `deleted`, and the same id may run once in each environment as a separate copy.
+	AppId AppId `json:"appId"`
+
+	// AppVersionNumber The `versionNumber` of the app version that mounts the Volume, as in `/v1/apps/{appId}/versions/{versionNumber}`.
+	AppVersionNumber int32 `json:"appVersionNumber"`
+
+	// Kind `rollback-target` is an older app version that would lose its rollback; the other kinds block a delete.
+	Kind VolumeReferenceKind `json:"kind"`
+}
+
+// VolumeReferenceKind `rollback-target` is an older app version that would lose its rollback; the other kinds block a delete.
+type VolumeReferenceKind string
+
+// VolumeReferences defines model for VolumeReferences.
+type VolumeReferences struct {
+	// Blocking Uses that make a delete answer `409` typed `volume-in-use`.
+	Blocking []VolumeReference `json:"blocking"`
+
+	// NextCursor Opaque cursor for the next page of uses, absent on the last page. Pass it back unchanged as `cursor`; its contents are not part of the contract and may change.
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// RollbackTargets Older app versions that lose their rollback if the delete goes ahead with `confirmRollbackLoss=true`.
+	RollbackTargets []VolumeReference `json:"rollbackTargets"`
+}
+
+// VolumeSealedKey A file's fresh 32-byte data key, wrapped by the client under the session sealing key with AES-256-GCM: the 12-byte random nonce, the 32-byte ciphertext and the 16-byte tag, 60 bytes, unpadded base64url. Its associated data binds the label `runware-volumes-v1/data-key`, the organization, the session, the plaintext SHA-256, the size and the attempt id, so a key moved to another file fails to unwrap. This API cannot open it; only the worker preparing the file does. Draft: the order of nonce, ciphertext and tag is fixed with the encryption format's test vectors.
+type VolumeSealedKey = string
+
+// VolumeSettings defines model for VolumeSettings.
+type VolumeSettings struct {
+	// Available Effective access including the saved beta switch, tenancy and organization lifecycle.
+	Available bool         `json:"available"`
+	Limits    VolumeLimits `json:"limits"`
+}
+
+// VolumeSha256 SHA-256 digest as 64 lowercase hexadecimal characters.
+type VolumeSha256 = string
+
+// VolumeStatus A Volume a route returns is always `live`: one being deleted or deleted is not returned. The enum is open for later states.
+type VolumeStatus string
+
+// VolumeUpdate Every field is optional. An omitted field is left unchanged. A nullable field sent as `null` is cleared.
+type VolumeUpdate struct {
+	// Description The new description; null clears it, omitted leaves it unchanged.
+	Description nullable.Nullable[VolumeDescription] `json:"description,omitempty"`
+}
+
+// VolumeUpload An upload session.
+//
+// Turning the organization's beta access off stops its open sessions as organization disablement does. No new session opens, no part token is issued or renewed, and no file or session completes or publishes: every session route, opening, renewal and both completions included, returns `404` as for an organization without beta access (see `VolumeNotFound`). A part token already issued may still write ciphertext parts through the upload endpoint until it expires or the session is aborted, never past the session's `expiresAt`, but it never authorizes publication. The session lapses at its fixed `expiresAt`, and its unfinished parts are cleaned up as for any expired session. The organization's Volumes, their files and the apps that reference them are kept.
+//
+// The session's fixed deadline is `expiresAt`, and no part token expires later than it. `uploadSessionTtlSeconds` in `GET /v1/volumes-settings` gives the lifetime a new session gets.
+//
+// Open before this schema freezes: how a resumed client finds its session. Draft: this part of the upload contract may still change before it is final.
+type VolumeUpload struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// ExpiresAt The session's fixed deadline: `createdAt` plus `uploadSessionTtlSeconds`. Activity and part-token renewal never move it.
+	ExpiresAt time.Time         `json:"expiresAt"`
+	Id        VolumeUploadId    `json:"id"`
+	State     VolumeUploadState `json:"state"`
+
+	// VolumeId Immutable identity of one Volume. A Volume created later under a reused name gets a new id.
+	VolumeId VolumeId `json:"volumeId"`
+}
+
+// VolumeUploadDetail defines model for VolumeUploadDetail.
+type VolumeUploadDetail struct {
+	// Data A page of the declared files, ordered by path.
+	Data []VolumeUploadFile `json:"data"`
+
+	// NextCursor Cursor for the next page. Null when there are no more items.
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Upload An upload session.
+	//
+	// Turning the organization's beta access off stops its open sessions as organization disablement does. No new session opens, no part token is issued or renewed, and no file or session completes or publishes: every session route, opening, renewal and both completions included, returns `404` as for an organization without beta access (see `VolumeNotFound`). A part token already issued may still write ciphertext parts through the upload endpoint until it expires or the session is aborted, never past the session's `expiresAt`, but it never authorizes publication. The session lapses at its fixed `expiresAt`, and its unfinished parts are cleaned up as for any expired session. The organization's Volumes, their files and the apps that reference them are kept.
+	//
+	// The session's fixed deadline is `expiresAt`, and no part token expires later than it. `uploadSessionTtlSeconds` in `GET /v1/volumes-settings` gives the lifetime a new session gets.
+	//
+	// Open before this schema freezes: how a resumed client finds its session. Draft: this part of the upload contract may still change before it is final.
+	Upload VolumeUpload `json:"upload"`
+}
+
+// VolumeUploadFile One declared file of a session. It never carries key material, sealed keys included, or a part token. Draft: this part of the upload contract may still change before it is final.
+type VolumeUploadFile struct {
+	// AttemptId The attempt id the client declared the file with. Absent on a `reused` file, whose attempt id was discarded.
+	AttemptId *VolumeAttemptId `json:"attemptId,omitempty"`
+
+	// Crc64nvme The ciphertext CRC64/NVME the client submitted at file completion. Absent until then, and on a `reused` file.
+	Crc64nvme *VolumeCrc64Nvme `json:"crc64nvme,omitempty"`
+
+	// Failure Why a file is `failed`. `completion-unrecoverable` also marks a file whose object storage
+	// completed after the session's deadline: it is never verified, and its session has already expired.
+	Failure *VolumeUploadFileFailure `json:"failure,omitempty"`
+
+	// Id One declared file of a session. A path is declared at most once per session, so an identical retried declaration returns the existing file and its id.
+	Id VolumeUploadFileId `json:"id"`
+
+	// Layout The approved part layout, fixed at declaration before anything is encrypted and preserved by every renewal; the client uses it as given rather than computing it. The file is sealed in segments: each holds `segmentPlaintextBytes` of plaintext and its 16-byte tag, `segmentBytes` in all, except the last, which holds the remainder. A file of n plaintext bytes has the larger of 1 and n divided by `segmentPlaintextBytes`, rounded up, segments, so a size-0 file is exactly one segment holding only its 16-byte GCM tag. Every part starts with its own random 16-byte salt, followed by whole segments sealed under a key derived with HKDF from the file's data key, that salt and the part's 1-based part number (1 for the first part, not 0). A part sealed again on resume repeats no key and nonce pair as long as the client draws a fresh random salt for every attempt at a part. Every part but the last holds `segmentsPerPart` segments, so a part never splits a segment, and the last holds the rest, at least one. `segmentsPerPart` is the larger of 64 and the segment count divided by 10,000, rounded up, so a 250 GiB file, or a 1 TiB one under an override, fits in 10,000 parts. `partCount` is the segment count divided by `segmentsPerPart`, rounded up, and `ciphertextBytes` is the plaintext size plus 16 bytes per segment and 16 bytes per part, so a size-0 file is one 32-byte part. Each part token binds its part's exact length, salt included, so the upload endpoint refuses a body of any other length. Parts may be sent in parallel, in any order, and again; a part sent again has the same length and may be sealed again under a fresh salt.
+	//
+	// Draft: the key derivation's exact inputs are fixed with the encryption format's test vectors.
+	Layout *VolumePartLayout `json:"layout,omitempty"`
+
+	// Mode Permission bits as a decimal integer, keeping only read and execute (a subset of `0o555`, which is 365); the platform sets the owner. The schema bounds the value only; the server checks the bits after validation and refuses a mode with any write or special bit with `422`. Changing only a file's mode is a change to the Volume's files.
+	//
+	//
+	// Example: 292
+	Mode VolumeFileMode `json:"mode"`
+
+	// Path Path of a regular file relative to the Volume root, at most 2046 bytes of UTF-8, each component at most 255 bytes; `maxLength` bounds characters, and the server refuses a longer encoding or component with `422`. The 2046 bytes keep a file's absolute path in the workload, a `mountPath` of up to 2048 bytes plus `/` plus this path, within the Linux `PATH_MAX` of 4096 bytes including the terminating NUL. It is normalized: no leading or trailing `/`, no empty, `.` or `..` component and no control character: C0, DEL, C1 (U+0080 to U+009F), U+2028 or U+2029. A Volume holds regular files only, so there are no symlinks, devices or empty directories. Paths travel only in request and response bodies, never in a URL.
+	//
+	//
+	// Example: unet/diffusion_pytorch_model.safetensors
+	Path VolumeFilePath `json:"path"`
+
+	// Sha256 Plaintext SHA-256.
+	Sha256 VolumeSha256 `json:"sha256"`
+
+	// Size Plaintext size in bytes.
+	Size int64 `json:"size"`
+
+	// State `reused` and `verified` are publishable; `failed` carries the reason in `failure`. A path is declared once per session, so a `failed` file is not replaced within it: abort the session and upload in a new one. Files are also `aborted` or `expired` with their session; start a new session to upload them.
+	State VolumeUploadFileState `json:"state"`
+}
+
+// VolumeUploadFileFailure Why a file is `failed`. `completion-unrecoverable` also marks a file whose object storage
+// completed after the session's deadline: it is never verified, and its session has already expired.
+type VolumeUploadFileFailure string
+
+// VolumeUploadFileId One declared file of a session. A path is declared at most once per session, so an identical retried declaration returns the existing file and its id.
+type VolumeUploadFileId = openapi_types.UUID
+
+// VolumeUploadFileState `reused` and `verified` are publishable; `failed` carries the reason in `failure`. A path is declared once per session, so a `failed` file is not replaced within it: abort the session and upload in a new one. Files are also `aborted` or `expired` with their session; start a new session to upload them.
+type VolumeUploadFileState string
+
+// VolumeUploadId defines model for VolumeUploadId.
+type VolumeUploadId = openapi_types.UUID
+
+// VolumeUploadOpen The key pair the session uses and the client's one encapsulation to it, made from a statement the client verified. This API stores both once, with the session, and cannot open the encapsulation. The client derives the session sealing key from the encapsulation's shared secret, the organization, the key pair id, the session id this route answers and the SHA-256 of the encapsulation. In that derivation, and in each sealed key's associated data, the organization, key pair and session ids are each the 16 bytes of their UUID, in RFC 9562 order, and an attempt id its 16 bytes. Draft: this part of the upload contract may still change before it is final.
+type VolumeUploadOpen struct {
+	// Encapsulation The session's X-Wing encapsulation to the key pair's public key: its 1120-byte ciphertext, unpadded base64url in canonical form (the unused low bits of the last character are zero). A later KEM, introduced with a new KEM identifier, changes this length.
+	Encapsulation VolumeEncapsulation `json:"encapsulation"`
+
+	// KeyPairId One of the organization's Volumes key pairs, as named in its signed statement.
+	KeyPairId VolumeKeyPairId `json:"keyPairId"`
+}
+
+// VolumeUploadResult Draft: this part of the upload contract may still change before it is final.
+type VolumeUploadResult struct {
+	// Changed True when the session added or replaced files in the latest file set; false when every declared file already matched the latest files and nothing changed.
+	Changed bool `json:"changed"`
+
+	// ManifestSha256 Digest of the latest file list this completion produced, or found when nothing changed. A retry returns the original completion's digest, which a later upload may since have replaced. Absent only when nothing changed on a Volume that has no files yet.
+	ManifestSha256 *VolumeSha256 `json:"manifestSha256,omitempty"`
+
+	// Upload An upload session.
+	//
+	// Turning the organization's beta access off stops its open sessions as organization disablement does. No new session opens, no part token is issued or renewed, and no file or session completes or publishes: every session route, opening, renewal and both completions included, returns `404` as for an organization without beta access (see `VolumeNotFound`). A part token already issued may still write ciphertext parts through the upload endpoint until it expires or the session is aborted, never past the session's `expiresAt`, but it never authorizes publication. The session lapses at its fixed `expiresAt`, and its unfinished parts are cleaned up as for any expired session. The organization's Volumes, their files and the apps that reference them are kept.
+	//
+	// The session's fixed deadline is `expiresAt`, and no part token expires later than it. `uploadSessionTtlSeconds` in `GET /v1/volumes-settings` gives the lifetime a new session gets.
+	//
+	// Open before this schema freezes: how a resumed client finds its session. Draft: this part of the upload contract may still change before it is final.
+	Upload VolumeUpload `json:"upload"`
+}
+
+// VolumeUploadState defines model for VolumeUploadState.
+type VolumeUploadState string
+
+// VolumeUploadTarget Where to send one ciphertext part and the part token that authorizes it. Send the part as `PUT` to `url` with the token in an `Authorization: Bearer` header and the part's exact bytes as the body, and keep the acknowledgement the upload endpoint answers with for file completion. `url` is an opaque address on a Runware host, the upload endpoint, never the storage provider; use it as given, and send the token only in the header, never in a URL. The token is signed by this API and checked by the upload endpoint without calling it. It authorizes writing this one part of this one file attempt, at its exact length, and nothing else: no read, list, delete, completion or publication. Neither the target nor the token carries a file path or plaintext digest. A token is short-lived, expires no later than the session's `expiresAt`, and stops working once the upload is aborted. Keep tokens out of logs, traces, error reports and command-line arguments. Draft: the token format and the upload endpoint's answer may still change.
+type VolumeUploadTarget struct {
+	// ExpiresAt When the token stops authorizing the write, never later than the session's `expiresAt`.
+	ExpiresAt  time.Time `json:"expiresAt"`
+	PartNumber int32     `json:"partNumber"`
+
+	// Token The part token, opaque to the client.
+	Token string `json:"token"`
+	Url   string `json:"url"`
+}
+
+// VolumeUploadTargets An upload target with a fresh part token for each requested part, in request order. No key material is returned. Draft: this part of the upload contract may still change before it is final.
+type VolumeUploadTargets struct {
+	UploadTargets []VolumeUploadTarget `json:"uploadTargets"`
+}
+
+// VolumeWorkerMount One Shared Volume as a worker mounts it.
+type VolumeWorkerMount struct {
+	// ManifestSha256 Digest of the file list the worker prepared when it started, the `manifestSha256` the Volume had then. Absent only while the worker is still preparing.
+	ManifestSha256 *VolumeSha256 `json:"manifestSha256,omitempty"`
+
+	// MountPath Where the Volume is mounted inside the sandboxed application.
+	MountPath string `json:"mountPath"`
+
+	// Name Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most 63 characters.
+	//
+	//
+	// Example: model-weights
+	Name VolumeName `json:"name"`
+}
+
 // Worker A worker instance observed from Kubernetes. Read-only runtime state written by the reconciler. `id` is the pod UID.
 //
 // Address a worker by `id`, which is stable for the life of the pod, and show `podName`, which is the name the same pod has in the cluster. There is no separate short identifier.
@@ -2782,6 +3512,12 @@ type Worker struct {
 
 	// LastSeenAt Worker-reported liveness. Omitted until the worker reports. Stays absent until a heartbeat path exists (phase 2).
 	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
+
+	// Mounts The Shared Volumes this worker mounts, each with the digest of the files it prepared when it started. A running worker keeps the files it started with until it stops, so after an upload the workers of one app can show different digests: those started before it the old one, those started after it the new one. A checkpoint is restored only on the same digests, mount paths and modes; otherwise the worker cold-starts. Omitted when the worker mounts no Shared Volume, or when Shared Volumes are not available to the organization. Beta: Shared Volumes must be enabled for the organization, and this field may change before general availability.
+	//
+	//
+	// Example: [{"manifestSha256":"9f2c4e1a7b3d5f8e0c6a2b4d1e3f5a7c9b0d2e4f6a8c1b3d5e7f9a0c2e4b6d8f","mountPath":"/mnt/models","name":"model-weights"}]
+	Mounts *[]VolumeWorkerMount `json:"mounts,omitempty"`
 
 	// NodeName Kubernetes node the pod is scheduled on. Omitted while still pending.
 	NodeName *string `json:"nodeName,omitempty"`
@@ -2817,7 +3553,7 @@ type WorkerConfig struct {
 	// GpuType Preferred GPU type. Absent (or null) only on historical apps created before a GPU type was required.
 	GpuType *GpuTypeId `json:"gpuType,omitempty"`
 
-	// GpusPerWorker GPUs granted to one worker pod. Create and update accept only the group sizes the cluster grants indivisibly, since a worker holds its GPUs as one such group. Historical apps may contain another value.
+	// GpusPerWorker GPUs granted to one worker pod. Create and update accept only the group sizes the cluster grants indivisibly, since a worker holds its GPUs as one such group. The counts `GET /v1/gpu-types` currently serves for a type are `GpuType.gpusPerWorker`. Historical apps may contain another value.
 	GpusPerWorker int32              `json:"gpusPerWorker"`
 	Id            openapi_types.UUID `json:"id"`
 
@@ -2828,7 +3564,7 @@ type WorkerConfig struct {
 	// MinAvailableWorkers Idle workers held above current demand, so a burst does not wait for a cold start. Null or 0 means no buffer. The buffer applies only while the queue is non-empty: an idle app still scales to `minWorkers`. A buffer below about a tenth of current demand is not added while demand holds steady. `availableWorkersPct` is not subject to that.
 	MinAvailableWorkers *int32 `json:"minAvailableWorkers,omitempty"`
 
-	// MinWorkers Floor for scale-down. 0 = scale to zero.
+	// MinWorkers Floor for scale-down. 0 = scale to zero. At 0 a deploy starts no worker: the first request after it, or after the app scaled to zero, starts one and waits for its start. Set 1 or more to keep that many workers started.
 	MinWorkers int32 `json:"minWorkers"`
 
 	// RequestTimeoutSecs How long the sidecar waits on one forwarded container request. Container-only: a code app keeps the platform MLflow read ceiling, so this field is stored and returned but is not applied to those reads. Bounds the worker, not the synchronous HTTP wait: `invoke-sync` still answers 504 at the platform deadline so the caller can poll. A later `container.yaml` deploy overwrites this with that document's `timeouts.requestSeconds`.
@@ -2856,7 +3592,7 @@ type WorkerConfigCreate struct {
 	// GpuType GPU type the workers run on. Required: omitting it (or sending null) is a 422 before a build or deploy starts, because a GPU app with no type is unpinned and the deployer would render NVIDIA defaults. Must match an `id` returned by `GET /v1/gpu-types` that currently has admitted capacity.
 	GpuType GpuTypeId `json:"gpuType"`
 
-	// GpusPerWorker GPUs granted to one worker pod. A worker holds its GPUs as one group the cluster grants indivisibly, so the count is one of the advertised group sizes rather than any number in a range. The value must also be a group size admitted by the cluster backing the chosen `gpuType`: a count above 1 that cluster does not grant is rejected with a 422 naming `/configuration/gpusPerWorker`, since the pod could never be scheduled. A count above 1 is rejected the same way when that type, or the fallback type, has `multiGpuSupport` false. A value above 1 requires an image built after the multi-GPU worker entrypoint. Older images serve a single rank while holding every granted GPU.
+	// GpusPerWorker GPUs granted to one worker pod. A worker holds its GPUs as one group the cluster grants indivisibly, so the count is one of 1, 2, 4 or 8. `GET /v1/gpu-types` lists the accepted counts on `GpuType.gpusPerWorker`. A count that list omits is rejected with a 422 naming `/configuration/gpusPerWorker` and detail `must be one of the gpusPerWorker counts GPU type "<gpuType>" serves: <counts>`, or `GPU type "<gpuType>" serves no gpusPerWorker count` when the list is empty. A listed count can still be rejected when the cluster has published worker shapes that omit it, with detail `must be one of the worker shapes available for GPU type "<gpuType>": <shapes>`, or `no multi-GPU worker shape is available for GPU type "<gpuType>"` when that cluster grants none. A cluster that has published no shapes accepts a listed count. `multiGpuSupport` false rejects a count above 1 with detail `GPU type "<gpuType>" does not support multiple GPUs per worker`, or `fallback GPU type "<gpuType>" does not support multiple GPUs per worker` when the fallback type refuses it. A value above 1 requires an image built after the multi-GPU worker entrypoint. Older images serve a single rank while holding every granted GPU.
 	GpusPerWorker *int32 `json:"gpusPerWorker,omitempty"`
 
 	// IdleTtlSecs Seconds an app at `minWorkers` 0 waits after its last task before it scales to zero, removing every worker still running. `scalingDelaySecs` can remove workers above one sooner. It has no effect while `minWorkers` is above 0: `scalingDelaySecs` alone decides when workers above `minWorkers` are removed.
@@ -2888,7 +3624,7 @@ type WorkerConfigPatch struct {
 	// GpuType Preferred GPU type. Omit to leave unchanged. Rejected with a 422 when no capacity is currently offered for the type (it does not appear in `GET /v1/gpu-types`).
 	GpuType *GpuTypeId `json:"gpuType,omitempty"`
 
-	// GpusPerWorker GPUs granted to one worker pod. A worker holds its GPUs as one group the cluster grants indivisibly, so the count is one of the advertised group sizes rather than any number in a range. The value must also be a group size admitted by the cluster backing the chosen `gpuType`: a count above 1 that cluster does not grant is rejected with a 422 naming `/configuration/gpusPerWorker`, since the pod could never be scheduled. A count above 1 is rejected the same way when that type, or the fallback type, has `multiGpuSupport` false. A value above 1 requires an image built after the multi-GPU worker entrypoint. Older images serve a single rank while holding every granted GPU.
+	// GpusPerWorker GPUs granted to one worker pod. A worker holds its GPUs as one group the cluster grants indivisibly, so the count is one of 1, 2, 4 or 8. `GET /v1/gpu-types` lists the accepted counts on `GpuType.gpusPerWorker`. A count that list omits is rejected with a 422 naming `/configuration/gpusPerWorker` and detail `must be one of the gpusPerWorker counts GPU type "<gpuType>" serves: <counts>`, or `GPU type "<gpuType>" serves no gpusPerWorker count` when the list is empty. A listed count can still be rejected when the cluster has published worker shapes that omit it, with detail `must be one of the worker shapes available for GPU type "<gpuType>": <shapes>`, or `no multi-GPU worker shape is available for GPU type "<gpuType>"` when that cluster grants none. A cluster that has published no shapes accepts a listed count. `multiGpuSupport` false rejects a count above 1 with detail `GPU type "<gpuType>" does not support multiple GPUs per worker`, or `fallback GPU type "<gpuType>" does not support multiple GPUs per worker` when the fallback type refuses it. A value above 1 requires an image built after the multi-GPU worker entrypoint. Older images serve a single rank while holding every granted GPU.
 	GpusPerWorker *int32 `json:"gpusPerWorker,omitempty"`
 
 	// IdleTtlSecs Seconds an app at `minWorkers` 0 waits after its last task before it scales to zero, removing every worker still running. `scalingDelaySecs` can remove workers above one sooner. It has no effect while `minWorkers` is above 0: `scalingDelaySecs` alone decides when workers above `minWorkers` are removed. Omit to leave unchanged.
@@ -2982,6 +3718,20 @@ type SeriesEndpointId = []openapi_types.UUID
 // Example: staging
 type UsageEnvironment = EnvironmentName
 
+// VolumeConfirmRollbackLoss defines model for VolumeConfirmRollbackLoss.
+type VolumeConfirmRollbackLoss = bool
+
+// VolumeDeleteId Immutable identity of one Volume. A Volume created later under a reused name gets a new id.
+type VolumeDeleteId = VolumeId
+
+// VolumeEnvironment Lowercase letters, digits, hyphens, underscores and periods, starting with a letter or a digit, at most 63 characters. Unique among the organization's live environments and immutable. `production` is every organization's default.
+//
+// Example: staging
+type VolumeEnvironment = EnvironmentName
+
+// VolumeFileLimit defines model for VolumeFileLimit.
+type VolumeFileLimit = int32
+
 // WorkerId defines model for WorkerId.
 type WorkerId = openapi_types.UUID
 
@@ -3057,7 +3807,7 @@ type SourceUploadCompletionConflict = ProblemDetails
 // SourceUploadReplayConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type SourceUploadReplayConflict = ProblemDetails
 
-// TaskAccepted defines model for TaskAccepted.
+// TaskAccepted Keep successful application response bodies and their stored JSON representations at or below 64 MiB each. Exceeding either limit can fail the task. Previously stored results can be larger.
 type TaskAccepted = Task
 
 // TaskNotFound RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
@@ -3074,6 +3824,42 @@ type UnsupportedMediaType = ProblemDetails
 
 // ValidationError RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
 type ValidationError = ProblemDetails
+
+// VolumeDeleteConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeDeleteConflict = ProblemDetails
+
+// VolumeFileValidationError RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeFileValidationError = ProblemDetails
+
+// VolumeKeyPairNotReady RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeKeyPairNotReady = ProblemDetails
+
+// VolumeNameConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeNameConflict = ProblemDetails
+
+// VolumeNotFound RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeNotFound = ProblemDetails
+
+// VolumeNotImplemented RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeNotImplemented = ProblemDetails
+
+// VolumeUploadDeclareConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeUploadDeclareConflict = ProblemDetails
+
+// VolumeUploadFileVerificationConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeUploadFileVerificationConflict = ProblemDetails
+
+// VolumeUploadNotOpen RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeUploadNotOpen = ProblemDetails
+
+// VolumeUploadOpenConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeUploadOpenConflict = ProblemDetails
+
+// VolumeUploadPublishConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeUploadPublishConflict = ProblemDetails
+
+// VolumeUploadRenewConflict RFC 9457 problem details. Every error response from this API uses this schema with media type `application/problem+json`. `type` is a URI that identifies the problem class and dereferences to its documentation. Clients should switch on `type` (not `status` or `detail`, which are not stable identifiers). Additional members beyond those below may appear.
+type VolumeUploadRenewConflict = ProblemDetails
 
 // GetAppSummaryParams defines parameters for GetAppSummary.
 type GetAppSummaryParams struct {
@@ -3478,7 +4264,7 @@ type GetMetricSeriesParams struct {
 	// Window The time window. A closed set rather than a free-form range, because every distinct range defeats the server-side cache alignment that makes a sliding window cheap. Only the windows a query lists in the catalog can be asked of it.
 	Window GetMetricSeriesParamsWindow `form:"window" json:"window"`
 
-	// PinnedTo Fixes the window's inclusive end, the last timestamp in `t`, so that several calls making up one visual share an axis instead of racing the clock between them. Must be aligned to the window's step, no newer than the newest readable edge, and inside retention.
+	// PinnedTo Fixes the window's inclusive end, the last timestamp in `t`, so that several calls making up one visual share an axis instead of racing the clock between them. Must be aligned to the window's step, no newer than the newest readable edge, and inside retention. On `7d` and `30d` a 5-minute alignment is also accepted: that pins the open bucket drawn after the last closed one.
 	PinnedTo *PinnedTo `form:"pinnedTo,omitempty" json:"pinnedTo,omitempty"`
 
 	// Environment The environment the request addresses. An app id names one copy per environment, so this parameter completes the app's address: `appId` together with `environment` selects the copy. The app list and the app summary are limited to the environment, and an app, build, endpoint, worker, event, usage or attached-secret cursor is valid only in the environment it came from. A metric query that names no app covers the whole organization, and a log query covers this environment; a metric query expanded by app returns only the apps live in this environment. Omitted means `production`. A name the organization has no live environment under returns `404`.
@@ -3499,10 +4285,10 @@ type GetMetricSeriesParams struct {
 	// Worker Narrow to one live worker within an app. The value is `Worker.id` (the Kubernetes pod UID). Accepted by `gpu_utilisation`, `gpu_power_usage`, `gpu_power_utilisation`, `gpu_temperature` and `gpu_memory_used`, and requires the public app id. A query that does not declare this selector rejects it rather than ignoring it.
 	Worker *SelectorWorker `form:"worker,omitempty" json:"worker,omitempty"`
 
-	// AppId Restrict the list-scoped queries (`apps_request_volume`, `apps_error_volume`, `apps_request_duration`) to these app ids: one series per id, in request order, with all-null series for apps that had no samples. Values are quarter-hourly over `window=24h`. An id with no live app is dropped rather than refused: a deleted app has no traffic to pad. Repeat the parameter once per id on the current list page (at most 100, matching `listApps`). Omit it to receive every app in the organization that had data, unless that set is larger than this query will expand: then the call is a `422` on `appId` and the list page should name the apps it is showing. Other queries reject this parameter.
+	// AppId Restrict the list-scoped queries (`apps_request_volume`, `apps_error_volume`, `apps_request_duration`) to these app ids: one series per id, in request order, with all-null series for apps that had no samples. Values are five-minute buckets over `window=24h`. An id with no live app is dropped rather than refused: a deleted app has no traffic to pad. Repeat the parameter once per id on the current list page (at most 100, matching `listApps`). Omit it to receive every app in the organization that had data, unless that set is larger than this query will expand: then the call is a `422` on `appId` and the list page should name the apps it is showing. Other queries reject this parameter.
 	AppId *SeriesAppId `form:"appId,omitempty" json:"appId,omitempty"`
 
-	// EndpointId Restrict expand-by-`endpoint_id` queries (`endpoints_request_volume`, `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume`, `endpoints_request_count`) to these endpoint ids: one series per id, in request order, with all-null series for endpoints that had no traffic. `endpoints_request_volume` is quarter-hourly request counts over `window=24h`. The others are latest-window scalars over `window=1h`. Buckets that started before that endpoint row's `createdAt` are null. Repeat the parameter once per id on the current list page (at most 100, matching `listEndpoints`). A path resolves to one of these ids through `GET /v1/apps/{appId}/endpoints?path=`. Omit it to receive every endpoint on the selected app that had data, unless that set is larger than this query will expand: then the call is a `422` on `endpointId` and the list page should name the endpoints it is showing. Other queries reject this parameter. Requires the public app id.
+	// EndpointId Restrict expand-by-`endpoint_id` queries (`endpoints_request_volume`, `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume`, `endpoints_request_count`) to these endpoint ids: one series per id, in request order, with all-null series for endpoints that had no traffic. `endpoints_request_volume` is five-minute request counts over `window=24h`. The others are latest-window scalars over `window=1h`. Buckets that started before that endpoint row's `createdAt` are null. Repeat the parameter once per id on the current list page (at most 100, matching `listEndpoints`). A path resolves to one of these ids through `GET /v1/apps/{appId}/endpoints?path=`. Omit it to receive every endpoint on the selected app that had data, unless that set is larger than this query will expand: then the call is a `422` on `endpointId` and the list page should name the endpoints it is showing. Other queries reject this parameter. Requires the public app id.
 	EndpointId *SeriesEndpointId `form:"endpointId,omitempty" json:"endpointId,omitempty"`
 }
 
@@ -3630,6 +4416,120 @@ type GetUsageSummaryParams struct {
 	Timezone *string `form:"timezone,omitempty" json:"timezone,omitempty"`
 }
 
+// ListVolumesParams defines parameters for ListVolumes.
+type ListVolumesParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+
+	// Limit Maximum number of items to return.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// CreateVolumeParams defines parameters for CreateVolume.
+type CreateVolumeParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// DeleteVolumeParams defines parameters for DeleteVolume.
+type DeleteVolumeParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+
+	// VolumeId Immutable Volume identity returned by a read, including on deletion retries.
+	VolumeId VolumeDeleteId `form:"volumeId" json:"volumeId"`
+
+	// ConfirmRollbackLoss Accepts losing rollback for older app versions. Confirmed older-app-only deletion currently returns 501. This flag never overrides a current app version, a deploy in progress or a running worker.
+	ConfirmRollbackLoss *VolumeConfirmRollbackLoss `form:"confirmRollbackLoss,omitempty" json:"confirmRollbackLoss,omitempty"`
+}
+
+// GetVolumeParams defines parameters for GetVolume.
+type GetVolumeParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// UpdateVolumeParams defines parameters for UpdateVolume.
+type UpdateVolumeParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// ListVolumeFilesParams defines parameters for ListVolumeFiles.
+type ListVolumeFilesParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+
+	// Limit Maximum number of files to return.
+	Limit *VolumeFileLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetVolumeReferencesParams defines parameters for GetVolumeReferences.
+type GetVolumeReferencesParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+
+	// Limit Maximum number of items to return.
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// CreateVolumeUploadParams defines parameters for CreateVolumeUpload.
+type CreateVolumeUploadParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// AbortVolumeUploadParams defines parameters for AbortVolumeUpload.
+type AbortVolumeUploadParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// GetVolumeUploadParams defines parameters for GetVolumeUpload.
+type GetVolumeUploadParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+
+	// Limit Maximum number of files to return.
+	Limit *VolumeFileLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque pagination cursor returned by a previous call, as `nextCursor` or, on the operations that offer one, `prevCursor`.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// CompleteVolumeUploadParams defines parameters for CompleteVolumeUpload.
+type CompleteVolumeUploadParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// DeclareVolumeUploadFilesParams defines parameters for DeclareVolumeUploadFiles.
+type DeclareVolumeUploadFilesParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// CompleteVolumeUploadFileParams defines parameters for CompleteVolumeUploadFile.
+type CompleteVolumeUploadFileParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
+// RenewVolumeUploadFilePartsParams defines parameters for RenewVolumeUploadFileParts.
+type RenewVolumeUploadFilePartsParams struct {
+	// Environment The environment the request addresses. A Volume name is unique within one environment, so `volumeName` together with `environment` selects the Volume. Omitted means `production`. Only apps in the Volume's own environment mount it.
+	Environment *VolumeEnvironment `form:"environment,omitempty" json:"environment,omitempty"`
+}
+
 // CreateAppJSONRequestBody defines body for CreateApp for application/json ContentType.
 type CreateAppJSONRequestBody = AppCreate
 
@@ -3689,6 +4589,24 @@ type CopySecretJSONRequestBody = SecretCopy
 
 // CreateSourceUploadJSONRequestBody defines body for CreateSourceUpload for application/json ContentType.
 type CreateSourceUploadJSONRequestBody = SourceUploadCreate
+
+// CreateVolumeJSONRequestBody defines body for CreateVolume for application/json ContentType.
+type CreateVolumeJSONRequestBody = VolumeCreate
+
+// UpdateVolumeJSONRequestBody defines body for UpdateVolume for application/json ContentType.
+type UpdateVolumeJSONRequestBody = VolumeUpdate
+
+// CreateVolumeUploadJSONRequestBody defines body for CreateVolumeUpload for application/json ContentType.
+type CreateVolumeUploadJSONRequestBody = VolumeUploadOpen
+
+// DeclareVolumeUploadFilesJSONRequestBody defines body for DeclareVolumeUploadFiles for application/json ContentType.
+type DeclareVolumeUploadFilesJSONRequestBody = VolumeFileDeclarationBatch
+
+// CompleteVolumeUploadFileJSONRequestBody defines body for CompleteVolumeUploadFile for application/json ContentType.
+type CompleteVolumeUploadFileJSONRequestBody = VolumeFileCompletion
+
+// RenewVolumeUploadFilePartsJSONRequestBody defines body for RenewVolumeUploadFileParts for application/json ContentType.
+type RenewVolumeUploadFilePartsJSONRequestBody = VolumePartTokenRequest
 
 // AsCodeSourceUpsert returns the union data inside the AppSourceUpsert_Source as a CodeSourceUpsert
 func (t AppSourceUpsert_Source) AsCodeSourceUpsert() (CodeSourceUpsert, error) {
@@ -3978,7 +4896,7 @@ type ClientInterface interface {
 	// UpdateAppWithBody Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 	// `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -3992,7 +4910,7 @@ type ClientInterface interface {
 	// UpdateApp Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 	// `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -4028,7 +4946,7 @@ type ClientInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 	//   `409 Conflict`; detach the connector or deploy a version without the variable.
 	// - A deploy while a rollout of this app is still in flight returns `409 Conflict`.
@@ -4053,7 +4971,7 @@ type ClientInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 	//   `409 Conflict`; detach the connector or deploy a version without the variable.
 	// - A deploy while a rollout of this app is still in flight returns `409 Conflict`.
@@ -4164,7 +5082,7 @@ type ClientInterface interface {
 
 	// StartDefaultAsyncTaskWithBody Start a new async task on the default endpoint
 	//
-	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4173,7 +5091,7 @@ type ClientInterface interface {
 
 	// StartDefaultAsyncTask Start a new async task on the default endpoint
 	//
-	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4182,7 +5100,7 @@ type ClientInterface interface {
 
 	// StartAsyncTaskWithBody Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4191,7 +5109,7 @@ type ClientInterface interface {
 
 	// StartAsyncTask Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4200,7 +5118,7 @@ type ClientInterface interface {
 
 	// StartDefaultSyncTaskWithBody Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4209,7 +5127,7 @@ type ClientInterface interface {
 
 	// StartDefaultSyncTask Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4218,7 +5136,7 @@ type ClientInterface interface {
 
 	// StartSyncTaskWithBody Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4227,7 +5145,7 @@ type ClientInterface interface {
 
 	// StartSyncTask Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4333,7 +5251,7 @@ type ClientInterface interface {
 
 	// ListTasks List tasks for an app
 	//
-	// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+	// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it, unless the listing omits it. The listing omits an output if its stored JSON exceeds 128 KiB or is larger than the page's output budget. A deeply nested output is also omitted. An output can also be omitted if it grows after its size is measured. Such a task has no `output` and carries `outputOmitted: true`; read it with `GET /v1/apps/{appId}/tasks/{taskId}`. A page carries at most 1 MiB of stored outputs, so it can hold fewer than `limit` tasks; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 	ListTasks(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4523,9 +5441,9 @@ type ClientInterface interface {
 	//
 	// An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
 	//
-	// `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
+	// `apps_request_volume` returns one series per app: 288 five-minute request counts over `window=24h` (`step_s` 300, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
 	//
-	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
+	// `endpoints_request_volume` is the endpoints-list counterpart: 288 five-minute request counts per endpoint over `window=24h` (`step_s` 300, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 	//
 	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 	//
@@ -4533,7 +5451,7 @@ type ClientInterface interface {
 	//
 	// `gpu_utilisation`, `gpu_power_usage`, `gpu_power_utilisation`, `gpu_temperature` and `gpu_memory_used` require the public app id and accept `worker` (`Worker.id`, the Kubernetes pod UID), so the Metrics tab can chart an app and a worker page can chart one live worker. Other cataloged queries reject `worker`. `gpu_count` stays app-scoped.
 	//
-	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+	// Three queries serve one app's overview, all over `window=24h` at `step_s` 300 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 	//
 	// `environment` selects the copy the public app id names. A query expanded by app returns only apps live in that environment. A query that names no app and expands by nothing reports the whole organization, every environment included.
 	//
@@ -4641,7 +5559,7 @@ type ClientInterface interface {
 
 	// CreateSecretWithBody Create a secret
 	//
-	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4650,7 +5568,7 @@ type ClientInterface interface {
 
 	// CreateSecret Create a secret
 	//
-	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4772,6 +5690,262 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
 	GetUsageSummary(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVolumes List Volumes
+	//
+	// Returns a page of the organization's live Volumes in one environment, `production` unless `environment` names another, newest first. A Volume being deleted or deleted is not listed. A `cursor` is valid only for the `environment` it was issued under.
+	//
+	// Corresponds with GET /v1/volumes (the `ListVolumes` operationId).
+	ListVolumes(ctx context.Context, params *ListVolumesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateVolumeWithBody Create a Volume
+	//
+	// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+	CreateVolumeWithBody(ctx context.Context, params *CreateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateVolume Create a Volume
+	//
+	// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+	CreateVolume(ctx context.Context, params *CreateVolumeParams, body CreateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVolumeKeyPair Read the organization's Volumes key pair
+	//
+	// Returns the organization's newest Volumes key pair as a statement signed by the platform signing key. A client uploading to a Volume reads it once per upload session, verifies it, and seals each new file's data key to its public key locally, so no file key passes through this API in usable form. The key pair belongs to the organization, not to an environment, so this route takes no `environment`.
+	//
+	// Verify `signature` with the platform verification keys built into the client's release, never with keys read through this API, and take every value you use from the verified `statement`. Refuse a statement that names an organization other than the one the client is configured with, an unknown label or KEM identifier, a passed not-after, or a sequence number lower than the highest the client has accepted for that organization.
+	//
+	// Turning the organization's beta access on creates its first key pair; until it exists this route answers `409` typed `volume-key-pair-not-ready`, which a client retries with backoff. After a rotation it returns the newest key pair, and a session opened with the previous one still works within that key pair's not-after.
+	//
+	// Draft: the statement's byte encoding and the pinned KEM identifier are fixed with the encryption format.
+	//
+	// Corresponds with GET /v1/volumes-key-pair (the `GetVolumeKeyPair` operationId).
+	GetVolumeKeyPair(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVolumeSettings Read Shared Volume access and limits
+	//
+	// Returns effective access and limits for the authenticated organization. The two are read separately, so a change made while the request runs can show access and limits that never held together. This setting does not indicate whether Shared Volume operations are deployed.
+	//
+	// Corresponds with GET /v1/volumes-settings (the `GetVolumeSettings` operationId).
+	GetVolumeSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteVolume Delete a Volume
+	//
+	// Logically deletes the whole Volume: its latest files and every upload session still open on it. Individual files cannot be deleted. Requires the immutable `volumeId` returned by a read, so a retry cannot delete a replacement Volume with the same name. Retrying an already-deleted matching identity returns 204. Currently a delete succeeds only for a Volume that has never had files published and that no app references; any other delete that passes the conflicts below answers `501` for now.
+	//
+	// A delete returns `409` typed `volume-in-use` while a current app version, a deploy in progress or a running worker uses it. When only older app versions use it, the delete returns `409` typed `volume-rollback-confirmation-required` unless `confirmRollbackLoss=true`. Confirmed deletion currently returns 501; when implemented, those app versions lose their rollback. Both conflicts carry a plain `detail`; `GET /v1/volumes/{volumeName}/references` lists the uses. Reading the references does not authorize the delete: the delete is checked again against concurrent mounts when it commits.
+	//
+	// A successful empty delete commits its deleted identity before it answers. It is then excluded from listings, and new mounts and uploads of it are refused. Deletion does not promise immediate erasure: encrypted objects may be retained and reclaimed later, and content another Volume's latest files or an open upload session still reference stays usable. The name is reserved until the logical deletion commits, not until physical reclamation. A new Volume with the same name gets a new id and never satisfies a mount of the old one. Organization purge is a separate operation. Deleting an app never deletes its Volumes.
+	//
+	// Corresponds with DELETE /v1/volumes/{volumeName} (the `DeleteVolume` operationId).
+	DeleteVolume(ctx context.Context, volumeName VolumeName, params *DeleteVolumeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVolume Get a Volume
+	//
+	// Returns a live Volume of the named environment. An unknown Volume and one being deleted or deleted both return `404`.
+	//
+	// Corresponds with GET /v1/volumes/{volumeName} (the `GetVolume` operationId).
+	GetVolume(ctx context.Context, volumeName VolumeName, params *GetVolumeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateVolumeWithBody Update a Volume's description
+	//
+	// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+	UpdateVolumeWithBody(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateVolume Update a Volume's description
+	//
+	// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+	UpdateVolume(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, body UpdateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVolumeFiles List a Volume's latest files
+	//
+	// Returns a page of the Volume's latest files, in byte-wise lexicographic order by path (UTF-8), read from its latest manifest. The API reads file metadata only and never decrypts file contents; there is no download route. File paths never appear in a query parameter, so this route has no path filter.
+	//
+	// Each page names the `manifestSha256` it was read from. An upload that completes between two pages changes the latest files, and a cursor issued before it answers `400`: the client starts again from the first page, whose different `manifestSha256` names the new file list. A Volume with no files yet answers an empty page without `manifestSha256`.
+	//
+	// The file list is served only after its digest and the organization and Volume it names are verified. A latest file list that is missing or fails that check answers `500`, and storage that fails or cannot be read in time answers `503`; neither falls back to another list. Until manifest storage is deployed, a Volume with files answers `501`.
+	//
+	// Corresponds with GET /v1/volumes/{volumeName}/files (the `ListVolumeFiles` operationId).
+	ListVolumeFiles(ctx context.Context, volumeName VolumeName, params *ListVolumeFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVolumeReferences List what uses a Volume
+	//
+	// Lists the uses that would block or be affected by deleting the Volume: current app versions, deploys in progress and running workers, which block a delete, and older app versions, which lose their rollback. Only apps in the Volume's own environment mount it, so every use is in that environment. A build reservation without a version number protects mounts on the app's non-deleted versions until its target version is recorded. The console and the CLI read this route; a delete conflict carries only a plain `detail`. Uses are paged, with blocking uses before rollback targets, 20 uses per page by default and up to 100. Follow `nextCursor` for a complete inventory; deletion checks all uses independently. A cursor is valid only for the organization, environment and Volume that issued it. The answer is a snapshot and does not authorize a later delete.
+	//
+	// Corresponds with GET /v1/volumes/{volumeName}/references (the `GetVolumeReferences` operationId).
+	GetVolumeReferences(ctx context.Context, volumeName VolumeName, params *GetVolumeReferencesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateVolumeUploadWithBody Open an upload session
+	//
+	// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+	//
+	// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+	//
+	// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+	//
+	// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+	//
+	// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+	//
+	// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+	//
+	// Draft: the upload schemas are not frozen.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+	CreateVolumeUploadWithBody(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateVolumeUpload Open an upload session
+	//
+	// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+	//
+	// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+	//
+	// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+	//
+	// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+	//
+	// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+	//
+	// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+	//
+	// Draft: the upload schemas are not frozen.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+	CreateVolumeUpload(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, body CreateVolumeUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AbortVolumeUpload Abort an upload session
+	//
+	// Aborts an open session: it publishes nothing, its multipart uploads are aborted and its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes`. Content the session already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored. A client aborts the whole session when a declared file changes during the upload, or when it loses a declared file's data key or the session sealing key; rerunning the upload opens a new session. Abort deletes the session's unpublished sealed keys but keeps its attempt ids, so a replayed attempt is still refused. Content already verified and referenced by a Volume's latest files, or by another session, is untouched. A part token issued before the abort cannot write once its multipart upload is aborted, and never authorizes publication. Aborting a session already aborted returns `204`; one already completed or expired returns `409`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Corresponds with DELETE /v1/volumes/{volumeName}/uploads/{uploadId} (the `AbortVolumeUpload` operationId).
+	AbortVolumeUpload(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *AbortVolumeUploadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetVolumeUpload Get an upload session
+	//
+	// Returns the session and a page of its declared files with their state and approved layout, ordered by path, so a resumed client can find which files still need parts or completion. It returns no key material, sealed keys included, and no part token: the client keeps each file's sealed key in its own resume state, and renews part tokens through `POST .../files/{fileId}/parts`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Corresponds with GET /v1/volumes/{volumeName}/uploads/{uploadId} (the `GetVolumeUpload` operationId).
+	GetVolumeUpload(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *GetVolumeUploadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteVolumeUpload Apply the upload to the latest files
+	//
+	// Completes the session. Every declared file must be `verified` or `reused`; otherwise nothing is applied and the answer is `409` typed `volume-upload-incomplete`, and `GET` on the session names the files still pending or failed. A `failed` file cannot be declared again, so its session can only be aborted. A resulting file set over `maxFilesPerVolume` returns `409` typed `volume-limit-exceeded`, and so does a completion that would grow the Volume past `maxMountedBytesPerAppVersion` for any current app version mounting it, with `limit` naming that limit. A session path that is a file on one side and a directory on the other against the latest files at that moment, which another session may have changed since the declaration, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither replaces the other. Nothing is applied and the session stays open until its deadline; abort it, and upload its other files in a new session.
+	//
+	// Uploads are additive. Completion takes the Volume's latest files at that moment, adds the session's new paths, replaces the paths it declared again and keeps every other file. No upload removes a file: to start from an empty file set, create a new Volume. Two sessions that overlap in time both keep their files, and on a path both declared the one that completes last wins. Moving the Volume to the new latest files is a compare-and-swap the server retries, so concurrent completion is not a client error. Workers that start afterwards mount the new files; running workers keep theirs until they stop. A rollback of an app restores its image and settings, not earlier Volume files: to undo an upload, upload the previous files again.
+	//
+	// A completion that changes nothing answers `changed: false` and leaves the latest files as they are, writing no manifest and recording no content reference or usage event. Changing only a file's mode is a change. Retrying a completed session returns its original answer without applying it again, so a client that lost the answer can retry safely. Turning beta access off, organization disablement and purge all stop completion, and a part token never authorizes it. With beta access off this returns `404` (see `VolumeNotFound`) and publishes nothing; the session lapses at its `expiresAt` as `VolumeUpload` describes. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/complete (the `CompleteVolumeUpload` operationId).
+	CompleteVolumeUpload(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *CompleteVolumeUploadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeclareVolumeUploadFilesWithBody Declare files
+	//
+	// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+	//
+	// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+	//
+	// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+	//
+	// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+	//
+	// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+	//
+	// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+	//
+	// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+	//
+	// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+	//
+	// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+	DeclareVolumeUploadFilesWithBody(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeclareVolumeUploadFiles Declare files
+	//
+	// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+	//
+	// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+	//
+	// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+	//
+	// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+	//
+	// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+	//
+	// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+	//
+	// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+	//
+	// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+	//
+	// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+	DeclareVolumeUploadFiles(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, body DeclareVolumeUploadFilesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteVolumeUploadFileWithBody Complete a file
+	//
+	// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+	//
+	// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+	CompleteVolumeUploadFileWithBody(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteVolumeUploadFile Complete a file
+	//
+	// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+	//
+	// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+	CompleteVolumeUploadFile(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, body CompleteVolumeUploadFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenewVolumeUploadFilePartsWithBody Renew part tokens
+	//
+	// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+	RenewVolumeUploadFilePartsWithBody(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenewVolumeUploadFileParts Renew part tokens
+	//
+	// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+	RenewVolumeUploadFileParts(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, body RenewVolumeUploadFilePartsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetAppSummary App summary metrics for one environment
@@ -4919,7 +6093,7 @@ func (c *Client) GetApp(ctx context.Context, appId AppId, params *GetAppParams, 
 // UpdateAppWithBody Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 // `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 // `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 // `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -4943,7 +6117,7 @@ func (c *Client) UpdateAppWithBody(ctx context.Context, appId AppId, params *Upd
 // UpdateApp Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 // `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 // `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 // `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -5019,7 +6193,7 @@ func (c *Client) GetBuild(ctx context.Context, appId AppId, buildId openapi_type
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 // Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 //
 //	`409 Conflict`; detach the connector or deploy a version without the variable.
@@ -5055,7 +6229,7 @@ func (c *Client) DeployVersionWithBody(ctx context.Context, appId AppId, params 
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 // Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 //
 //		`409 Conflict`; detach the connector or deploy a version without the variable.
@@ -5277,7 +6451,7 @@ func (c *Client) FavoriteApp(ctx context.Context, appId AppId, params *FavoriteA
 
 // StartDefaultAsyncTaskWithBody Start a new async task on the default endpoint
 //
-// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5296,7 +6470,7 @@ func (c *Client) StartDefaultAsyncTaskWithBody(ctx context.Context, appId AppId,
 
 // StartDefaultAsyncTask Start a new async task on the default endpoint
 //
-// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5315,7 +6489,7 @@ func (c *Client) StartDefaultAsyncTask(ctx context.Context, appId AppId, params 
 
 // StartAsyncTaskWithBody Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5334,7 +6508,7 @@ func (c *Client) StartAsyncTaskWithBody(ctx context.Context, appId AppId, endpoi
 
 // StartAsyncTask Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5353,7 +6527,7 @@ func (c *Client) StartAsyncTask(ctx context.Context, appId AppId, endpointPath E
 
 // StartDefaultSyncTaskWithBody Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5372,7 +6546,7 @@ func (c *Client) StartDefaultSyncTaskWithBody(ctx context.Context, appId AppId, 
 
 // StartDefaultSyncTask Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5391,7 +6565,7 @@ func (c *Client) StartDefaultSyncTask(ctx context.Context, appId AppId, params *
 
 // StartSyncTaskWithBody Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5410,7 +6584,7 @@ func (c *Client) StartSyncTaskWithBody(ctx context.Context, appId AppId, endpoin
 
 // StartSyncTask Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5646,7 +6820,7 @@ func (c *Client) StopApp(ctx context.Context, appId AppId, params *StopAppParams
 
 // ListTasks List tasks for an app
 //
-// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it, unless the listing omits it. The listing omits an output if its stored JSON exceeds 128 KiB or is larger than the page's output budget. A deeply nested output is also omitted. An output can also be omitted if it grows after its size is measured. Such a task has no `output` and carries `outputOmitted: true`; read it with `GET /v1/apps/{appId}/tasks/{taskId}`. A page carries at most 1 MiB of stored outputs, so it can hold fewer than `limit` tasks; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 //
 // Corresponds with GET /v1/apps/{appId}/tasks (the `ListTasks` operationId).
 func (c *Client) ListTasks(ctx context.Context, appId AppId, params *ListTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6076,9 +7250,9 @@ func (c *Client) ListInsightsQueries(ctx context.Context, reqEditors ...RequestE
 //
 // An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
 //
-// `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
+// `apps_request_volume` returns one series per app: 288 five-minute request counts over `window=24h` (`step_s` 300, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
 //
-// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
+// `endpoints_request_volume` is the endpoints-list counterpart: 288 five-minute request counts per endpoint over `window=24h` (`step_s` 300, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 //
 // The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 //
@@ -6086,7 +7260,7 @@ func (c *Client) ListInsightsQueries(ctx context.Context, reqEditors ...RequestE
 //
 // `gpu_utilisation`, `gpu_power_usage`, `gpu_power_utilisation`, `gpu_temperature` and `gpu_memory_used` require the public app id and accept `worker` (`Worker.id`, the Kubernetes pod UID), so the Metrics tab can chart an app and a worker page can chart one live worker. Other cataloged queries reject `worker`. `gpu_count` stays app-scoped.
 //
-// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+// Three queries serve one app's overview, all over `window=24h` at `step_s` 300 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 //
 // `environment` selects the copy the public app id names. A query expanded by app returns only apps live in that environment. A query that names no app and expands by nothing reports the whole organization, every environment included.
 //
@@ -6314,7 +7488,7 @@ func (c *Client) ListSecrets(ctx context.Context, params *ListSecretsParams, req
 
 // CreateSecretWithBody Create a secret
 //
-// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6333,7 +7507,7 @@ func (c *Client) CreateSecretWithBody(ctx context.Context, params *CreateSecretP
 
 // CreateSecret Create a secret
 //
-// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -6596,6 +7770,482 @@ func (c *Client) ListUsageEvents(ctx context.Context, params *ListUsageEventsPar
 // Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
 func (c *Client) GetUsageSummary(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetUsageSummaryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVolumes List Volumes
+//
+// Returns a page of the organization's live Volumes in one environment, `production` unless `environment` names another, newest first. A Volume being deleted or deleted is not listed. A `cursor` is valid only for the `environment` it was issued under.
+//
+// Corresponds with GET /v1/volumes (the `ListVolumes` operationId).
+func (c *Client) ListVolumes(ctx context.Context, params *ListVolumesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVolumesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateVolumeWithBody Create a Volume
+//
+// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+func (c *Client) CreateVolumeWithBody(ctx context.Context, params *CreateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateVolumeRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateVolume Create a Volume
+//
+// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+func (c *Client) CreateVolume(ctx context.Context, params *CreateVolumeParams, body CreateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateVolumeRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVolumeKeyPair Read the organization's Volumes key pair
+//
+// Returns the organization's newest Volumes key pair as a statement signed by the platform signing key. A client uploading to a Volume reads it once per upload session, verifies it, and seals each new file's data key to its public key locally, so no file key passes through this API in usable form. The key pair belongs to the organization, not to an environment, so this route takes no `environment`.
+//
+// Verify `signature` with the platform verification keys built into the client's release, never with keys read through this API, and take every value you use from the verified `statement`. Refuse a statement that names an organization other than the one the client is configured with, an unknown label or KEM identifier, a passed not-after, or a sequence number lower than the highest the client has accepted for that organization.
+//
+// Turning the organization's beta access on creates its first key pair; until it exists this route answers `409` typed `volume-key-pair-not-ready`, which a client retries with backoff. After a rotation it returns the newest key pair, and a session opened with the previous one still works within that key pair's not-after.
+//
+// Draft: the statement's byte encoding and the pinned KEM identifier are fixed with the encryption format.
+//
+// Corresponds with GET /v1/volumes-key-pair (the `GetVolumeKeyPair` operationId).
+func (c *Client) GetVolumeKeyPair(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVolumeKeyPairRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVolumeSettings Read Shared Volume access and limits
+//
+// Returns effective access and limits for the authenticated organization. The two are read separately, so a change made while the request runs can show access and limits that never held together. This setting does not indicate whether Shared Volume operations are deployed.
+//
+// Corresponds with GET /v1/volumes-settings (the `GetVolumeSettings` operationId).
+func (c *Client) GetVolumeSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVolumeSettingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteVolume Delete a Volume
+//
+// Logically deletes the whole Volume: its latest files and every upload session still open on it. Individual files cannot be deleted. Requires the immutable `volumeId` returned by a read, so a retry cannot delete a replacement Volume with the same name. Retrying an already-deleted matching identity returns 204. Currently a delete succeeds only for a Volume that has never had files published and that no app references; any other delete that passes the conflicts below answers `501` for now.
+//
+// A delete returns `409` typed `volume-in-use` while a current app version, a deploy in progress or a running worker uses it. When only older app versions use it, the delete returns `409` typed `volume-rollback-confirmation-required` unless `confirmRollbackLoss=true`. Confirmed deletion currently returns 501; when implemented, those app versions lose their rollback. Both conflicts carry a plain `detail`; `GET /v1/volumes/{volumeName}/references` lists the uses. Reading the references does not authorize the delete: the delete is checked again against concurrent mounts when it commits.
+//
+// A successful empty delete commits its deleted identity before it answers. It is then excluded from listings, and new mounts and uploads of it are refused. Deletion does not promise immediate erasure: encrypted objects may be retained and reclaimed later, and content another Volume's latest files or an open upload session still reference stays usable. The name is reserved until the logical deletion commits, not until physical reclamation. A new Volume with the same name gets a new id and never satisfies a mount of the old one. Organization purge is a separate operation. Deleting an app never deletes its Volumes.
+//
+// Corresponds with DELETE /v1/volumes/{volumeName} (the `DeleteVolume` operationId).
+func (c *Client) DeleteVolume(ctx context.Context, volumeName VolumeName, params *DeleteVolumeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteVolumeRequest(c.Server, volumeName, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVolume Get a Volume
+//
+// Returns a live Volume of the named environment. An unknown Volume and one being deleted or deleted both return `404`.
+//
+// Corresponds with GET /v1/volumes/{volumeName} (the `GetVolume` operationId).
+func (c *Client) GetVolume(ctx context.Context, volumeName VolumeName, params *GetVolumeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVolumeRequest(c.Server, volumeName, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateVolumeWithBody Update a Volume's description
+//
+// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+func (c *Client) UpdateVolumeWithBody(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateVolumeRequestWithBody(c.Server, volumeName, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateVolume Update a Volume's description
+//
+// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+func (c *Client) UpdateVolume(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, body UpdateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateVolumeRequest(c.Server, volumeName, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVolumeFiles List a Volume's latest files
+//
+// Returns a page of the Volume's latest files, in byte-wise lexicographic order by path (UTF-8), read from its latest manifest. The API reads file metadata only and never decrypts file contents; there is no download route. File paths never appear in a query parameter, so this route has no path filter.
+//
+// Each page names the `manifestSha256` it was read from. An upload that completes between two pages changes the latest files, and a cursor issued before it answers `400`: the client starts again from the first page, whose different `manifestSha256` names the new file list. A Volume with no files yet answers an empty page without `manifestSha256`.
+//
+// The file list is served only after its digest and the organization and Volume it names are verified. A latest file list that is missing or fails that check answers `500`, and storage that fails or cannot be read in time answers `503`; neither falls back to another list. Until manifest storage is deployed, a Volume with files answers `501`.
+//
+// Corresponds with GET /v1/volumes/{volumeName}/files (the `ListVolumeFiles` operationId).
+func (c *Client) ListVolumeFiles(ctx context.Context, volumeName VolumeName, params *ListVolumeFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVolumeFilesRequest(c.Server, volumeName, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVolumeReferences List what uses a Volume
+//
+// Lists the uses that would block or be affected by deleting the Volume: current app versions, deploys in progress and running workers, which block a delete, and older app versions, which lose their rollback. Only apps in the Volume's own environment mount it, so every use is in that environment. A build reservation without a version number protects mounts on the app's non-deleted versions until its target version is recorded. The console and the CLI read this route; a delete conflict carries only a plain `detail`. Uses are paged, with blocking uses before rollback targets, 20 uses per page by default and up to 100. Follow `nextCursor` for a complete inventory; deletion checks all uses independently. A cursor is valid only for the organization, environment and Volume that issued it. The answer is a snapshot and does not authorize a later delete.
+//
+// Corresponds with GET /v1/volumes/{volumeName}/references (the `GetVolumeReferences` operationId).
+func (c *Client) GetVolumeReferences(ctx context.Context, volumeName VolumeName, params *GetVolumeReferencesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVolumeReferencesRequest(c.Server, volumeName, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateVolumeUploadWithBody Open an upload session
+//
+// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+//
+// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+//
+// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+//
+// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+//
+// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+//
+// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+//
+// Draft: the upload schemas are not frozen.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+func (c *Client) CreateVolumeUploadWithBody(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateVolumeUploadRequestWithBody(c.Server, volumeName, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateVolumeUpload Open an upload session
+//
+// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+//
+// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+//
+// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+//
+// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+//
+// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+//
+// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+//
+// Draft: the upload schemas are not frozen.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+func (c *Client) CreateVolumeUpload(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, body CreateVolumeUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateVolumeUploadRequest(c.Server, volumeName, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AbortVolumeUpload Abort an upload session
+//
+// Aborts an open session: it publishes nothing, its multipart uploads are aborted and its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes`. Content the session already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored. A client aborts the whole session when a declared file changes during the upload, or when it loses a declared file's data key or the session sealing key; rerunning the upload opens a new session. Abort deletes the session's unpublished sealed keys but keeps its attempt ids, so a replayed attempt is still refused. Content already verified and referenced by a Volume's latest files, or by another session, is untouched. A part token issued before the abort cannot write once its multipart upload is aborted, and never authorizes publication. Aborting a session already aborted returns `204`; one already completed or expired returns `409`. Draft: this part of the upload contract may still change before it is final.
+//
+// Corresponds with DELETE /v1/volumes/{volumeName}/uploads/{uploadId} (the `AbortVolumeUpload` operationId).
+func (c *Client) AbortVolumeUpload(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *AbortVolumeUploadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAbortVolumeUploadRequest(c.Server, volumeName, uploadId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetVolumeUpload Get an upload session
+//
+// Returns the session and a page of its declared files with their state and approved layout, ordered by path, so a resumed client can find which files still need parts or completion. It returns no key material, sealed keys included, and no part token: the client keeps each file's sealed key in its own resume state, and renews part tokens through `POST .../files/{fileId}/parts`. Draft: this part of the upload contract may still change before it is final.
+//
+// Corresponds with GET /v1/volumes/{volumeName}/uploads/{uploadId} (the `GetVolumeUpload` operationId).
+func (c *Client) GetVolumeUpload(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *GetVolumeUploadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVolumeUploadRequest(c.Server, volumeName, uploadId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompleteVolumeUpload Apply the upload to the latest files
+//
+// Completes the session. Every declared file must be `verified` or `reused`; otherwise nothing is applied and the answer is `409` typed `volume-upload-incomplete`, and `GET` on the session names the files still pending or failed. A `failed` file cannot be declared again, so its session can only be aborted. A resulting file set over `maxFilesPerVolume` returns `409` typed `volume-limit-exceeded`, and so does a completion that would grow the Volume past `maxMountedBytesPerAppVersion` for any current app version mounting it, with `limit` naming that limit. A session path that is a file on one side and a directory on the other against the latest files at that moment, which another session may have changed since the declaration, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither replaces the other. Nothing is applied and the session stays open until its deadline; abort it, and upload its other files in a new session.
+//
+// Uploads are additive. Completion takes the Volume's latest files at that moment, adds the session's new paths, replaces the paths it declared again and keeps every other file. No upload removes a file: to start from an empty file set, create a new Volume. Two sessions that overlap in time both keep their files, and on a path both declared the one that completes last wins. Moving the Volume to the new latest files is a compare-and-swap the server retries, so concurrent completion is not a client error. Workers that start afterwards mount the new files; running workers keep theirs until they stop. A rollback of an app restores its image and settings, not earlier Volume files: to undo an upload, upload the previous files again.
+//
+// A completion that changes nothing answers `changed: false` and leaves the latest files as they are, writing no manifest and recording no content reference or usage event. Changing only a file's mode is a change. Retrying a completed session returns its original answer without applying it again, so a client that lost the answer can retry safely. Turning beta access off, organization disablement and purge all stop completion, and a part token never authorizes it. With beta access off this returns `404` (see `VolumeNotFound`) and publishes nothing; the session lapses at its `expiresAt` as `VolumeUpload` describes. Draft: this part of the upload contract may still change before it is final.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/complete (the `CompleteVolumeUpload` operationId).
+func (c *Client) CompleteVolumeUpload(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *CompleteVolumeUploadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteVolumeUploadRequest(c.Server, volumeName, uploadId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeclareVolumeUploadFilesWithBody Declare files
+//
+// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+//
+// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+//
+// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+//
+// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+//
+// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+//
+// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+//
+// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+//
+// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+//
+// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+func (c *Client) DeclareVolumeUploadFilesWithBody(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeclareVolumeUploadFilesRequestWithBody(c.Server, volumeName, uploadId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeclareVolumeUploadFiles Declare files
+//
+// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+//
+// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+//
+// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+//
+// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+//
+// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+//
+// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+//
+// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+//
+// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+//
+// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+func (c *Client) DeclareVolumeUploadFiles(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, body DeclareVolumeUploadFilesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeclareVolumeUploadFilesRequest(c.Server, volumeName, uploadId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompleteVolumeUploadFileWithBody Complete a file
+//
+// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+//
+// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+func (c *Client) CompleteVolumeUploadFileWithBody(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteVolumeUploadFileRequestWithBody(c.Server, volumeName, uploadId, fileId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CompleteVolumeUploadFile Complete a file
+//
+// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+//
+// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+func (c *Client) CompleteVolumeUploadFile(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, body CompleteVolumeUploadFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteVolumeUploadFileRequest(c.Server, volumeName, uploadId, fileId, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenewVolumeUploadFilePartsWithBody Renew part tokens
+//
+// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+func (c *Client) RenewVolumeUploadFilePartsWithBody(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenewVolumeUploadFilePartsRequestWithBody(c.Server, volumeName, uploadId, fileId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenewVolumeUploadFileParts Renew part tokens
+//
+// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+func (c *Client) RenewVolumeUploadFileParts(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, body RenewVolumeUploadFilePartsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenewVolumeUploadFilePartsRequest(c.Server, volumeName, uploadId, fileId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -11736,6 +13386,1150 @@ func NewGetUsageSummaryRequest(server string, params *GetUsageSummaryParams) (*h
 	return req, nil
 }
 
+// NewListVolumesRequest constructs an http.Request for the ListVolumes method
+func NewListVolumesRequest(server string, params *ListVolumesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateVolumeRequest calls the generic CreateVolume builder with application/json body
+func NewCreateVolumeRequest(server string, params *CreateVolumeParams, body CreateVolumeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateVolumeRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewCreateVolumeRequestWithBody constructs an http.Request for the CreateVolume method, with any body, and a specified content type
+func NewCreateVolumeRequestWithBody(server string, params *CreateVolumeParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetVolumeKeyPairRequest constructs an http.Request for the GetVolumeKeyPair method
+func NewGetVolumeKeyPairRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes-key-pair")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVolumeSettingsRequest constructs an http.Request for the GetVolumeSettings method
+func NewGetVolumeSettingsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes-settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteVolumeRequest constructs an http.Request for the DeleteVolume method
+func NewDeleteVolumeRequest(server string, volumeName VolumeName, params *DeleteVolumeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "volumeId", params.VolumeId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "uuid"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.ConfirmRollbackLoss != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "confirmRollbackLoss", *params.ConfirmRollbackLoss, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVolumeRequest constructs an http.Request for the GetVolume method
+func NewGetVolumeRequest(server string, volumeName VolumeName, params *GetVolumeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateVolumeRequest calls the generic UpdateVolume builder with application/json body
+func NewUpdateVolumeRequest(server string, volumeName VolumeName, params *UpdateVolumeParams, body UpdateVolumeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateVolumeRequestWithBody(server, volumeName, params, "application/json", bodyReader)
+}
+
+// NewUpdateVolumeRequestWithBody constructs an http.Request for the UpdateVolume method, with any body, and a specified content type
+func NewUpdateVolumeRequestWithBody(server string, volumeName VolumeName, params *UpdateVolumeParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListVolumeFilesRequest constructs an http.Request for the ListVolumeFiles method
+func NewListVolumeFilesRequest(server string, volumeName VolumeName, params *ListVolumeFilesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/files", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVolumeReferencesRequest constructs an http.Request for the GetVolumeReferences method
+func NewGetVolumeReferencesRequest(server string, volumeName VolumeName, params *GetVolumeReferencesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/references", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateVolumeUploadRequest calls the generic CreateVolumeUpload builder with application/json body
+func NewCreateVolumeUploadRequest(server string, volumeName VolumeName, params *CreateVolumeUploadParams, body CreateVolumeUploadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateVolumeUploadRequestWithBody(server, volumeName, params, "application/json", bodyReader)
+}
+
+// NewCreateVolumeUploadRequestWithBody constructs an http.Request for the CreateVolumeUpload method, with any body, and a specified content type
+func NewCreateVolumeUploadRequestWithBody(server string, volumeName VolumeName, params *CreateVolumeUploadParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/uploads", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAbortVolumeUploadRequest constructs an http.Request for the AbortVolumeUpload method
+func NewAbortVolumeUploadRequest(server string, volumeName VolumeName, uploadId VolumeUploadId, params *AbortVolumeUploadParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/uploads/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVolumeUploadRequest constructs an http.Request for the GetVolumeUpload method
+func NewGetVolumeUploadRequest(server string, volumeName VolumeName, uploadId VolumeUploadId, params *GetVolumeUploadParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/uploads/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCompleteVolumeUploadRequest constructs an http.Request for the CompleteVolumeUpload method
+func NewCompleteVolumeUploadRequest(server string, volumeName VolumeName, uploadId VolumeUploadId, params *CompleteVolumeUploadParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/uploads/%s/complete", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeclareVolumeUploadFilesRequest calls the generic DeclareVolumeUploadFiles builder with application/json body
+func NewDeclareVolumeUploadFilesRequest(server string, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, body DeclareVolumeUploadFilesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeclareVolumeUploadFilesRequestWithBody(server, volumeName, uploadId, params, "application/json", bodyReader)
+}
+
+// NewDeclareVolumeUploadFilesRequestWithBody constructs an http.Request for the DeclareVolumeUploadFiles method, with any body, and a specified content type
+func NewDeclareVolumeUploadFilesRequestWithBody(server string, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/uploads/%s/files", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCompleteVolumeUploadFileRequest calls the generic CompleteVolumeUploadFile builder with application/json body
+func NewCompleteVolumeUploadFileRequest(server string, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, body CompleteVolumeUploadFileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCompleteVolumeUploadFileRequestWithBody(server, volumeName, uploadId, fileId, params, "application/json", bodyReader)
+}
+
+// NewCompleteVolumeUploadFileRequestWithBody constructs an http.Request for the CompleteVolumeUploadFile method, with any body, and a specified content type
+func NewCompleteVolumeUploadFileRequestWithBody(server string, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "fileId", fileId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/uploads/%s/files/%s/complete", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRenewVolumeUploadFilePartsRequest calls the generic RenewVolumeUploadFileParts builder with application/json body
+func NewRenewVolumeUploadFilePartsRequest(server string, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, body RenewVolumeUploadFilePartsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRenewVolumeUploadFilePartsRequestWithBody(server, volumeName, uploadId, fileId, params, "application/json", bodyReader)
+}
+
+// NewRenewVolumeUploadFilePartsRequestWithBody constructs an http.Request for the RenewVolumeUploadFileParts method, with any body, and a specified content type
+func NewRenewVolumeUploadFilePartsRequestWithBody(server string, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "volumeName", volumeName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uploadId", uploadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "fileId", fileId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/volumes/%s/uploads/%s/files/%s/parts", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Environment != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "environment", *params.Environment, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -11875,7 +14669,7 @@ type ClientWithResponsesInterface interface {
 	// UpdateAppWithBodyWithResponse Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 	// `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -11889,7 +14683,7 @@ type ClientWithResponsesInterface interface {
 	// UpdateAppWithResponse Update an app
 	//
 	// Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+	// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 	// `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 	// `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 	// `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -11931,7 +14725,7 @@ type ClientWithResponsesInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 	//   `409 Conflict`; detach the connector or deploy a version without the variable.
 	// - A deploy while a rollout of this app is still in flight returns `409 Conflict`.
@@ -11956,7 +14750,7 @@ type ClientWithResponsesInterface interface {
 	// A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 	// If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 	// **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+	// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 	// Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 	//   `409 Conflict`; detach the connector or deploy a version without the variable.
 	// - A deploy while a rollout of this app is still in flight returns `409 Conflict`.
@@ -12083,7 +14877,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartDefaultAsyncTaskWithBodyWithResponse Start a new async task on the default endpoint
 	//
-	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12092,7 +14886,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartDefaultAsyncTaskWithResponse Start a new async task on the default endpoint
 	//
-	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12101,7 +14895,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithBodyWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12110,7 +14904,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartAsyncTaskWithResponse Start a new async task
 	//
-	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12119,7 +14913,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartDefaultSyncTaskWithBodyWithResponse Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12128,7 +14922,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartDefaultSyncTaskWithResponse Start a new sync task on the default endpoint
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+	// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12137,7 +14931,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithBodyWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12146,7 +14940,7 @@ type ClientWithResponsesInterface interface {
 
 	// StartSyncTaskWithResponse Start a new sync task
 	//
-	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+	// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12268,7 +15062,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListTasksWithResponse List tasks for an app
 	//
-	// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+	// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it, unless the listing omits it. The listing omits an output if its stored JSON exceeds 128 KiB or is larger than the page's output budget. A deeply nested output is also omitted. An output can also be omitted if it grows after its size is measured. Such a task has no `output` and carries `outputOmitted: true`; read it with `GET /v1/apps/{appId}/tasks/{taskId}`. A page carries at most 1 MiB of stored outputs, so it can hold fewer than `limit` tasks; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -12494,9 +15288,9 @@ type ClientWithResponsesInterface interface {
 	//
 	// An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
 	//
-	// `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
+	// `apps_request_volume` returns one series per app: 288 five-minute request counts over `window=24h` (`step_s` 300, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
 	//
-	// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
+	// `endpoints_request_volume` is the endpoints-list counterpart: 288 five-minute request counts per endpoint over `window=24h` (`step_s` 300, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 	//
 	// The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 	//
@@ -12504,7 +15298,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// `gpu_utilisation`, `gpu_power_usage`, `gpu_power_utilisation`, `gpu_temperature` and `gpu_memory_used` require the public app id and accept `worker` (`Worker.id`, the Kubernetes pod UID), so the Metrics tab can chart an app and a worker page can chart one live worker. Other cataloged queries reject `worker`. `gpu_count` stays app-scoped.
 	//
-	// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+	// Three queries serve one app's overview, all over `window=24h` at `step_s` 300 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 	//
 	// `environment` selects the copy the public app id names. A query expanded by app returns only apps live in that environment. A query that names no app and expands by nothing reports the whole organization, every environment included.
 	//
@@ -12624,7 +15418,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithBodyWithResponse Create a secret
 	//
-	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12633,7 +15427,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSecretWithResponse Create a secret
 	//
-	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+	// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -12771,6 +15565,282 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/usage/summary (the `GetUsageSummary` operationId).
 	GetUsageSummaryWithResponse(ctx context.Context, params *GetUsageSummaryParams, reqEditors ...RequestEditorFn) (*GetUsageSummaryResponse, error)
+
+	// ListVolumesWithResponse List Volumes
+	//
+	// Returns a page of the organization's live Volumes in one environment, `production` unless `environment` names another, newest first. A Volume being deleted or deleted is not listed. A `cursor` is valid only for the `environment` it was issued under.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/volumes (the `ListVolumes` operationId).
+	ListVolumesWithResponse(ctx context.Context, params *ListVolumesParams, reqEditors ...RequestEditorFn) (*ListVolumesResponse, error)
+
+	// CreateVolumeWithBodyWithResponse Create a Volume
+	//
+	// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+	CreateVolumeWithBodyWithResponse(ctx context.Context, params *CreateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateVolumeResponse, error)
+
+	// CreateVolumeWithResponse Create a Volume
+	//
+	// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+	CreateVolumeWithResponse(ctx context.Context, params *CreateVolumeParams, body CreateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVolumeResponse, error)
+
+	// GetVolumeKeyPairWithResponse Read the organization's Volumes key pair
+	//
+	// Returns the organization's newest Volumes key pair as a statement signed by the platform signing key. A client uploading to a Volume reads it once per upload session, verifies it, and seals each new file's data key to its public key locally, so no file key passes through this API in usable form. The key pair belongs to the organization, not to an environment, so this route takes no `environment`.
+	//
+	// Verify `signature` with the platform verification keys built into the client's release, never with keys read through this API, and take every value you use from the verified `statement`. Refuse a statement that names an organization other than the one the client is configured with, an unknown label or KEM identifier, a passed not-after, or a sequence number lower than the highest the client has accepted for that organization.
+	//
+	// Turning the organization's beta access on creates its first key pair; until it exists this route answers `409` typed `volume-key-pair-not-ready`, which a client retries with backoff. After a rotation it returns the newest key pair, and a session opened with the previous one still works within that key pair's not-after.
+	//
+	// Draft: the statement's byte encoding and the pinned KEM identifier are fixed with the encryption format.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/volumes-key-pair (the `GetVolumeKeyPair` operationId).
+	GetVolumeKeyPairWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVolumeKeyPairResponse, error)
+
+	// GetVolumeSettingsWithResponse Read Shared Volume access and limits
+	//
+	// Returns effective access and limits for the authenticated organization. The two are read separately, so a change made while the request runs can show access and limits that never held together. This setting does not indicate whether Shared Volume operations are deployed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/volumes-settings (the `GetVolumeSettings` operationId).
+	GetVolumeSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVolumeSettingsResponse, error)
+
+	// DeleteVolumeWithResponse Delete a Volume
+	//
+	// Logically deletes the whole Volume: its latest files and every upload session still open on it. Individual files cannot be deleted. Requires the immutable `volumeId` returned by a read, so a retry cannot delete a replacement Volume with the same name. Retrying an already-deleted matching identity returns 204. Currently a delete succeeds only for a Volume that has never had files published and that no app references; any other delete that passes the conflicts below answers `501` for now.
+	//
+	// A delete returns `409` typed `volume-in-use` while a current app version, a deploy in progress or a running worker uses it. When only older app versions use it, the delete returns `409` typed `volume-rollback-confirmation-required` unless `confirmRollbackLoss=true`. Confirmed deletion currently returns 501; when implemented, those app versions lose their rollback. Both conflicts carry a plain `detail`; `GET /v1/volumes/{volumeName}/references` lists the uses. Reading the references does not authorize the delete: the delete is checked again against concurrent mounts when it commits.
+	//
+	// A successful empty delete commits its deleted identity before it answers. It is then excluded from listings, and new mounts and uploads of it are refused. Deletion does not promise immediate erasure: encrypted objects may be retained and reclaimed later, and content another Volume's latest files or an open upload session still reference stays usable. The name is reserved until the logical deletion commits, not until physical reclamation. A new Volume with the same name gets a new id and never satisfies a mount of the old one. Organization purge is a separate operation. Deleting an app never deletes its Volumes.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/volumes/{volumeName} (the `DeleteVolume` operationId).
+	DeleteVolumeWithResponse(ctx context.Context, volumeName VolumeName, params *DeleteVolumeParams, reqEditors ...RequestEditorFn) (*DeleteVolumeResponse, error)
+
+	// GetVolumeWithResponse Get a Volume
+	//
+	// Returns a live Volume of the named environment. An unknown Volume and one being deleted or deleted both return `404`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/volumes/{volumeName} (the `GetVolume` operationId).
+	GetVolumeWithResponse(ctx context.Context, volumeName VolumeName, params *GetVolumeParams, reqEditors ...RequestEditorFn) (*GetVolumeResponse, error)
+
+	// UpdateVolumeWithBodyWithResponse Update a Volume's description
+	//
+	// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+	UpdateVolumeWithBodyWithResponse(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVolumeResponse, error)
+
+	// UpdateVolumeWithResponse Update a Volume's description
+	//
+	// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+	UpdateVolumeWithResponse(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, body UpdateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVolumeResponse, error)
+
+	// ListVolumeFilesWithResponse List a Volume's latest files
+	//
+	// Returns a page of the Volume's latest files, in byte-wise lexicographic order by path (UTF-8), read from its latest manifest. The API reads file metadata only and never decrypts file contents; there is no download route. File paths never appear in a query parameter, so this route has no path filter.
+	//
+	// Each page names the `manifestSha256` it was read from. An upload that completes between two pages changes the latest files, and a cursor issued before it answers `400`: the client starts again from the first page, whose different `manifestSha256` names the new file list. A Volume with no files yet answers an empty page without `manifestSha256`.
+	//
+	// The file list is served only after its digest and the organization and Volume it names are verified. A latest file list that is missing or fails that check answers `500`, and storage that fails or cannot be read in time answers `503`; neither falls back to another list. Until manifest storage is deployed, a Volume with files answers `501`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/volumes/{volumeName}/files (the `ListVolumeFiles` operationId).
+	ListVolumeFilesWithResponse(ctx context.Context, volumeName VolumeName, params *ListVolumeFilesParams, reqEditors ...RequestEditorFn) (*ListVolumeFilesResponse, error)
+
+	// GetVolumeReferencesWithResponse List what uses a Volume
+	//
+	// Lists the uses that would block or be affected by deleting the Volume: current app versions, deploys in progress and running workers, which block a delete, and older app versions, which lose their rollback. Only apps in the Volume's own environment mount it, so every use is in that environment. A build reservation without a version number protects mounts on the app's non-deleted versions until its target version is recorded. The console and the CLI read this route; a delete conflict carries only a plain `detail`. Uses are paged, with blocking uses before rollback targets, 20 uses per page by default and up to 100. Follow `nextCursor` for a complete inventory; deletion checks all uses independently. A cursor is valid only for the organization, environment and Volume that issued it. The answer is a snapshot and does not authorize a later delete.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/volumes/{volumeName}/references (the `GetVolumeReferences` operationId).
+	GetVolumeReferencesWithResponse(ctx context.Context, volumeName VolumeName, params *GetVolumeReferencesParams, reqEditors ...RequestEditorFn) (*GetVolumeReferencesResponse, error)
+
+	// CreateVolumeUploadWithBodyWithResponse Open an upload session
+	//
+	// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+	//
+	// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+	//
+	// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+	//
+	// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+	//
+	// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+	//
+	// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+	//
+	// Draft: the upload schemas are not frozen.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+	CreateVolumeUploadWithBodyWithResponse(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateVolumeUploadResponse, error)
+
+	// CreateVolumeUploadWithResponse Open an upload session
+	//
+	// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+	//
+	// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+	//
+	// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+	//
+	// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+	//
+	// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+	//
+	// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+	//
+	// Draft: the upload schemas are not frozen.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+	CreateVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, body CreateVolumeUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVolumeUploadResponse, error)
+
+	// AbortVolumeUploadWithResponse Abort an upload session
+	//
+	// Aborts an open session: it publishes nothing, its multipart uploads are aborted and its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes`. Content the session already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored. A client aborts the whole session when a declared file changes during the upload, or when it loses a declared file's data key or the session sealing key; rerunning the upload opens a new session. Abort deletes the session's unpublished sealed keys but keeps its attempt ids, so a replayed attempt is still refused. Content already verified and referenced by a Volume's latest files, or by another session, is untouched. A part token issued before the abort cannot write once its multipart upload is aborted, and never authorizes publication. Aborting a session already aborted returns `204`; one already completed or expired returns `409`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/volumes/{volumeName}/uploads/{uploadId} (the `AbortVolumeUpload` operationId).
+	AbortVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *AbortVolumeUploadParams, reqEditors ...RequestEditorFn) (*AbortVolumeUploadResponse, error)
+
+	// GetVolumeUploadWithResponse Get an upload session
+	//
+	// Returns the session and a page of its declared files with their state and approved layout, ordered by path, so a resumed client can find which files still need parts or completion. It returns no key material, sealed keys included, and no part token: the client keeps each file's sealed key in its own resume state, and renews part tokens through `POST .../files/{fileId}/parts`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/volumes/{volumeName}/uploads/{uploadId} (the `GetVolumeUpload` operationId).
+	GetVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *GetVolumeUploadParams, reqEditors ...RequestEditorFn) (*GetVolumeUploadResponse, error)
+
+	// CompleteVolumeUploadWithResponse Apply the upload to the latest files
+	//
+	// Completes the session. Every declared file must be `verified` or `reused`; otherwise nothing is applied and the answer is `409` typed `volume-upload-incomplete`, and `GET` on the session names the files still pending or failed. A `failed` file cannot be declared again, so its session can only be aborted. A resulting file set over `maxFilesPerVolume` returns `409` typed `volume-limit-exceeded`, and so does a completion that would grow the Volume past `maxMountedBytesPerAppVersion` for any current app version mounting it, with `limit` naming that limit. A session path that is a file on one side and a directory on the other against the latest files at that moment, which another session may have changed since the declaration, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither replaces the other. Nothing is applied and the session stays open until its deadline; abort it, and upload its other files in a new session.
+	//
+	// Uploads are additive. Completion takes the Volume's latest files at that moment, adds the session's new paths, replaces the paths it declared again and keeps every other file. No upload removes a file: to start from an empty file set, create a new Volume. Two sessions that overlap in time both keep their files, and on a path both declared the one that completes last wins. Moving the Volume to the new latest files is a compare-and-swap the server retries, so concurrent completion is not a client error. Workers that start afterwards mount the new files; running workers keep theirs until they stop. A rollback of an app restores its image and settings, not earlier Volume files: to undo an upload, upload the previous files again.
+	//
+	// A completion that changes nothing answers `changed: false` and leaves the latest files as they are, writing no manifest and recording no content reference or usage event. Changing only a file's mode is a change. Retrying a completed session returns its original answer without applying it again, so a client that lost the answer can retry safely. Turning beta access off, organization disablement and purge all stop completion, and a part token never authorizes it. With beta access off this returns `404` (see `VolumeNotFound`) and publishes nothing; the session lapses at its `expiresAt` as `VolumeUpload` describes. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/complete (the `CompleteVolumeUpload` operationId).
+	CompleteVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *CompleteVolumeUploadParams, reqEditors ...RequestEditorFn) (*CompleteVolumeUploadResponse, error)
+
+	// DeclareVolumeUploadFilesWithBodyWithResponse Declare files
+	//
+	// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+	//
+	// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+	//
+	// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+	//
+	// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+	//
+	// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+	//
+	// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+	//
+	// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+	//
+	// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+	//
+	// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+	DeclareVolumeUploadFilesWithBodyWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeclareVolumeUploadFilesResponse, error)
+
+	// DeclareVolumeUploadFilesWithResponse Declare files
+	//
+	// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+	//
+	// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+	//
+	// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+	//
+	// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+	//
+	// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+	//
+	// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+	//
+	// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+	//
+	// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+	//
+	// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+	DeclareVolumeUploadFilesWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, body DeclareVolumeUploadFilesJSONRequestBody, reqEditors ...RequestEditorFn) (*DeclareVolumeUploadFilesResponse, error)
+
+	// CompleteVolumeUploadFileWithBodyWithResponse Complete a file
+	//
+	// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+	//
+	// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+	CompleteVolumeUploadFileWithBodyWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteVolumeUploadFileResponse, error)
+
+	// CompleteVolumeUploadFileWithResponse Complete a file
+	//
+	// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+	//
+	// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+	CompleteVolumeUploadFileWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, body CompleteVolumeUploadFileJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteVolumeUploadFileResponse, error)
+
+	// RenewVolumeUploadFilePartsWithBodyWithResponse Renew part tokens
+	//
+	// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+	RenewVolumeUploadFilePartsWithBodyWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenewVolumeUploadFilePartsResponse, error)
+
+	// RenewVolumeUploadFilePartsWithResponse Renew part tokens
+	//
+	// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+	RenewVolumeUploadFilePartsWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, body RenewVolumeUploadFilePartsJSONRequestBody, reqEditors ...RequestEditorFn) (*RenewVolumeUploadFilePartsResponse, error)
 }
 
 type GetAppSummaryResponse struct {
@@ -19909,6 +22979,1537 @@ func (r GetUsageSummaryResponse) ContentType() string {
 	return ""
 }
 
+type ListVolumesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumePage
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVolumesResponse) GetJSON200() *VolumePage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListVolumesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListVolumesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListVolumesResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListVolumesResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListVolumesResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r ListVolumesResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListVolumesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVolumesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVolumesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVolumesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVolumesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateVolumeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Volume
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeNameConflict
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateVolumeResponse) GetJSON201() *Volume {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON409() *VolumeNameConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateVolumeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateVolumeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateVolumeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateVolumeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateVolumeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVolumeKeyPairResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeKeyPairStatement
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeKeyPairNotReady
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVolumeKeyPairResponse) GetJSON200() *VolumeKeyPairStatement {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetVolumeKeyPairResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetVolumeKeyPairResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r GetVolumeKeyPairResponse) GetApplicationproblemJSON409() *VolumeKeyPairNotReady {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetVolumeKeyPairResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r GetVolumeKeyPairResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetVolumeKeyPairResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVolumeKeyPairResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVolumeKeyPairResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVolumeKeyPairResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVolumeKeyPairResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetVolumeSettingsResponse200Headers the declared response headers of an HTTP 200 response for GetVolumeSettings
+type GetVolumeSettingsResponse200Headers struct {
+	CacheControl *string
+}
+
+type GetVolumeSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeSettings
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetVolumeSettingsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVolumeSettingsResponse) GetJSON200() *VolumeSettings {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetVolumeSettingsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetVolumeSettingsResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetVolumeSettingsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVolumeSettingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVolumeSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVolumeSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVolumeSettingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteVolumeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeDeleteConflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON409() *VolumeDeleteConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeleteVolumeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteVolumeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteVolumeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteVolumeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteVolumeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVolumeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Volume
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVolumeResponse) GetJSON200() *Volume {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetVolumeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetVolumeResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetVolumeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetVolumeResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r GetVolumeResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetVolumeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVolumeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVolumeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVolumeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVolumeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateVolumeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Volume
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateVolumeResponse) GetJSON200() *Volume {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r UpdateVolumeResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateVolumeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateVolumeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateVolumeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateVolumeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListVolumeFilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeFilePage
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVolumeFilesResponse) GetJSON200() *VolumeFilePage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListVolumeFilesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListVolumeFilesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListVolumeFilesResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListVolumeFilesResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListVolumeFilesResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r ListVolumeFilesResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ListVolumeFilesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVolumeFilesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVolumeFilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVolumeFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVolumeFilesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVolumeReferencesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeReferences
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVolumeReferencesResponse) GetJSON200() *VolumeReferences {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetVolumeReferencesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetVolumeReferencesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetVolumeReferencesResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetVolumeReferencesResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetVolumeReferencesResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r GetVolumeReferencesResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetVolumeReferencesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVolumeReferencesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVolumeReferencesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVolumeReferencesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVolumeReferencesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateVolumeUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *VolumeUpload
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeUploadOpenConflict
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateVolumeUploadResponse) GetJSON201() *VolumeUpload {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON409() *VolumeUploadOpenConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateVolumeUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateVolumeUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateVolumeUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateVolumeUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateVolumeUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AbortVolumeUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeUploadNotOpen
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON409() *VolumeUploadNotOpen {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r AbortVolumeUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r AbortVolumeUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AbortVolumeUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AbortVolumeUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AbortVolumeUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetVolumeUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeUploadDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetVolumeUploadResponse) GetJSON200() *VolumeUploadDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetVolumeUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetVolumeUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetVolumeUploadResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetVolumeUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetVolumeUploadResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r GetVolumeUploadResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetVolumeUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetVolumeUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVolumeUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVolumeUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetVolumeUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompleteVolumeUploadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeUploadResult
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeUploadPublishConflict
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompleteVolumeUploadResponse) GetJSON200() *VolumeUploadResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON409() *VolumeUploadPublishConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CompleteVolumeUploadResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CompleteVolumeUploadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompleteVolumeUploadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompleteVolumeUploadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompleteVolumeUploadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeclareVolumeUploadFilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeFileDeclarationResult
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeUploadDeclareConflict
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *VolumeFileValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeclareVolumeUploadFilesResponse) GetJSON200() *VolumeFileDeclarationResult {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON409() *VolumeUploadDeclareConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON422() *VolumeFileValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r DeclareVolumeUploadFilesResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeclareVolumeUploadFilesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeclareVolumeUploadFilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeclareVolumeUploadFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeclareVolumeUploadFilesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CompleteVolumeUploadFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeUploadFile
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeUploadFileVerificationConflict
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CompleteVolumeUploadFileResponse) GetJSON200() *VolumeUploadFile {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON409() *VolumeUploadFileVerificationConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CompleteVolumeUploadFileResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CompleteVolumeUploadFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CompleteVolumeUploadFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompleteVolumeUploadFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CompleteVolumeUploadFileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RenewVolumeUploadFilePartsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *VolumeUploadTargets
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *BadRequest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *VolumeNotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *VolumeUploadRenewConflict
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *PayloadTooLarge
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ValidationError
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *InternalServerError
+	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
+	ApplicationproblemJSON501 *VolumeNotImplemented
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RenewVolumeUploadFilePartsResponse) GetJSON200() *VolumeUploadTargets {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON400() *BadRequest {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON401() *Unauthorized {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON404() *VolumeNotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON409() *VolumeUploadRenewConflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON413() *PayloadTooLarge {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON415() *UnsupportedMediaType {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON422() *ValidationError {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON500() *InternalServerError {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON501() *VolumeNotImplemented {
+	return r.ApplicationproblemJSON501
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r RenewVolumeUploadFilePartsResponse) GetApplicationproblemJSON503() *ServiceUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RenewVolumeUploadFilePartsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RenewVolumeUploadFilePartsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RenewVolumeUploadFilePartsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RenewVolumeUploadFilePartsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetAppSummaryWithResponse App summary metrics for one environment
 //
 // Aggregate dashboard metrics across the apps of one environment of the authenticated organization, the environment the app list shows. App and worker tallies are always present. Request and error-rate totals come from the metrics store and are omitted when that hop cannot answer rather than reported as zero. Spend covers a rolling 24 hours and is omitted when the usage cannot be priced.
@@ -20038,7 +24639,7 @@ func (c *ClientWithResponses) GetAppWithResponse(ctx context.Context, appId AppI
 // UpdateAppWithBodyWithResponse Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 // `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 // `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 // `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -20058,7 +24659,7 @@ func (c *ClientWithResponses) UpdateAppWithBodyWithResponse(ctx context.Context,
 // UpdateAppWithResponse Update an app
 //
 // Patches one or more aspects of an app in place. All fields are optional. Omitted fields are left unchanged. Valid in any non-`deleted` status, including `stopped` (changes apply on `resume`). Lifecycle transitions use the dedicated `deploy`, `stop`, `resume`, and `delete` operations. The `environment` parameter selects the copy, and the update changes that copy only. An `appSource` change builds and rolls out that copy alone; the same `sourceId` sent to the copy in another environment is a separate build.
-// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, or `appSource` change while a create or resume rollout is already in progress returns `409 Conflict`, as does one to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
+// A configuration or `environmentVariables` change records a new version with the same image. The configuration and environment variables on that version are the stored values, which a successful deploy does not replace with the deployed snapshot, and the image, endpoints, and volumes are copied from the version `activeVersionId` names, or from the latest version when it is null. If that image is deployable, the update pins it as `activeVersionId` and rolls the workload when the app is `active` or `initializing`. A `failed` app is moved to `initializing` and rolled, the same as `POST /deploy`. If the image is not deployable, the version is recorded and `activeVersionId` is left unchanged. If the roll fails, `activeVersionId` is restored and the previous configuration keeps serving. The pin names the target. It does not mean the previous workers have stopped answering. See `AppEvent`. A name-only change records a version and does not pin. A `stopped` or `stopping` app pins the version and rolls it on `resume`. A configuration, `environmentVariables`, `mounts`, or `appSource` change while a rollout is already in progress returns `409 Conflict` and does not store the change. That includes a create, a resume, a deploy, and the build-then-deploy tail an `appSource` change starts. A configuration equal to the stored values is not a change, so it records a version, does not pin, and is not refused. When the keep-warm floor is 0, that `409` lasts until the API records the version as deployed and releases the fence. After that a configuration change is accepted while Kubernetes may still be replacing the previous workers. The same `409` is returned for such a change to a `failed` app while the workers of its failed rollout are still stopping. A name-only or `secrets`-only change does not. A change that adds workers or GPUs, or restarts a failed app, past the environment's worker or GPU cap returns `409` typed `environment-cap-reached`. In an environment its budget pauses, such a change, or an `appSource` change to an initializing, active or failed app, returns `409` typed `environment-paused`.
 // `appSource` starts a build and records version N+1 with a new image tag. A `code` source can carry the same build inputs as the app's newest build: the same archive bytes, `modelFile`, `requirements`, base image digest, environment variables the build sees and platform build. Such a source records version N+1 on that build's image instead, with its `buildId`, and starts no build. Unpinned requirements are therefore not re-resolved by such an update; change any input to build again. The deploy queue carries the build-then-deploy tail. `activeVersionId` moves only when that rollout completes. A builder rejection (400 where a container document's parser refused it, 422 where it parsed and broke a rule) leaves the app on its current version and writes no version row and no build row. After the builder accepts, version N+1 is recorded even if a concurrent secret deactivation, an env/secret collision, or the 25-deployment attachment ceiling below prevents this request's env/secrets overlay. In that case the previous environmentVariables and attachment set stay in place and are what the new version snapshots, and the `422` the standalone case below returns does not apply here. The request still succeeds.
 // `environmentVariables` replaces the whole set: a key absent from the map is deleted, and a null value omits that key from the new set. The resolved map is snapshotted onto the new version. On a code source, the build `appSource` starts imports the model file with that map, or with the app's current set when the request carries none, so a variable read at import is there at build time too. Secrets never reach a build.
 // `secrets` replaces the whole attachment set. An attachment absent from the array is detached. Injected names must not collide with a plain environment variable on the app. The combined set of plain variables and attachments is capped at 100, and each individual secret can be attached to at most 25 deployments total. An entry that would push a secret past that, and a `registry` secret (`secret-not-attachable`), each return `422`. The attachment set is stored on the app, not on the version snapshot. A rollout reads it fresh and the worker unseals each value into its process environment under the resolved env-var name (`envVarName`, or `secretName` when omitted). A secrets-only change records a version and does not pin it, and it does not roll the workload. The new set reaches a running worker on the next rollout. `POST /v1/apps/{appId}/secrets`, `DELETE /v1/apps/{appId}/secrets/{secretName}`, and `PUT /v1/secrets/{secretName}` roll a live deployment themselves.
@@ -20124,7 +24725,7 @@ func (c *ClientWithResponses) GetBuildWithResponse(ctx context.Context, appId Ap
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 // Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 //
 //	`409 Conflict`; detach the connector or deploy a version without the variable.
@@ -20156,7 +24757,7 @@ func (c *ClientWithResponses) DeployVersionWithBodyWithResponse(ctx context.Cont
 // A deploy to a `stopped` or `stopping` app records the version and rolls no workload, because no workers are running: the `202` does not imply a rollout there. The recorded version is the one applied when the app resumes.
 // If the roll of a live app fails, `activeVersionId` is restored to the version that kept serving, so the field keeps naming the running image, and `configuration` and `environmentVariables` are put back to that version's snapshot. A name that now collides with an attached secret or OIDC connector, or that does not fit in the app's 100 environment bindings, is left out. The next configuration or environment-variable change builds on that restored set.
 // **Rollout** (deployer/Scaler): the platform starts workers on the target version. Old and new workers share the app's task queue until the old ones stop. A task in flight on a stopping worker is requeued. If new workers fail to become healthy, the app continues on the previous version.
-// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
+// **Readiness wait**: a version with `minWorkers` above zero becomes active only when that many of its workers can serve. The wait starts when the workload is applied, not when this request arrives. It lasts 10 minutes by default. It continues after that, up to 1 hour, while enough of its workers are still pulling or loading their image to reach `minWorkers`. A first pull of a large image on a node can take this long. If the wait ends first, the rollout fails. It fails before the wait ends when the platform's capacity records prove that no node can run a worker with the version's `gpusPerWorker`, unless the version has one GPU per worker and `minWorkers` 0. The app's `error` event names that cause, such as `no node can run a worker of 8 GPUs`. A first rollout then moves the app to `failed` and the platform stops its workers. To recover, deploy a `ready` version again with this operation once those workers have stopped.
 // Errors: - Deploy to a `deleting` app returns `409 Conflict` - `versionNumber` not found or not `ready` returns `409 Conflict` - A version whose environment variables include a name an attached OIDC connector sets returns
 //
 //		`409 Conflict`; detach the connector or deploy a version without the variable.
@@ -20350,7 +24951,7 @@ func (c *ClientWithResponses) FavoriteAppWithResponse(ctx context.Context, appId
 
 // StartDefaultAsyncTaskWithBodyWithResponse Start a new async task on the default endpoint
 //
-// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20365,7 +24966,7 @@ func (c *ClientWithResponses) StartDefaultAsyncTaskWithBodyWithResponse(ctx cont
 
 // StartDefaultAsyncTaskWithResponse Start a new async task on the default endpoint
 //
-// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new async task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-async/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20380,7 +24981,7 @@ func (c *ClientWithResponses) StartDefaultAsyncTaskWithResponse(ctx context.Cont
 
 // StartAsyncTaskWithBodyWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20395,7 +24996,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithBodyWithResponse(ctx context.Con
 
 // StartAsyncTaskWithResponse Start a new async task
 //
-// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a task id is answered with the task it already names rather than starting a second one, so the `202` can carry a task that has already finished: read its `status` instead of assuming `pending`, and note it may name a different `appId`. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new async task on `appId`, routing the request body payload to an available worker. The task runs asynchronously and the response is `202`. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for completion. Resubmitting a confirmed task id returns the task it already names. The `202` can carry a task that has already finished, and it may name a different `appId`. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20410,7 +25011,7 @@ func (c *ClientWithResponses) StartAsyncTaskWithResponse(ctx context.Context, ap
 
 // StartDefaultSyncTaskWithBodyWithResponse Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20425,7 +25026,7 @@ func (c *ClientWithResponses) StartDefaultSyncTaskWithBodyWithResponse(ctx conte
 
 // StartDefaultSyncTaskWithResponse Start a new sync task on the default endpoint
 //
-// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
+// Starts a new sync task on `appId`, routing the request body payload to the app's default endpoint: the one it marks as its default, or its only endpoint when it has exactly one. The request body, responses, and task semantics match `POST /v1/apps/{appId}/invoke-sync/{endpointPath}`. An app with more than one endpoint that marks none of them as its default returns `404` with no `endpointPath` member and a detail naming the requirement. An unknown or deleted app returns the same status with a detail that does not name a missing default. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20440,7 +25041,7 @@ func (c *ClientWithResponses) StartDefaultSyncTaskWithResponse(ctx context.Conte
 
 // StartSyncTaskWithBodyWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20455,7 +25056,7 @@ func (c *ClientWithResponses) StartSyncTaskWithBodyWithResponse(ctx context.Cont
 
 // StartSyncTaskWithResponse Start a new sync task
 //
-// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a task id waits on the task it already names rather than starting a second one, so the `200` carries that task's result and may name a different `appId`. Poll it under the one returned. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`, the same shape `invoke-async` returns, and it names the owning `appId` on a resubmission just as the `200` does. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request the platform cannot attribute to an accepted task fails instead, with no task to poll. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, typed `capacity-unavailable` and carrying `Retry-After`. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`: an id already claimed returns its task. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue.
+// Starts a new sync task on `appId`, routing the request body payload to an available worker. The request blocks until the task is terminal and returns the result inline (`200`). Resubmitting a confirmed task id waits on the task it already names. The `200` carries that task's result and may name a different `appId`. Poll it under the one returned. While broker acceptance is uncertain, the retry can return `503`. An unstarted task with a recorded uncertain publish can fail at the dispatch deadline if the deployment's workers record when a task starts. A task that outlives the wait window is **not** a failure: the task is still queued or running, and the response is `202` carrying that task with `status: pending`. It names the owning `appId` on a resubmission just as the `200` does. When the broker could be read, that `202` also carries `queueDepth`, the messages still waiting on the app's queue. A missing `queueDepth` was not read, and is not an empty queue. A retry sends the same task id. A new id starts another task. Poll `GET /v1/apps/{appId}/tasks/{taskId}` for its result. A request whose acceptance the platform cannot confirm may fail while the task is still in flight. Apps in `initializing`, `active`, or `stopping` accept invocation, with two exceptions: an `initializing` app whose first rollout has not produced a version returns `409 Conflict`, and an `active` app the platform has observed to have no workload able to serve returns `503 Service Unavailable` with no task minted, including a resubmit of an id that already names a task. The 503 is typed `capacity-unavailable` and carries `Retry-After` when the app is short of workers; for a workload that failed to start, is missing or is terminating it is typed `service-unavailable` and carries no `Retry-After`. See the `503` response for which to retry. When the task service cannot be reached, the response is `502 Bad Gateway`. The request may already have been accepted, so retry with the same `taskId`. A sync request still waiting when the API instance serving it shuts down gets that `502` too: the task carries on, so retry with the same `taskId`. An internal failure's `detail` names the task service instead of repeating the title. `stopped`, `deleting`, and `failed` return `409 Conflict`. An app in an environment its budget pauses returns `429 Too Many Requests` typed `environment-paused`, whatever its status. Unknown or deleted apps return `404 Not Found`. An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`, distinguishing that from an app that does not exist. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes. Endpoint membership is checked against the active version's endpoint set before the task is accepted: an endpoint the app does not declare returns `404` whose `endpointPath` extension member carries the rejected path, distinguishing it from an unknown app, and the task never enters the queue. If the task has finished but its output cannot be read right now, the response is `503 Service Unavailable`: retry with the same `taskId`, or read `GET /v1/apps/{appId}/tasks/{taskId}`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -20655,7 +25256,7 @@ func (c *ClientWithResponses) StopAppWithResponse(ctx context.Context, appId App
 
 // ListTasksWithResponse List tasks for an app
 //
-// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it. A page holds fewer than `limit` tasks when their outputs are large; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
+// Lists TTL-bounded task metadata for this app, sync and async, so a client can recover task ids after an interrupted long-poll or CLI session. Pending includes queued, running and retrying work. Tasks appear only within the configured recovery window. A page can be empty and still have `nextCursor`. Continue until it is null. Pending entries are best effort and may disappear if the recovery store restarts. Tracked tasks reappear on completion. A `completed` task carries the same `output` that `GET /v1/apps/{appId}/tasks/{taskId}` returns for it, unless the listing omits it. The listing omits an output if its stored JSON exceeds 128 KiB or is larger than the page's output budget. A deeply nested output is also omitted. An output can also be omitted if it grows after its size is measured. Such a task has no `output` and carries `outputOmitted: true`; read it with `GET /v1/apps/{appId}/tasks/{taskId}`. A page carries at most 1 MiB of stored outputs, so it can hold fewer than `limit` tasks; continue with `nextCursor`. A task whose output cannot be read yet is listed as `pending`, as that read would report it, and is left out of a page filtered on `completed`. This is not persisted task history. A task id names one task, so resubmitting one does not add a second entry here. If the app is `stopped`, `deleting`, or `failed`, recovery stays available. Unknown or deleted apps return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the list can be retried.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -21025,9 +25626,9 @@ func (c *ClientWithResponses) ListInsightsQueriesWithResponse(ctx context.Contex
 //
 // An organization with no metrics yet is answered with the full axis and all-null series rather than an error.
 //
-// `apps_request_volume` returns one series per app: 96 quarter-hour request counts over `window=24h` (`step_s` 900, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
+// `apps_request_volume` returns one series per app: 288 five-minute request counts over `window=24h` (`step_s` 300, unit `requests`). Repeat `appId` once per id on the current list page to pad idle apps with all-null series, in request order. A series is named for the live app behind it, so a reused app id reports its own generation's traffic and not the one before it. The same `appId` pad applies to the list-scoped `apps_error_volume` and `apps_request_duration` queries. Those feed `listApps` / `getApp` `runtime` and are omitted from the catalog. Other queries reject `appId`. Other windows are not available for these queries.
 //
-// `endpoints_request_volume` is the endpoints-list counterpart: 96 quarter-hour request counts per endpoint over `window=24h` (`step_s` 900, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
+// `endpoints_request_volume` is the endpoints-list counterpart: 288 five-minute request counts per endpoint over `window=24h` (`step_s` 300, unit `requests`). It requires the public app id. Repeat `endpointId` once per id on the current `listEndpoints` page to pad idle endpoints with all-null series, in request order. Buckets that started before that endpoint row's `createdAt` are null, so a removed-then-readded path does not inherit the previous row's traffic.
 //
 // The same app + `endpointId` pad and `createdAt` clip apply to the list-scoped `endpoints_request_rate`, `endpoints_latency_p95`, `endpoints_latency_p99`, `endpoints_error_volume` and `endpoints_request_count` queries (`window=1h` only, 5-minute step). Those feed `listEndpoints` / `getEndpoint` `runtime` and are omitted from the catalog. Other queries reject `endpointId`. Other windows are not available for these queries.
 //
@@ -21035,7 +25636,7 @@ func (c *ClientWithResponses) ListInsightsQueriesWithResponse(ctx context.Contex
 //
 // `gpu_utilisation`, `gpu_power_usage`, `gpu_power_utilisation`, `gpu_temperature` and `gpu_memory_used` require the public app id and accept `worker` (`Worker.id`, the Kubernetes pod UID), so the Metrics tab can chart an app and a worker page can chart one live worker. Other cataloged queries reject `worker`. `gpu_count` stays app-scoped.
 //
-// Three queries serve one app's overview, all over `window=24h` at `step_s` 900 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
+// Three queries serve one app's overview, all over `window=24h` at `step_s` 300 and all requiring the public app id: `app_traffic_24h` returns `requests`, `client_errors` (4xx) and `server_errors` (5xx) as request counts. `app_worker_seconds_24h` returns `startup`, `execution` and `idle` as worker-seconds, whose three values in a bucket sum to that bucket's worker time, and `app_cold_starts_24h` returns `cold_starts` as a count. They report counts and totals rather than rates or ratios, so a per-minute figure is a bucket value divided by `step_s / 60` and a 24h ratio is one summed axis over another, summing first and dividing once, because averaging a per-bucket ratio across the axis does not give the 24h ratio. These queries are absent from `listInsightsQueries`: they back the overview rather than the Metrics tab. Other windows are not available for them.
 //
 // `environment` selects the copy the public app id names. A query expanded by app returns only apps live in that environment. A query that names no app and expands by nothing reports the whole organization, every environment included.
 //
@@ -21227,7 +25828,7 @@ func (c *ClientWithResponses) ListSecretsWithResponse(ctx context.Context, param
 
 // CreateSecretWithBodyWithResponse Create a secret
 //
-// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -21242,7 +25843,7 @@ func (c *ClientWithResponses) CreateSecretWithBodyWithResponse(ctx context.Conte
 
 // CreateSecretWithResponse Create a secret
 //
-// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
+// Creates a secret in the environment named by `environment`, `production` when omitted. A secret of the same name in another environment is a different secret. To copy one into another environment, use `POST /v1/secrets/{secretName}/copy`. Returns `409` if the name is already in use in the environment, including when a secret of that name is `pending_destroy`. A live secret's `detail` is "a secret with this name already exists in the environment". A name held by a deleted secret awaiting cleanup uses `detail` "this name is reserved by a deleted secret that is still awaiting cleanup". List only shows active secrets, so a name can appear free while create still conflicts for as long as that row remains. A `pending_destroy` row is removed, and its name released, by a background sweep once no running worker can still hold the value. There is no deadline on that wait, so a continuously busy app can hold a name for as long as it runs. Recreate-while-deleting may later reuse the pending row with the new value (same name, new ciphertext). An organization whose serverless tenancy is revoked, or has no tenancy receipt at all, returns `403 Forbidden`: the per-organization CryptoKey that seals the value is only minted when the tenancy is active. An organization whose tenancy is still being provisioned returns `503 Service Unavailable` instead. That state is retryable, not a revocation, and clears once provisioning finishes.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -21469,6 +26070,414 @@ func (c *ClientWithResponses) GetUsageSummaryWithResponse(ctx context.Context, p
 		return nil, err
 	}
 	return ParseGetUsageSummaryResponse(rsp)
+}
+
+// ListVolumesWithResponse List Volumes
+//
+// Returns a page of the organization's live Volumes in one environment, `production` unless `environment` names another, newest first. A Volume being deleted or deleted is not listed. A `cursor` is valid only for the `environment` it was issued under.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/volumes (the `ListVolumes` operationId).
+func (c *ClientWithResponses) ListVolumesWithResponse(ctx context.Context, params *ListVolumesParams, reqEditors ...RequestEditorFn) (*ListVolumesResponse, error) {
+	rsp, err := c.ListVolumes(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVolumesResponse(rsp)
+}
+
+// CreateVolumeWithBodyWithResponse Create a Volume
+//
+// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+func (c *ClientWithResponses) CreateVolumeWithBodyWithResponse(ctx context.Context, params *CreateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateVolumeResponse, error) {
+	rsp, err := c.CreateVolumeWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateVolumeResponse(rsp)
+}
+
+// CreateVolumeWithResponse Create a Volume
+//
+// Creates an empty Volume in the environment `environment` names, `production` by default. The name is unique among the environment's live Volumes and the deleted ones whose logical deletion has not yet committed, and it never changes. A taken name returns `409`. A new Volume has no files: fill it with an upload session.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes (the `CreateVolume` operationId).
+func (c *ClientWithResponses) CreateVolumeWithResponse(ctx context.Context, params *CreateVolumeParams, body CreateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVolumeResponse, error) {
+	rsp, err := c.CreateVolume(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateVolumeResponse(rsp)
+}
+
+// GetVolumeKeyPairWithResponse Read the organization's Volumes key pair
+//
+// Returns the organization's newest Volumes key pair as a statement signed by the platform signing key. A client uploading to a Volume reads it once per upload session, verifies it, and seals each new file's data key to its public key locally, so no file key passes through this API in usable form. The key pair belongs to the organization, not to an environment, so this route takes no `environment`.
+//
+// Verify `signature` with the platform verification keys built into the client's release, never with keys read through this API, and take every value you use from the verified `statement`. Refuse a statement that names an organization other than the one the client is configured with, an unknown label or KEM identifier, a passed not-after, or a sequence number lower than the highest the client has accepted for that organization.
+//
+// Turning the organization's beta access on creates its first key pair; until it exists this route answers `409` typed `volume-key-pair-not-ready`, which a client retries with backoff. After a rotation it returns the newest key pair, and a session opened with the previous one still works within that key pair's not-after.
+//
+// Draft: the statement's byte encoding and the pinned KEM identifier are fixed with the encryption format.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/volumes-key-pair (the `GetVolumeKeyPair` operationId).
+func (c *ClientWithResponses) GetVolumeKeyPairWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVolumeKeyPairResponse, error) {
+	rsp, err := c.GetVolumeKeyPair(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVolumeKeyPairResponse(rsp)
+}
+
+// GetVolumeSettingsWithResponse Read Shared Volume access and limits
+//
+// Returns effective access and limits for the authenticated organization. The two are read separately, so a change made while the request runs can show access and limits that never held together. This setting does not indicate whether Shared Volume operations are deployed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/volumes-settings (the `GetVolumeSettings` operationId).
+func (c *ClientWithResponses) GetVolumeSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetVolumeSettingsResponse, error) {
+	rsp, err := c.GetVolumeSettings(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVolumeSettingsResponse(rsp)
+}
+
+// DeleteVolumeWithResponse Delete a Volume
+//
+// Logically deletes the whole Volume: its latest files and every upload session still open on it. Individual files cannot be deleted. Requires the immutable `volumeId` returned by a read, so a retry cannot delete a replacement Volume with the same name. Retrying an already-deleted matching identity returns 204. Currently a delete succeeds only for a Volume that has never had files published and that no app references; any other delete that passes the conflicts below answers `501` for now.
+//
+// A delete returns `409` typed `volume-in-use` while a current app version, a deploy in progress or a running worker uses it. When only older app versions use it, the delete returns `409` typed `volume-rollback-confirmation-required` unless `confirmRollbackLoss=true`. Confirmed deletion currently returns 501; when implemented, those app versions lose their rollback. Both conflicts carry a plain `detail`; `GET /v1/volumes/{volumeName}/references` lists the uses. Reading the references does not authorize the delete: the delete is checked again against concurrent mounts when it commits.
+//
+// A successful empty delete commits its deleted identity before it answers. It is then excluded from listings, and new mounts and uploads of it are refused. Deletion does not promise immediate erasure: encrypted objects may be retained and reclaimed later, and content another Volume's latest files or an open upload session still reference stays usable. The name is reserved until the logical deletion commits, not until physical reclamation. A new Volume with the same name gets a new id and never satisfies a mount of the old one. Organization purge is a separate operation. Deleting an app never deletes its Volumes.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/volumes/{volumeName} (the `DeleteVolume` operationId).
+func (c *ClientWithResponses) DeleteVolumeWithResponse(ctx context.Context, volumeName VolumeName, params *DeleteVolumeParams, reqEditors ...RequestEditorFn) (*DeleteVolumeResponse, error) {
+	rsp, err := c.DeleteVolume(ctx, volumeName, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteVolumeResponse(rsp)
+}
+
+// GetVolumeWithResponse Get a Volume
+//
+// Returns a live Volume of the named environment. An unknown Volume and one being deleted or deleted both return `404`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/volumes/{volumeName} (the `GetVolume` operationId).
+func (c *ClientWithResponses) GetVolumeWithResponse(ctx context.Context, volumeName VolumeName, params *GetVolumeParams, reqEditors ...RequestEditorFn) (*GetVolumeResponse, error) {
+	rsp, err := c.GetVolume(ctx, volumeName, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVolumeResponse(rsp)
+}
+
+// UpdateVolumeWithBodyWithResponse Update a Volume's description
+//
+// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+func (c *ClientWithResponses) UpdateVolumeWithBodyWithResponse(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVolumeResponse, error) {
+	rsp, err := c.UpdateVolumeWithBody(ctx, volumeName, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateVolumeResponse(rsp)
+}
+
+// UpdateVolumeWithResponse Update a Volume's description
+//
+// Changes the description, the only mutable field. A null description clears it. The name and the environment never change.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/volumes/{volumeName} (the `UpdateVolume` operationId).
+func (c *ClientWithResponses) UpdateVolumeWithResponse(ctx context.Context, volumeName VolumeName, params *UpdateVolumeParams, body UpdateVolumeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVolumeResponse, error) {
+	rsp, err := c.UpdateVolume(ctx, volumeName, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateVolumeResponse(rsp)
+}
+
+// ListVolumeFilesWithResponse List a Volume's latest files
+//
+// Returns a page of the Volume's latest files, in byte-wise lexicographic order by path (UTF-8), read from its latest manifest. The API reads file metadata only and never decrypts file contents; there is no download route. File paths never appear in a query parameter, so this route has no path filter.
+//
+// Each page names the `manifestSha256` it was read from. An upload that completes between two pages changes the latest files, and a cursor issued before it answers `400`: the client starts again from the first page, whose different `manifestSha256` names the new file list. A Volume with no files yet answers an empty page without `manifestSha256`.
+//
+// The file list is served only after its digest and the organization and Volume it names are verified. A latest file list that is missing or fails that check answers `500`, and storage that fails or cannot be read in time answers `503`; neither falls back to another list. Until manifest storage is deployed, a Volume with files answers `501`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/volumes/{volumeName}/files (the `ListVolumeFiles` operationId).
+func (c *ClientWithResponses) ListVolumeFilesWithResponse(ctx context.Context, volumeName VolumeName, params *ListVolumeFilesParams, reqEditors ...RequestEditorFn) (*ListVolumeFilesResponse, error) {
+	rsp, err := c.ListVolumeFiles(ctx, volumeName, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVolumeFilesResponse(rsp)
+}
+
+// GetVolumeReferencesWithResponse List what uses a Volume
+//
+// Lists the uses that would block or be affected by deleting the Volume: current app versions, deploys in progress and running workers, which block a delete, and older app versions, which lose their rollback. Only apps in the Volume's own environment mount it, so every use is in that environment. A build reservation without a version number protects mounts on the app's non-deleted versions until its target version is recorded. The console and the CLI read this route; a delete conflict carries only a plain `detail`. Uses are paged, with blocking uses before rollback targets, 20 uses per page by default and up to 100. Follow `nextCursor` for a complete inventory; deletion checks all uses independently. A cursor is valid only for the organization, environment and Volume that issued it. The answer is a snapshot and does not authorize a later delete.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/volumes/{volumeName}/references (the `GetVolumeReferences` operationId).
+func (c *ClientWithResponses) GetVolumeReferencesWithResponse(ctx context.Context, volumeName VolumeName, params *GetVolumeReferencesParams, reqEditors ...RequestEditorFn) (*GetVolumeReferencesResponse, error) {
+	rsp, err := c.GetVolumeReferences(ctx, volumeName, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVolumeReferencesResponse(rsp)
+}
+
+// CreateVolumeUploadWithBodyWithResponse Open an upload session
+//
+// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+//
+// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+//
+// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+//
+// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+//
+// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+//
+// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+//
+// Draft: the upload schemas are not frozen.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+func (c *ClientWithResponses) CreateVolumeUploadWithBodyWithResponse(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateVolumeUploadResponse, error) {
+	rsp, err := c.CreateVolumeUploadWithBody(ctx, volumeName, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateVolumeUploadResponse(rsp)
+}
+
+// CreateVolumeUploadWithResponse Open an upload session
+//
+// Opens an upload session on the Volume. The session does not pick the files it builds on: completion applies it to the Volume's latest files at that moment.
+//
+// A session has one fixed deadline, `expiresAt`: its creation plus `uploadSessionTtlSeconds` (24 hours by default). Every file and part token in it shares that deadline, and neither activity nor token renewal extends it; there is no separate file deadline or inactivity timer. Declarations, part-token issuance and renewal, file completion and publication are refused after it. A session completed before its deadline keeps answering a retried completion with its original result afterwards. An expired or aborted session publishes nothing, and its multipart uploads are aborted. Its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes` at once. Content it already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored.
+//
+// File bodies never pass through this API. The client encrypts each new file and sends its ciphertext parts to the Runware upload endpoint, at the upload targets this API returns, each part authorized by a short-lived part token. The client never addresses the storage provider. These routes declare files, issue and renew part tokens, verify files and publish.
+//
+// The client opens the session with the organization's Volumes key pair. It reads and verifies the signed statement from `GET /v1/volumes-key-pair`, makes one X-Wing encapsulation to its public key, and sends the encapsulation with the key pair id. This API checks once, here, that the key pair belongs to the organization, is within its not-after and is not revoked, and stores both with the session, so the session's key pair is fixed for its life. It need not be the newest key pair, so a statement read just before a rotation still opens a session. A key pair the organization does not have returns `409` typed `volume-key-pair-unknown`, and one past its not-after or revoked `volume-key-pair-expired`: read the statement again and open a new session. This API cannot open the encapsulation. With the session id this answers, the client derives the session sealing key that seals each declared file's data key. If this answer is lost, open a new session; the unanswered one expires at its deadline.
+//
+// Files must not change during an upload: a client that finds a declared file changed aborts the whole session, and rerunning the upload opens a new one.
+//
+// An organization whose Shared Volume beta access is off, including one whose access was turned off, opens no new session: this returns `404` as for any organization without beta access (see `VolumeNotFound`). Sessions already open then stop as `VolumeUpload` describes.
+//
+// Draft: the upload schemas are not frozen.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads (the `CreateVolumeUpload` operationId).
+func (c *ClientWithResponses) CreateVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, params *CreateVolumeUploadParams, body CreateVolumeUploadJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVolumeUploadResponse, error) {
+	rsp, err := c.CreateVolumeUpload(ctx, volumeName, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateVolumeUploadResponse(rsp)
+}
+
+// AbortVolumeUploadWithResponse Abort an upload session
+//
+// Aborts an open session: it publishes nothing, its multipart uploads are aborted and its admission reservations are released, so declared files not yet uploaded stop counting toward `maxStoredBytes`. Content the session already uploaded (verified and failed files) keeps counting toward `maxStoredBytes` while it remains stored. A client aborts the whole session when a declared file changes during the upload, or when it loses a declared file's data key or the session sealing key; rerunning the upload opens a new session. Abort deletes the session's unpublished sealed keys but keeps its attempt ids, so a replayed attempt is still refused. Content already verified and referenced by a Volume's latest files, or by another session, is untouched. A part token issued before the abort cannot write once its multipart upload is aborted, and never authorizes publication. Aborting a session already aborted returns `204`; one already completed or expired returns `409`. Draft: this part of the upload contract may still change before it is final.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/volumes/{volumeName}/uploads/{uploadId} (the `AbortVolumeUpload` operationId).
+func (c *ClientWithResponses) AbortVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *AbortVolumeUploadParams, reqEditors ...RequestEditorFn) (*AbortVolumeUploadResponse, error) {
+	rsp, err := c.AbortVolumeUpload(ctx, volumeName, uploadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAbortVolumeUploadResponse(rsp)
+}
+
+// GetVolumeUploadWithResponse Get an upload session
+//
+// Returns the session and a page of its declared files with their state and approved layout, ordered by path, so a resumed client can find which files still need parts or completion. It returns no key material, sealed keys included, and no part token: the client keeps each file's sealed key in its own resume state, and renews part tokens through `POST .../files/{fileId}/parts`. Draft: this part of the upload contract may still change before it is final.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/volumes/{volumeName}/uploads/{uploadId} (the `GetVolumeUpload` operationId).
+func (c *ClientWithResponses) GetVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *GetVolumeUploadParams, reqEditors ...RequestEditorFn) (*GetVolumeUploadResponse, error) {
+	rsp, err := c.GetVolumeUpload(ctx, volumeName, uploadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVolumeUploadResponse(rsp)
+}
+
+// CompleteVolumeUploadWithResponse Apply the upload to the latest files
+//
+// Completes the session. Every declared file must be `verified` or `reused`; otherwise nothing is applied and the answer is `409` typed `volume-upload-incomplete`, and `GET` on the session names the files still pending or failed. A `failed` file cannot be declared again, so its session can only be aborted. A resulting file set over `maxFilesPerVolume` returns `409` typed `volume-limit-exceeded`, and so does a completion that would grow the Volume past `maxMountedBytesPerAppVersion` for any current app version mounting it, with `limit` naming that limit. A session path that is a file on one side and a directory on the other against the latest files at that moment, which another session may have changed since the declaration, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither replaces the other. Nothing is applied and the session stays open until its deadline; abort it, and upload its other files in a new session.
+//
+// Uploads are additive. Completion takes the Volume's latest files at that moment, adds the session's new paths, replaces the paths it declared again and keeps every other file. No upload removes a file: to start from an empty file set, create a new Volume. Two sessions that overlap in time both keep their files, and on a path both declared the one that completes last wins. Moving the Volume to the new latest files is a compare-and-swap the server retries, so concurrent completion is not a client error. Workers that start afterwards mount the new files; running workers keep theirs until they stop. A rollback of an app restores its image and settings, not earlier Volume files: to undo an upload, upload the previous files again.
+//
+// A completion that changes nothing answers `changed: false` and leaves the latest files as they are, writing no manifest and recording no content reference or usage event. Changing only a file's mode is a change. Retrying a completed session returns its original answer without applying it again, so a client that lost the answer can retry safely. Turning beta access off, organization disablement and purge all stop completion, and a part token never authorizes it. With beta access off this returns `404` (see `VolumeNotFound`) and publishes nothing; the session lapses at its `expiresAt` as `VolumeUpload` describes. Draft: this part of the upload contract may still change before it is final.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/complete (the `CompleteVolumeUpload` operationId).
+func (c *ClientWithResponses) CompleteVolumeUploadWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *CompleteVolumeUploadParams, reqEditors ...RequestEditorFn) (*CompleteVolumeUploadResponse, error) {
+	rsp, err := c.CompleteVolumeUpload(ctx, volumeName, uploadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteVolumeUploadResponse(rsp)
+}
+
+// DeclareVolumeUploadFilesWithBodyWithResponse Declare files
+//
+// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+//
+// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+//
+// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+//
+// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+//
+// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+//
+// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+//
+// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+//
+// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+//
+// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+func (c *ClientWithResponses) DeclareVolumeUploadFilesWithBodyWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeclareVolumeUploadFilesResponse, error) {
+	rsp, err := c.DeclareVolumeUploadFilesWithBody(ctx, volumeName, uploadId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeclareVolumeUploadFilesResponse(rsp)
+}
+
+// DeclareVolumeUploadFilesWithResponse Declare files
+//
+// Declares a batch of files the session adds or replaces, before any file content is transferred. Each declaration states the path, mode, plaintext size and plaintext SHA-256, and carries the file's data key sealed by the client and its attempt id.
+//
+// The client generates a fresh random data key and attempt id for each declared file, seals the key under the session sealing key, and keeps both in its resume state before declaring the file. A declaration never names a key pair: every file of a session uses the key pair the session was opened with. This API stores the sealed key and attempt id of each file it answers `uploading`; it cannot open the key and does not check it, so a key that does not open is caught when a worker prepares the file. It discards the sealed key and attempt id of a `reused` file. No answer carries a key.
+//
+// A file whose SHA-256 and size match content already verified in this organization is answered `reused` with a blob reference: nothing is sent, and the client forgets that file's data key. The session records its reference to that content in the same transaction, so cleanup cannot remove it before the session completes, aborts or expires. Reuse never crosses organizations. Content that failed verification when a worker prepared it (its SHA-256, size or authentication did not match) is never offered for reuse again: the next declaration of that SHA-256 and size is answered `uploading` and sends the file again as new content, and declaring it again at a path of an affected Volume replaces the bad content there.
+//
+// Any other file is answered `uploading` with the approved segment-aligned part layout and a first batch of upload targets, each with its part token. The client seals each part under the file's data key and the part's own salt, sends it to its target, and keeps the acknowledgement the upload endpoint returns for file completion. Each upload attempt gets a fresh storage object.
+//
+// Files must not change during an upload. The client hashes the plaintext it actually encrypts; if a declared file's digest differs from its declaration, the client aborts the whole session with `DELETE` and nothing from it is published. A changed file is never declared again in the same session: rerunning the upload opens a new one.
+//
+// Limits are checked here, before transfer: a file over `maxFileBytes` (250 GiB by default) and new content that would take stored bytes past `maxStoredBytes` return `409` typed `volume-limit-exceeded`, whose `limit` names the limit. Reused content adds no stored bytes. A path that is a file on one side and a directory on the other, against the Volume's latest files or a path declared earlier in this session, returns `409` typed `volume-upload-path-conflict`: no upload removes a file, so neither can replace the other. Completion checks this again against the latest files at that moment. The whole batch is admitted or refused.
+//
+// Retrying is safe, and a path is declared at most once per session. A declaration equal to the recorded one (same path, mode, size, SHA-256, sealed key and attempt id) returns the original answer: an `uploading` file with the same layout and fresh upload targets, or a `verified` file unchanged. A `reused` file, whose sealed key and attempt id were discarded, is answered the same when path, mode, size and SHA-256 are equal. A declaration that reuses an attempt id the organization has recorded, in this session or another, with any field changed returns `409` typed `volume-upload-attempt-reused`; abort and expiry keep a session's attempt ids, so a replayed attempt is refused after them too. Any other declaration of a path already declared in the session, whatever its state, returns `409` typed `volume-upload-path-declared`. A `failed` file is therefore not retried within its session: abort the session and upload again in a new one.
+//
+// A size-0 file is declared like any other, with the SHA-256 of the empty string, a sealed key and an attempt id. It is encrypted as one part: its 16-byte salt and exactly one sealed segment that holds only its 16-byte GCM tag, so its layout is `partCount` 1 and `ciphertextBytes` 32. The first one in an organization is answered `uploading` with that layout and sends its one part; every later one is answered `reused`.
+//
+// Draft: the upload target and part-token formats, and the sealed key's byte layout, are not frozen.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files (the `DeclareVolumeUploadFiles` operationId).
+func (c *ClientWithResponses) DeclareVolumeUploadFilesWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, params *DeclareVolumeUploadFilesParams, body DeclareVolumeUploadFilesJSONRequestBody, reqEditors ...RequestEditorFn) (*DeclareVolumeUploadFilesResponse, error) {
+	rsp, err := c.DeclareVolumeUploadFiles(ctx, volumeName, uploadId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeclareVolumeUploadFilesResponse(rsp)
+}
+
+// CompleteVolumeUploadFileWithBodyWithResponse Complete a file
+//
+// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+//
+// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+func (c *ClientWithResponses) CompleteVolumeUploadFileWithBodyWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteVolumeUploadFileResponse, error) {
+	rsp, err := c.CompleteVolumeUploadFileWithBody(ctx, volumeName, uploadId, fileId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteVolumeUploadFileResponse(rsp)
+}
+
+// CompleteVolumeUploadFileWithResponse Complete a file
+//
+// Submits the CRC64/NVME the client computed over the whole ciphertext, authentication tags included, and every part of the layout with the acknowledgement the upload endpoint returned for it. Use only acknowledgements the upload endpoint returned to the client; a resumed client keeps them in its resume state. This API maps the acknowledgements to the stored parts, completes the object without overwriting an existing one and requires the full-object CRC64/NVME storage computed to equal the submitted one; only a match makes the file `verified`, and only a verified file can be published. The CRC is a transfer check: the plaintext SHA-256 is verified when a worker prepares the file.
+//
+// Only an `uploading` file is completed, and only a `verified` one is returned unchanged, so a client that lost the answer can retry. A `reused`, `failed` or `aborted` file returns `409` typed `volume-upload-file-not-uploading` and nothing changes: a retry after `volume-upload-crc-mismatch` gets this answer, never a verified file. A file of a session that is no longer open, including an `expired` one, returns `409` typed `volume-upload-not-open`. A verification failure marks the file `failed` with a typed `409` and publishes nothing: `volume-upload-crc-missing` when storage computed no checksum, `volume-upload-crc-mismatch` when it differs from the submitted one, and `volume-upload-completion-unrecoverable` when an earlier completion whose answer was lost cannot be proven verified. A completed object is never published on its existence alone. A path is declared once per session, so a `failed` file blocks the session's completion: abort the session and upload again in a new one, with a fresh data key and attempt id. A part list that leaves out a part of the layout, or carries an acknowledgement the upload endpoint did not issue for that part of this file, returns `409` typed `volume-upload-parts-invalid`: the file stays `uploading`, so send those parts again before the session's `expiresAt` and complete again. With the organization's beta access off this returns `404` (see `VolumeNotFound`) and no file is verified, whatever parts its earlier part tokens wrote. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/complete (the `CompleteVolumeUploadFile` operationId).
+func (c *ClientWithResponses) CompleteVolumeUploadFileWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *CompleteVolumeUploadFileParams, body CompleteVolumeUploadFileJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteVolumeUploadFileResponse, error) {
+	rsp, err := c.CompleteVolumeUploadFile(ctx, volumeName, uploadId, fileId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteVolumeUploadFileResponse(rsp)
+}
+
+// RenewVolumeUploadFilePartsWithBodyWithResponse Renew part tokens
+//
+// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+func (c *ClientWithResponses) RenewVolumeUploadFilePartsWithBodyWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenewVolumeUploadFilePartsResponse, error) {
+	rsp, err := c.RenewVolumeUploadFilePartsWithBody(ctx, volumeName, uploadId, fileId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenewVolumeUploadFilePartsResponse(rsp)
+}
+
+// RenewVolumeUploadFilePartsWithResponse Renew part tokens
+//
+// Issues upload targets with fresh part tokens for the named parts of an `uploading` file in an open session, so a client gets the parts the declaration's first batch left out and replaces expired tokens. Each renewal checks authorization, beta access and quotas again, and whether the organization is disabled or being deleted. It never returns key material, never changes the approved layout and never extends the session: no token expires later than the session's `expiresAt`. Turning beta access off, disabling the organization or deleting it all stop renewal, and the session's deadline does too. With beta access off this returns `404`, the answer an organization without beta access gets on every Volume route (see `VolumeNotFound`); part tokens issued before keep their own expiry and are never renewed. A file that is not `uploading` returns `409` typed `volume-upload-file-not-uploading`. A part number beyond the layout's `partCount` returns `422`. Draft: this part of the upload contract may still change before it is final.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/volumes/{volumeName}/uploads/{uploadId}/files/{fileId}/parts (the `RenewVolumeUploadFileParts` operationId).
+func (c *ClientWithResponses) RenewVolumeUploadFilePartsWithResponse(ctx context.Context, volumeName VolumeName, uploadId VolumeUploadId, fileId VolumeUploadFileId, params *RenewVolumeUploadFilePartsParams, body RenewVolumeUploadFilePartsJSONRequestBody, reqEditors ...RequestEditorFn) (*RenewVolumeUploadFilePartsResponse, error) {
+	rsp, err := c.RenewVolumeUploadFileParts(ctx, volumeName, uploadId, fileId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenewVolumeUploadFilePartsResponse(rsp)
 }
 
 // ParseGetAppSummaryResponse parses an HTTP response from a GetAppSummaryWithResponse call
@@ -27504,6 +32513,1309 @@ func ParseGetUsageSummaryResponse(rsp *http.Response) (*GetUsageSummaryResponse,
 			return nil, err
 		}
 		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVolumesResponse parses an HTTP response from a ListVolumesWithResponse call
+func ParseListVolumesResponse(rsp *http.Response) (*ListVolumesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVolumesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateVolumeResponse parses an HTTP response from a CreateVolumeWithResponse call
+func ParseCreateVolumeResponse(rsp *http.Response) (*CreateVolumeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateVolumeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Volume
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeNameConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVolumeKeyPairResponse parses an HTTP response from a GetVolumeKeyPairWithResponse call
+func ParseGetVolumeKeyPairResponse(rsp *http.Response) (*GetVolumeKeyPairResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVolumeKeyPairResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeKeyPairStatement
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeKeyPairNotReady
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVolumeSettingsResponse parses an HTTP response from a GetVolumeSettingsWithResponse call
+func ParseGetVolumeSettingsResponse(rsp *http.Response) (*GetVolumeSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVolumeSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetVolumeSettingsResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteVolumeResponse parses an HTTP response from a DeleteVolumeWithResponse call
+func ParseDeleteVolumeResponse(rsp *http.Response) (*DeleteVolumeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteVolumeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeDeleteConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVolumeResponse parses an HTTP response from a GetVolumeWithResponse call
+func ParseGetVolumeResponse(rsp *http.Response) (*GetVolumeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVolumeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Volume
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateVolumeResponse parses an HTTP response from a UpdateVolumeWithResponse call
+func ParseUpdateVolumeResponse(rsp *http.Response) (*UpdateVolumeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateVolumeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Volume
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVolumeFilesResponse parses an HTTP response from a ListVolumeFilesWithResponse call
+func ParseListVolumeFilesResponse(rsp *http.Response) (*ListVolumeFilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVolumeFilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeFilePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVolumeReferencesResponse parses an HTTP response from a GetVolumeReferencesWithResponse call
+func ParseGetVolumeReferencesResponse(rsp *http.Response) (*GetVolumeReferencesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVolumeReferencesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeReferences
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateVolumeUploadResponse parses an HTTP response from a CreateVolumeUploadWithResponse call
+func ParseCreateVolumeUploadResponse(rsp *http.Response) (*CreateVolumeUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateVolumeUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest VolumeUpload
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeUploadOpenConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAbortVolumeUploadResponse parses an HTTP response from a AbortVolumeUploadWithResponse call
+func ParseAbortVolumeUploadResponse(rsp *http.Response) (*AbortVolumeUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AbortVolumeUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeUploadNotOpen
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVolumeUploadResponse parses an HTTP response from a GetVolumeUploadWithResponse call
+func ParseGetVolumeUploadResponse(rsp *http.Response) (*GetVolumeUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVolumeUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeUploadDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompleteVolumeUploadResponse parses an HTTP response from a CompleteVolumeUploadWithResponse call
+func ParseCompleteVolumeUploadResponse(rsp *http.Response) (*CompleteVolumeUploadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompleteVolumeUploadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeUploadResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeUploadPublishConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeclareVolumeUploadFilesResponse parses an HTTP response from a DeclareVolumeUploadFilesWithResponse call
+func ParseDeclareVolumeUploadFilesResponse(rsp *http.Response) (*DeclareVolumeUploadFilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeclareVolumeUploadFilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeFileDeclarationResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeUploadDeclareConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest VolumeFileValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompleteVolumeUploadFileResponse parses an HTTP response from a CompleteVolumeUploadFileWithResponse call
+func ParseCompleteVolumeUploadFileResponse(rsp *http.Response) (*CompleteVolumeUploadFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompleteVolumeUploadFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeUploadFile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeUploadFileVerificationConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRenewVolumeUploadFilePartsResponse parses an HTTP response from a RenewVolumeUploadFilePartsWithResponse call
+func ParseRenewVolumeUploadFilePartsResponse(rsp *http.Response) (*RenewVolumeUploadFilePartsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RenewVolumeUploadFilePartsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VolumeUploadTargets
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest VolumeNotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest VolumeUploadRenewConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest VolumeNotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON501 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest ServiceUnavailable

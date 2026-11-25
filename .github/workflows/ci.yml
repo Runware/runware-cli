@@ -31,10 +31,22 @@ jobs:
       - name: Test
         run: go test -race -timeout 2m ./...
 
+      # Only a local development build compiles the volumesdevkeys code, so
+      # the release-build test above cannot see it break. Keep in step with
+      # make test and make lint.
+      - name: Test the development build
+        run: go test -race -timeout 2m -tags volumesdevkeys ./internal/volumes/keypair/
+
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13
+
+      - name: Lint the development build
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13
+          args: --build-tags volumesdevkeys ./internal/volumes/keypair/...
 
   docs:
     runs-on: ubuntu-latest

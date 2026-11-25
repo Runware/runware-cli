@@ -20,10 +20,7 @@ var unpublishedMarkers = []string{
 }
 
 // unpublishedPathPrefixes are API paths that are not published yet.
-var unpublishedPathPrefixes = []string{
-	"/v1/volumes",
-	"/v1/volume-",
-}
+var unpublishedPathPrefixes = []string{}
 
 type specPaths struct {
 	Paths map[string]yaml.Node `yaml:"paths"`

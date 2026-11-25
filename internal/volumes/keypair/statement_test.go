@@ -503,6 +503,7 @@ func TestVerifyChecksTheKeyOfTheStatementsVersion(t *testing.T) {
 // TestUnknownPlatformRefusesEverything: a platform this release holds no key for, shipped or
 // not, refuses even a statement that is validly signed.
 func TestUnknownPlatformRefusesEverything(t *testing.T) {
+	t.Setenv(StatementKeyEnv, "")
 	v := loadVectors(t)
 	for _, base := range []string{
 		config.DefaultServerlessBaseURL,
@@ -535,6 +536,7 @@ func TestNewVerifierNeedsAConfigDirectory(t *testing.T) {
 }
 
 func TestNewVerifierAcceptsAStatementSignedByAPlatformKey(t *testing.T) {
+	t.Setenv(StatementKeyEnv, "")
 	original := verificationKeys
 	t.Cleanup(func() { verificationKeys = original })
 	signer := newReleaseKey(t)

@@ -28,6 +28,11 @@ const (
 	maxUploadBackoff    = 30 * time.Second
 	baseBackoff         = 500 * time.Millisecond
 	abortTimeout        = 15 * time.Second
+	// maxCompletionRetryTime bounds the retries of a file or session
+	// completion: no attempt starts once it has passed since the first one
+	// started. Each attempt may take minutes, so the attempt count alone
+	// would let a stalled connection hold put for over an hour.
+	maxCompletionRetryTime = 15 * time.Minute
 )
 
 var errUploadRetriesExhausted = errors.New("the upload retry limit was reached")
@@ -230,7 +235,13 @@ func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, 
 		if cause := context.Cause(ctx); cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause)) {
 			err = cause
 		}
-		return Summary{}, r.abort(ctx, err)
+		// A fresh put is the next step unless the completion request was sent, which may have published the files.
+		rerun := errors.Is(err, errUploadRetriesExhausted) && !r.completionAttempted
+		err = r.abort(ctx, err)
+		if rerun {
+			err = fmt.Errorf("%w; run put again", err)
+		}
+		return Summary{}, err
 	}
 	if err := r.journal.remove(); err != nil {
 		r.warn("%v", err)
@@ -272,8 +283,11 @@ func (r *runner) abort(ctx context.Context, cause error) error {
 		return struct{}{}, err
 	})
 	if abortErr != nil {
-		cause = fmt.Errorf("%w (could not confirm the upload was aborted; the session may stay open until %s: %w)",
-			cause, r.expiresAt.Format(time.RFC3339), abortErr)
+		cause = &AbortFailedError{
+			Cause:     cause,
+			Abort:     abortErr,
+			ExpiresAt: r.expiresAt,
+		}
 	}
 	if r.journal != nil {
 		if err := r.journal.remove(); err != nil {
@@ -303,10 +317,7 @@ func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source
 			return Summary{}, err
 		}
 	}
-	res, err := retryUploadAPI(ctx, r.sleep, func() (UploadResult, error) {
-		r.completionAttempted = true
-		return r.api.CompleteUpload(ctx, r.ref)
-	})
+	res, err := r.completeUpload(ctx)
 	if err != nil {
 		return Summary{}, fmt.Errorf("complete the upload: %w", explain(err))
 	}
@@ -497,7 +508,7 @@ func explainDeclare(err error, batch []*fileState) error {
 	if !ok {
 		return fmt.Errorf("declare the files: %w", err)
 	}
-	cause := explain(p)
+	cause := explain(err)
 	if i, ok := pointerFile(p.Pointer); ok && i < len(batch) {
 		return fileErr(batch[i].src.Abs, cause)
 	}
@@ -508,8 +519,9 @@ func explainDeclare(err error, batch []*fileState) error {
 func explain(err error) error {
 	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugLimitExceeded && p.Limit != "" {
 		return &LimitError{
-			Limit: p.Limit,
-			Cap:   p.Cap,
+			Limit:   p.Limit,
+			Cap:     p.Cap,
+			Problem: err,
 		}
 	}
 	return err
@@ -526,12 +538,30 @@ func pointerFile(pointer string) (int, bool) {
 	return i, err == nil && i >= 0
 }
 
+// completeUpload applies the session, retrying within maxCompletionRetryTime.
+func (r *runner) completeUpload(ctx context.Context) (UploadResult, error) {
+	return retryUploadAPIWithin(ctx, r.sleep, maxCompletionRetryTime, func() (UploadResult, error) {
+		r.completionAttempted = true
+		return r.api.CompleteUpload(ctx, r.ref)
+	})
+}
+
 func retryUploadAPI[T any](ctx context.Context, sleep func(context.Context, time.Duration) error, call func() (T, error)) (T, error) {
+	return retryUploadAPIWithin(ctx, sleep, 0, call)
+}
+
+// retryUploadAPIWithin is retryUploadAPI that, when window is not zero, starts
+// no attempt once window has passed since the first one started.
+func retryUploadAPIWithin[T any](ctx context.Context, sleep func(context.Context, time.Duration) error, window time.Duration, call func() (T, error)) (T, error) {
 	var empty T
 	var lastErr error
+	start := time.Now()
 	for attempt := 1; ; attempt++ {
 		if ctx.Err() != nil {
 			return empty, errors.Join(context.Cause(ctx), lastErr)
+		}
+		if attempt > 1 && window > 0 && time.Since(start) >= window {
+			return empty, fmt.Errorf("%w: %w", errUploadRetriesExhausted, lastErr)
 		}
 		res, err := call()
 		if err == nil {

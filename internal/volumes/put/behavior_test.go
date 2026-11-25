@@ -138,6 +138,9 @@ func TestStorageFailureAbortsAfterRetries(t *testing.T) {
 	if !errors.Is(err, ErrPartStorageUnavailable) || !errors.Is(err, errUploadRetriesExhausted) {
 		t.Fatalf("error = %v, want a storage failure", err)
 	}
+	if !strings.HasSuffix(err.Error(), "; run put again") {
+		t.Errorf("error = %q, want it to end by telling the user to run put again", err)
+	}
 	if got := len(e.cloud.putLog()); got != maxUploadAttempts {
 		t.Errorf("%d tries, want %d", got, maxUploadAttempts)
 	}
@@ -403,7 +406,7 @@ func TestPutAbortsWhenACompletionIsRefused(t *testing.T) {
 
 			if tc.wantLimit != nil {
 				limit, ok := errors.AsType[*LimitError](err)
-				if !ok || *limit != *tc.wantLimit || !strings.Contains(err.Error(), "10000") {
+				if !ok || limit.Limit != tc.wantLimit.Limit || limit.Cap != tc.wantLimit.Cap || !strings.Contains(err.Error(), "10000") {
 					t.Errorf("error = %v, want the limit %+v and its cap in the message", err, *tc.wantLimit)
 				}
 			} else {
@@ -699,7 +702,7 @@ func TestRenewalChecksTheAnswer(t *testing.T) {
 			_, err := r.target(t.Context(), f, 1, "")
 
 			if tc.wantLimit != nil {
-				if limit, ok := errors.AsType[*LimitError](err); !ok || *limit != *tc.wantLimit {
+				if limit, ok := errors.AsType[*LimitError](err); !ok || limit.Limit != tc.wantLimit.Limit || limit.Cap != tc.wantLimit.Cap {
 					t.Errorf("error = %v, want the limit %+v", err, *tc.wantLimit)
 				}
 				return

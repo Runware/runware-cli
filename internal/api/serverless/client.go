@@ -18,10 +18,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/runware/runware-cli/internal/agents"
 	"github.com/runware/runware-cli/internal/api/serverless/gen"
 	"github.com/runware/runware-cli/internal/api/transport"
-	"github.com/runware/runware-cli/internal/buildinfo"
 )
 
 // defaultTimeout bounds a single REST request.
@@ -276,11 +274,7 @@ func newClient(apiKey, baseURL string, logger *slog.Logger, httpClient gen.HttpR
 }
 
 func newGeneratedClient(apiKey, baseURL string, httpClient gen.HttpRequestDoer) *gen.ClientWithResponses {
-	ua := buildinfo.UserAgent()
-	if agent := agents.Detect(); agent != "" {
-		ua += " agent/" + string(agent)
-	}
-
+	ua := userAgent()
 	inner, err := gen.NewClientWithResponses(
 		baseURL,
 		gen.WithHTTPClient(httpClient),
@@ -308,11 +302,24 @@ func (c *Client) createInner() *gen.ClientWithResponses {
 // when its Timeout is shorter than minTimeout. A zero Timeout (no deadline) is left
 // unchanged.
 func (c *Client) innerWithMinTimeout(minTimeout time.Duration) *gen.ClientWithResponses {
-	hc, ok := c.doer.(*http.Client)
-	if !ok || hc.Timeout == 0 || hc.Timeout >= minTimeout {
+	doer := doerWithMinTimeout(c.doer, minTimeout)
+	if doer == c.doer {
 		return c.inner
 	}
-	return c.innerWithTimeout(minTimeout)
+	return newGeneratedClient(c.apiKey, c.baseURL, doer)
+}
+
+// doerWithMinTimeout returns doer, or a clone of it with minTimeout when it is
+// an *http.Client whose Timeout is shorter. A zero Timeout (no deadline) is
+// left unchanged.
+func doerWithMinTimeout(doer gen.HttpRequestDoer, minTimeout time.Duration) gen.HttpRequestDoer {
+	hc, ok := doer.(*http.Client)
+	if !ok || hc.Timeout == 0 || hc.Timeout >= minTimeout {
+		return doer
+	}
+	cloned := *hc
+	cloned.Timeout = minTimeout
+	return &cloned
 }
 
 // innerWithTimeout returns a generated client over a clone of the HTTP client
