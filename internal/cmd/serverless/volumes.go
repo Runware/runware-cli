@@ -108,6 +108,7 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 				Environment: commandEnvironment(cmd),
 			}
 			stderr := cmd.ErrOrStderr()
+			debug := slog.New(logger)
 			summary, err := put.Run(cmd.Context(), put.Options{
 				Volume:       volume,
 				Organization: organization,
@@ -116,9 +117,10 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 				ConfigDir:    configDir,
 				API:          client.VolumeUploads(),
 				Keys:         keys,
-				Transport:    newPartTransport(baseURL, slog.New(logger)),
+				Transport:    newPartTransport(baseURL, debug),
 				Progress:     stderr,
 				ProgressTTY:  isTerminal(stderr),
+				Logger:       debug,
 			})
 			if err != nil {
 				return putError(volume, err)

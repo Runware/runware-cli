@@ -302,19 +302,7 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 	if err := r.uploadFiles(ctx, todo); err != nil {
 		return Summary{}, err
 	}
-	for i := range sources {
-		if err := unchanged(&sources[i]); err != nil {
-			return Summary{}, err
-		}
-	}
-	res, err := retryUploadAPI(ctx, r.sleep, func() (UploadResult, error) {
-		r.completionAttempted = true
-		return r.api.CompleteUpload(ctx, r.ref)
-	})
-	if err != nil {
-		return Summary{}, fmt.Errorf("complete the upload: %w", explain(err))
-	}
-	return r.summarize(files, before, res), nil
+	return r.publish(ctx, files, sources, before)
 }
 
 // restoreFile rebuilds an uploading file from its saved layout and acknowledgements and returns how many

@@ -7,14 +7,24 @@ import (
 	"time"
 )
 
-// fail ends a session after a failed transfer: an interrupt keeps it open for a resume, any other failure aborts it.
-// An interrupt once the completion was sent also aborts, since the abort is what tells whether the session completed.
+// fail ends a session, fresh or resumed, after a failed transfer: an interrupt keeps it open for a resume,
+// any other failure aborts it. An interrupt once the completion was sent also aborts, since the abort is
+// what tells whether the session completed.
 func (r *runner) fail(ctx context.Context, err error) error {
 	cause := context.Cause(ctx)
-	if cause == nil || !errors.Is(err, cause) || r.completionAttempted {
-		return r.abort(ctx, err)
+	if cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause)) {
+		err = cause
+		if !r.completionAttempted {
+			return r.suspend(cause)
+		}
 	}
-	return r.suspend(cause)
+	// A fresh put is the next step unless the completion request was sent, which may have published the files.
+	rerun := errors.Is(err, errUploadRetriesExhausted) && !r.completionAttempted
+	err = r.abort(ctx, err)
+	if rerun {
+		err = fmt.Errorf("%w; run put again", err)
+	}
+	return err
 }
 
 // suspend leaves the session open and its resume state on disk, so running put again with the same paths resumes it.

@@ -142,6 +142,7 @@ type putFake struct {
 	changeBetweenPages bool
 	pagesChanged       bool
 	onDeclare          func()
+	onCompleteFile     func() // called as a file completion arrives, under the fake's lock
 	coreDumpsOff       []bool
 }
 
@@ -623,6 +624,9 @@ func (f *putFake) servePart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *putFake) completeFile(w http.ResponseWriter, r *http.Request, up *fakeUpload, fileID string) {
+	if f.onCompleteFile != nil {
+		f.onCompleteFile()
+	}
 	file, ok := up.files[fileID]
 	if !ok {
 		writeProblem(w, http.StatusNotFound, slugNotFound, "file not found", nil)
@@ -734,6 +738,12 @@ func (r putRun) output() string {
 // debug level to the same standard error when verbose is set.
 func (f *putFake) run(format string, verbose bool, args ...string) putRun {
 	f.t.Helper()
+	return f.runContext(context.Background(), format, verbose, args...)
+}
+
+// runContext is run under ctx, which a test cancels to interrupt the put.
+func (f *putFake) runContext(ctx context.Context, format string, verbose bool, args ...string) putRun {
+	f.t.Helper()
 	var stdout, stderr bytes.Buffer
 	logger := log.New(&stderr)
 	if verbose {
@@ -746,7 +756,7 @@ func (f *putFake) run(format string, verbose bool, args ...string) putRun {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SetArgs(append([]string{segVolumes, putUse}, args...))
-	err := cmd.ExecuteContext(context.Background())
+	err := cmd.ExecuteContext(ctx)
 	return putRun{
 		stdout: stdout.String(),
 		stderr: stderr.String(),

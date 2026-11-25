@@ -239,16 +239,7 @@ func (r *runner) upload(ctx context.Context, sess KeySession, sources []Source, 
 	}
 	sum, err := r.transfer(ctx, sess, sources, before)
 	if err != nil {
-		if cause := context.Cause(ctx); cause != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, cause)) {
-			err = cause
-		}
-		// A fresh put is the next step unless the completion request was sent, which may have published the files.
-		rerun := errors.Is(err, errUploadRetriesExhausted) && !r.completionAttempted
-		err = r.fail(ctx, err)
-		if rerun {
-			err = fmt.Errorf("%w; run put again", err)
-		}
-		return Summary{}, err
+		return Summary{}, r.fail(ctx, err)
 	}
 	if err := r.journal.remove(); err != nil {
 		r.warn("%v", err)
@@ -319,6 +310,11 @@ func (r *runner) transfer(ctx context.Context, sess KeySession, sources []Source
 	if err := r.uploadFiles(ctx, todo); err != nil {
 		return Summary{}, err
 	}
+	return r.publish(ctx, files, sources, before)
+}
+
+// publish re-checks every source and completes the session, fresh or resumed.
+func (r *runner) publish(ctx context.Context, files []*fileState, sources []Source, before FileList) (Summary, error) {
 	for i := range sources {
 		if err := unchanged(&sources[i]); err != nil {
 			return Summary{}, err

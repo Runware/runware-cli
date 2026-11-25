@@ -10,11 +10,13 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -864,5 +866,114 @@ func TestResumeCanaryHoldsNoSecrets(t *testing.T) {
 		if strings.Contains(out, s) {
 			t.Errorf("a part token or acknowledgement appears in the output")
 		}
+	}
+}
+
+// A resumed put that is interrupted again keeps the session for the next resume, as a fresh put does.
+func TestInterruptedResumeKeepsTheSession(t *testing.T) {
+	e := newTestEnv(t)
+	dir := resumeTree(t, e)
+	vol := e.cloud.newVolume("model-weights", "")
+	var rec sealRecorder
+	interruptedPut(t, e, resumeOptions(e, &rec, vol, dir), 2)
+
+	// A signal ends the context with its own cause, which the failed requests do not carry.
+	errSignal := errors.New("interrupt signal received")
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	e.cloud.onPut = func(rq partRequest) {
+		if rq.Path == "small.txt" {
+			cancel(errSignal)
+		}
+	}
+	_, err := Run(ctx, resumeOptions(e, &rec, vol, dir))
+	e.cloud.onPut = nil
+
+	if !errors.Is(err, errSignal) || !strings.Contains(err.Error(), "run put again with the same paths to resume") {
+		t.Fatalf("the interrupted resume returned %v, want the interrupt and how to resume", err)
+	}
+	if e.cloud.count("abort") != 0 || e.cloud.uploadState() != fakeOpen || len(e.uploadDirs()) != 1 {
+		t.Fatalf("calls = %v, state = %q, resume state = %v; want the session and its state kept",
+			e.cloud.callLog(), e.cloud.uploadState(), e.uploadDirs())
+	}
+
+	if _, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir)); err != nil {
+		t.Fatalf("second resume: %v", err)
+	}
+	requireFiles(t, e, vol, expectedFiles(t, dir, ""))
+	if e.cloud.count("open") != 1 || e.cloud.count("complete") != 1 || len(e.uploadDirs()) != 0 {
+		t.Errorf("calls = %v, resume state = %v; want one session completed once and no state left", e.cloud.callLog(), e.uploadDirs())
+	}
+	rec.requireSafe(t)
+}
+
+// A resumed put that runs out of part retries aborts the session, removes its state and says to run
+// put again, which then starts a new session.
+func TestResumeOutOfRetriesAbortsAndSaysToRunPutAgain(t *testing.T) {
+	e := newTestEnv(t)
+	dir := resumeTree(t, e)
+	vol := e.cloud.newVolume("model-weights", "")
+	var rec sealRecorder
+	// Set before the first put: a part handler the interrupt left running still reads it.
+	var failing atomic.Bool
+	e.cloud.fault = func(partRequest) *fakeFault {
+		if !failing.Load() {
+			return nil
+		}
+		return &fakeFault{
+			Status: http.StatusServiceUnavailable,
+			Slug:   slugPartStorageUnavailable,
+		}
+	}
+	interruptedPut(t, e, resumeOptions(e, &rec, vol, dir), 2)
+
+	failing.Store(true)
+	_, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir))
+	failing.Store(false)
+
+	if !errors.Is(err, errUploadRetriesExhausted) || !strings.HasSuffix(err.Error(), "; run put again") {
+		t.Fatalf("error = %v, want retry exhaustion ending by telling the user to run put again", err)
+	}
+	if e.cloud.count("abort") != 1 || e.cloud.uploadState() != fakeAborted || len(e.uploadDirs()) != 0 {
+		t.Fatalf("calls = %v, state = %q, resume state = %v; want the session aborted and its state removed",
+			e.cloud.callLog(), e.cloud.uploadState(), e.uploadDirs())
+	}
+
+	if _, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir)); err != nil {
+		t.Fatalf("put after the abort: %v", err)
+	}
+	requireFiles(t, e, vol, expectedFiles(t, dir, ""))
+	if e.cloud.count("open") != 2 {
+		t.Errorf("calls = %v, want a new session after the abort", e.cloud.callLog())
+	}
+	rec.requireSafe(t)
+}
+
+// A resumed put retries its completion through an outage, as a fresh put does.
+func TestResumedCompletionRecoversAfterExtendedOutage(t *testing.T) {
+	e := newTestEnv(t)
+	dir := resumeTree(t, e)
+	vol := e.cloud.newVolume("model-weights", "")
+	var rec sealRecorder
+	interruptedPut(t, e, resumeOptions(e, &rec, vol, dir), 2)
+	opts := resumeOptions(e, &rec, vol, dir)
+	api := &unavailableCompletion{API: e.cloud}
+	opts.API = api
+	var pauses []time.Duration
+	opts.sleep = func(ctx context.Context, d time.Duration) error {
+		api.elapsed += d
+		pauses = append(pauses, d)
+		return ctx.Err()
+	}
+
+	sum, err := Run(t.Context(), opts)
+
+	if err != nil || !sum.Changed || e.cloud.count("complete") != 1 || e.cloud.count("open") != 1 {
+		t.Fatalf("summary = %+v, error = %v, calls = %v; want the resumed session published after a %v outage",
+			sum, err, e.cloud.callLog(), uploadTestOutage)
+	}
+	checkUploadPauses(t, pauses)
+	if len(e.uploadDirs()) != 0 {
+		t.Errorf("resume state left after completion: %v", e.uploadDirs())
 	}
 }
