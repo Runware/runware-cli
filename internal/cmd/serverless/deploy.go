@@ -616,7 +616,10 @@ paths and an invoke example once the application is active.`,
 				}
 			}
 
-			if err := output.Print(cmdutil.FormatFor(cmd), newDeployResult(*app, appMounts)); err != nil {
+			if err := output.Print(cmdutil.FormatFor(cmd), deployResult{
+				appResult: appResult(*app),
+				mounts:    appMounts,
+			}); err != nil {
 				return err
 			}
 			if !waitOnApp {

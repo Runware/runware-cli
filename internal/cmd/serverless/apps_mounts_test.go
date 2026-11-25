@@ -307,29 +307,51 @@ func TestDeployWithoutSourceWaitReturnsOnAStoppingApp(t *testing.T) {
 	}
 }
 
-// The write does not answer mounts, so JSON and YAML take the ones the deploy
-// sent, as the table does.
-func TestDeployPrintsTheSentMountsInJSON(t *testing.T) {
-	stub := &mountStub{
-		t:      t,
-		exists: true,
-	}
-	stub.serve()
+// The write does not answer mounts, so JSON and YAML print the ones the deploy
+// sent as submittedMounts. They stay out of mounts, which describes the version
+// activeVersionId names: a source update pins its version only once it rolls.
+func TestDeployPrintsTheSentMountsApartFromTheApp(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args func(t *testing.T) []string
+		want string
+	}{
+		{"source update", func(t *testing.T) []string { return sourceArgs(t, testMountFlag, testMountWeights) }, testMountWeights},
+		{"no mounts", func(*testing.T) []string { return []string{testIDFlag, testAppID, testNoMountsFlag} }, noMounts},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &mountStub{
+				t:      t,
+				exists: true,
+			}
+			stub.serve()
 
-	cmd := newDeployCmd(log.New(io.Discard))
-	cmd.SetErr(io.Discard)
-	cmd.PersistentFlags().String("format", "json", "")
-	cmd.SetArgs([]string{testIDFlag, testAppID, testMountFlag, testMountWeights})
-	out, err := captureStdout(t, cmd.Execute)
-	if err != nil {
-		t.Fatalf("deploy: %v", err)
-	}
-	var app serverlessapi.App
-	if err := json.Unmarshal([]byte(out), &app); err != nil {
-		t.Fatalf("decode %q: %v", out, err)
-	}
-	if got := formatMounts(app.Mounts); got != testMountWeights {
-		t.Fatalf("mounts = %q, want %q", got, testMountWeights)
+			cmd := newDeployCmd(log.New(io.Discard))
+			cmd.SetErr(io.Discard)
+			cmd.PersistentFlags().String("format", "json", "")
+			cmd.SetArgs(tc.args(t))
+			out, err := captureStdout(t, cmd.Execute)
+			if err != nil {
+				t.Fatalf("deploy: %v", err)
+			}
+			var got struct {
+				AppID           string                       `json:"appId"`
+				Mounts          *[]serverlessapi.VolumeMount `json:"mounts"`
+				SubmittedMounts *[]serverlessapi.VolumeMount `json:"submittedMounts"`
+			}
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("decode %q: %v", out, err)
+			}
+			if got.AppID != testAppID {
+				t.Fatalf("appId = %q, want the app", got.AppID)
+			}
+			if got.Mounts != nil {
+				t.Fatalf("mounts = %v, want the app's own, which the write omits", *got.Mounts)
+			}
+			if m := formatMounts(got.SubmittedMounts); m != tc.want {
+				t.Fatalf("submittedMounts = %q, want %q", m, tc.want)
+			}
+		})
 	}
 }
 

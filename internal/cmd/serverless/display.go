@@ -72,6 +72,7 @@ const (
 	colCode                     = "Code"
 	colTroubleshooting          = "Troubleshooting"
 	colMounts                   = "Mounts"
+	colSubmittedMounts          = "Submitted Mounts"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -165,22 +166,15 @@ func (r appShowResult) Rows() [][]any {
 }
 
 // deployResult is the app a deploy wrote plus the mounts the deploy sent, which
-// the create and update responses do not return. JSON and YAML stay the app. mounts is nil when
-// the deploy left the mounts as they were.
+// the create and update responses do not return. mounts is nil when the deploy
+// left the mounts as they were.
+//
+// The sent mounts belong to the version the deploy records, which a source
+// update pins only once it rolls out, so they stay apart from the app's own
+// mounts field: that one describes the version activeVersionId names.
 type deployResult struct {
 	appResult
-	mounts *[]serverlessapi.VolumeMount `json:"-" yaml:"-"`
-}
-
-// newDeployResult puts the mounts a deploy sent on the app it prints, so JSON
-// and YAML carry them as the table does. A read after --wait may still answer
-// the outgoing version's mounts while the new version builds, so the sent ones
-// win. Without mounts sent, the app keeps what the API answered.
-func newDeployResult(app serverlessapi.App, mounts *[]serverlessapi.VolumeMount) deployResult {
-	if mounts != nil {
-		app.Mounts = mounts
-	}
-	return deployResult{appResult: appResult(app), mounts: mounts}
+	mounts *[]serverlessapi.VolumeMount
 }
 
 func (r deployResult) Rows() [][]any {
@@ -188,7 +182,19 @@ func (r deployResult) Rows() [][]any {
 	if r.mounts == nil {
 		return rows
 	}
-	return append(rows, []any{colMounts, formatMounts(r.mounts)})
+	return append(rows, []any{colSubmittedMounts, formatMounts(r.mounts)})
+}
+
+// MarshalJSON prints the app, plus submittedMounts when the deploy sent mounts.
+func (r deployResult) MarshalJSON() ([]byte, error) {
+	app := r.withRedactedEnv()
+	if r.mounts == nil {
+		return json.Marshal(app)
+	}
+	return json.Marshal(struct {
+		serverlessapi.App
+		SubmittedMounts []serverlessapi.VolumeMount `json:"submittedMounts"`
+	}{app, *r.mounts})
 }
 
 // noMounts is the table value of a mount list the CLI knows is empty: one a
