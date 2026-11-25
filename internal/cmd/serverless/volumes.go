@@ -114,6 +114,7 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 				Paths:        args[1:],
 				To:           to,
 				ConfigDir:    configDir,
+				APIBaseURL:   baseURL,
 				API:          client.VolumeUploads(),
 				Keys:         keys,
 				Transport:    newPartTransport(baseURL, debug),

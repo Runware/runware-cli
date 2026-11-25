@@ -304,6 +304,7 @@ func saveLegacyDeclarations(t *testing.T, opts Options) {
 		ID:     up.ID,
 	}
 	r.invocation = ""
+	r.endpoint = ""
 	if err := r.begin(sess, uuid.MustParse(up.ID), up); err != nil {
 		t.Fatal(err)
 	}

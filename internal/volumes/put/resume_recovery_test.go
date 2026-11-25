@@ -217,6 +217,67 @@ func TestResumeRefusesFreshPutAfterUnconfirmedPublication(t *testing.T) {
 	}
 }
 
+func TestPutKeepsSavedSessionsScopedToAPI(t *testing.T) {
+	first := newTestEnv(t)
+	second := newTestEnv(t)
+	second.configDir = first.configDir
+	file := singleFile(t, first, "model.bin", []byte("original"))
+	one := first.options(first.cloud.newVolume("weights", ""), file)
+	one.APIBaseURL = "https://first.example.test"
+	one.API = &lostCompletionResponse{API: first.cloud}
+	if _, err := Run(t.Context(), one); !errors.Is(err, errUploadRetriesExhausted) {
+		t.Fatalf("first put = %v, want publication retries exhausted", err)
+	}
+	two := second.options(second.cloud.newVolume("weights", ""), file)
+	two.APIBaseURL = "https://second.example.test"
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(t.Context(), two); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("put without a source = %v, want a missing file error", err)
+	}
+	if calls := second.cloud.callLog(); len(calls) != 0 || len(first.uploadDirs()) != 1 {
+		t.Fatalf("calls = %v, journals = %v, want no requests and the other endpoint's journal preserved", calls, first.uploadDirs())
+	}
+	writeFile(t, file, []byte("original"))
+	if _, err := Run(t.Context(), two); err != nil {
+		t.Fatalf("put against second endpoint: %v", err)
+	}
+	if second.cloud.count("open") != 1 || second.cloud.count("abort") != 0 || len(first.uploadDirs()) != 1 {
+		t.Fatalf("calls = %v, journals = %v, want an independent upload", second.cloud.callLog(), first.uploadDirs())
+	}
+	one.API = first.cloud
+	one.APIBaseURL = "https://FIRST.example.test:443/"
+	sum, err := Run(t.Context(), one)
+	if err != nil || !sum.recovered || first.cloud.count("open") != 1 || len(first.uploadDirs()) != 0 {
+		t.Fatalf("recovery = %+v, error = %v, calls = %v, want the saved result",
+			sum, err, first.cloud.callLog())
+	}
+}
+
+func TestOnlyDefaultAPIResumesJournalWithoutAnEndpoint(t *testing.T) {
+	e := newTestEnv(t)
+	vol := e.cloud.newVolume("weights", "")
+	file := singleFile(t, e, "model.bin", []byte("original"))
+	opts := e.options(vol, file)
+	saveLegacyDeclarations(t, opts)
+
+	override := opts
+	override.APIBaseURL = "https://another.example.test"
+	if _, err := Run(t.Context(), override); err != nil {
+		t.Fatalf("put against overridden endpoint: %v", err)
+	}
+	if e.cloud.count("open") != 2 || e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 1 {
+		t.Fatalf("calls = %v, journals = %v, want a fresh upload and the legacy journal preserved", e.cloud.callLog(), e.uploadDirs())
+	}
+	if _, err := Run(t.Context(), opts); err != nil {
+		t.Fatalf("legacy resume: %v", err)
+	}
+	if e.cloud.count("open") != 2 || e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 0 {
+		t.Fatalf("calls = %v, journals = %v, want the legacy upload completed", e.cloud.callLog(), e.uploadDirs())
+	}
+}
+
 func TestResumeRefusesChangeAfterUnappliedPublication(t *testing.T) {
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")

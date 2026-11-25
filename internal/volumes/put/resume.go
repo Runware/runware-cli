@@ -196,7 +196,13 @@ func (r *runner) sweep() []*savedSession {
 			_ = lock.Close()
 			continue
 		}
-		if s.session.Organization == org && s.session.Volume == r.o.Volume.Name && s.session.Environment == r.o.Volume.Environment {
+		// Older journals are eligible only at the default endpoint.
+		endpoint := s.session.Endpoint
+		if endpoint == "" {
+			endpoint = defaultEndpoint
+		}
+		if endpoint == r.endpoint && s.session.Organization == org &&
+			s.session.Volume == r.o.Volume.Name && s.session.Environment == r.o.Volume.Environment {
 			s.lock = lock
 			mine = append(mine, s)
 		} else {
@@ -341,10 +347,11 @@ func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string)
 		ID:     s.session.Upload,
 	})
 	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
-		r.warn("the saved upload session %s is closed and cannot be resumed because %s", s.session.Upload, reason)
-		if !s.publishing {
-			r.removeState(s.dir, s.lock, "closed")
+		if s.publishing {
+			return false
 		}
+		r.warn("the saved upload session %s is closed and cannot be resumed because %s", s.session.Upload, reason)
+		r.removeState(s.dir, s.lock, "closed")
 		return false
 	}
 	if err == nil {

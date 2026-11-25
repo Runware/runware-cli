@@ -48,6 +48,7 @@ type Options struct {
 	Paths        []string
 	To           string // the Volume directory the paths land under; empty is the root
 	ConfigDir    string // the CLI config directory, holding the hash cache and the resume state
+	APIBaseURL   string // the API's base URL, empty uses the default
 	API          API
 	Keys         Keys
 	Transport    Transport
@@ -82,6 +83,7 @@ type runner struct {
 	now                 func() time.Time
 	sleep               func(context.Context, time.Duration) error
 	stateDir            string
+	endpoint            string
 	invocation          string
 	parallel            int
 	progress            *progress
@@ -101,6 +103,10 @@ func newRunner(o Options) (*runner, error) {
 	if o.ConfigDir == "" {
 		return nil, errors.New("volume upload: the config directory is not set")
 	}
+	endpoint, err := endpointIdentity(cmp.Or(o.APIBaseURL, config.DefaultServerlessBaseURL))
+	if err != nil {
+		return nil, err
+	}
 	r := &runner{
 		o:          o,
 		org:        org,
@@ -110,6 +116,7 @@ func newRunner(o Options) (*runner, error) {
 		now:        o.now,
 		sleep:      o.sleep,
 		stateDir:   filepath.Join(o.ConfigDir, stateDirName),
+		endpoint:   endpoint,
 		invocation: invocationDigest(o.Paths, o.To),
 		parallel:   o.Parallelism,
 	}
@@ -298,6 +305,7 @@ func (r *runner) begin(sess KeySession, id uuid.UUID, up Upload) error {
 		Volume:       r.o.Volume.Name,
 		Environment:  r.o.Volume.Environment,
 		Organization: uuid.UUID(r.org).String(),
+		Endpoint:     r.endpoint,
 		Invocation:   r.invocation,
 		KeyPair:      uuid.UUID(sess.KeyPairID()).String(),
 		SessionKey:   sess.Key(),

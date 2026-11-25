@@ -39,6 +39,7 @@ type sessionRecord struct {
 	Volume       string    `json:"volume"`
 	Environment  string    `json:"environment,omitempty"`
 	Organization string    `json:"organization"`
+	Endpoint     string    `json:"endpoint,omitempty"`
 	Invocation   string    `json:"invocation,omitempty"`
 	KeyPair      string    `json:"keyPairId"`
 	SessionKey   []byte    `json:"sessionKey"`
