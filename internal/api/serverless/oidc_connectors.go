@@ -325,28 +325,87 @@ func (c *Client) GetAppOidcConnectorTest(ctx context.Context, appID, connectorNa
 }
 
 // WaitAppOidcConnectorTest polls a connector test every interval until it is no
-// longer pending, and returns it. It returns ctx's error when ctx ends first.
+// longer pending, and returns it. A poll that fails on a server or network
+// error is retried at the next interval, since the test goes on regardless;
+// any other error ends the wait. It returns ctx's error when ctx ends first,
+// as a *LastPollError when the poll before it had failed.
 func (c *Client) WaitAppOidcConnectorTest(ctx context.Context, appID, connectorName string, test *OidcConnectorTest, interval time.Duration) (*OidcConnectorTest, error) {
 	if interval <= 0 {
 		interval = defaultConnectorTestPollInterval
 	}
 
+	var lastErr error
+	ended := func() error {
+		if lastErr != nil {
+			return &LastPollError{Cause: ctx.Err(), Last: lastErr}
+		}
+		return ctx.Err()
+	}
 	for test.Status == OidcConnectorTestStatusPending {
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, ctx.Err()
+			return nil, ended()
 		case <-timer.C:
 		}
 
 		next, err := c.GetAppOidcConnectorTest(ctx, appID, connectorName, test.Id.String())
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ended()
+			}
+			if retryablePoll(err) {
+				lastErr = err
+				continue
+			}
 			return nil, err
 		}
+		lastErr = nil
 		test = next
 	}
 	return test, nil
+}
+
+// LastPollError is a wait that ended while its last poll had failed and was
+// waiting to be retried. It unwraps to the context's error, so a timeout or an
+// interrupt still reads as one.
+type LastPollError struct {
+	Cause error
+	Last  error
+}
+
+func (e *LastPollError) Error() string {
+	return fmt.Sprintf("%v (the last poll failed: %v)", e.Cause, e.Last)
+}
+
+func (e *LastPollError) Unwrap() error { return e.Cause }
+
+// retryablePoll reports whether a failed poll may succeed at the next one: an
+// answer with a transient status (408, 429, 500, 502, 503 or 504), a transport
+// failure the client counts as transient, or a request whose connection failed
+// before or while the answer was read. Any other status ends the wait, as does
+// an answer the client could not decode: the next one would be the same.
+func retryablePoll(err error) bool {
+	if re, ok := errors.AsType[*transport.RunwareError](err); ok {
+		if re.StatusCode == 0 {
+			return re.Retryable
+		}
+		return transientPollStatus(re.StatusCode)
+	}
+	return transport.IsConnectionError(err)
+}
+
+// transientPollStatus reports whether a poll answered with status may succeed
+// when repeated. The error code alone cannot tell: every status the client does
+// not map, such as 405 or 410, counts as a server error.
+func transientPollStatus(status int) bool {
+	switch status {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // withRetryAfter adds the response's Retry-After to a refusal that carries one,

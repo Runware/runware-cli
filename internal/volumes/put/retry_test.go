@@ -285,6 +285,9 @@ func TestLostCompletionDoesNotReportConfirmedAbort(t *testing.T) {
 			if !errors.Is(err, want) || !strings.Contains(err.Error(), "the upload may already have completed") {
 				t.Fatalf("error = %v, want %v and the uncertain completion warning", err, want)
 			}
+			if strings.Contains(err.Error(), "run put again") {
+				t.Errorf("error = %q, want no rerun hint when the upload may have completed", err)
+			}
 			if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.uploadState() != fakeCompleted || e.cloud.count("abort") != 1 {
 				t.Errorf("calls = %v, state = %q, want one published file and one abort attempt", e.cloud.callLog(), e.cloud.uploadState())
 			}
@@ -312,6 +315,76 @@ func TestUploadAPIPreservesAuthErrorsWithoutRetrying(t *testing.T) {
 			if !errors.Is(err, authErr) || !transport.IsAuthError(err) || calls != 1 || pauses != 0 {
 				t.Fatalf("error = %v, requests = %d, pauses = %d; want the original auth error without a retry", err, calls, pauses)
 			}
+		})
+	}
+}
+
+var errCompletionStalled = errors.New("the completion request timed out")
+
+// stalledCompletion answers every completion after a stall with a timeout.
+type stalledCompletion struct {
+	API
+	stall  time.Duration
+	starts []time.Time
+}
+
+func (s *stalledCompletion) wait(ctx context.Context) error {
+	s.starts = append(s.starts, time.Now())
+	if err := sleepContext(ctx, s.stall); err != nil {
+		return err
+	}
+	return errCompletionStalled
+}
+
+func (s *stalledCompletion) CompleteFile(ctx context.Context, _ UploadRef, _ string, _ FileCompletion) (UploadFile, error) {
+	return UploadFile{}, s.wait(ctx)
+}
+
+func (s *stalledCompletion) CompleteUpload(ctx context.Context, _ UploadRef) (UploadResult, error) {
+	return UploadResult{}, s.wait(ctx)
+}
+
+// TestCompletionRetryTimeBudget: when every completion stalls until the
+// request limit, put stops retrying after maxCompletionRetryTime, not after
+// maxUploadAttempts stalls.
+func TestCompletionRetryTimeBudget(t *testing.T) {
+	calls := map[string]func(ctx context.Context, r *runner) error{
+		"file": func(ctx context.Context, r *runner) error {
+			return r.completeFile(ctx, &fileState{src: &Source{Abs: "weights.bin"}})
+		},
+		"session": func(ctx context.Context, r *runner) error {
+			_, err := r.completeUpload(ctx)
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				api := &stalledCompletion{stall: 5 * time.Minute}
+				r := &runner{
+					api:   api,
+					sleep: sleepContext,
+				}
+				start := time.Now()
+				err := call(t.Context(), r)
+				if !errors.Is(err, errUploadRetriesExhausted) || !errors.Is(err, errCompletionStalled) {
+					t.Fatalf("error = %v, want retry exhaustion and the last timeout", err)
+				}
+				for _, s := range api.starts[1:] {
+					if s.Sub(start) >= maxCompletionRetryTime {
+						t.Errorf("started another attempt %v after the first", s.Sub(start))
+					}
+				}
+				elapsed := time.Since(start)
+				if elapsed > maxCompletionRetryTime+api.stall+maxUploadBackoff {
+					t.Errorf("retried for %v over %d attempts, want the retry window plus one attempt", elapsed, len(api.starts))
+				}
+				// A fixed bound, so a longer window fails too: a 15 minute
+				// window fits three 5 minute stalls.
+				if elapsed >= 20*time.Minute || len(api.starts) != 3 {
+					t.Errorf("retried for %v over %d attempts, want 3 attempts in under 20 minutes", elapsed, len(api.starts))
+				}
+			})
 		})
 	}
 }

@@ -412,7 +412,7 @@ func (r *runner) completeFile(ctx context.Context, f *fileState) error {
 		CRC64NVME: fmt.Sprintf("%016x", fileCRC(f.results)),
 		Parts:     parts,
 	}
-	done, err := retryUploadAPI(ctx, r.sleep, func() (UploadFile, error) {
+	done, err := retryUploadAPIWithin(ctx, r.sleep, maxCompletionRetryTime, func() (UploadFile, error) {
 		return r.api.CompleteFile(ctx, r.ref, f.id, completion)
 	})
 	if err != nil {

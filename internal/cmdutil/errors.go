@@ -27,6 +27,15 @@ type ResumableError interface {
 	Resumable()
 }
 
+// ExplainedError is an error whose message is the command's whole line about
+// a failure, such as the file and step that failed. The text format prints the
+// line before the auth hint, which otherwise replaces an API error's message
+// on an auth error. Explained only marks the error.
+type ExplainedError interface {
+	error
+	Explained()
+}
+
 // IsResumable reports whether err, or an error it wraps, is a ResumableError.
 func IsResumable(err error) bool {
 	_, ok := errors.AsType[ResumableError](err)
@@ -37,7 +46,8 @@ func IsResumable(err error) bool {
 //
 // Special cases:
 //   - transport.ErrNoAPIKey → friendly "no key" message with auth hint
-//   - *transport.RunwareError CodeAuth → "Authentication failed" with auth hint
+//   - *transport.RunwareError CodeAuth → "Authentication failed" with auth hint,
+//     after the line of an ExplainedError
 //   - *transport.RunwareError other → full API error fields (JSON/YAML) or
 //     structured key-value fields (table)
 //
@@ -70,7 +80,11 @@ func PrintErrorTo(logger *log.Logger, w io.Writer, format output.Format, err err
 
 		switch re.Code {
 		case transport.CodeAuth:
-			logRunwareError(logger, re, "Authentication failed. Run 'runware auth status' to verify your credentials.")
+			hint := "Authentication failed. Run 'runware auth status' to verify your credentials."
+			if e, ok := errors.AsType[ExplainedError](err); ok {
+				hint = e.Error() + ". " + hint
+			}
+			logRunwareError(logger, re, hint)
 		default:
 			logRunwareError(logger, re, re.Message)
 		}

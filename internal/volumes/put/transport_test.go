@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -543,5 +545,81 @@ func TestHTTPTransportKeepsASlowPartThatMoves(t *testing.T) {
 
 	if err != nil || !bytes.Equal(got, body) {
 		t.Errorf("error = %v, %d of %d bytes arrived, want a part that keeps moving sent whole", err, len(got), len(body))
+	}
+}
+
+// TestHTTPTransportDebugLogShowsNoSecret: under debug the transport logs each
+// part's number, status and byte count, and never the upload address, the part
+// token or the acknowledgement.
+func TestHTTPTransportDebugLogShowsNoSecret(t *testing.T) {
+	const secretAck = "SECRET-ACK"
+	for _, status := range []int{http.StatusOK, http.StatusForbidden} {
+		var logged bytes.Buffer
+		tr, target := newWorker(t, func(w http.ResponseWriter, _ *http.Request) {
+			if status != http.StatusOK {
+				problemHandler(status, `{"title":"Forbidden","status":403}`)(w, nil)
+				return
+			}
+			_, _ = io.WriteString(w, `{"partNumber":3,"ack":"`+secretAck+`"}`)
+		})
+		tr.WithLogger(slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		target.URL += "/SECRET-PATH?sig=SECRET-QUERY"
+		body := patterned(45, 1)
+		_, _ = tr.PutPart(t.Context(), target, bytes.NewReader(body), int64(len(body)))
+		out := logged.String()
+		for _, want := range []string{"partNumber=3", "status=" + strconv.Itoa(status), "bytes=45"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("status %d: log lacks %s: %s", status, want, out)
+			}
+		}
+		for _, secret := range []string{"SECRET-", workerToken, target.URL} {
+			if strings.Contains(out, secret) {
+				t.Errorf("status %d: log shows %q: %s", status, secret, out)
+			}
+		}
+	}
+}
+
+// TestHTTPTransportRefusesATargetTheCheckRefuses: an upload address the target check refuses
+// is a protocol error, and nothing is sent to it.
+func TestHTTPTransportRefusesATargetTheCheckRefuses(t *testing.T) {
+	var sent atomic.Int32
+	tr, target := newWorker(t, func(w http.ResponseWriter, _ *http.Request) {
+		sent.Add(1)
+		_, _ = io.WriteString(w, `{"partNumber":3,"ack":"kid1.sealed-tag"}`)
+	})
+	var checked []string
+	tr.WithTargetCheck(func(u string) bool {
+		checked = append(checked, u)
+		return false
+	})
+
+	_, err := tr.PutPart(t.Context(), target, strings.NewReader("part"), 4)
+
+	if !errors.Is(err, ErrProtocol) {
+		t.Fatalf("error = %v, want ErrProtocol", err)
+	}
+	if sent.Load() != 0 {
+		t.Fatal("the part was sent to a refused address")
+	}
+	if len(checked) != 1 || checked[0] != target.URL {
+		t.Fatalf("checked %v, want [%s]", checked, target.URL)
+	}
+	if strings.Contains(err.Error(), target.URL) || strings.Contains(err.Error(), workerToken) {
+		t.Fatalf("the error names the address or the token: %v", err)
+	}
+}
+
+// TestHTTPTransportSendsToATargetTheCheckAccepts: an accepted upload address is used as given.
+func TestHTTPTransportSendsToATargetTheCheckAccepts(t *testing.T) {
+	tr, target := newWorker(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"partNumber":3,"ack":"kid1.sealed-tag"}`)
+	})
+	tr.WithTargetCheck(func(string) bool { return true })
+
+	ack, err := tr.PutPart(t.Context(), target, strings.NewReader("part"), 4)
+
+	if err != nil || string(ack) != "kid1.sealed-tag" {
+		t.Fatalf("ack %q, error %v", ack, err)
 	}
 }

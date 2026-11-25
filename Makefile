@@ -9,12 +9,19 @@ LDFLAGS = \
 
 GOFLAGS = -trimpath
 
+# A local build reads RUNWARE_VOLUMES_STATEMENT_KEY for a non-production host.
+# Only build and run set this tag, and test and lint check the code it adds;
+# the cross-platform targets and the release (GoReleaser) never set it, so a
+# released binary trusts only its shipped keys. CI runs the tagged test and
+# lint steps too.
+DEV_TAGS = -tags volumesdevkeys
+
 BINARY=runware
 
 .PHONY: build build-all windows-amd64 windows-arm64 darwin darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 run test lint fix check-go-fix clean install snapshot docs go-tidy generate-serverless sync-serverless-spec setup check-public
 
 build:
-	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
+	go build $(GOFLAGS) $(DEV_TAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY} ./cmd/runware
 
 build-all: windows-amd64 windows-arm64 darwin linux-amd64 linux-arm64
 
@@ -39,13 +46,15 @@ linux-arm64:
 	GOARCH=arm64 GOOS=linux go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/${BINARY}-linux-arm64 ./cmd/runware
 
 run:
-	go run -ldflags "$(LDFLAGS)" ./cmd/runware $(ARGS)
+	go run $(DEV_TAGS) -ldflags "$(LDFLAGS)" ./cmd/runware $(ARGS)
 
 test:
 	go test -race ./...
+	go test -race $(DEV_TAGS) ./internal/volumes/keypair/
 
 lint: check-go-fix
 	golangci-lint run
+	golangci-lint run --build-tags volumesdevkeys ./internal/volumes/keypair/...
 
 fix:
 	go fix ./...

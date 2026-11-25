@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 // Problem type slugs the engine switches on.
@@ -164,11 +165,33 @@ func fileErr(path string, err error) error {
 	}
 }
 
-// LimitError is a Shared Volume limit that an upload would go past.
+// AbortFailedError is a failed upload whose session could not be aborted
+// afterwards. Cause is the failure; Abort, why the abort failed, is a note
+// about the session and not the failure, so a caller that reads the failure's
+// API answer reads Cause.
+type AbortFailedError struct {
+	Cause     error
+	Abort     error
+	ExpiresAt time.Time
+}
+
+func (e *AbortFailedError) Error() string {
+	return fmt.Sprintf("%v (could not confirm the upload was aborted; the session may stay open until %s: %v)",
+		e.Cause, e.ExpiresAt.Format(time.RFC3339), e.Abort)
+}
+
+func (e *AbortFailedError) Unwrap() []error { return []error{e.Cause, e.Abort} }
+
+// LimitError is a Shared Volume limit that an upload would go past. It
+// unwraps to the API's answer that named the limit.
 type LimitError struct {
 	Limit string
 	Cap   int64
+	// Problem is the API's answer; nil when the error was built by hand.
+	Problem error
 }
+
+func (e *LimitError) Unwrap() error { return e.Problem }
 
 func (e *LimitError) Error() string {
 	switch e.Limit {
