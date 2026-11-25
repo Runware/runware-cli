@@ -146,7 +146,6 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 		total += f.layout.CiphertextSize - f.acknowledgedBytes()
 	}
 	r.progress.begin("uploading", len(todo), total)
-	defer r.progress.end()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -172,6 +171,12 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 	}
 	close(jobs)
 	wg.Wait()
+	r.progress.end()
+	if fail.err == nil {
+		for _, f := range todo {
+			r.progress.reportFile(f.src.Target, f.sent.Load(), false)
+		}
+	}
 	return fail.err
 }
 
@@ -459,6 +464,5 @@ func (r *runner) completeFile(ctx context.Context, f *fileState) error {
 		return fileErr(f.src.Abs, err)
 	}
 	r.progress.fileDone()
-	r.progress.reportFile(f.src.Target, f.sent.Load(), false)
 	return nil
 }

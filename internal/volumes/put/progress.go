@@ -85,13 +85,7 @@ func (p *progress) reportFile(path string, sent int64, reused bool) {
 	if reused {
 		line = fmt.Sprintf("reused %q (0 B sent)", path)
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.tty && p.stop != nil {
-		_, _ = fmt.Fprintf(p.w, "\r%-*s\n", p.width, line)
-	} else {
-		_, _ = fmt.Fprintln(p.w, line)
-	}
+	_, _ = fmt.Fprintln(p.w, line)
 }
 
 func (p *progress) addBytes(n int64) {
