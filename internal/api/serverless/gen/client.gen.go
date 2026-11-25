@@ -1628,7 +1628,7 @@ type AppRuntime struct {
 	Requests24h *int64 `json:"requests24h,omitempty"`
 
 	// ServingWorkers Workers among `activeWorkers` that are serving, those whose `status` is `ready` (idle) or `busy` (running a task): the statuses health counts as able to serve. It is not free capacity. Like `activeWorkers` it counts only the active version, where health counts every version's workers and is derived from a periodic observation, so during a rollout, or for the moment after a worker changes status, the two can disagree. A deleted app reports zero.
-	ServingWorkers int64 `json:"servingWorkers"`
+	ServingWorkers *int64 `json:"servingWorkers,omitempty"`
 }
 
 // AppSort Ordering for `listApps`. Favorited apps appear before non-favorited apps, and the selected ordering applies within each group. Every ordering is total (ties broken by `appId`), so a page is reproducible and its cursor stable.

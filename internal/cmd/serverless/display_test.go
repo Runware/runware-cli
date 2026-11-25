@@ -798,3 +798,29 @@ func TestWorkerResult_NilOptionalFields(t *testing.T) {
 		t.Fatalf("nil StatusReason should render empty, got %#v", rows[12][1])
 	}
 }
+
+// An API that does not send servingWorkers yet must not print a zero count in
+// JSON and YAML; one that sends zero keeps it.
+func TestAppResultKeepsAnOmittedServingWorkersOmitted(t *testing.T) {
+	for _, tc := range []struct {
+		name, runtime string
+		want          bool
+	}{
+		{"omitted", `{"activeWorkers":2,"provisionedGpuCount":2,"calculatedAt":"2026-07-30T12:00:00Z"}`, false},
+		{"zero", `{"activeWorkers":2,"servingWorkers":0,"provisionedGpuCount":2,"calculatedAt":"2026-07-30T12:00:00Z"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var app serverlessapi.App
+			if err := json.Unmarshal([]byte(`{"appId":"`+testAppID+`","runtime":`+tc.runtime+`}`), &app); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			out, err := json.Marshal(appResult(app))
+			if err != nil {
+				t.Fatalf("encode: %v", err)
+			}
+			if got := strings.Contains(string(out), `"servingWorkers":0`); got != tc.want {
+				t.Fatalf("output = %s, want servingWorkers printed: %v", out, tc.want)
+			}
+		})
+	}
+}
