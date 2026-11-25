@@ -93,6 +93,9 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 	err := hashSources(ctx, sources, cache, r.progress, r.o.onHash)
 	r.saveCache(cache)
 	if err != nil {
+		if file, ok := errors.AsType[*FileError](err); ok && errors.Is(err, os.ErrNotExist) {
+			err = fileErr(file.Path, ErrSourceChanged)
+		}
 		if errors.Is(err, ErrSourceChanged) {
 			for _, s := range saved {
 				if s.session.Invocation == r.invocation || s.session.Invocation == "" {

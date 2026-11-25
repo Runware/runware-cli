@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -177,5 +179,32 @@ func TestResumeRefusesChangeAfterUnappliedPublication(t *testing.T) {
 	}
 	if files, _ := e.cloud.latest(vol); len(files) != 0 || e.cloud.count("open") != 1 || e.cloud.count("abort") != 1 {
 		t.Fatalf("files = %v, calls = %v, want one aborted session and no publication", files, e.cloud.callLog())
+	}
+}
+
+func TestResumeReportsUncertainPublicationIfSourceDisappearsDuringHash(t *testing.T) {
+	e := newTestEnv(t)
+	vol := e.cloud.newVolume("weights", "")
+	file := singleFile(t, e, "model.bin", []byte("original"))
+	opts := e.options(vol, file)
+	opts.API = &lostCompletionResponse{API: e.cloud}
+	if _, err := Run(t.Context(), opts); !errors.Is(err, errUploadRetriesExhausted) {
+		t.Fatalf("first put = %v, want publication retries exhausted", err)
+	}
+	if err := os.Remove(filepath.Join(e.stateDir(), hashCacheFile)); err != nil {
+		t.Fatal(err)
+	}
+	opts.API = e.cloud
+	opts.onHash = func(path string) {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := Run(t.Context(), opts)
+	if err == nil || !strings.Contains(err.Error(), "may have published") || !strings.Contains(err.Error(), file) {
+		t.Fatalf("resume = %v, want publication uncertainty naming %s", err, file)
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.count("open") != 1 || len(e.uploadDirs()) != 0 {
+		t.Fatalf("files = %v, calls = %v, journals = %v, want the original publication only", files, e.cloud.callLog(), e.uploadDirs())
 	}
 }
