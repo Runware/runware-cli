@@ -3,6 +3,7 @@ package put
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -10,7 +11,9 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -79,6 +82,7 @@ type runner struct {
 	now                 func() time.Time
 	sleep               func(context.Context, time.Duration) error
 	stateDir            string
+	invocation          string
 	parallel            int
 	progress            *progress
 	ref                 UploadRef
@@ -97,15 +101,16 @@ func newRunner(o Options) (*runner, error) {
 		return nil, errors.New("volume upload: the config directory is not set")
 	}
 	r := &runner{
-		o:        o,
-		org:      org,
-		api:      o.API,
-		keys:     o.Keys,
-		tr:       o.Transport,
-		now:      o.now,
-		sleep:    o.sleep,
-		stateDir: filepath.Join(o.ConfigDir, stateDirName),
-		parallel: o.Parallelism,
+		o:          o,
+		org:        org,
+		api:        o.API,
+		keys:       o.Keys,
+		tr:         o.Transport,
+		now:        o.now,
+		sleep:      o.sleep,
+		stateDir:   filepath.Join(o.ConfigDir, stateDirName),
+		invocation: invocationDigest(o.Paths, o.To),
+		parallel:   o.Parallelism,
 	}
 	if r.parallel <= 0 {
 		r.parallel = defaultParallelism
@@ -119,6 +124,21 @@ func newRunner(o Options) (*runner, error) {
 	}
 	r.progress = newProgress(o.Progress, o.ProgressTTY, o.progressEvery, r.now, o.tick)
 	return r, nil
+}
+
+func invocationDigest(paths []string, destination string) string {
+	roots := make([]string, len(paths))
+	for i, path := range paths {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			abs = path
+		}
+		roots[i] = abs
+	}
+	slices.Sort(roots)
+	h := sha256.New()
+	_, _ = fmt.Fprintf(h, "%q %q", destination, roots)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // parseOrganization reads the organization id or says where to set it.
@@ -149,6 +169,13 @@ func (r *runner) run(ctx context.Context) (Summary, error) {
 	}()
 	sources, err := Walk(r.o.Paths, r.o.To)
 	if err != nil {
+		if errors.Is(err, ErrNoFiles) || errors.Is(err, os.ErrNotExist) {
+			for _, s := range saved {
+				if s.session.Invocation == r.invocation {
+					r.abortSaved(ctx, s, err.Error())
+				}
+			}
+		}
 		return Summary{}, err
 	}
 	before, err := r.api.LatestFiles(ctx, r.o.Volume)
@@ -266,6 +293,7 @@ func (r *runner) begin(sess KeySession, id uuid.UUID, up Upload) error {
 		Volume:       r.o.Volume.Name,
 		Environment:  r.o.Volume.Environment,
 		Organization: uuid.UUID(r.org).String(),
+		Invocation:   r.invocation,
 		KeyPair:      uuid.UUID(sess.KeyPairID()).String(),
 		SessionKey:   sess.Key(),
 		CreatedAt:    up.CreatedAt,
@@ -492,7 +520,7 @@ func (r *runner) summarize(files []*fileState, before FileList, res UploadResult
 			Path:      f.src.Target,
 			Size:      f.src.Size,
 			SHA256:    hex.EncodeToString(f.src.SHA256[:]),
-			BytesSent: f.bytesSent(),
+			BytesSent: f.sent.Load(),
 		}
 		if f.reused {
 			s.Reused++

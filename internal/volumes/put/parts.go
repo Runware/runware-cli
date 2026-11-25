@@ -46,6 +46,7 @@ type fileState struct {
 	targets map[int]Target
 	results []partResult
 	pending atomic.Int64
+	sent    atomic.Int64
 }
 
 // prepare takes an uploading file's approved layout and its first upload targets.
@@ -73,7 +74,7 @@ func (f *fileState) prepare(a *DeclarationAnswer) error {
 	return nil
 }
 
-func (f *fileState) bytesSent() int64 {
+func (f *fileState) acknowledgedBytes() int64 {
 	var n int64
 	for i := range f.results {
 		n += f.results[i].Len
@@ -141,7 +142,7 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 	}
 	var total int64
 	for _, f := range todo {
-		total += f.layout.CiphertextSize
+		total += f.layout.CiphertextSize - f.acknowledgedBytes()
 	}
 	r.progress.begin("uploading", len(todo), total)
 	defer r.progress.end()
@@ -309,7 +310,11 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 		if cause := context.Cause(retryCtx); cause != nil {
 			return partResult{}, cause
 		}
-		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, crc), sealer.Len())
+		traffic := partTraffic{
+			file:     f,
+			progress: r.progress,
+		}
+		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, io.MultiWriter(crc, traffic)), sealer.Len())
 		tokenExpired := errors.Is(err, ErrPartTokenExpired)
 		switch {
 		case err == nil:
@@ -345,6 +350,18 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			}
 		}
 	}
+}
+
+// partTraffic counts ciphertext consumed by the transport on every attempt.
+type partTraffic struct {
+	file     *fileState
+	progress *progress
+}
+
+func (p partTraffic) Write(b []byte) (int, error) {
+	p.file.sent.Add(int64(len(b)))
+	p.progress.addSent(int64(len(b)))
+	return len(b), nil
 }
 
 // retryable reports whether the request can benefit from a retry.

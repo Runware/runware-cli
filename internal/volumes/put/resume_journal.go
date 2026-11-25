@@ -181,6 +181,7 @@ func reopenJournal(s *savedSession) (*journal, error) {
 	return &journal{
 		dir:  s.dir,
 		file: f,
+		lock: s.lock,
 	}, nil
 }
 

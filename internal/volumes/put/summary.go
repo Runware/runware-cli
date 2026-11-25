@@ -15,7 +15,7 @@ const (
 
 const productionEnvironment = "production"
 
-// FileResult is what a put did with one file; a reused file sent no bytes.
+// FileResult is what this invocation did with one file, including transfer retries.
 type FileResult struct {
 	Path      string `json:"path"`
 	Action    string `json:"action"`

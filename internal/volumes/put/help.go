@@ -27,8 +27,8 @@ that changes nothing sends no bytes. A file must not change while it uploads: if
 does, put stops, names the file and publishes nothing.
 
 If put is interrupted, run the same command again to continue the upload. Parts
-whose acknowledgements were saved are skipped. If a file changed in the meantime, put starts
-the upload over.`
+whose acknowledgements were saved are skipped. If a file changed, put aborts the
+saved upload. Run the command again to start a new session.`
 
 	HelpExample = `  # upload a directory to the root of a Volume
   runware serverless volumes put model-weights ./weights

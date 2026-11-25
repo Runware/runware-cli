@@ -37,6 +37,7 @@ type sessionRecord struct {
 	Volume       string    `json:"volume"`
 	Environment  string    `json:"environment,omitempty"`
 	Organization string    `json:"organization"`
+	Invocation   string    `json:"invocation,omitempty"`
 	KeyPair      string    `json:"keyPairId"`
 	SessionKey   []byte    `json:"sessionKey"`
 	CreatedAt    time.Time `json:"createdAt"`
@@ -214,11 +215,22 @@ func (j *journal) closeLocked() error {
 func (j *journal) remove() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	closeErr := j.closeLocked()
-	if err := os.RemoveAll(j.dir); err != nil {
-		return errors.Join(closeErr, fmt.Errorf("remove the resume state: %w", err))
+	return errors.Join(j.closeLocked(), removeSessionState(j.dir, j.lock))
+}
+
+// Unlink the journal before releasing ownership. Windows needs the lock handle
+// closed before its directory can be deleted.
+func removeSessionState(dir string, lock *os.File) error {
+	if err := os.Remove(filepath.Join(dir, journalName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove the resume journal: %w", err)
 	}
-	return closeErr
+	if lock != nil {
+		_ = lock.Close()
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("remove the resume state: %w", err)
+	}
+	return nil
 }
 
 // syncDir flushes a directory entry where the platform allows it.

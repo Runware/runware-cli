@@ -375,7 +375,7 @@ func TestResumeSendsOnlyUnacknowledgedParts(t *testing.T) {
 }
 
 // AC 1 and 2: a file that changed since the interrupt aborts the saved session, changes nothing in the
-// Volume, and the put opens a new session with fresh keys.
+// Volume, and the next put opens a new session with fresh keys.
 func TestResumeAbortsAChangedFileAndStartsOver(t *testing.T) {
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
@@ -387,8 +387,12 @@ func TestResumeAbortsAChangedFileAndStartsOver(t *testing.T) {
 	big := filepath.Join(dir, bigName)
 	patchFile(t, big, 10, []byte("changed"))
 
-	if _, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir)); err != nil {
-		t.Fatal(err)
+	if _, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir)); !errors.Is(err, ErrSourceChanged) ||
+		!strings.Contains(err.Error(), big) {
+		t.Fatalf("resume returned %v, want a source-change error naming %s", err, big)
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 0 {
+		t.Fatalf("files = %v, want no publication after a source change", files)
 	}
 
 	e.cloud.mu.Lock()
@@ -397,12 +401,13 @@ func TestResumeAbortsAChangedFileAndStartsOver(t *testing.T) {
 	if state != fakeAborted {
 		t.Errorf("the saved session is %q, want it aborted", state)
 	}
+	if _, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir)); err != nil {
+		t.Fatal(err)
+	}
 	if e.cloud.count("open") != 2 || e.keys.opens != 2 {
 		t.Errorf("calls = %v, key opens = %d, want a new session with a fresh encapsulation", e.cloud.callLog(), e.keys.opens)
 	}
-	if !strings.Contains(e.progress.String(), "changed since the session was saved") {
-		t.Errorf("progress %q does not say why the saved session was aborted", e.progress.String())
-	}
+
 	requireFiles(t, e, vol, expectedFiles(t, dir, ""))
 	if dirs := e.uploadDirs(); len(dirs) != 0 {
 		t.Errorf("resume state left: %v", dirs)
@@ -533,6 +538,12 @@ func TestResumeFromRolledBackState(t *testing.T) {
 func TestRolledBackStateNeverRepeatsAKeyAndNonce(t *testing.T) {
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
+	big := filepath.Join(dir, bigName)
+	// The second job waits for the first sealer before the reader can check
+	// the whole-file digest on the last part.
+	if err := os.Truncate(big, 2*firstPartSize+1); err != nil {
+		t.Fatal(err)
+	}
 	vol := e.cloud.newVolume("model-weights", "")
 	var rec sealRecorder
 	snapshot := filepath.Join(t.TempDir(), "snapshot")
@@ -541,7 +552,6 @@ func TestRolledBackStateNeverRepeatsAKeyAndNonce(t *testing.T) {
 	e.cloud.mu.Unlock()
 	interruptedPut(t, e, resumeOptions(e, &rec, vol, dir), 2)
 	restoreTree(t, snapshot, e.stateDir())
-	big := filepath.Join(dir, bigName)
 	e.cloud.mu.Lock()
 	e.cloud.onDeclare = func(FileDeclarations) { patchFile(t, big, 10, []byte("changed")) }
 	e.cloud.mu.Unlock()

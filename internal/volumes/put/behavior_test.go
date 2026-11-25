@@ -117,8 +117,8 @@ func TestRetryUsesNewSealer(t *testing.T) {
 	if len(puts[0].Salt) != 16 || bytes.Equal(puts[0].Salt, puts[1].Salt) {
 		t.Errorf("the retry reused the salt %x", puts[0].Salt)
 	}
-	if want := ciphertextSize(t, 5000); sum.BytesSent != want {
-		t.Errorf("sent %d bytes, want %d: a retried part counts once", sum.BytesSent, want)
+	if want := 2 * ciphertextSize(t, 5000); sum.BytesSent != want {
+		t.Errorf("sent %d bytes, want %d including the retry", sum.BytesSent, want)
 	}
 }
 

@@ -43,10 +43,8 @@ func (p *resumePlan) clear() {
 	}
 }
 
-// resume continues this Volume's saved session when every file it saved still matches the sources, and
-// reports false when put should open a new session instead. It removes expired state, and aborts a saved
-// session that cannot continue: a file changed since it was saved, a key that no longer opens, or
-// a newer session for the same Volume. A resumed session fetches no key-pair statement and opens nothing.
+// resume continues a matching saved session without opening a new one or
+// fetching a key-pair statement.
 func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []Source, before FileList) (bool, Summary, error) {
 	if len(saved) == 0 {
 		return false, Summary{}, nil
@@ -56,7 +54,7 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 		targets[src.Target] = struct{}{}
 	}
 	saved = slices.DeleteFunc(slices.Clone(saved), func(s *savedSession) bool {
-		if len(s.files) == 0 {
+		if s.session.Invocation != "" && s.session.Invocation == r.invocation {
 			return false
 		}
 		for _, file := range s.files {
@@ -64,7 +62,7 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 				return false
 			}
 		}
-		return true
+		return len(s.files) > 0
 	})
 	if len(saved) == 0 {
 		return false, Summary{}, nil
@@ -82,9 +80,12 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 			r.abortSaved(ctx, s, "a newer session of this Volume is being resumed")
 			continue
 		}
-		p, reason := r.planResume(s, sources)
-		if reason != "" {
-			r.abortSaved(ctx, s, reason)
+		p, err := r.planResume(s, sources)
+		if err != nil {
+			r.abortSaved(ctx, s, err.Error())
+			if errors.Is(err, ErrSourceChanged) && !s.publishing {
+				return true, Summary{}, err
+			}
 			continue
 		}
 		plan = p
@@ -120,6 +121,10 @@ func (r *runner) sweep() []*savedSession {
 		}
 		dir := filepath.Join(root, entry.Name())
 		info, statErr := entry.Info()
+		abandoned := statErr == nil && now.Sub(info.ModTime()) > unreadableStateAge
+		if _, err := os.Stat(filepath.Join(dir, journalName)); errors.Is(err, os.ErrNotExist) && !abandoned {
+			continue
+		}
 		lock, err := lockSession(dir, false)
 		if err != nil || lock == nil {
 			continue
@@ -129,14 +134,14 @@ func (r *runner) sweep() []*savedSession {
 			_, err = s.sessionID()
 		}
 		if err != nil {
-			if statErr == nil && now.Sub(info.ModTime()) > unreadableStateAge {
-				r.removeState(dir, "unreadable")
+			if abandoned {
+				r.removeState(dir, lock, "unreadable")
 			}
 			_ = lock.Close()
 			continue
 		}
 		if !now.Before(s.session.ExpiresAt) {
-			r.removeState(dir, "expired")
+			r.removeState(dir, lock, "expired")
 			clear(s.session.SessionKey)
 			_ = lock.Close()
 			continue
@@ -152,29 +157,28 @@ func (r *runner) sweep() []*savedSession {
 	return mine
 }
 
-func (r *runner) removeState(dir, why string) {
-	if err := os.RemoveAll(dir); err != nil {
-		r.warn("remove the resume state: %v", err)
+func (r *runner) removeState(dir string, lock *os.File, why string) {
+	if err := removeSessionState(dir, lock); err != nil {
+		r.warn("%v", err)
 		return
 	}
 	r.debug("volume upload: removed resume state", "session", filepath.Base(dir), "reason", why)
 }
 
-// planResume checks a saved session against the hashed sources and its keys against its sealing key. A
-// non-empty reason says why the session cannot continue.
-func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, string) {
+// planResume checks the saved sources and verifies each in-flight key.
+func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, error) {
 	id, err := s.sessionID()
 	if err != nil {
-		return nil, err.Error()
+		return nil, err
 	}
 	if s.session.Version != journalVersion {
-		return nil, "it was saved in another format"
+		return nil, errors.New("it was saved in another format")
 	}
 	if len(s.session.SessionKey) != 32 || s.session.KeyPair == "" {
-		return nil, "the session sealing key was lost"
+		return nil, errors.New("the session sealing key was lost")
 	}
 	if s.publishing && len(sources) != len(s.files) {
-		return nil, "the paths differ from the upload sent for publication"
+		return nil, errors.New("the paths differ from the upload sent for publication")
 	}
 	byTarget := make(map[string]*Source, len(sources))
 	for i := range sources {
@@ -192,11 +196,11 @@ func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, str
 		src, ok := byTarget[f.rec.Path]
 		if !ok {
 			p.clear()
-			return nil, fmt.Sprintf("%s is no longer among the files to upload", f.rec.Path)
+			return nil, fileErr(f.rec.Path, ErrSourceChanged)
 		}
-		if src.Size != f.rec.Size || src.Mode != f.rec.Mode || hex.EncodeToString(src.SHA256[:]) != f.rec.SHA256 {
+		if !matchesSource(f.rec, src) {
 			p.clear()
-			return nil, fmt.Sprintf("%s changed since the session was saved", f.rec.Path)
+			return nil, fileErr(src.Abs, ErrSourceChanged)
 		}
 		p.byTarget[f.rec.Path] = f
 		p.next = max(p.next, index+1)
@@ -206,7 +210,7 @@ func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, str
 		}
 		if err != nil {
 			p.clear()
-			return nil, "a saved file key was lost"
+			return nil, errors.New("a saved file key was lost")
 		}
 		if !ok {
 			continue
@@ -215,11 +219,15 @@ func (r *runner) planResume(s *savedSession, sources []Source) (*resumePlan, str
 		clear(saved.DataKey)
 		if err != nil {
 			p.clear()
-			return nil, "a saved file key was lost"
+			return nil, errors.New("a saved file key was lost")
 		}
 		p.keys[index] = key
 	}
-	return p, ""
+	return p, nil
+}
+
+func matchesSource(rec fileRecord, src *Source) bool {
+	return src.Size == rec.Size && src.Mode == rec.Mode && hex.EncodeToString(src.SHA256[:]) == rec.SHA256
 }
 
 // abortSaved aborts a saved session that cannot continue, then removes its state; the state stays while
@@ -233,20 +241,20 @@ func (r *runner) abortSaved(ctx context.Context, s *savedSession, reason string)
 	})
 	if p, ok := errors.AsType[*ProblemError](err); ok && p.Slug == slugUploadNotOpen {
 		r.warn("the saved upload session %s is closed and cannot be resumed because %s; starting a new one", s.session.Upload, reason)
-		r.removeState(s.dir, "closed")
+		r.removeState(s.dir, s.lock, "closed")
 		return
 	}
 	if err == nil {
 		r.warn("aborted the saved upload session %s, which cannot be resumed because %s; starting a new one", s.session.Upload, reason)
-		r.removeState(s.dir, "aborted")
+		r.removeState(s.dir, s.lock, "aborted")
 		return
 	}
 	r.warn("the saved upload session %s cannot be resumed because %s, and could not be aborted, so it stays open until %s: %v",
 		s.session.Upload, reason, s.session.ExpiresAt.Format(time.RFC3339), err)
 }
 
-// resumeSession continues a planned session and ends it as a fresh one ends: removing its state on
-// completion, keeping it on an interrupt and aborting it on any other failure.
+// resumeSession continues a planned session and uses the fresh upload's
+// publication and failure handling.
 func (r *runner) resumeSession(ctx context.Context, p *resumePlan, sources []Source, before FileList) (Summary, error) {
 	r.ref = UploadRef{
 		Volume: r.o.Volume,
@@ -454,7 +462,6 @@ func (r *runner) resumePart(f *fileState, part int, digest [32]byte) (bool, erro
 		return false, fileErr(f.src.Abs, fmt.Errorf("%w: part %d differs from the bytes read for it before", ErrSourceChanged, part))
 	}
 	if res := f.results[part-1]; res.Ack != "" {
-		r.progress.addBytes(res.Len)
 		return false, nil
 	}
 	return true, nil
