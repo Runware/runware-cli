@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -107,7 +108,7 @@ func parseTaskStatus(status string) (*serverlessapi.TaskStatus, error) {
 }
 
 func newAppsTasksCancelCmd(logger *log.Logger) *cobra.Command {
-	var all bool
+	var all, yes, force bool
 
 	cmd := &cobra.Command{
 		Use:   "cancel <appId> [taskId]",
@@ -124,17 +125,30 @@ find with no recorded start are canceled, so resuming a stopped application
 starts no worker for the messages removed. --all does not guarantee that every
 task is canceled: a task submitted while the call runs, a message a worker had
 already taken, or a task queued for more than an hour can survive or go uncounted.
-Canceling a single task leaves its message queued until a worker skips it.`,
+Canceling a single task leaves its message queued until a worker skips it.
+
+Canceling a single task asks for no confirmation. --all cannot be undone, so it
+asks for confirmation unless --yes or --force is passed.`,
 		Example: `  # cancel one queued task
   runware serverless apps tasks cancel my-app 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
-  # cancel every queued task of an app
-  runware serverless apps tasks cancel my-app --all`,
+  # cancel every queued task of an app (prompts for confirmation)
+  runware serverless apps tasks cancel my-app --all
+
+  # skip the confirmation prompt
+  runware serverless apps tasks cancel my-app --all --yes`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appID := args[0]
 			if all == (len(args) == 2) {
 				return fmt.Errorf("give either a task id or --all")
+			}
+
+			if all {
+				subject := deleteSubject(cmd, "all queued tasks of application "+appID)
+				if err := confirmCancelAll(subject, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
+					return err
+				}
 			}
 
 			client := newServerlessClient(cmd, logger)
@@ -164,6 +178,8 @@ Canceling a single task leaves its message queued until a worker skips it.`,
 		},
 	}
 
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip the confirmation prompt for --all")
+	cmd.Flags().BoolVar(&force, "force", false, "Skip the confirmation prompt for --all")
 	cmd.Flags().BoolVar(&all, "all", false, "Cancel the application's queued tasks (see the help for what it does not cover)")
 	return cmd
 }

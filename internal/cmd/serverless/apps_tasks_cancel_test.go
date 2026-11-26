@@ -1,6 +1,8 @@
 package serverless
 
 import (
+	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -44,5 +46,34 @@ func TestTasksCanceledResult_Rows(t *testing.T) {
 	}
 	if rows := r.Rows(); len(rows) != 1 || rows[0][0] != testAppID || rows[0][1] != int64(4) {
 		t.Fatalf("rows: %#v", rows)
+	}
+}
+
+func TestConfirmCancelAll_NonTTYRequiresYes(t *testing.T) {
+	err := confirmCancelAll(testAppID, false, strings.NewReader("y\n"), io.Discard, false, testDeleteKey)
+	if !errors.Is(err, errCancelAllNeedsConfirm) {
+		t.Fatalf("expected errCancelAllNeedsConfirm, got %v", err)
+	}
+}
+
+func TestConfirmCancelAll_PromptsAndAcceptsYes(t *testing.T) {
+	var out bytes.Buffer
+	if err := confirmCancelAll(testAppID, false, strings.NewReader("yes\n"), &out, true, testDeleteKey); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.HasPrefix(got, "Cancel ") || !strings.Contains(got, testAppID) {
+		t.Fatalf("prompt = %q", got)
+	}
+}
+
+func TestConfirmCancelAll_DeclinedAndSkipped(t *testing.T) {
+	for _, input := range []string{"n\n", "\n", "maybe\n"} {
+		err := confirmCancelAll(testAppID, false, strings.NewReader(input), io.Discard, true, testDeleteKey)
+		if !errors.Is(err, errCancelAllDeclined) {
+			t.Fatalf("input %q: expected errCancelAllDeclined, got %v", input, err)
+		}
+	}
+	if err := confirmCancelAll(testAppID, true, strings.NewReader(""), io.Discard, false, testDeleteKey); err != nil {
+		t.Fatalf("--yes must skip the prompt: %v", err)
 	}
 }

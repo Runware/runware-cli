@@ -18,6 +18,9 @@ task is canceled: a task submitted while the call runs, a message a worker had
 already taken, or a task queued for more than an hour can survive or go uncounted.
 Canceling a single task leaves its message queued until a worker skips it.
 
+Canceling a single task asks for no confirmation. --all cannot be undone, so it
+asks for confirmation unless --yes or --force is passed.
+
 ```
 runware serverless apps tasks cancel <appId> [taskId] [flags]
 ```
@@ -28,15 +31,20 @@ runware serverless apps tasks cancel <appId> [taskId] [flags]
   # cancel one queued task
   runware serverless apps tasks cancel my-app 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
-  # cancel every queued task of an app
+  # cancel every queued task of an app (prompts for confirmation)
   runware serverless apps tasks cancel my-app --all
+
+  # skip the confirmation prompt
+  runware serverless apps tasks cancel my-app --all --yes
 ```
 
 ### Options
 
 ```
-      --all    Cancel the application's queued tasks (see the help for what it does not cover)
-  -h, --help   help for cancel
+      --all     Cancel the application's queued tasks (see the help for what it does not cover)
+      --force   Skip the confirmation prompt for --all
+  -h, --help    help for cancel
+  -y, --yes     Skip the confirmation prompt for --all
 ```
 
 ### Options inherited from parent commands
