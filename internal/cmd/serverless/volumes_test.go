@@ -2,6 +2,7 @@ package serverless
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -105,7 +106,7 @@ func TestVolumesPutHelpDescribesAdditiveUploads(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := strings.ToLower(cmd.Long)
-	for _, want := range []string{"additive", "workers that start after an upload get the new files", "rolling an app back", "create a new volume"} {
+	for _, want := range []string{"additive", "workers that start after an upload get the new files", "rolling an app back", "create a new volume", "run the same command again to continue the upload"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help does not say %q", want)
 		}
@@ -330,7 +331,7 @@ func parseTextSummary(t *testing.T, text string) put.Summary {
 			mustScan(t, line, "  Files: %d added, %d replaced, %d reused", &s.Added, &s.Replaced, &s.Reused)
 		case strings.HasPrefix(strings.TrimSpace(line), "Bytes sent:"):
 			mustScan(t, fields[2], "%d", &s.BytesSent)
-		case len(fields) == 8 && fields[5] == "sent" && fields[6] == "sha256":
+		case (len(fields) == 8 || len(fields) == 9) && fields[5] == "sent" && fields[6] == "sha256":
 			var size, sent int64
 			mustScan(t, fields[2], "%d", &size)
 			mustScan(t, fields[4], "%d", &sent)
@@ -340,6 +341,7 @@ func parseTextSummary(t *testing.T, text string) put.Summary {
 				Size:      size,
 				SHA256:    fields[7],
 				BytesSent: sent,
+				Reused:    len(fields) == 9 && fields[8] == "reused",
 			})
 		}
 	}
@@ -785,5 +787,89 @@ func mustScan(t *testing.T, s, format string, args ...any) {
 	t.Helper()
 	if _, err := fmt.Sscanf(s, format, args...); err != nil {
 		t.Fatalf("scan %q as %q: %v", s, format, err)
+	}
+}
+
+// TestVolumesPutResumesAnInterruptedUpload: an interrupted put keeps its
+// session and says how to resume; the same command then continues that
+// session without a new statement, sends no acknowledged part again, and logs
+// no secret at debug level.
+func TestVolumesPutResumesAnInterruptedUpload(t *testing.T) {
+	f := newPutFake(t)
+	f.newVolume("", testVolume)
+	dir := newTree(t, testTree)
+	uploads := filepath.Join(f.home, ".runware", volumesStateDir, "uploads")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// The first file completion means that file's parts are all acknowledged.
+	f.onCompleteFile = cancel
+
+	first := f.runContext(ctx, formatJSON, false, testVolume, dir)
+
+	f.mu.Lock()
+	f.onCompleteFile = nil
+	sentBefore := len(f.acks)
+	var states []string
+	for _, up := range f.uploads {
+		states = append(states, up.state)
+	}
+	f.mu.Unlock()
+	requireOneLine(t, first.err, "run put again with the same paths to resume")
+	if !errors.Is(first.err, context.Canceled) || !cmdutil.IsResumable(first.err) {
+		t.Fatalf("interrupt = %v, want an error that prints the resume instructions at exit 130", first.err)
+	}
+	if len(states) != 1 || states[0] != fakeOpen {
+		t.Fatalf("sessions = %v, want one session left open", states)
+	}
+	if entries, err := os.ReadDir(uploads); err != nil || len(entries) != 1 {
+		t.Fatalf("resume state = %v (%v), want one saved session", entries, err)
+	}
+
+	second := f.run(formatJSON, true, testVolume, dir)
+	s := mustPut(t, second)
+
+	if len(s.Files) != len(testTree) {
+		t.Errorf("summary has %d files, want %d", len(s.Files), len(testTree))
+	}
+	files, _ := f.volume("", testVolume)
+	if len(files) != len(testTree) {
+		t.Errorf("the Volume holds %d files, want %d", len(files), len(testTree))
+	}
+	opens, statements, aborts := 0, 0, 0
+	for _, c := range f.callLog() {
+		switch {
+		case strings.HasPrefix(c, "POST ") && strings.HasSuffix(c, "/uploads"):
+			opens++
+		case strings.HasPrefix(c, "GET /v1/volumes-key-pair"):
+			statements++
+		case strings.HasPrefix(c, "DELETE "):
+			aborts++
+		}
+	}
+	if opens != 1 || statements != 1 || aborts != 0 {
+		t.Errorf("opens = %d, statements = %d, aborts = %d; want the resume to continue the one session", opens, statements, aborts)
+	}
+	f.mu.Lock()
+	resent := len(f.acks) - sentBefore
+	f.mu.Unlock()
+	if resent >= len(testTree) {
+		t.Errorf("the resume sent %d parts, want fewer than the %d files' parts", resent, len(testTree))
+	}
+	if entries, _ := os.ReadDir(uploads); len(entries) != 0 {
+		t.Errorf("resume state left after completion: %v", entries)
+	}
+	out := second.output()
+	if !strings.Contains(out, "resuming session") {
+		t.Errorf("the verbose run did not log the resume:\n%s", out)
+	}
+	for _, marker := range []string{markerToken, markerAck, markerURL} {
+		if strings.Contains(out, marker) {
+			t.Errorf("output shows %s:\n%s", marker, out)
+		}
+	}
+	for _, secret := range f.sentSecrets() {
+		if secret != "" && strings.Contains(out, secret) {
+			t.Errorf("output shows a sealed key or encapsulation:\n%s", out)
+		}
 	}
 }

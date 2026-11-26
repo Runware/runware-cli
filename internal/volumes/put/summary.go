@@ -15,13 +15,14 @@ const (
 
 const productionEnvironment = "production"
 
-// FileResult is what a put did with one file; a reused file sent no bytes.
+// FileResult is what this invocation did with one file, including transfer retries.
 type FileResult struct {
 	Path      string `json:"path"`
 	Action    string `json:"action"`
 	Size      int64  `json:"size"`
 	SHA256    string `json:"sha256"`
 	BytesSent int64  `json:"bytesSent"`
+	Reused    bool   `json:"reused,omitempty"`
 }
 
 // Summary is what a put did to the Volume.
@@ -35,6 +36,7 @@ type Summary struct {
 	Reused         int          `json:"reused"` // Files that reused content, including added or replaced paths.
 	BytesSent      int64        `json:"bytesSent"`
 	Files          []FileResult `json:"files"`
+	recovered      bool
 }
 
 // WriteText writes the summary as text.
@@ -49,9 +51,20 @@ func (s Summary) WriteText(w io.Writer) error {
 	if digest == "" {
 		digest = "none, the Volume has no files"
 	}
-	fmt.Fprintf(&b, "  Latest files digest: %s\n", digest)
+	label := "Latest files digest"
+	if s.recovered {
+		label = "Publication digest"
+	}
+	fmt.Fprintf(&b, "  %s: %s\n", label, digest)
 	fmt.Fprintf(&b, "  Files: %d added, %d replaced, %d reused\n", s.Added, s.Replaced, s.Reused)
 	fmt.Fprintf(&b, "  Bytes sent: %d (%s)\n", s.BytesSent, formatBytes(s.BytesSent))
+	for _, f := range s.Files {
+		fmt.Fprintf(&b, "  %-8s %s  %d bytes  %d sent  sha256 %s", f.Action, f.Path, f.Size, f.BytesSent, f.SHA256)
+		if f.Reused {
+			b.WriteString("  reused")
+		}
+		b.WriteByte('\n')
+	}
 	_, err := io.WriteString(w, b.String())
 	return err
 }

@@ -3,6 +3,7 @@ package serverless
 import (
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
@@ -13,6 +14,8 @@ import (
 // that two mounts overlap is the whole of that wait wasted. The server validates
 // every request independently regardless -- this is a courtesy, not a boundary.
 const (
+	// maxVolumes counts --volume and --mount entries together: the server
+	// holds both lists to one limit.
 	maxVolumes             = 30
 	maxVolumeMountPathLen  = 2048
 	maxVolumePathComponent = 255
@@ -21,74 +24,179 @@ const (
 	volumeMountPathExtra = "._-/+@"
 )
 
-// buildVolumes turns --volume flags into the wire type, rejecting anything the
-// server would reject.
-//
-// The mount path is the volume's whole identity: there is no name, because the
-// path is what the app opens and what the node-local directory is keyed by. So
-// nothing here needs a second field, and two entries that resolve to the same
-// place are a mistake rather than a merge.
-func buildVolumes(mountPaths []string) (*[]serverlessapi.AppVolume, error) {
-	if len(mountPaths) == 0 {
-		return nil, nil
-	}
-	if len(mountPaths) > maxVolumes {
-		return nil, fmt.Errorf("at most %d volumes (got %d)", maxVolumes, len(mountPaths))
-	}
+const (
+	volumeFlag   = "volume"
+	mountFlag    = "mount"
+	noMountsFlag = "no-mounts"
+)
 
-	volumes := make([]serverlessapi.AppVolume, 0, len(mountPaths))
-	seen := make([]string, 0, len(mountPaths))
-	for _, raw := range mountPaths {
-		mount, err := validateMountPath(raw, seen)
-		if err != nil {
-			return nil, err
-		}
-		seen = append(seen, mount)
-		volumes = append(volumes, serverlessapi.AppVolume{MountPath: mount})
-	}
-	return &volumes, nil
+// volumeNamePattern is the server's VolumeName rule.
+var volumeNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
+
+// sandboxPath is one requested path inside the sandbox, with the flag that asked
+// for it, so an error can name the flag the person has to change.
+type sandboxPath struct {
+	flag  string
+	raw   string
+	clean string
 }
 
-// validateMountPath returns the cleaned path, or an error naming what is wrong
-// with it. `seen` holds the already-accepted paths, cleaned.
-func validateMountPath(raw string, seen []string) (string, error) {
-	// path.Clean, not filepath.Clean: this is a path inside the Linux sandbox
-	// the app runs in, whatever the machine the CLI runs on.
-	mount := path.Clean(raw)
-
-	switch {
-	case !path.IsAbs(mount):
-		return "", fmt.Errorf("volume %q: must be an absolute path", raw)
-	case mount == "/":
-		return "", fmt.Errorf("volume %q: must not be the root directory", raw)
-	case len(mount) > maxVolumeMountPathLen:
-		return "", fmt.Errorf("volume %q: exceeds the %d character limit", raw, maxVolumeMountPathLen)
+// buildSandboxPaths turns --volume and --mount flags into the wire types,
+// rejecting anything the server would reject. Both lists share one limit and
+// one overlap check, as on the server: a Shared Volume mounted inside a
+// node-local volume, or over it, would leave no answer to which one owns the
+// shared subtree.
+//
+// On an update the request carries only the mounts, and the app read does not
+// return the node-local volumes it keeps, so an overlap with those is left to
+// the server.
+//
+// No entries send nil rather than an empty array: the fields are optional and
+// an explicit [] is a different statement from saying nothing.
+func buildSandboxPaths(volumePaths, mountSpecs []string) (*[]serverlessapi.AppVolume, *[]serverlessapi.VolumeMount, error) {
+	if total := len(volumePaths) + len(mountSpecs); total > maxVolumes {
+		return nil, nil, fmt.Errorf("at most %d --volume and --mount entries together (got %d)", maxVolumes, total)
 	}
 
-	for _, r := range mount {
+	seen := make([]sandboxPath, 0, len(volumePaths)+len(mountSpecs))
+	accept := func(flag, raw, mountPath string) (string, error) {
+		clean, err := validateMountPath(flag, raw, mountPath, seen)
+		if err != nil {
+			return "", err
+		}
+		seen = append(seen, sandboxPath{
+			flag:  flag,
+			raw:   raw,
+			clean: clean,
+		})
+		return clean, nil
+	}
+
+	var volumes *[]serverlessapi.AppVolume
+	if len(volumePaths) > 0 {
+		list := make([]serverlessapi.AppVolume, 0, len(volumePaths))
+		for _, raw := range volumePaths {
+			clean, err := accept(volumeFlag, raw, raw)
+			if err != nil {
+				return nil, nil, err
+			}
+			list = append(list, serverlessapi.AppVolume{MountPath: clean})
+		}
+		volumes = &list
+	}
+
+	var mounts *[]serverlessapi.VolumeMount
+	if len(mountSpecs) > 0 {
+		list := make([]serverlessapi.VolumeMount, 0, len(mountSpecs))
+		for _, raw := range mountSpecs {
+			name, mountPath, err := parseMountSpec(raw)
+			if err != nil {
+				return nil, nil, err
+			}
+			clean, err := accept(mountFlag, raw, mountPath)
+			if err != nil {
+				return nil, nil, err
+			}
+			list = append(list, serverlessapi.VolumeMount{
+				Kind:      serverlessapi.VolumeMountKindVolume,
+				Name:      name,
+				MountPath: clean,
+			})
+		}
+		mounts = &list
+	}
+	return volumes, mounts, nil
+}
+
+// parseMountSpec splits <volume>:<path>. A Volume name has no colon, so the
+// first one separates the two.
+func parseMountSpec(raw string) (name, mountPath string, err error) {
+	name, mountPath, ok := strings.Cut(raw, ":")
+	if !ok || name == "" || mountPath == "" {
+		return "", "", fmt.Errorf("--%s %q: want <volume>:<path>, such as model-weights:/models", mountFlag, raw)
+	}
+	if !volumeNamePattern.MatchString(name) {
+		return "", "", fmt.Errorf(
+			"--%s %q: Volume name %q must be lowercase letters, digits, '.', '_' and '-', starting with a letter or digit, at most 63 characters",
+			mountFlag, raw, name)
+	}
+	return name, mountPath, nil
+}
+
+// reservedSandboxPaths are the platform's own paths in the sandbox. The server
+// refuses a --volume or --mount on one, under one or over one.
+var reservedSandboxPaths = []string{
+	"/data/liquid-components",
+	"/data/liquid-large-data",
+	"/var/run/secrets/runware/oidc",
+}
+
+// validateMountPath returns the cleaned mountPath, or an error naming the flag
+// value and what is wrong with it. `seen` holds the already-accepted paths.
+func validateMountPath(flag, raw, mountPath string, seen []sandboxPath) (string, error) {
+	// path.Clean, not filepath.Clean: this is a path inside the Linux sandbox
+	// the app runs in, whatever the machine the CLI runs on.
+	clean := path.Clean(mountPath)
+
+	switch {
+	case !path.IsAbs(clean):
+		return "", fmt.Errorf("--%s %q: must be an absolute path", flag, raw)
+	case clean == "/":
+		return "", fmt.Errorf("--%s %q: must not be the root directory", flag, raw)
+	case len(clean) > maxVolumeMountPathLen:
+		return "", fmt.Errorf("--%s %q: exceeds the %d character limit", flag, raw, maxVolumeMountPathLen)
+	}
+
+	for _, r := range clean {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
 			(r >= '0' && r <= '9') || strings.ContainsRune(volumeMountPathExtra, r) {
 			continue
 		}
-		return "", fmt.Errorf("volume %q: contains unsupported character %q", raw, r)
+		return "", fmt.Errorf("--%s %q: contains unsupported character %q", flag, raw, r)
 	}
 
-	for component := range strings.SplitSeq(strings.TrimPrefix(mount, "/"), "/") {
+	for component := range strings.SplitSeq(strings.TrimPrefix(clean, "/"), "/") {
 		if len(component) > maxVolumePathComponent {
-			return "", fmt.Errorf("volume %q: path component exceeds %d bytes", raw, maxVolumePathComponent)
+			return "", fmt.Errorf("--%s %q: path component exceeds %d bytes", flag, raw, maxVolumePathComponent)
 		}
 	}
 
-	// Overlap, not just duplication: two volumes where one contains the other
-	// would bind-mount the same node directory into the sandbox twice, and there
-	// is no answer to which one owns the shared subtree.
-	for _, previous := range seen {
-		if previous == mount {
-			return "", fmt.Errorf("volume %q is listed twice", mount)
-		}
-		if strings.HasPrefix(mount, previous+"/") || strings.HasPrefix(previous, mount+"/") {
-			return "", fmt.Errorf("volume %q overlaps %q; declare only the outer path", mount, previous)
+	for _, reserved := range reservedSandboxPaths {
+		if clean == reserved || strings.HasPrefix(clean, reserved+"/") || strings.HasPrefix(reserved, clean+"/") {
+			return "", fmt.Errorf("--%s %q: %s is reserved by the platform; use a path that neither is, contains nor is inside it", flag, raw, reserved)
 		}
 	}
-	return mount, nil
+
+	// Overlap, not just duplication: two entries where one contains the other
+	// would bind the same subtree into the sandbox twice.
+	for _, previous := range seen {
+		same := previous.clean == clean
+		if !same && !strings.HasPrefix(clean, previous.clean+"/") && !strings.HasPrefix(previous.clean, clean+"/") {
+			continue
+		}
+		return "", pathConflictError(sandboxPath{
+			flag:  flag,
+			raw:   raw,
+			clean: clean,
+		}, previous, same)
+	}
+	return clean, nil
+}
+
+// pathConflictError names both entries and the fix. Two node-local volumes
+// that nest are one volume declared twice; anything involving a mount needs
+// its own path.
+func pathConflictError(entry, previous sandboxPath, same bool) error {
+	if entry.flag == volumeFlag && previous.flag == volumeFlag {
+		if same {
+			return fmt.Errorf("--%s %q is listed twice", volumeFlag, entry.clean)
+		}
+		return fmt.Errorf("--%s %q overlaps %q; declare only the outer path", volumeFlag, entry.clean, previous.clean)
+	}
+	relation := "overlaps"
+	if same {
+		relation = "uses the same path as"
+	}
+	return fmt.Errorf("--%s %q %s --%s %q; give the mount a path that neither contains nor is inside another --volume or --mount",
+		entry.flag, entry.raw, relation, previous.flag, previous.raw)
 }

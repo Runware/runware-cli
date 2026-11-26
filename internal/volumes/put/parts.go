@@ -38,6 +38,8 @@ type fileState struct {
 	key      FileKey
 	id       string
 	reused   bool
+	verified bool
+	planned  bool
 	layout   volumeformat.Layout
 	identity volumeformat.FileIdentity
 
@@ -45,6 +47,7 @@ type fileState struct {
 	targets map[int]Target
 	results []partResult
 	pending atomic.Int64
+	sent    atomic.Int64
 }
 
 // prepare takes an uploading file's approved layout and its first upload targets.
@@ -72,7 +75,7 @@ func (f *fileState) prepare(a *DeclarationAnswer) error {
 	return nil
 }
 
-func (f *fileState) bytesSent() int64 {
+func (f *fileState) acknowledgedBytes() int64 {
 	var n int64
 	for i := range f.results {
 		n += f.results[i].Len
@@ -140,10 +143,9 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 	}
 	var total int64
 	for _, f := range todo {
-		total += f.layout.CiphertextSize
+		total += f.layout.CiphertextSize - f.acknowledgedBytes()
 	}
 	r.progress.begin("uploading", len(todo), total)
-	defer r.progress.end()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -169,6 +171,12 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 	}
 	close(jobs)
 	wg.Wait()
+	r.progress.end()
+	if fail.err == nil {
+		for _, f := range todo {
+			r.progress.reportFile(f.src.Target, f.sent.Load(), false)
+		}
+	}
 	return fail.err
 }
 
@@ -202,7 +210,15 @@ func (r *runner) feedFile(ctx context.Context, f *fileState, pool *bufferPool, j
 			}
 		}
 		digest := sha256.Sum256(buf.data)
-		if err := r.journal.log(partRecord{
+		send, err := r.resumePart(f, part, digest)
+		if err != nil || !send {
+			pool.put(buf)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if err := r.journal.logSync(partRecord{
 			Type:   recordPart,
 			Index:  f.index,
 			Part:   part,
@@ -223,7 +239,7 @@ func (r *runner) feedFile(ctx context.Context, f *fileState, pool *bufferPool, j
 			return context.Cause(ctx)
 		}
 	}
-	return nil
+	return r.resumeVerified(ctx, f)
 }
 
 // readPart fills buf from the file at offset; a file that ends early has changed.
@@ -252,7 +268,7 @@ func (r *runner) transferPart(ctx context.Context, j partJob) error {
 	}
 	f.results[j.part-1] = res
 	r.progress.addBytes(res.Len)
-	if err := r.journal.log(ackRecord{
+	if err := r.journal.logAck(ackRecord{
 		Type:      recordAck,
 		Index:     f.index,
 		Part:      j.part,
@@ -288,7 +304,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 		if err != nil {
 			return partResult{}, err
 		}
-		sealer, err := volumeformat.NewPartSealer(f.key.DataKey(), f.identity, f.layout, int64(part))
+		sealer, err := r.newPartSealer(f.key.DataKey(), f.identity, f.layout, int64(part))
 		if err != nil {
 			return partResult{}, fmt.Errorf("seal the part: %w", err)
 		}
@@ -300,7 +316,11 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 		if cause := context.Cause(retryCtx); cause != nil {
 			return partResult{}, cause
 		}
-		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, crc), sealer.Len())
+		traffic := partTraffic{
+			file:     f,
+			progress: r.progress,
+		}
+		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, io.MultiWriter(crc, traffic)), sealer.Len())
 		tokenExpired := errors.Is(err, ErrPartTokenExpired)
 		switch {
 		case err == nil:
@@ -336,6 +356,18 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			}
 		}
 	}
+}
+
+// partTraffic counts ciphertext consumed by the transport on every attempt.
+type partTraffic struct {
+	file     *fileState
+	progress *progress
+}
+
+func (p partTraffic) Write(b []byte) (int, error) {
+	p.file.sent.Add(int64(len(b)))
+	p.progress.addSent(int64(len(b)))
+	return len(b), nil
 }
 
 // retryable reports whether the request can benefit from a retry.

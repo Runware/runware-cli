@@ -705,7 +705,13 @@ func (c *fakeCloud) DeclareFiles(ctx context.Context, ref UploadRef, batch FileD
 	for i := range batch.Files {
 		d := batch.Files[i]
 		if id, dup := up.paths[d.Path]; dup {
-			res.Files = append(res.Files, up.files[id].answer)
+			f := up.files[id]
+			a := f.answer
+			if f.state == stateVerified {
+				a.File.State = stateVerified
+				a.UploadTargets = nil
+			}
+			res.Files = append(res.Files, a)
 			continue
 		}
 		f := &fakeFile{

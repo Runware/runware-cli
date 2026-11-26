@@ -20,6 +20,7 @@ type progress struct {
 
 	files atomic.Int64
 	bytes atomic.Int64
+	sent  atomic.Int64
 
 	mu       sync.Mutex
 	label    string
@@ -66,6 +67,7 @@ func (p *progress) begin(label string, files int, bytes int64) {
 	p.mu.Unlock()
 	p.files.Store(0)
 	p.bytes.Store(0)
+	p.sent.Store(0)
 	go p.loop(stop, done)
 }
 
@@ -75,9 +77,26 @@ func (p *progress) fileDone() {
 	}
 }
 
+func (p *progress) reportFile(path string, sent int64, reused bool) {
+	if p == nil {
+		return
+	}
+	line := fmt.Sprintf("verified %q (%s sent)", path, formatBytes(sent))
+	if reused {
+		line = fmt.Sprintf("reused %q (0 B sent)", path)
+	}
+	_, _ = fmt.Fprintln(p.w, line)
+}
+
 func (p *progress) addBytes(n int64) {
 	if p != nil {
 		p.bytes.Add(n)
+	}
+}
+
+func (p *progress) addSent(n int64) {
+	if p != nil {
+		p.sent.Add(n)
 	}
 }
 
@@ -144,6 +163,9 @@ func (p *progress) line(now time.Time) string {
 		if left := p.bytesTot - done; left > 0 {
 			s += fmt.Sprintf(", %s left", time.Duration(float64(left)/rate*float64(time.Second)).Round(time.Second))
 		}
+	}
+	if sent := p.sent.Load(); sent > done {
+		s += fmt.Sprintf(", %s sent", formatBytes(sent))
 	}
 	return s
 }

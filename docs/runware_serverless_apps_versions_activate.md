@@ -14,6 +14,10 @@ An already-active app stays active while workers roll, so --wait cannot follow
 that case and reports that the rollout continues in the background.
 On a stopped or stopping app the version is recorded and applied on resume.
 
+A rollback restores the version's image, settings and Shared Volume mounts,
+not earlier Volume files: each worker it starts mounts each Volume's latest
+files. A version whose Volume was deleted since is refused with 422.
+
 A missing app is 404. A missing version, a version that is not ready, or an
 app that is deleting is 409.
 

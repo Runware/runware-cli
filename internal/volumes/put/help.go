@@ -24,7 +24,11 @@ To start from an empty set of files, create a new Volume and upload into it.
 
 Content the organization already stores is never sent again, so repeating an upload
 that changes nothing sends no bytes. A file must not change while it uploads: if one
-does, put stops, names the file and publishes nothing.`
+does, put stops, names the file and publishes nothing.
+
+If put is interrupted, run the same command again to continue the upload. Parts
+whose acknowledgements were saved are skipped. If a file changed, put aborts the
+saved upload. Run the command again to start a new session.`
 
 	HelpExample = `  # upload a directory to the root of a Volume
   runware serverless volumes put model-weights ./weights
