@@ -32,7 +32,7 @@ runware serverless apps tasks <appId> [flags]
       --cursor string   Pagination cursor from a previous nextCursor
   -h, --help            help for tasks
       --limit int       Maximum number of tasks to return (1-100)
-      --status string   Filter by status (pending, completed, or failed)
+      --status string   Filter by status (pending, completed, failed, or canceled)
 ```
 
 ### Options inherited from parent commands
@@ -49,5 +49,6 @@ runware serverless apps tasks <appId> [flags]
 ### SEE ALSO
 
 * [runware serverless apps](runware_serverless_apps.md)	 - Manage deployed serverless applications
+* [runware serverless apps tasks cancel](runware_serverless_apps_tasks_cancel.md)	 - Cancel a queued task, or all queued tasks of an application
 * [runware serverless apps tasks show](runware_serverless_apps_tasks_show.md)	 - Show a single application task
 

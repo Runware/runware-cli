@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -66,8 +67,9 @@ running, and retrying work. A page can be empty and still have nextCursor.`,
 
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of tasks to return (1-100)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a previous nextCursor")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending, completed, or failed)")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending, completed, failed, or canceled)")
 	cmd.AddCommand(newAppsTasksShowCmd(logger))
+	cmd.AddCommand(newAppsTasksCancelCmd(logger))
 	return cmd
 }
 
@@ -102,5 +104,82 @@ func newAppsTasksShowCmd(logger *log.Logger) *cobra.Command {
 }
 
 func parseTaskStatus(status string) (*serverlessapi.TaskStatus, error) {
-	return parseValidFlag[serverlessapi.TaskStatus]("--status", status, "pending, completed, or failed")
+	return parseValidFlag[serverlessapi.TaskStatus]("--status", status, "pending, completed, failed, or canceled")
+}
+
+func newAppsTasksCancelCmd(logger *log.Logger) *cobra.Command {
+	var all, yes, force bool
+
+	cmd := &cobra.Command{
+		Use:   "cancel <appId> [taskId]",
+		Short: "Cancel a queued task, or all queued tasks of an application",
+		Long: `Cancel a task that no worker has started. Workers that check for a canceled task skip it.
+
+A task that is already running, completed, or failed cannot be canceled
+(409 task-not-cancelable). A task that has not started is also refused, with
+409 task-cancel-unsupported, when the application's workers cannot skip a
+canceled task; use --all then. A task whose record has expired is not found (404).
+
+With --all, the application's queue is emptied and the queued tasks the API can
+find with no recorded start are canceled, so resuming a stopped application
+starts no worker for the messages removed. --all does not guarantee that every
+task is canceled: a task submitted while the call runs, a message a worker had
+already taken, or a task queued for more than an hour can survive or go uncounted.
+Canceling a single task leaves its message queued until a worker skips it.
+
+Canceling a single task asks for no confirmation. --all cannot be undone, so it
+asks for confirmation unless --yes or --force is passed.`,
+		Example: `  # cancel one queued task
+  runware serverless apps tasks cancel my-app 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+  # cancel every queued task of an app (prompts for confirmation)
+  runware serverless apps tasks cancel my-app --all
+
+  # skip the confirmation prompt
+  runware serverless apps tasks cancel my-app --all --yes`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appID := args[0]
+			if all == (len(args) == 2) {
+				return fmt.Errorf("give either a task id or --all")
+			}
+
+			if all {
+				subject := deleteSubject(cmd, "all queued tasks of application "+appID)
+				if err := confirmCancelAll(subject, yes || force, cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(cmd.InOrStdin()), config.GetAPIKey()); err != nil {
+					return err
+				}
+			}
+
+			client := newServerlessClient(cmd, logger)
+			if all {
+				spin := cmdutil.NewSpinner(fmt.Sprintf("Canceling queued tasks of %s...", appID))
+				spin.Start()
+				canceled, err := client.CancelQueuedTasks(cmd.Context(), appID)
+				spin.Stop()
+				if err != nil {
+					return err
+				}
+				return output.Print(cmdutil.FormatFor(cmd), tasksCanceledResult{
+					AppID:    appID,
+					Canceled: canceled,
+				})
+			}
+
+			taskID := args[1]
+			spin := cmdutil.NewSpinner(fmt.Sprintf("Canceling task %s...", taskID))
+			spin.Start()
+			task, err := client.CancelTask(cmd.Context(), appID, taskID)
+			spin.Stop()
+			if err != nil {
+				return err
+			}
+			return output.Print(cmdutil.FormatFor(cmd), taskResult(*task))
+		},
+	}
+
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip the confirmation prompt for --all")
+	cmd.Flags().BoolVar(&force, "force", false, "Skip the confirmation prompt for --all")
+	cmd.Flags().BoolVar(&all, "all", false, "Cancel the application's queued tasks (see the help for what it does not cover)")
+	return cmd
 }

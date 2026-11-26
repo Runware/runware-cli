@@ -328,6 +328,80 @@ func (c *Client) GetTask(ctx context.Context, appID, taskID string) (*Task, erro
 	}
 }
 
+// CancelTask cancels a task no worker has started and returns it as canceled.
+// A task that is already running, completed or failed is refused with a 409
+// and left unchanged.
+func (c *Client) CancelTask(ctx context.Context, appID, taskID string) (*Task, error) {
+	if c.apiKey == "" {
+		return nil, transport.ErrNoAPIKey
+	}
+
+	id, err := parseTaskID(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.inner.CancelTaskWithResponse(ctx, appID, id, &gen.CancelTaskParams{
+		Environment: c.environmentParam(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cancel task: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return nil, fmt.Errorf("cancel task: empty 200 response")
+		}
+		return resp.JSON200, nil
+	case http.StatusUnauthorized:
+		return nil, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusNotFound:
+		return nil, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusConflict:
+		return nil, problemToError(resp.ApplicationproblemJSON409, http.StatusConflict)
+	case http.StatusServiceUnavailable:
+		return nil, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
+	default:
+		return nil, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
+// CancelQueuedTasks empties an app's queue and cancels every task no worker
+// has started. It returns how many tasks the call canceled.
+func (c *Client) CancelQueuedTasks(ctx context.Context, appID string) (int64, error) {
+	if c.apiKey == "" {
+		return 0, transport.ErrNoAPIKey
+	}
+
+	resp, err := c.inner.CancelQueuedTasksWithResponse(ctx, appID, &gen.CancelQueuedTasksParams{
+		Environment: c.environmentParam(),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("cancel queued tasks: %w", err)
+	}
+
+	c.logResponse(ctx, resp.HTTPResponse, resp.Body)
+
+	switch resp.StatusCode() {
+	case http.StatusOK:
+		if resp.JSON200 == nil {
+			return 0, fmt.Errorf("cancel queued tasks: empty 200 response")
+		}
+		return resp.JSON200.Canceled, nil
+	case http.StatusUnauthorized:
+		return 0, problemToError(resp.ApplicationproblemJSON401, http.StatusUnauthorized)
+	case http.StatusNotFound:
+		return 0, problemToError(resp.ApplicationproblemJSON404, http.StatusNotFound)
+	case http.StatusServiceUnavailable:
+		return 0, problemToError(resp.ApplicationproblemJSON503, http.StatusServiceUnavailable)
+	default:
+		return 0, problemFromBody(resp.Body, resp.StatusCode())
+	}
+}
+
 // ListTasks returns a page of tasks for an app.
 func (c *Client) ListTasks(ctx context.Context, appID string, params ListTasksParams) (Page[Task], error) {
 	if c.apiKey == "" {

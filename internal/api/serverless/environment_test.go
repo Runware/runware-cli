@@ -300,6 +300,20 @@ func environmentScopedCalls() []environmentCall {
 			},
 		},
 		{
+			operation: "CancelTask",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.CancelTask(ctx, testAppID, id.String())
+				return err
+			},
+		},
+		{
+			operation: "CancelQueuedTasks",
+			call: func(ctx context.Context, c *Client) error {
+				_, err := c.CancelQueuedTasks(ctx, testAppID)
+				return err
+			},
+		},
+		{
 			operation: "ListTasks",
 			call: func(ctx context.Context, c *Client) error {
 				_, err := c.ListTasks(ctx, testAppID, ListTasksParams{})

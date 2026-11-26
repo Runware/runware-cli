@@ -144,6 +144,7 @@ const (
 	TaskStatusPending   TaskStatus = gen.TaskStatusPending
 	TaskStatusCompleted TaskStatus = gen.TaskStatusCompleted
 	TaskStatusFailed    TaskStatus = gen.TaskStatusFailed
+	TaskStatusCanceled  TaskStatus = gen.TaskStatusCanceled
 )
 
 // Endpoint is an app HTTP endpoint.

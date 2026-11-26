@@ -33,6 +33,7 @@ const (
 	colField          = "Field"
 	colValue          = "Value"
 	colApp            = "App"
+	colCanceled       = "Canceled"
 	colEnvironment    = "Environment"
 	colKey            = "Key"
 	colEnvVar         = "Env var"
@@ -643,6 +644,20 @@ func (r buildDeletedResult) Headers() []string {
 
 func (r buildDeletedResult) Rows() [][]any {
 	return [][]any{{r.AppID, r.BuildID}}
+}
+
+// tasksCanceledResult is how many queued tasks a cancel-all canceled.
+type tasksCanceledResult struct {
+	AppID    string `json:"appId"    yaml:"appId"`
+	Canceled int64  `json:"canceled" yaml:"canceled"`
+}
+
+func (r tasksCanceledResult) Headers() []string {
+	return []string{colApp, colCanceled}
+}
+
+func (r tasksCanceledResult) Rows() [][]any {
+	return [][]any{{r.AppID, r.Canceled}}
 }
 
 func formatOptionalTime(t *time.Time) string {

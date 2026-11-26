@@ -23,6 +23,9 @@ import (
 var (
 	errDeleteCancelled    = errors.New("delete canceled")
 	errDeleteNeedsConfirm = errors.New("delete requires confirmation; re-run with --yes or --force")
+
+	errCancelAllDeclined     = errors.New("cancel declined")
+	errCancelAllNeedsConfirm = errors.New("canceling all queued tasks requires confirmation; re-run with --yes or --force")
 )
 
 func newAppsStopCmd(logger *log.Logger) *cobra.Command {
@@ -165,6 +168,18 @@ func addDeleteConfirmFlags(cmd *cobra.Command, yes, force *bool) {
 // confirmDelete fails closed without an API key so a prompt cannot succeed
 // and then fail with ErrNoAPIKey. skip (--yes/--force) bypasses the prompt.
 func confirmDelete(subject string, skip bool, in io.Reader, out io.Writer, isTTY bool, apiKey string) error {
+	return confirmAction("Delete", subject, errDeleteNeedsConfirm, errDeleteCancelled, skip, in, out, isTTY, apiKey)
+}
+
+// confirmCancelAll asks before canceling every queued task of an app, which
+// cannot be undone.
+func confirmCancelAll(subject string, skip bool, in io.Reader, out io.Writer, isTTY bool, apiKey string) error {
+	return confirmAction("Cancel", subject, errCancelAllNeedsConfirm, errCancelAllDeclined, skip, in, out, isTTY, apiKey)
+}
+
+// confirmAction prompts "<verb> <subject>? [y/N]". It returns needsConfirm
+// when no terminal can answer and declined when the answer is not yes.
+func confirmAction(verb, subject string, needsConfirm, declined error, skip bool, in io.Reader, out io.Writer, isTTY bool, apiKey string) error {
 	if apiKey == "" {
 		return transport.ErrNoAPIKey
 	}
@@ -172,22 +187,22 @@ func confirmDelete(subject string, skip bool, in io.Reader, out io.Writer, isTTY
 		return nil
 	}
 	if !isTTY {
-		return errDeleteNeedsConfirm
+		return needsConfirm
 	}
 
-	_, _ = fmt.Fprintf(out, "Delete %s? [y/N] ", subject)
+	_, _ = fmt.Fprintf(out, "%s %s? [y/N] ", verb, subject)
 	scanner := bufio.NewScanner(in)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			return fmt.Errorf("read confirmation: %w", err)
 		}
-		return errDeleteCancelled
+		return declined
 	}
 	switch strings.ToLower(strings.TrimSpace(scanner.Text())) {
 	case "y", "yes":
 		return nil
 	default:
-		return errDeleteCancelled
+		return declined
 	}
 }
 
