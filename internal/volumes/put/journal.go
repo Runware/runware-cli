@@ -13,19 +13,23 @@ import (
 )
 
 const (
-	uploadsDirName = "uploads"
-	journalName    = "journal.jsonl"
-	journalVersion = 1
+	uploadsDirName  = "uploads"
+	journalName     = "journal.jsonl"
+	sessionLockName = "session.lock"
+	journalVersion  = 1
 )
 
-// Journal record types; session, file and declared records are synced before they are used.
+// Journal record types; session, file, declared and part records are synced before they are used.
 const (
 	recordSession  = "session"
+	recordSource   = "source"
 	recordFile     = "file"
 	recordDeclared = "declared"
 	recordPart     = "part"
 	recordAck      = "ack"
 	recordComplete = "complete"
+	recordPublish  = "publish"
+	recordAction   = "action"
 )
 
 type sessionRecord struct {
@@ -35,6 +39,8 @@ type sessionRecord struct {
 	Volume       string    `json:"volume"`
 	Environment  string    `json:"environment,omitempty"`
 	Organization string    `json:"organization"`
+	Endpoint     string    `json:"endpoint,omitempty"`
+	Invocation   string    `json:"invocation,omitempty"`
 	KeyPair      string    `json:"keyPairId"`
 	SessionKey   []byte    `json:"sessionKey"`
 	CreatedAt    time.Time `json:"createdAt"`
@@ -86,11 +92,19 @@ type completeRecord struct {
 	Index int    `json:"index"`
 }
 
+type actionRecord struct {
+	Type   string `json:"type"`
+	Index  int    `json:"index"`
+	Action string `json:"action"`
+}
+
 // journal is the private resume state of one session, removed when the session completes or aborts.
 type journal struct {
-	mu   sync.Mutex
-	dir  string
-	file *os.File
+	mu       sync.Mutex
+	dir      string
+	file     *os.File
+	lock     *os.File
+	writeErr error
 }
 
 // createJournal returns the owned journal for cleanup even if writing its first record fails.
@@ -108,6 +122,10 @@ func createJournal(stateDir string, rec sessionRecord) (*journal, error) {
 		return nil, fmt.Errorf("create the session's resume state directory: %w", err)
 	}
 	j := &journal{dir: dir}
+	j.lock, err = lockSession(dir, true)
+	if err != nil {
+		return j, fmt.Errorf("lock the resume state: %w", err)
+	}
 	rec.Type = recordSession
 	rec.Version = journalVersion
 	line, err := encodeLine(rec)
@@ -135,13 +153,19 @@ func encodeLine(rec any) ([]byte, error) {
 	return append(line, '\n'), nil
 }
 
-// log appends records without a sync.
-func (j *journal) log(recs ...any) error { return j.write(false, recs) }
-
 // logSync appends records and syncs them.
-func (j *journal) logSync(recs ...any) error { return j.write(true, recs) }
+func (j *journal) logSync(recs ...any) error {
+	return j.appendRecords(true, recs...)
+}
 
-func (j *journal) write(durable bool, recs []any) error {
+// logAck records an acknowledgement without its own sync. A crash can lose it:
+// the part digest is already durable, and resuming can resend the same plaintext
+// with a fresh salt or replay the declaration of a file the API already verified.
+func (j *journal) logAck(rec ackRecord) error {
+	return j.appendRecords(false, rec)
+}
+
+func (j *journal) appendRecords(durable bool, recs ...any) error {
 	var batch []byte
 	for _, rec := range recs {
 		line, err := encodeLine(rec)
@@ -155,8 +179,14 @@ func (j *journal) write(durable bool, recs []any) error {
 	if j.file == nil {
 		return errors.New("write the resume state: the journal is closed")
 	}
+	if j.writeErr != nil {
+		return j.writeErr
+	}
 	if _, err := j.file.Write(batch); err != nil {
-		return fmt.Errorf("write the resume state: %w", err)
+		// A short write can leave a torn last line. Further appends would
+		// hide it from the recovery that truncates a torn tail.
+		j.writeErr = fmt.Errorf("write the resume state: %w", err)
+		return j.writeErr
 	}
 	if durable {
 		if err := j.file.Sync(); err != nil {
@@ -164,6 +194,12 @@ func (j *journal) write(durable bool, recs []any) error {
 		}
 	}
 	return nil
+}
+
+func (j *journal) release() {
+	if j != nil && j.lock != nil {
+		_ = j.lock.Close()
+	}
 }
 
 func fileKeyName(index int) string { return fmt.Sprintf("file-%d.key", index) }
@@ -188,19 +224,42 @@ func (j *journal) discardFileKeys(index int) error {
 	return nil
 }
 
+// close releases the journal file and leaves the state on disk, for a resume.
+func (j *journal) close() error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.closeLocked()
+}
+
+func (j *journal) closeLocked() error {
+	if j.file == nil {
+		return nil
+	}
+	err := j.file.Close()
+	j.file = nil
+	return err
+}
+
 // remove closes the journal and deletes its directory.
 func (j *journal) remove() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	var closeErr error
-	if j.file != nil {
-		closeErr = j.file.Close()
-		j.file = nil
+	return errors.Join(j.closeLocked(), removeSessionState(j.dir, j.lock))
+}
+
+// Unlink the journal before releasing ownership. Windows needs the lock handle
+// closed before its directory can be deleted.
+func removeSessionState(dir string, lock *os.File) error {
+	if err := os.Remove(filepath.Join(dir, journalName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove the resume journal: %w", err)
 	}
-	if err := os.RemoveAll(j.dir); err != nil {
-		return errors.Join(closeErr, fmt.Errorf("remove the resume state: %w", err))
+	if lock != nil {
+		_ = lock.Close()
 	}
-	return closeErr
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("remove the resume state: %w", err)
+	}
+	return nil
 }
 
 // syncDir flushes a directory entry where the platform allows it.

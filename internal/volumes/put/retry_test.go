@@ -149,6 +149,26 @@ func TestUploadCompletionRecoversAfterExtendedOutage(t *testing.T) {
 	checkUploadPauses(t, pauses)
 }
 
+func TestPublicationRetryRefusesChangedSource(t *testing.T) {
+	e := newTestEnv(t)
+	file := singleFile(t, e, "weights.bin", []byte("original"))
+	vol := e.cloud.newVolume("weights", "")
+	opts := e.options(vol, file)
+	api := &unavailableCompletion{API: e.cloud}
+	opts.API = api
+	opts.sleep = func(ctx context.Context, _ time.Duration) error {
+		rewrite(t, file, []byte("changed"))
+		api.elapsed = uploadTestOutage
+		return ctx.Err()
+	}
+	if _, err := Run(t.Context(), opts); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("put = %v, want the publication retry to detect the changed source", err)
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 0 || e.cloud.count("complete") != 0 || e.cloud.count("abort") != 1 {
+		t.Fatalf("files = %v, calls = %v, want an abort without publication", files, e.cloud.callLog())
+	}
+}
+
 type transientAbort struct {
 	API
 	calls int
@@ -263,7 +283,7 @@ func (a *lostCompletionResponse) CompleteUpload(ctx context.Context, ref UploadR
 	return UploadResult{}, io.ErrUnexpectedEOF
 }
 
-func TestLostCompletionDoesNotReportConfirmedAbort(t *testing.T) {
+func TestLostCompletionCanBeRecovered(t *testing.T) {
 	for _, name := range []string{"cancelled during backoff", "retry limit reached"} {
 		t.Run(name, func(t *testing.T) {
 			e := newTestEnv(t)
@@ -282,17 +302,25 @@ func TestLostCompletionDoesNotReportConfirmedAbort(t *testing.T) {
 				}
 			}
 			_, err := Run(ctx, opts)
-			if !errors.Is(err, want) || !strings.Contains(err.Error(), "the upload may already have completed") {
+			if !errors.Is(err, want) || !strings.Contains(err.Error(), "publication may have completed") {
 				t.Fatalf("error = %v, want %v and the uncertain completion warning", err, want)
 			}
-			if strings.Contains(err.Error(), "run put again") {
-				t.Errorf("error = %q, want no rerun hint when the upload may have completed", err)
+			if e.cloud.count("abort") != 0 || len(e.uploadDirs()) != 1 {
+				t.Fatalf("calls = %v, state = %v, want the journal kept for the result", e.cloud.callLog(), e.uploadDirs())
 			}
-			if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.uploadState() != fakeCompleted || e.cloud.count("abort") != 1 {
-				t.Errorf("calls = %v, state = %q, want one published file and one abort attempt", e.cloud.callLog(), e.cloud.uploadState())
+			sum, err := Run(t.Context(), e.options(vol, file))
+			if err != nil {
+				t.Fatalf("recover completion: %v", err)
 			}
-			if dirs := e.uploadDirs(); len(dirs) != 0 {
-				t.Errorf("resume state left on disk: %v", dirs)
+			if !sum.Changed || sum.Added != 1 || sum.BytesSent != 0 ||
+				len(sum.Files) != 1 || sum.Files[0].Action != ActionAdded || !sum.recovered {
+				t.Fatalf("recovered summary = %+v, want the original publication and zero bytes resent", sum)
+			}
+			if e.cloud.count("open") != 1 || len(e.cloud.putLog()) != 1 || len(e.uploadDirs()) != 0 {
+				t.Fatalf("calls = %v, state = %v, want one upload and no remaining journal", e.cloud.callLog(), e.uploadDirs())
+			}
+			if files, _ := e.cloud.latest(vol); len(files) != 1 || e.cloud.uploadState() != fakeCompleted {
+				t.Fatalf("files = %v, state = %q, want the original publication", files, e.cloud.uploadState())
 			}
 		})
 	}
@@ -353,7 +381,7 @@ func TestCompletionRetryTimeBudget(t *testing.T) {
 			return r.completeFile(ctx, &fileState{src: &Source{Abs: "weights.bin"}})
 		},
 		"session": func(ctx context.Context, r *runner) error {
-			_, err := r.completeUpload(ctx)
+			_, err := r.completeUpload(ctx, nil)
 			return err
 		},
 	}
