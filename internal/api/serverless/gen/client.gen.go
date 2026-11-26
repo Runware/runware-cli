@@ -1372,7 +1372,7 @@ func (e GetMetricSeriesParamsStatusClass) Valid() bool {
 
 // App defines model for App.
 type App struct {
-	// ActiveVersionId The version pinned as the rollout target. A create leaves it null until that rollout completes. An environment-variable or configuration change moves it when that request is accepted and the image is deployable. `POST /v1/apps/{appId}/deploy` moves it when that request is accepted. Workers of the pinned version are not necessarily answering yet. An `appSource` update moves it only when that rollout completes. If the roll of a live app fails, it is restored to the version that kept serving. It does not mean a worker of this version is answering tasks. See `AppEvent`.
+	// ActiveVersionId The version pinned as the rollout target. A create leaves it null until that rollout completes. An environment-variable or configuration change moves it when that request is accepted and the image is deployable. `POST /v1/apps/{appId}/deploy` moves it when that request is accepted. Workers of the pinned version are not necessarily answering yet; `runtime.answeringVersionId` names the version that is. An `appSource` update moves it only when that rollout completes. If the roll of a live app fails, it is restored to the version that kept serving. It does not mean a worker of this version is answering tasks. See `AppEvent`.
 	ActiveVersionId *openapi_types.UUID `json:"activeVersionId,omitempty"`
 
 	// AppId Immutable app identifier. Unique among the authenticated organization's live apps in one environment: it cannot be changed after creation, it becomes available again once the app it named reaches `deleted`, and the same id may run once in each environment as a separate copy.
@@ -1473,7 +1473,7 @@ type AppCreate struct {
 //
 // A failed roll records `deploy of version N failed (…); the previous version keeps serving` or `deploy of version N failed (…); app marked failed`. After the first, `activeVersionId` names the version that kept serving. A platform re-render records `Platform runtime updated; version unchanged.` or `Platform runtime update did not become ready; version unchanged.`
 //
-// Which process can answer is on `GET /v1/apps/{appId}/workers?versionId=all`. The default workers page follows `activeVersionId` and hides an older version that is still running. A new version is serving once a worker of that version is `ready` or `busy` and the previous version's workers are `draining`, `stopping` or `stopped`. A secret or connector change does not change the version. `createdAt` on a worker is when its row was recorded. It is not proof the new secret or connector is serving: the accept event precedes the template apply, so a worker created after it can still be on the previous configuration.
+// Which process can answer is on `GET /v1/apps/{appId}/workers?versionId=all`. The default workers page follows `activeVersionId` and hides an older version that is still running. Which version is answering is `runtime.answeringVersionId` on the app. A secret or connector change does not change the version. `createdAt` on a worker is when its row was recorded. It is not proof the new secret or connector is serving: the accept event precedes the template apply, so a worker created after it can still be on the previous configuration.
 type AppEvent struct {
 	// AppId Immutable app identifier. Unique among the authenticated organization's live apps in one environment: it cannot be changed after creation, it becomes available again once the app it named reaches `deleted`, and the same id may run once in each environment as a separate copy.
 	AppId      AppId               `json:"appId"`
@@ -1609,8 +1609,11 @@ type AppOidcConnector struct {
 
 // AppRuntime Observed state for one app at `calculatedAt`. Desired worker scale remains in `configuration`. Worker and GPU counts are always present. Traffic, duration, and queue fields are omitted when their backing data is unavailable.
 type AppRuntime struct {
-	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) on this app's active version. Pending workers count because they appear in the active-version workers list before Kubernetes assigns a GPU. Outgoing-version workers are excluded because the default workers list omits them. A deleted app reports zero.
+	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) on this app's active version. Pending workers count because they appear in the active-version workers list before Kubernetes assigns a GPU. So do workers that cannot take a task yet or any more, such as `loading` or `unhealthy`: `servingWorkers` is the count of those that can. Outgoing-version workers are excluded because the default workers list omits them. A deleted app reports zero.
 	ActiveWorkers int64 `json:"activeWorkers"`
+
+	// AnsweringVersionId The version answering invocations: the version of a worker whose `status` is `ready` or `busy`. Unlike `activeVersionId`, a newly deployed version is this one only once a worker running it can take a request. While a worker of an outgoing version can still take one, this names the outgoing version, since every version's workers read the app's one queue; in that window a worker of the new version may answer too. The default workers page follows `activeVersionId`, so list its workers with `versionId` set to this value, or `versionId=all`. `servingWorkers` counts only `activeVersionId`, so it can be zero while this names an outgoing version. It is only as fresh as the last observation of each worker: an outgoing worker whose pod went away unseen holds this on the outgoing version until the stale sweep stops it, five minutes by default. Null when no worker can take a request, such as a scale-to-zero app that is idle, and while the app does not accept invocations: before its first version is active, and when it is `failed`, `stopped`, `deleting` or deleted.
+	AnsweringVersionId *openapi_types.UUID `json:"answeringVersionId,omitempty"`
 
 	// AverageRequestDuration24h Mean inference request duration in seconds over the last 24 hours (all requests, the duration histogram has no status class). Omitted when metrics cannot be read, when the app had no requests, or when the duration series has no samples for the app in the window.
 	AverageRequestDuration24h *float64 `json:"averageRequestDuration24h,omitempty"`
@@ -1629,6 +1632,9 @@ type AppRuntime struct {
 
 	// Requests24h Requests served by this app in the last 24 hours. Omitted until available.
 	Requests24h *int64 `json:"requests24h,omitempty"`
+
+	// ServingWorkers Workers among `activeWorkers` that are serving, those whose `status` is `ready` (idle) or `busy` (running a task): the statuses health counts as able to serve. It is not free capacity. Like `activeWorkers` it counts only the active version, where health counts every version's workers and is derived from a periodic observation, so during a rollout, or for the moment after a worker changes status, the two can disagree. A deploy, rollback or configuration change moves `activeVersionId` before a worker of the new version exists, so on a live app this reads zero until a worker of the new version can take a request, while `answeringVersionId` names the previous version. It is only as fresh as the last observation of each worker: a worker whose pod went away unseen still counts until the stale sweep stops it, five minutes by default. A deleted app reports zero.
+	ServingWorkers int64 `json:"servingWorkers"`
 }
 
 // AppSort Ordering for `listApps`. Favorited apps appear before non-favorited apps, and the selected ordering applies within each group. Every ordering is total (ties broken by `appId`), so a page is reproducible and its cursor stable.
@@ -1903,7 +1909,7 @@ type BuildStatus string
 
 // CanceledTasks defines model for CanceledTasks.
 type CanceledTasks struct {
-	// Canceled Tasks this call canceled, not counting any canceled earlier.
+	// Canceled Tasks this call canceled, not counting any canceled earlier and not counting queued messages it removed that had no record.
 	Canceled int64 `json:"canceled"`
 }
 
@@ -1936,6 +1942,9 @@ type CodeSourceUpsert struct {
 
 	// Requirements Additional pip packages to install alongside the codebase.
 	Requirements *[]string `json:"requirements,omitempty"`
+
+	// SourceImageCredential A `registry` secret in this environment. The build uses it to pull a private `baseImage`. Naming one when this environment has not enabled registry credentials is `422` `source-image-credential-not-enabled`. An unknown or inactive name is `422` `secret-not-found`. A secret of another type is `422` `secret-wrong-type`. Deleting or replacing the secret does not rebuild a version that names it. A deleted secret is `422` `secret-not-found`, and no build starts.
+	SourceImageCredential *SourceImageCredentialName `json:"sourceImageCredential,omitempty"`
 }
 
 // CodebaseSource defines model for CodebaseSource.
@@ -1968,8 +1977,11 @@ type ComputeType string
 
 // ContainerSource defines model for ContainerSource.
 type ContainerSource struct {
-	// SourceId Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it, resolving the Dockerfile's public base images to immutable digests, and hosts the result, so no image reference or pull credential is supplied: a private base image is not supported until a build-time credential mechanism exists. An invalid `container.yaml` rejects the create: `400` where the document could not be parsed, `422` where it parsed and broke a rule, with `errors[]` entries carrying `configPointer` into the document. The endpoint set it declares becomes visible once the first build is ready and deployed. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions in the organization.
+	// SourceId Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it, resolving the Dockerfile's base images to immutable digests, and hosts the result. The customer supplies no image to run. A private base image names `sourceImageCredential`, a registry secret in this environment. An invalid `container.yaml` rejects the create: `400` where the document could not be parsed, `422` where it parsed and broke a rule, with `errors[]` entries carrying `configPointer` into the document. The endpoint set it declares becomes visible once the first build is ready and deployed. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions in the organization.
 	SourceId SourceId `json:"sourceId"`
+
+	// SourceImageCredential A `registry` secret in this environment. The build uses it to pull the Dockerfile's private base images. Naming one when this environment has not enabled registry credentials is `422` `source-image-credential-not-enabled`. An unknown or inactive name is `422` `secret-not-found`. A secret of another type is `422` `secret-wrong-type`. Deleting or replacing the secret does not rebuild a version that names it. A deleted secret is `422` `secret-not-found`, and no build starts.
+	SourceImageCredential *SourceImageCredentialName `json:"sourceImageCredential,omitempty"`
 }
 
 // CreditPool The authenticated organization's Serverless credit pool at `observedAt`.
@@ -2739,6 +2751,12 @@ type SourceImage struct {
 
 	// Reference The image reference the customer wrote.
 	Reference string `json:"reference"`
+}
+
+// SourceImageCredentialName defines model for SourceImageCredentialName.
+type SourceImageCredentialName struct {
+	// SecretName Name of a `registry` secret in this environment.
+	SecretName SecretName `json:"secretName"`
 }
 
 // SourceUpload defines model for SourceUpload.
@@ -3584,6 +3602,9 @@ type WorkerConfig struct {
 	// ScalingDelaySecs Seconds demand must stay below the running worker count before workers are removed. Delays scale-down only; scale-up does not wait for it. Values below 90 act as 90, so workers are not removed on one low reading while work is still queued. Scale-up waits until demand has stayed above the running workers for 60 seconds. At `minWorkers` 0, demand with no worker serving and no task taken in the last 5 seconds is one worker, so an app woken from zero runs one worker until that worker serves its first task. Otherwise, while the workers take fewer than two tasks from the queue in 5 seconds, as with long tasks on few workers, demand is one worker per queued task, up to `maxWorkers`. Raise `minWorkers` to serve a burst without the 60-second wait: `minAvailableWorkers` adds workers only while work is queued.
 	ScalingDelaySecs int32 `json:"scalingDelaySecs"`
 
+	// ShmSizeMib The size of the worker's `/dev/shm` in MiB. Defaults to 2048, or the worker's host memory when that is smaller; 2048 is never rejected. Raise it for software that needs more shared memory, such as Unity, Chrome or a PyTorch DataLoader with many workers. It can be at most the worker's host memory, which depends on `gpuType` and `gpusPerWorker`. A larger value is rejected with 422, and the error names the limit. Shared memory in use counts against the worker's memory, so a full `/dev/shm` leaves that much less for the app. Changing it makes the next worker cold-start rather than restore a checkpoint.
+	ShmSizeMib int32 `json:"shmSizeMib"`
+
 	// StartupTimeoutSecs How long the worker has to load before it must pass readiness. The platform adds 30 minutes on top for the worker's checkpoint, and that sum is the startup budget the worker is held to. A worker that never becomes ready is restarted only once that sum has passed. A later `container.yaml` deploy overwrites this with that document's `timeouts.startupSeconds`.
 	StartupTimeoutSecs int32      `json:"startupTimeoutSecs"`
 	UpdatedAt          *time.Time `json:"updatedAt,omitempty"`
@@ -3620,6 +3641,9 @@ type WorkerConfigCreate struct {
 	// ScalingDelaySecs Seconds demand must stay below the running worker count before workers are removed. Delays scale-down only; scale-up does not wait for it. Values below 90 act as 90, so workers are not removed on one low reading while work is still queued. Scale-up waits until demand has stayed above the running workers for 60 seconds. At `minWorkers` 0, demand with no worker serving and no task taken in the last 5 seconds is one worker, so an app woken from zero runs one worker until that worker serves its first task. Otherwise, while the workers take fewer than two tasks from the queue in 5 seconds, as with long tasks on few workers, demand is one worker per queued task, up to `maxWorkers`. Raise `minWorkers` to serve a burst without the 60-second wait: `minAvailableWorkers` adds workers only while work is queued.
 	ScalingDelaySecs int32 `json:"scalingDelaySecs"`
 
+	// ShmSizeMib The size of the worker's `/dev/shm` in MiB. Defaults to 2048, or the worker's host memory when that is smaller; 2048 is never rejected. Raise it for software that needs more shared memory, such as Unity, Chrome or a PyTorch DataLoader with many workers. It can be at most the worker's host memory, which depends on `gpuType` and `gpusPerWorker`. A larger value is rejected with 422, and the error names the limit. Shared memory in use counts against the worker's memory, so a full `/dev/shm` leaves that much less for the app. Changing it makes the next worker cold-start rather than restore a checkpoint.
+	ShmSizeMib *int32 `json:"shmSizeMib,omitempty"`
+
 	// StartupTimeoutSecs How long the worker has to load before it must pass readiness. The platform adds 30 minutes on top for the worker's checkpoint, and that sum is the startup budget the worker is held to. Omit to take the source default: 300s for a container app, 2400s for a code app. A later `container.yaml` deploy overwrites the live value with that document's `timeouts.startupSeconds`.
 	StartupTimeoutSecs *int32 `json:"startupTimeoutSecs,omitempty"`
 }
@@ -3650,7 +3674,10 @@ type WorkerConfigPatch struct {
 	RequestTimeoutSecs *int32 `json:"requestTimeoutSecs,omitempty"`
 
 	// ScalingDelaySecs Seconds demand must stay below the running worker count before workers are removed. Delays scale-down only; scale-up does not wait for it. Values below 90 act as 90, so workers are not removed on one low reading while work is still queued. Scale-up waits until demand has stayed above the running workers for 60 seconds. At `minWorkers` 0, demand with no worker serving and no task taken in the last 5 seconds is one worker, so an app woken from zero runs one worker until that worker serves its first task. Otherwise, while the workers take fewer than two tasks from the queue in 5 seconds, as with long tasks on few workers, demand is one worker per queued task, up to `maxWorkers`. Raise `minWorkers` to serve a burst without the 60-second wait: `minAvailableWorkers` adds workers only while work is queued.
-	ScalingDelaySecs   *int32 `json:"scalingDelaySecs,omitempty"`
+	ScalingDelaySecs *int32 `json:"scalingDelaySecs,omitempty"`
+
+	// ShmSizeMib The size of the worker's `/dev/shm` in MiB. Omit to leave unchanged. Raise it for software that needs more shared memory, such as Unity, Chrome or a PyTorch DataLoader with many workers. It can be at most the worker's host memory, which depends on `gpuType` and `gpusPerWorker`. A larger value is rejected with 422, and the error names the limit. Shared memory in use counts against the worker's memory, so a full `/dev/shm` leaves that much less for the app. Changing it makes the next worker cold-start rather than restore a checkpoint.
+	ShmSizeMib         *int32 `json:"shmSizeMib,omitempty"`
 	StartupTimeoutSecs *int32 `json:"startupTimeoutSecs,omitempty"`
 }
 
@@ -5227,7 +5254,7 @@ type ClientInterface interface {
 
 	// ResumeApp Resume an app
 	//
-	// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
+	// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Cancel them first with `POST /v1/apps/{appId}/tasks/cancel` to resume without running them. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
 	//
 	// Corresponds with POST /v1/apps/{appId}/resume (the `ResumeApp` operationId).
 	ResumeApp(ctx context.Context, appId AppId, params *ResumeAppParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5284,21 +5311,21 @@ type ClientInterface interface {
 
 	// CancelQueuedTasks Cancel all queued tasks of an app
 	//
-	// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+	// Removes ready messages from the app's queue, then cancels the pending task records it can find with no recorded start. Resuming a stopped app starts no worker for the messages it removed. Workers continue any work already in progress. A task whose submission did not finish recording can lose its message here and stay `pending` until its dispatch deadline fails it or its record expires. A task whose worker died mid-run and whose message was requeued can lose it too, and stays `pending` until its record expires, since the dispatch deadline never fails a started task. A task submitted while the call runs can be canceled and still leave its message in the queue, which can start a billed worker. A message delivered before the purge can also survive it. A worker that checks the task record before recording its start skips a task it finds canceled. A worker that predates start recording can still execute a task whose cancellation was counted, and that execution can be billed. A task queued for more than an hour has no record to cancel: its message is removed, but it is not counted. Returns how many tasks this call canceled, not how many messages it removed, so `0` can follow an emptied queue. A `503` can leave some tasks canceled and others still queued, and can follow a queue the broker has already emptied. The call can be retried. Works on a stopped app.
 	//
 	// Corresponds with POST /v1/apps/{appId}/tasks/cancel (the `CancelQueuedTasks` operationId).
 	CancelQueuedTasks(ctx context.Context, appId AppId, params *CancelQueuedTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTask Get a task
 	//
-	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
+	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `canceled`, includes `completedAt`, the time it was canceled. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
 	//
 	// Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
 	GetTask(ctx context.Context, appId AppId, taskId TaskId, params *GetTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CancelTask Cancel a queued task
 	//
-	// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+	// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it does not run while its record exists. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker, which is billed for the time it runs. An app resumed after the record has expired, 24 hours by default, can run the task. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A queued task is found by id for an hour after it was submitted, by default. After that the call returns `404`, and canceling all queued tasks is the way to clear it. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. A task no worker has started, on an app whose workers cannot yet be shown to skip a canceled task, returns `409` typed `task-cancel-unsupported` and is not changed; cancel all queued tasks for that app instead. A task already canceled, and an unknown task, are answered the same on every app. Works on a stopped app.
 	//
 	// Corresponds with POST /v1/apps/{appId}/tasks/{taskId}/cancel (the `CancelTask` operationId).
 	CancelTask(ctx context.Context, appId AppId, taskId TaskId, params *CancelTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6750,7 +6777,7 @@ func (c *Client) GetAppOidcConnectorTest(ctx context.Context, appId AppId, conne
 
 // ResumeApp Resume an app
 //
-// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
+// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Cancel them first with `POST /v1/apps/{appId}/tasks/cancel` to resume without running them. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
 //
 // Corresponds with POST /v1/apps/{appId}/resume (the `ResumeApp` operationId).
 func (c *Client) ResumeApp(ctx context.Context, appId AppId, params *ResumeAppParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6877,7 +6904,7 @@ func (c *Client) ListTasks(ctx context.Context, appId AppId, params *ListTasksPa
 
 // CancelQueuedTasks Cancel all queued tasks of an app
 //
-// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+// Removes ready messages from the app's queue, then cancels the pending task records it can find with no recorded start. Resuming a stopped app starts no worker for the messages it removed. Workers continue any work already in progress. A task whose submission did not finish recording can lose its message here and stay `pending` until its dispatch deadline fails it or its record expires. A task whose worker died mid-run and whose message was requeued can lose it too, and stays `pending` until its record expires, since the dispatch deadline never fails a started task. A task submitted while the call runs can be canceled and still leave its message in the queue, which can start a billed worker. A message delivered before the purge can also survive it. A worker that checks the task record before recording its start skips a task it finds canceled. A worker that predates start recording can still execute a task whose cancellation was counted, and that execution can be billed. A task queued for more than an hour has no record to cancel: its message is removed, but it is not counted. Returns how many tasks this call canceled, not how many messages it removed, so `0` can follow an emptied queue. A `503` can leave some tasks canceled and others still queued, and can follow a queue the broker has already emptied. The call can be retried. Works on a stopped app.
 //
 // Corresponds with POST /v1/apps/{appId}/tasks/cancel (the `CancelQueuedTasks` operationId).
 func (c *Client) CancelQueuedTasks(ctx context.Context, appId AppId, params *CancelQueuedTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6894,7 +6921,7 @@ func (c *Client) CancelQueuedTasks(ctx context.Context, appId AppId, params *Can
 
 // GetTask Get a task
 //
-// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
+// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `canceled`, includes `completedAt`, the time it was canceled. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
 //
 // Corresponds with GET /v1/apps/{appId}/tasks/{taskId} (the `GetTask` operationId).
 func (c *Client) GetTask(ctx context.Context, appId AppId, taskId TaskId, params *GetTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6911,7 +6938,7 @@ func (c *Client) GetTask(ctx context.Context, appId AppId, taskId TaskId, params
 
 // CancelTask Cancel a queued task
 //
-// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it does not run while its record exists. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker, which is billed for the time it runs. An app resumed after the record has expired, 24 hours by default, can run the task. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A queued task is found by id for an hour after it was submitted, by default. After that the call returns `404`, and canceling all queued tasks is the way to clear it. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. A task no worker has started, on an app whose workers cannot yet be shown to skip a canceled task, returns `409` typed `task-cancel-unsupported` and is not changed; cancel all queued tasks for that app instead. A task already canceled, and an unknown task, are answered the same on every app. Works on a stopped app.
 //
 // Corresponds with POST /v1/apps/{appId}/tasks/{taskId}/cancel (the `CancelTask` operationId).
 func (c *Client) CancelTask(ctx context.Context, appId AppId, taskId TaskId, params *CancelTaskParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -15207,7 +15234,7 @@ type ClientWithResponsesInterface interface {
 
 	// ResumeAppWithResponse Resume an app
 	//
-	// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
+	// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Cancel them first with `POST /v1/apps/{appId}/tasks/cancel` to resume without running them. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15274,7 +15301,7 @@ type ClientWithResponsesInterface interface {
 
 	// CancelQueuedTasksWithResponse Cancel all queued tasks of an app
 	//
-	// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+	// Removes ready messages from the app's queue, then cancels the pending task records it can find with no recorded start. Resuming a stopped app starts no worker for the messages it removed. Workers continue any work already in progress. A task whose submission did not finish recording can lose its message here and stay `pending` until its dispatch deadline fails it or its record expires. A task whose worker died mid-run and whose message was requeued can lose it too, and stays `pending` until its record expires, since the dispatch deadline never fails a started task. A task submitted while the call runs can be canceled and still leave its message in the queue, which can start a billed worker. A message delivered before the purge can also survive it. A worker that checks the task record before recording its start skips a task it finds canceled. A worker that predates start recording can still execute a task whose cancellation was counted, and that execution can be billed. A task queued for more than an hour has no record to cancel: its message is removed, but it is not counted. Returns how many tasks this call canceled, not how many messages it removed, so `0` can follow an emptied queue. A `503` can leave some tasks canceled and others still queued, and can follow a queue the broker has already emptied. The call can be retried. Works on a stopped app.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15283,7 +15310,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetTaskWithResponse Get a task
 	//
-	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
+	// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `canceled`, includes `completedAt`, the time it was canceled. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15292,7 +15319,7 @@ type ClientWithResponsesInterface interface {
 
 	// CancelTaskWithResponse Cancel a queued task
 	//
-	// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+	// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it does not run while its record exists. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker, which is billed for the time it runs. An app resumed after the record has expired, 24 hours by default, can run the task. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A queued task is found by id for an hour after it was submitted, by default. After that the call returns `404`, and canceling all queued tasks is the way to clear it. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. A task no worker has started, on an app whose workers cannot yet be shown to skip a canceled task, returns `409` typed `task-cancel-unsupported` and is not changed; cancel all queued tasks for that app instead. A task already canceled, and an unknown task, are answered the same on every app. Works on a stopped app.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -25556,7 +25583,7 @@ func (c *ClientWithResponses) GetAppOidcConnectorTestWithResponse(ctx context.Co
 
 // ResumeAppWithResponse Resume an app
 //
-// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
+// Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Cancel them first with `POST /v1/apps/{appId}/tasks/cancel` to resume without running them. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -25665,7 +25692,7 @@ func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, appId A
 
 // CancelQueuedTasksWithResponse Cancel all queued tasks of an app
 //
-// Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+// Removes ready messages from the app's queue, then cancels the pending task records it can find with no recorded start. Resuming a stopped app starts no worker for the messages it removed. Workers continue any work already in progress. A task whose submission did not finish recording can lose its message here and stay `pending` until its dispatch deadline fails it or its record expires. A task whose worker died mid-run and whose message was requeued can lose it too, and stays `pending` until its record expires, since the dispatch deadline never fails a started task. A task submitted while the call runs can be canceled and still leave its message in the queue, which can start a billed worker. A message delivered before the purge can also survive it. A worker that checks the task record before recording its start skips a task it finds canceled. A worker that predates start recording can still execute a task whose cancellation was counted, and that execution can be billed. A task queued for more than an hour has no record to cancel: its message is removed, but it is not counted. Returns how many tasks this call canceled, not how many messages it removed, so `0` can follow an emptied queue. A `503` can leave some tasks canceled and others still queued, and can follow a queue the broker has already emptied. The call can be retried. Works on a stopped app.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -25680,7 +25707,7 @@ func (c *ClientWithResponses) CancelQueuedTasksWithResponse(ctx context.Context,
 
 // GetTaskWithResponse Get a task
 //
-// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
+// Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `canceled`, includes `completedAt`, the time it was canceled. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -25695,7 +25722,7 @@ func (c *ClientWithResponses) GetTaskWithResponse(ctx context.Context, appId App
 
 // CancelTaskWithResponse Cancel a queued task
 //
-// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+// Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it does not run while its record exists. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker, which is billed for the time it runs. An app resumed after the record has expired, 24 hours by default, can run the task. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A queued task is found by id for an hour after it was submitted, by default. After that the call returns `404`, and canceling all queued tasks is the way to clear it. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. A task no worker has started, on an app whose workers cannot yet be shown to skip a canceled task, returns `409` typed `task-cancel-unsupported` and is not changed; cancel all queued tasks for that app instead. A task already canceled, and an unknown task, are answered the same on every app. Works on a stopped app.
 //
 // Returns a wrapper object for the known response body format(s).
 //

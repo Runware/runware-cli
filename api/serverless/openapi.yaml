@@ -1114,7 +1114,7 @@ paths:
         - Tasks
       summary: Get a task
       description: |
-        Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
+        Returns the task's current status, read through the inference transport layer from the shared result store. When `completed`, includes the result `output` and `completedAt`. When `failed`, includes `error`. When `canceled`, includes `completedAt`, the time it was canceled. When `pending`, neither is set. If the app is `stopped`, `deleting`, or `failed`, accepted task results stay readable. A `404 Not Found` means the task cannot currently be verified for this app. Because enqueue-time ownership tracking is best effort, a recently returned task ID can temporarily return `404`. Retry it within the normal polling window. Unknown or deleted apps also return `404 Not Found`. When the task service cannot be reached, the response is `502 Bad Gateway`, and the read can be retried. When the task or its output is temporarily unavailable, for example while the task service is being updated, the response is `503 Service Unavailable`, and the read can be retried.
       operationId: getTask
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1192,7 +1192,7 @@ paths:
         - Tasks
       summary: Cancel a queued task
       description: |
-        Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it never runs or uses GPU time. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker for a moment. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. Works on a stopped app.
+        Cancels a task that no worker has started. Its status becomes `canceled`, a caller waiting on it with `invoke-sync` gets it back as `canceled`, and it does not run while its record exists. The task's queued message stays in the queue until a worker takes it and skips it, so a queue that holds only canceled tasks can still start a worker, which is billed for the time it runs. An app resumed after the record has expired, 24 hours by default, can run the task. To clear the queue too, cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel`. Canceling a canceled task returns it again. A queued task is found by id for an hour after it was submitted, by default. After that the call returns `404`, and canceling all queued tasks is the way to clear it. A task that is already running, completed or failed returns `409` typed `task-not-cancelable` and is not changed. A task no worker has started, on an app whose workers cannot yet be shown to skip a canceled task, returns `409` typed `task-cancel-unsupported` and is not changed; cancel all queued tasks for that app instead. A task already canceled, and an unknown task, are answered the same on every app. Works on a stopped app.
       operationId: cancelTask
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1226,7 +1226,7 @@ paths:
         - Tasks
       summary: Cancel all queued tasks of an app
       description: |
-        Empties the app's queue, then cancels every task in the recovery window that no worker has started. No worker is started for the tasks it cancels, including when a stopped app is resumed. Tasks already running keep running. A task submitted while the call runs can be canceled too. Returns how many tasks this call canceled. A `503` can leave some tasks canceled and others still queued, and the call can be retried. Works on a stopped app.
+        Removes ready messages from the app's queue, then cancels the pending task records it can find with no recorded start. Resuming a stopped app starts no worker for the messages it removed. Workers continue any work already in progress. A task whose submission did not finish recording can lose its message here and stay `pending` until its dispatch deadline fails it or its record expires. A task whose worker died mid-run and whose message was requeued can lose it too, and stays `pending` until its record expires, since the dispatch deadline never fails a started task. A task submitted while the call runs can be canceled and still leave its message in the queue, which can start a billed worker. A message delivered before the purge can also survive it. A worker that checks the task record before recording its start skips a task it finds canceled. A worker that predates start recording can still execute a task whose cancellation was counted, and that execution can be billed. A task queued for more than an hour has no record to cancel: its message is removed, but it is not counted. Returns how many tasks this call canceled, not how many messages it removed, so `0` can follow an emptied queue. A `503` can leave some tasks canceled and others still queued, and can follow a queue the broker has already emptied. The call can be retried. Works on a stopped app.
       operationId: cancelQueuedTasks
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -1788,7 +1788,7 @@ paths:
         - Apps
       summary: Resume an app
       description: |
-        Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
+        Moves the app to `initializing` and returns `202` once that intent is persisted. The Scaler then starts workers and sets the app to `active`. Tasks that remained queued when the app stopped are consumed as workers come online. Cancel them first with `POST /v1/apps/{appId}/tasks/cancel` to resume without running them. Precondition: `status = stopped`. A resume that would take the environment past its worker or GPU cap returns `409` typed `environment-cap-reached`, and one in an environment its budget pauses `409` typed `environment-paused`.
       operationId: resumeApp
       parameters:
         - $ref: '#/components/parameters/AppId'
@@ -4925,7 +4925,7 @@ components:
                 detail: a rollout is already in progress
     TaskConflict:
       description: |
-        `task-not-cancelable` means the task is already running, completed or failed, so it cannot be canceled. Nothing is changed. Read the task with `GET /v1/apps/{appId}/tasks/{taskId}` for its status.
+        `task-not-cancelable` means the task is already running, completed or failed, so it cannot be canceled. `task-cancel-unsupported` means the task has not started but the app's workers cannot be shown to skip a canceled task, so it cannot be canceled on its own. Cancel all queued tasks with `POST /v1/apps/{appId}/tasks/cancel` to clear that app's queue. Nothing is changed. Read the task with `GET /v1/apps/{appId}/tasks/{taskId}` for its status.
       content:
         application/problem+json:
           schema:
@@ -4937,7 +4937,14 @@ components:
                 type: https://docs.runware.ai/serverless/errors#task-not-cancelable
                 title: Conflict
                 status: 409
-                detail: The task has already started or finished, so it cannot be canceled
+                detail: 'The task cannot be canceled: it has already started or finished'
+            task-cancel-unsupported:
+              summary: The app's workers cannot skip a canceled task
+              value:
+                type: https://docs.runware.ai/serverless/errors#task-cancel-unsupported
+                title: Conflict
+                status: 409
+                detail: The app's workers cannot skip a canceled task, so one task cannot be canceled on its own. Cancel all queued tasks to clear the queue instead
     AppConflict:
       description: |
         `conflict` means the app's state refuses the request. `environment-cap-reached` means the request would take the environment past its resolved worker or GPU cap: what the environment's other apps hold (each the larger of its live workers and its keep-warm floor, counted as at least one while initializing and as `minWorkers` while active), plus the workers this request starts (at least one, or its keep-warm floor when higher) and their GPUs. Nothing is changed. After a cap is lowered this can refuse deploys until workers fall or the cap is raised. Stop or scale down another app, or raise the cap, then retry. `environment-paused` means the environment's spend this UTC month has reached its monthly budget with `pauseAtBudget` on. Nothing is changed. Raise the budget past the spend, or wait for the month to turn, then retry.
@@ -5238,6 +5245,26 @@ components:
                 errors:
                   - detail: no active secret with this name in this environment
                     pointer: /secrets/0/secretName
+            source-image-credential-not-enabled:
+              summary: The environment has not enabled a registry credential on a source
+              value:
+                type: https://docs.runware.ai/serverless/errors#source-image-credential-not-enabled
+                title: Unprocessable Entity
+                status: 422
+                detail: '/appSource/source/sourceImageCredential: registry credentials are not enabled in this environment'
+                errors:
+                  - detail: registry credentials are not enabled in this environment
+                    pointer: /appSource/source/sourceImageCredential
+            secret-wrong-type:
+              summary: A source names a secret that is not a registry credential
+              value:
+                type: https://docs.runware.ai/serverless/errors#secret-wrong-type
+                title: Unprocessable Entity
+                status: 422
+                detail: '/appSource/source/sourceImageCredential: the secret is not a registry credential'
+                errors:
+                  - detail: the secret is not a registry credential
+                    pointer: /appSource/source/sourceImageCredential
             container-zip-invalid:
               summary: The container archive broke an artifact rule
               value:
@@ -6447,6 +6474,16 @@ components:
       minLength: 1
       maxLength: 128
       pattern: ^[A-Za-z_][A-Za-z0-9_]{0,127}$
+    SourceImageCredentialName:
+      type: object
+      additionalProperties: false
+      required:
+        - secretName
+      properties:
+        secretName:
+          allOf:
+            - $ref: '#/components/schemas/SecretName'
+          description: Name of a `registry` secret in this environment.
     AppStatus:
       type: string
       description: |
@@ -6681,7 +6718,8 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Tasks this call canceled, not counting any canceled earlier.
+          description: |
+            Tasks this call canceled, not counting any canceled earlier and not counting queued messages it removed that had no record.
     SecretType:
       type: string
       description: |
@@ -6997,6 +7035,7 @@ components:
         Observed state for one app at `calculatedAt`. Desired worker scale remains in `configuration`. Worker and GPU counts are always present. Traffic, duration, and queue fields are omitted when their backing data is unavailable.
       required:
         - activeWorkers
+        - servingWorkers
         - provisionedGpuCount
         - calculatedAt
       properties:
@@ -7005,7 +7044,19 @@ components:
           format: int64
           minimum: 0
           description: |
-            Non-terminal workers (`status` other than `stopped`) on this app's active version. Pending workers count because they appear in the active-version workers list before Kubernetes assigns a GPU. Outgoing-version workers are excluded because the default workers list omits them. A deleted app reports zero.
+            Non-terminal workers (`status` other than `stopped`) on this app's active version. Pending workers count because they appear in the active-version workers list before Kubernetes assigns a GPU. So do workers that cannot take a task yet or any more, such as `loading` or `unhealthy`: `servingWorkers` is the count of those that can. Outgoing-version workers are excluded because the default workers list omits them. A deleted app reports zero.
+        servingWorkers:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Workers among `activeWorkers` that are serving, those whose `status` is `ready` (idle) or `busy` (running a task): the statuses health counts as able to serve. It is not free capacity. Like `activeWorkers` it counts only the active version, where health counts every version's workers and is derived from a periodic observation, so during a rollout, or for the moment after a worker changes status, the two can disagree. A deploy, rollback or configuration change moves `activeVersionId` before a worker of the new version exists, so on a live app this reads zero until a worker of the new version can take a request, while `answeringVersionId` names the previous version. It is only as fresh as the last observation of each worker: a worker whose pod went away unseen still counts until the stale sweep stops it, five minutes by default. A deleted app reports zero.
+        answeringVersionId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            The version answering invocations: the version of a worker whose `status` is `ready` or `busy`. Unlike `activeVersionId`, a newly deployed version is this one only once a worker running it can take a request. While a worker of an outgoing version can still take one, this names the outgoing version, since every version's workers read the app's one queue; in that window a worker of the new version may answer too. The default workers page follows `activeVersionId`, so list its workers with `versionId` set to this value, or `versionId=all`. `servingWorkers` counts only `activeVersionId`, so it can be zero while this names an outgoing version. It is only as fresh as the last observation of each worker: an outgoing worker whose pod went away unseen holds this on the outgoing version until the stale sweep stops it, five minutes by default. Null when no worker can take a request, such as a scale-to-zero app that is idle, and while the app does not accept invocations: before its first version is active, and when it is `failed`, `stopped`, `deleting` or deleted.
         provisionedGpuCount:
           type: integer
           format: int64
@@ -7375,7 +7426,7 @@ components:
           format: uuid
           nullable: true
           description: |
-            The version pinned as the rollout target. A create leaves it null until that rollout completes. An environment-variable or configuration change moves it when that request is accepted and the image is deployable. `POST /v1/apps/{appId}/deploy` moves it when that request is accepted. Workers of the pinned version are not necessarily answering yet. An `appSource` update moves it only when that rollout completes. If the roll of a live app fails, it is restored to the version that kept serving. It does not mean a worker of this version is answering tasks. See `AppEvent`.
+            The version pinned as the rollout target. A create leaves it null until that rollout completes. An environment-variable or configuration change moves it when that request is accepted and the image is deployable. `POST /v1/apps/{appId}/deploy` moves it when that request is accepted. Workers of the pinned version are not necessarily answering yet; `runtime.answeringVersionId` names the version that is. An `appSource` update moves it only when that rollout completes. If the roll of a live app fails, it is restored to the version that kept serving. It does not mean a worker of this version is answering tasks. See `AppEvent`.
         mounts:
           type: array
           readOnly: true
@@ -7519,6 +7570,7 @@ components:
         - scalingDelaySecs
         - requestTimeoutSecs
         - startupTimeoutSecs
+        - shmSizeMib
       properties:
         id:
           type: string
@@ -7595,6 +7647,12 @@ components:
           maximum: 2400
           description: |
             How long the worker has to load before it must pass readiness. The platform adds 30 minutes on top for the worker's checkpoint, and that sum is the startup budget the worker is held to. A worker that never becomes ready is restarted only once that sum has passed. A later `container.yaml` deploy overwrites this with that document's `timeouts.startupSeconds`.
+        shmSizeMib:
+          type: integer
+          format: int32
+          minimum: 64
+          description: |
+            The size of the worker's `/dev/shm` in MiB. Defaults to 2048, or the worker's host memory when that is smaller; 2048 is never rejected. Raise it for software that needs more shared memory, such as Unity, Chrome or a PyTorch DataLoader with many workers. It can be at most the worker's host memory, which depends on `gpuType` and `gpusPerWorker`. A larger value is rejected with 422, and the error names the limit. Shared memory in use counts against the worker's memory, so a full `/dev/shm` leaves that much less for the app. Changing it makes the next worker cold-start rather than restore a checkpoint.
         createdAt:
           type: string
           format: date-time
@@ -7689,6 +7747,12 @@ components:
           maximum: 2400
           description: |
             How long the worker has to load before it must pass readiness. The platform adds 30 minutes on top for the worker's checkpoint, and that sum is the startup budget the worker is held to. Omit to take the source default: 300s for a container app, 2400s for a code app. A later `container.yaml` deploy overwrites the live value with that document's `timeouts.startupSeconds`.
+        shmSizeMib:
+          type: integer
+          format: int32
+          minimum: 64
+          description: |
+            The size of the worker's `/dev/shm` in MiB. Defaults to 2048, or the worker's host memory when that is smaller; 2048 is never rejected. Raise it for software that needs more shared memory, such as Unity, Chrome or a PyTorch DataLoader with many workers. It can be at most the worker's host memory, which depends on `gpuType` and `gpusPerWorker`. A larger value is rejected with 422, and the error names the limit. Shared memory in use counts against the worker's memory, so a full `/dev/shm` leaves that much less for the app. Changing it makes the next worker cold-start rather than restore a checkpoint.
     WorkerConfigPatch:
       type: object
       description: |
@@ -7761,6 +7825,12 @@ components:
           format: int32
           minimum: 1
           maximum: 2400
+        shmSizeMib:
+          type: integer
+          format: int32
+          minimum: 64
+          description: |
+            The size of the worker's `/dev/shm` in MiB. Omit to leave unchanged. Raise it for software that needs more shared memory, such as Unity, Chrome or a PyTorch DataLoader with many workers. It can be at most the worker's host memory, which depends on `gpuType` and `gpusPerWorker`. A larger value is rejected with 422, and the error names the limit. Shared memory in use counts against the worker's memory, so a full `/dev/shm` leaves that much less for the app. Changing it makes the next worker cold-start rather than restore a checkpoint.
     Version:
       type: object
       description: |
@@ -8298,7 +8368,12 @@ components:
             - $ref: '#/components/schemas/SourceId'
           pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
           description: |
-            Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it, resolving the Dockerfile's public base images to immutable digests, and hosts the result, so no image reference or pull credential is supplied: a private base image is not supported until a build-time credential mechanism exists. An invalid `container.yaml` rejects the create: `400` where the document could not be parsed, `422` where it parsed and broke a rule, with `errors[]` entries carrying `configPointer` into the document. The endpoint set it declares becomes visible once the first build is ready and deployed. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions in the organization.
+            Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it, resolving the Dockerfile's base images to immutable digests, and hosts the result. The customer supplies no image to run. A private base image names `sourceImageCredential`, a registry secret in this environment. An invalid `container.yaml` rejects the create: `400` where the document could not be parsed, `422` where it parsed and broke a rule, with `errors[]` entries carrying `configPointer` into the document. The endpoint set it declares becomes visible once the first build is ready and deployed. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions in the organization.
+        sourceImageCredential:
+          allOf:
+            - $ref: '#/components/schemas/SourceImageCredentialName'
+          description: |
+            A `registry` secret in this environment. The build uses it to pull the Dockerfile's private base images. Naming one when this environment has not enabled registry credentials is `422` `source-image-credential-not-enabled`. An unknown or inactive name is `422` `secret-not-found`. A secret of another type is `422` `secret-wrong-type`. Deleting or replacing the secret does not rebuild a version that names it. A deleted secret is `422` `secret-not-found`, and no build starts.
     CodebaseSource:
       type: object
       additionalProperties: false
@@ -8353,6 +8428,11 @@ components:
           description: Additional pip packages to install alongside the codebase.
         codebase:
           $ref: '#/components/schemas/CodebaseSource'
+        sourceImageCredential:
+          allOf:
+            - $ref: '#/components/schemas/SourceImageCredentialName'
+          description: |
+            A `registry` secret in this environment. The build uses it to pull a private `baseImage`. Naming one when this environment has not enabled registry credentials is `422` `source-image-credential-not-enabled`. An unknown or inactive name is `422` `secret-not-found`. A secret of another type is `422` `secret-wrong-type`. Deleting or replacing the secret does not rebuild a version that names it. A deleted secret is `422` `secret-not-found`, and no build starts.
     DeployRequest:
       type: object
       required:
@@ -9319,7 +9399,7 @@ components:
 
         A failed roll records `deploy of version N failed (…); the previous version keeps serving` or `deploy of version N failed (…); app marked failed`. After the first, `activeVersionId` names the version that kept serving. A platform re-render records `Platform runtime updated; version unchanged.` or `Platform runtime update did not become ready; version unchanged.`
 
-        Which process can answer is on `GET /v1/apps/{appId}/workers?versionId=all`. The default workers page follows `activeVersionId` and hides an older version that is still running. A new version is serving once a worker of that version is `ready` or `busy` and the previous version's workers are `draining`, `stopping` or `stopped`. A secret or connector change does not change the version. `createdAt` on a worker is when its row was recorded. It is not proof the new secret or connector is serving: the accept event precedes the template apply, so a worker created after it can still be on the previous configuration.
+        Which process can answer is on `GET /v1/apps/{appId}/workers?versionId=all`. The default workers page follows `activeVersionId` and hides an older version that is still running. Which version is answering is `runtime.answeringVersionId` on the app. A secret or connector change does not change the version. `createdAt` on a worker is when its row was recorded. It is not proof the new secret or connector is serving: the accept event precedes the template apply, so a worker created after it can still be on the previous configuration.
       required:
         - id
         - appId
