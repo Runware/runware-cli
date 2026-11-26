@@ -65,6 +65,16 @@ type ContainerSource = gen.ContainerSource
 // AppVolume is a persistent node-local directory mounted into the application.
 type AppVolume = gen.AppVolume
 
+// VolumeMount is a Shared Volume mounted read-only into the application's workers.
+type VolumeMount = gen.VolumeMount
+
+// VolumeMountKindVolume is the only VolumeMount kind.
+const VolumeMountKindVolume = gen.VolumeMountKindVolume
+
+// VolumeWorkerMount is one Shared Volume as a worker mounted it, with the
+// digest of the files it prepared.
+type VolumeWorkerMount = gen.VolumeWorkerMount
+
 // WorkerConfig is the live worker configuration on an app.
 type WorkerConfig = gen.WorkerConfig
 

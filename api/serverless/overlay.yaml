@@ -1,0 +1,13 @@
+# Adjustments to the published spec for this client only. The spec itself stays
+# a byte copy of the published bundle; these apply at generation.
+overlay: 1.0.0
+info:
+  title: Client adjustments to the Serverless API spec
+  version: 1.0.0
+actions:
+  # A field the spec marks required generates as a plain value, so a response
+  # from an API that does not send it yet decodes to zero and the CLI's JSON
+  # and YAML print that zero as a count. Optional, it stays omitted. Remove
+  # this action once every deployed API sends servingWorkers.
+  - target: $.components.schemas.AppRuntime.required[?(@ == 'servingWorkers')]
+    remove: true

@@ -3,10 +3,18 @@ package serverless
 import (
 	"strings"
 	"testing"
+
+	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
 )
 
 // A representative mount path, repeated across the cases below.
 const testMountPath = "/data/weights"
+
+// buildVolumes is buildSandboxPaths with --volume alone.
+func buildVolumes(paths []string) (*[]serverlessapi.AppVolume, error) {
+	volumes, _, err := buildSandboxPaths(paths, nil)
+	return volumes, err
+}
 
 func TestBuildVolumes(t *testing.T) {
 	got, err := buildVolumes([]string{"/root/.cache/huggingface", testMountPath})
@@ -77,13 +85,13 @@ func TestBuildVolumes_Rejects(t *testing.T) {
 			// The pair that motivates the whole check: one contains the other,
 			// so the same node directory would be mounted into the sandbox twice.
 			name:  "overlapping",
-			paths: []string{"/data", testMountPath},
+			paths: []string{"/srv", "/srv/weights"},
 			want:  "overlaps",
 		},
 		{
 			// ...in either order.
 			name:  "overlapping reversed",
-			paths: []string{testMountPath, "/data"},
+			paths: []string{"/srv/weights", "/srv"},
 			want:  "overlaps",
 		},
 	}
@@ -124,5 +132,35 @@ func TestBuildVolumes_TooMany(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "at most") {
 		t.Errorf("error %q does not mention the limit", err)
+	}
+}
+
+// --volume and --mount share the server's one limit.
+func TestBuildSandboxPaths_LimitCountsBothFlags(t *testing.T) {
+	volumes := make([]string, 20)
+	for i := range volumes {
+		volumes[i] = "/data/vol" + string(rune('a'+i))
+	}
+	mounts := make([]string, maxVolumes-len(volumes)+1)
+	for i := range mounts {
+		mounts[i] = "w:/models/m" + string(rune('a'+i))
+	}
+	_, _, err := buildSandboxPaths(volumes, mounts)
+	if err == nil || !strings.Contains(err.Error(), "--volume and --mount entries together") {
+		t.Fatalf("err = %v, want the shared limit", err)
+	}
+	if _, _, err := buildSandboxPaths(volumes, mounts[1:]); err != nil {
+		t.Fatalf("at the limit: %v", err)
+	}
+}
+
+// The server counts a Volume mounted at two paths once, and allows it.
+func TestBuildSandboxPaths_OneVolumeAtTwoPaths(t *testing.T) {
+	_, mounts, err := buildSandboxPaths(nil, []string{"w:/models", "w:/cache/models"})
+	if err != nil {
+		t.Fatalf("buildSandboxPaths: %v", err)
+	}
+	if len(*mounts) != 2 {
+		t.Fatalf("mounts = %v, want both", *mounts)
 	}
 }

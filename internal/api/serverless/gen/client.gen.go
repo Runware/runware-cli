@@ -1606,7 +1606,7 @@ type AppOidcConnector struct {
 
 // AppRuntime Observed state for one app at `calculatedAt`. Desired worker scale remains in `configuration`. Worker and GPU counts are always present. Traffic, duration, and queue fields are omitted when their backing data is unavailable.
 type AppRuntime struct {
-	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) on this app's active version. Pending workers count because they appear in the active-version workers list before Kubernetes assigns a GPU. Outgoing-version workers are excluded because the default workers list omits them. A deleted app reports zero.
+	// ActiveWorkers Non-terminal workers (`status` other than `stopped`) on this app's active version. Pending workers count because they appear in the active-version workers list before Kubernetes assigns a GPU. So do workers that cannot take a task yet or any more, such as `loading` or `unhealthy`: `servingWorkers` is the count of those that can. Outgoing-version workers are excluded because the default workers list omits them. A deleted app reports zero.
 	ActiveWorkers int64 `json:"activeWorkers"`
 
 	// AverageRequestDuration24h Mean inference request duration in seconds over the last 24 hours (all requests, the duration histogram has no status class). Omitted when metrics cannot be read, when the app had no requests, or when the duration series has no samples for the app in the window.
@@ -1626,6 +1626,9 @@ type AppRuntime struct {
 
 	// Requests24h Requests served by this app in the last 24 hours. Omitted until available.
 	Requests24h *int64 `json:"requests24h,omitempty"`
+
+	// ServingWorkers Workers among `activeWorkers` that are serving, those whose `status` is `ready` (idle) or `busy` (running a task): the statuses health counts as able to serve. It is not free capacity. Like `activeWorkers` it counts only the active version, where health counts every version's workers and is derived from a periodic observation, so during a rollout, or for the moment after a worker changes status, the two can disagree. A deleted app reports zero.
+	ServingWorkers *int64 `json:"servingWorkers,omitempty"`
 }
 
 // AppSort Ordering for `listApps`. Favorited apps appear before non-favorited apps, and the selected ordering applies within each group. Every ordering is total (ties broken by `appId`), so a page is reproducible and its cursor stable.
@@ -1927,6 +1930,9 @@ type CodeSourceUpsert struct {
 
 	// Requirements Additional pip packages to install alongside the codebase.
 	Requirements *[]string `json:"requirements,omitempty"`
+
+	// SourceImageCredential A `registry` secret in this environment. The build uses it to pull a private `baseImage`. Naming one when this environment has not enabled registry credentials is `422` `source-image-credential-not-enabled`. An unknown or inactive name is `422` `secret-not-found`. A secret of another type is `422` `secret-wrong-type`. Deleting or replacing the secret does not rebuild a version that names it. A deleted secret is `422` `secret-not-found`, and no build starts.
+	SourceImageCredential *SourceImageCredentialName `json:"sourceImageCredential,omitempty"`
 }
 
 // CodebaseSource defines model for CodebaseSource.
@@ -1959,8 +1965,11 @@ type ComputeType string
 
 // ContainerSource defines model for ContainerSource.
 type ContainerSource struct {
-	// SourceId Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it, resolving the Dockerfile's public base images to immutable digests, and hosts the result, so no image reference or pull credential is supplied: a private base image is not supported until a build-time credential mechanism exists. An invalid `container.yaml` rejects the create: `400` where the document could not be parsed, `422` where it parsed and broke a rule, with `errors[]` entries carrying `configPointer` into the document. The endpoint set it declares becomes visible once the first build is ready and deployed. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions in the organization.
+	// SourceId Id of a source published by a completed upload in this organization (`POST /v1/source-uploads`, then `complete`). The archive it names carries a wrapper `Dockerfile` and a `container.yaml` config document at its root, plus any build-context files the Dockerfile copies in. Runware builds the image from it, resolving the Dockerfile's base images to immutable digests, and hosts the result. The customer supplies no image to run. A private base image names `sourceImageCredential`, a registry secret in this environment. An invalid `container.yaml` rejects the create: `400` where the document could not be parsed, `422` where it parsed and broke a rule, with `errors[]` entries carrying `configPointer` into the document. The endpoint set it declares becomes visible once the first build is ready and deployed. A source is immutable and reusable: the same `sourceId` may back any number of apps and versions in the organization.
 	SourceId SourceId `json:"sourceId"`
+
+	// SourceImageCredential A `registry` secret in this environment. The build uses it to pull the Dockerfile's private base images. Naming one when this environment has not enabled registry credentials is `422` `source-image-credential-not-enabled`. An unknown or inactive name is `422` `secret-not-found`. A secret of another type is `422` `secret-wrong-type`. Deleting or replacing the secret does not rebuild a version that names it. A deleted secret is `422` `secret-not-found`, and no build starts.
+	SourceImageCredential *SourceImageCredentialName `json:"sourceImageCredential,omitempty"`
 }
 
 // CreditPool The authenticated organization's Serverless credit pool at `observedAt`.
@@ -2730,6 +2739,12 @@ type SourceImage struct {
 
 	// Reference The image reference the customer wrote.
 	Reference string `json:"reference"`
+}
+
+// SourceImageCredentialName defines model for SourceImageCredentialName.
+type SourceImageCredentialName struct {
+	// SecretName Name of a `registry` secret in this environment.
+	SecretName SecretName `json:"secretName"`
 }
 
 // SourceUpload defines model for SourceUpload.
