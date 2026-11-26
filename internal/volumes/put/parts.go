@@ -18,8 +18,14 @@ import (
 )
 
 const (
-	maxRenewals      = 3
-	maxRenewParts    = 128
+	maxRenewals   = 3
+	maxRenewParts = 128
+	// maxPartRetryTime bounds how long a part may keep failing without sending anything: no attempt
+	// starts once it has passed since the end of the part's last failed attempt that sent part of
+	// its body, or since its first failure when none did. One attempt on a slow link can take longer
+	// than the window, so a window that ran from the first failure would stop a part after one or
+	// two connection drops. Attempts that send a little and fail at once still stop at
+	// maxUploadAttempts.
 	maxPartRetryTime = 5 * time.Minute
 )
 
@@ -302,7 +308,8 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 	}
 	defer func() { _ = file.Close() }()
 	var failed Secret
-	// The retry window limits when another attempt can start.
+	// The retry window limits when another attempt can start. It starts at the first failure and
+	// again after every failed attempt that sent part of its body.
 	retryCtx := ctx
 	var stopRetryTimer context.CancelFunc
 	defer func() {
@@ -332,7 +339,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 		if cause := context.Cause(retryCtx); cause != nil {
 			return partResult{}, cause
 		}
-		traffic := partTraffic{
+		traffic := &partTraffic{
 			file:     f,
 			progress: r.progress,
 		}
@@ -340,16 +347,26 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 		if srcErr := src.failure(); srcErr != nil {
 			return partResult{}, srcErr
 		}
-		tokenExpired := errors.Is(err, ErrPartTokenExpired)
-		switch {
-		case err == nil:
+		if err == nil {
 			return partResult{
 				Ack: ack,
 				CRC: crc.Sum64(),
 				Len: sealer.Len(),
 			}, nil
-		case ctx.Err() != nil:
+		}
+		if ctx.Err() != nil {
 			return partResult{}, context.Cause(ctx)
+		}
+		if stopRetryTimer == nil || traffic.sent.Load() > 0 {
+			if stopRetryTimer != nil {
+				stopRetryTimer()
+			}
+			retryWindow, cancel := context.WithTimeoutCause(ctx, maxPartRetryTime, errUploadRetriesExhausted)
+			stopRetryTimer = cancel
+			retryCtx = retryWindow
+		}
+		tokenExpired := errors.Is(err, ErrPartTokenExpired)
+		switch {
 		case retryCtx.Err() != nil:
 			return partResult{}, errors.Join(context.Cause(retryCtx), err)
 		case tokenExpired:
@@ -364,11 +381,6 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 				return partResult{}, fmt.Errorf("%w: %w", errUploadRetriesExhausted, err)
 			}
 		}
-		if stopRetryTimer == nil {
-			retryWindow, cancel := context.WithTimeoutCause(ctx, maxPartRetryTime, errUploadRetriesExhausted)
-			stopRetryTimer = cancel
-			retryCtx = retryWindow
-		}
 		if !tokenExpired {
 			if err := r.sleep(retryCtx, uploadBackoff(attempts)); err != nil {
 				return partResult{}, err
@@ -377,13 +389,16 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 	}
 }
 
-// partTraffic counts ciphertext consumed by the transport on every attempt.
+// partTraffic counts ciphertext consumed by the transport on one attempt, and adds it to the file's
+// and the upload's totals.
 type partTraffic struct {
 	file     *fileState
 	progress *progress
+	sent     atomic.Int64
 }
 
-func (p partTraffic) Write(b []byte) (int, error) {
+func (p *partTraffic) Write(b []byte) (int, error) {
+	p.sent.Add(int64(len(b)))
 	p.file.sent.Add(int64(len(b)))
 	p.progress.addSent(int64(len(b)))
 	return len(b), nil

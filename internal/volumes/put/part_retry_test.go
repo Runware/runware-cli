@@ -115,3 +115,58 @@ func TestPartRetryCanFinishAfterRetryWindow(t *testing.T) {
 		}
 	})
 }
+
+// droppingTransport reads each part body in full, waits attemptTime and then fails the first drops
+// attempts, as a connection that drops at the end of a slow send would.
+type droppingTransport struct {
+	attemptTime time.Duration
+	drops       int
+	calls       int
+}
+
+var errConnectionDropped = errors.New("the connection was reset")
+
+func (d *droppingTransport) PutPart(ctx context.Context, _ Target, body io.Reader, _ int64) (Secret, error) {
+	d.calls++
+	if _, err := io.Copy(io.Discard, body); err != nil {
+		return "", err
+	}
+	if err := sleepContext(ctx, d.attemptTime); err != nil {
+		return "", err
+	}
+	if d.calls <= d.drops {
+		return "", errConnectionDropped
+	}
+	return testAck, nil
+}
+
+// TestPartRetryWindowRestartsAfterSlowAttempts: attempts that each send for longer than the retry
+// window, as one part does among many on a slow link, keep getting retries.
+func TestPartRetryWindowRestartsAfterSlowAttempts(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tr := &droppingTransport{
+			attemptTime: 14 * time.Minute,
+			drops:       3,
+			calls:       0,
+		}
+		result, err := sendTestPart(t, tr)
+		if err != nil || result.Ack != testAck || tr.calls != 4 {
+			t.Errorf("ack = %q, error = %v, attempts = %d; want three retries, the last acknowledged", result.Ack, err, tr.calls)
+		}
+	})
+}
+
+// TestPartFastFailuresStopAtTheAttemptLimit: attempts that send the body and fail at once restart
+// the retry window every time, and still stop at the attempt limit.
+func TestPartFastFailuresStopAtTheAttemptLimit(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tr := &droppingTransport{
+			attemptTime: 0,
+			drops:       2 * maxUploadAttempts,
+			calls:       0,
+		}
+		if _, err := sendTestPart(t, tr); !errors.Is(err, errUploadRetriesExhausted) || tr.calls != maxUploadAttempts {
+			t.Errorf("error = %v after %d attempts, want retry exhaustion after %d", err, tr.calls, maxUploadAttempts)
+		}
+	})
+}

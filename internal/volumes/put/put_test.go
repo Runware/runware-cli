@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -779,6 +780,12 @@ func TestPutTruncatedDuringUploadAborts(t *testing.T) {
 				}
 			} else {
 				e.cloud.onDeclare = func(FileDeclarations) { truncate() }
+				// The part 1 worker could find the short file before the feeder checks the size for
+				// part 2, so part 1 waits until that check has failed and cancelled the put.
+				opts.Transport = &heldPart{
+					Transport: opts.Transport,
+					part:      1,
+				}
 			}
 
 			_, err := Run(t.Context(), opts)
@@ -794,6 +801,20 @@ func TestPutTruncatedDuringUploadAborts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// heldPart holds the send of part until the put is cancelled, without reading its body.
+type heldPart struct {
+	Transport
+	part int
+}
+
+func (h *heldPart) PutPart(ctx context.Context, target Target, body io.Reader, length int64) (Secret, error) {
+	if target.PartNumber != h.part {
+		return h.Transport.PutPart(ctx, target, body, length)
+	}
+	<-ctx.Done()
+	return "", context.Cause(ctx)
 }
 
 func TestPutRechecksEverySourceBeforePublish(t *testing.T) {
