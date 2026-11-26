@@ -6,3 +6,5 @@ generate:
 output: internal/api/serverless/gen/client.gen.go
 output-options:
   skip-prune: false
+  overlay:
+    path: api/serverless/overlay.yaml

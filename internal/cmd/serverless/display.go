@@ -71,6 +71,8 @@ const (
 	colStage                    = "Stage"
 	colCode                     = "Code"
 	colTroubleshooting          = "Troubleshooting"
+	colMounts                   = "Mounts"
+	colSubmittedMounts          = "Submitted Mounts"
 
 	colComputeType         = "Compute type"
 	colGPUType             = "GPU type"
@@ -147,14 +149,113 @@ type appShowResult struct {
 
 func (r appShowResult) Rows() [][]any {
 	rows := r.appResult.Rows()
-	out := make([][]any, 0, len(rows)+1)
+	out := make([][]any, 0, len(rows)+2)
 	for _, row := range rows {
 		out = append(out, row)
 		if len(row) > 0 && row[0] == colActiveVersion {
-			out = append(out, []any{colServingVersion, r.serving})
+			// Only the app read fills mounts, so this row lives here and
+			// not on every printed app. Without an active version the read
+			// returns the latest version's mounts, such as after a create
+			// whose first rollout failed.
+			out = append(out,
+				[]any{colServingVersion, r.serving},
+				[]any{colMounts, formatMounts(r.Mounts)})
 		}
 	}
 	return out
+}
+
+// deployResult is the app a deploy wrote plus the mounts the deploy sent, which
+// the create and update responses do not return. mounts is nil when the deploy
+// left the mounts as they were.
+//
+// The sent mounts belong to the version the deploy records, which a source
+// update pins only once it rolls out, so they stay apart from the app's own
+// mounts field: that one describes the version activeVersionId names.
+type deployResult struct {
+	appResult
+	mounts *[]serverlessapi.VolumeMount
+}
+
+func (r deployResult) Rows() [][]any {
+	rows := r.appResult.Rows()
+	if r.mounts == nil {
+		return rows
+	}
+	return append(rows, []any{colSubmittedMounts, formatMounts(r.mounts)})
+}
+
+// MarshalJSON prints the app, plus submittedMounts when the deploy sent mounts.
+func (r deployResult) MarshalJSON() ([]byte, error) {
+	app := r.withRedactedEnv()
+	if r.mounts == nil {
+		return json.Marshal(app)
+	}
+	return json.Marshal(struct {
+		serverlessapi.App
+		SubmittedMounts []serverlessapi.VolumeMount `json:"submittedMounts"`
+	}{app, *r.mounts})
+}
+
+// noMounts is the table value of a mount list the CLI knows is empty: one a
+// deploy sent. A read omits the list both when there are no mounts and when
+// Shared Volumes are not available to the organization, so an omitted list
+// prints noValue instead.
+const noMounts = "none"
+
+// deletedMountSuffix marks a mount whose Volume has been deleted since. It
+// keeps that value from being pasted back as a --mount flag: a new Volume may
+// have taken the name.
+const deletedMountSuffix = " (deleted)"
+
+// formatMounts renders mounts as the --mount flags that would ask for them, so
+// a table value can be pasted back into a deploy. A mount of a deleted Volume
+// gets deletedMountSuffix.
+func formatMounts(mounts *[]serverlessapi.VolumeMount) string {
+	if mounts == nil {
+		return noValue
+	}
+	if len(*mounts) == 0 {
+		return noMounts
+	}
+	parts := make([]string, 0, len(*mounts))
+	for _, m := range *mounts {
+		part := m.Name + ":" + m.MountPath
+		if m.Deleted != nil && bool(*m.Deleted) {
+			part += deletedMountSuffix
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// shortDigestLen is how much of a manifest digest a worker table shows: enough
+// to tell two uploads apart, short enough to fit beside the other columns.
+const shortDigestLen = 12
+
+// formatWorkerMounts renders each Volume a worker mounted with the digest of the
+// files it prepared, so workers on the old and the new files can be told apart.
+// short trims the digest for a table column.
+func formatWorkerMounts(mounts *[]serverlessapi.VolumeWorkerMount, short bool) string {
+	if mounts == nil || len(*mounts) == 0 {
+		return noValue
+	}
+	parts := make([]string, 0, len(*mounts))
+	for _, m := range *mounts {
+		digest := "preparing"
+		if m.ManifestSha256 != nil {
+			digest = *m.ManifestSha256
+			if short && len(digest) > shortDigestLen {
+				digest = digest[:shortDigestLen]
+			}
+		}
+		if short {
+			parts = append(parts, m.Name+":"+digest)
+			continue
+		}
+		parts = append(parts, m.Name+" at "+m.MountPath+": "+digest)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // MarshalJSON redacts plaintext environment variable values. The table already omits
@@ -257,7 +358,7 @@ func (r endpointResult) Rows() [][]any {
 type versionsResult []serverlessapi.Version
 
 func (r versionsResult) Headers() []string {
-	return []string{colVersion, colID, "Build", colCreated}
+	return []string{colVersion, colID, "Build", colMounts, colCreated}
 }
 
 func (r versionsResult) Rows() [][]any {
@@ -268,6 +369,7 @@ func (r versionsResult) Rows() [][]any {
 			v.VersionNumber,
 			v.Id.String(),
 			formatOptionalUUID(v.BuildId),
+			formatMounts(v.Mounts),
 			v.CreatedAt.Format(time.RFC3339),
 		}
 	}
@@ -287,6 +389,7 @@ func (r versionResult) Rows() [][]any {
 		{colID, r.Id.String()},
 		{colApp, r.AppId},
 		{"Build", formatOptionalUUID(r.BuildId)},
+		{colMounts, formatMounts(r.Mounts)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 	}
 }
@@ -331,7 +434,7 @@ func (r eventsResult) Rows() [][]any {
 type workersResult []serverlessapi.Worker
 
 func (r workersResult) Headers() []string {
-	return []string{colID, colStatus, colStatusReason, "Pod", "Node", "Last Seen"}
+	return []string{colID, colStatus, colStatusReason, "Pod", "Node", colMounts, "Last Seen"}
 }
 
 func (r workersResult) Rows() [][]any {
@@ -344,6 +447,7 @@ func (r workersResult) Rows() [][]any {
 			formatOptionalString(w.StatusReason),
 			w.PodName,
 			formatOptionalString(w.NodeName),
+			formatWorkerMounts(w.Mounts, true),
 			formatOptionalTime(w.LastSeenAt),
 		}
 	}
@@ -367,6 +471,7 @@ func (r workerResult) Rows() [][]any {
 		{colGPUType, formatOptionalString(r.GpuType)},
 		{"GPU count", r.GpuCount},
 		{"Version ID", r.VersionId.String()},
+		{colMounts, formatWorkerMounts(r.Mounts, false)},
 		{"Last seen", formatOptionalTime(r.LastSeenAt)},
 		{colCreated, r.CreatedAt.Format(time.RFC3339)},
 		{"Status occurred", r.StatusOccurredAt.Format(time.RFC3339)},
