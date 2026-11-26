@@ -114,10 +114,16 @@ func newAppsTasksCancelCmd(logger *log.Logger) *cobra.Command {
 		Short: "Cancel a queued task, or all queued tasks of an application",
 		Long: `Cancel a task that no worker has started. Workers that check for a canceled task skip it.
 
-A task that is already running, completed, or failed cannot be canceled.
+A task that is already running, completed, or failed cannot be canceled
+(409 task-not-cancelable). A task that has not started is also refused, with
+409 task-cancel-unsupported, when the application's workers cannot skip a
+canceled task; use --all then. A task whose record has expired is not found (404).
 
-With --all, the application's queue is emptied and every queued task is
-canceled, so resuming a stopped application starts no worker for them.
+With --all, the application's queue is emptied and the queued tasks the API can
+find with no recorded start are canceled, so resuming a stopped application
+starts no worker for the messages removed. --all does not guarantee that every
+task is canceled: a task submitted while the call runs, a message a worker had
+already taken, or a task queued for more than an hour can survive or go uncounted.
 Canceling a single task leaves its message queued until a worker skips it.`,
 		Example: `  # cancel one queued task
   runware serverless apps tasks cancel my-app 7c9e6679-7425-40de-944b-e07fc1f90ae7
@@ -158,6 +164,6 @@ Canceling a single task leaves its message queued until a worker skips it.`,
 		},
 	}
 
-	cmd.Flags().BoolVar(&all, "all", false, "Cancel every queued task of the application")
+	cmd.Flags().BoolVar(&all, "all", false, "Cancel the application's queued tasks (see the help for what it does not cover)")
 	return cmd
 }
