@@ -37,11 +37,16 @@ func sendTestPart(t *testing.T, tr Transport) (partResult, error) {
 	return r.sendPart(t.Context(), f, 1, digest)
 }
 
-// sendLargeTestPart sends a part larger than maxBufferedPartBytes, so an attempt that sends all of
-// it proves progress.
+// testBufferedPartBytes stands in for maxBufferedPartBytes, so a part that proves progress is small.
+const testBufferedPartBytes = 4 << 10
+
+// sendLargeTestPart lowers bufferedPartBytes to testBufferedPartBytes for the test and sends a part
+// larger than that, so an attempt that sends all of it proves progress.
 func sendLargeTestPart(t *testing.T, tr Transport) (partResult, error) {
 	t.Helper()
-	r, f, digest := newTestPart(t, tr, make([]byte, maxBufferedPartBytes+1<<20))
+	bufferedPartBytes = testBufferedPartBytes
+	t.Cleanup(func() { bufferedPartBytes = maxBufferedPartBytes })
+	r, f, digest := newTestPart(t, tr, make([]byte, 2*testBufferedPartBytes))
 	return r.sendPart(t.Context(), f, 1, digest)
 }
 
@@ -212,7 +217,7 @@ func (b *bufferedStallTransport) PutPart(ctx context.Context, _ Target, body io.
 // that stall having sent no more than the buffers hold do not restart the retry window, so the part
 // stops within it rather than at the attempt limit.
 func TestPartStalledRetriesStopAtTheRetryWindow(t *testing.T) {
-	for _, buffered := range []int64{0, maxBufferedPartBytes} {
+	for _, buffered := range []int64{0, testBufferedPartBytes} {
 		t.Run(fmt.Sprintf("%d bytes buffered", buffered), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				tr := &bufferedStallTransport{
