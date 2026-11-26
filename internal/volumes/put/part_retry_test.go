@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -33,6 +34,14 @@ func (s *stalledPartTransport) PutPart(ctx context.Context, _ Target, _ io.Reade
 func sendTestPart(t *testing.T, tr Transport) (partResult, error) {
 	t.Helper()
 	r, f, digest := newTestPart(t, tr, []byte("test part"))
+	return r.sendPart(t.Context(), f, 1, digest)
+}
+
+// sendLargeTestPart sends a part larger than maxBufferedPartBytes, so an attempt that sends all of
+// it proves progress.
+func sendLargeTestPart(t *testing.T, tr Transport) (partResult, error) {
+	t.Helper()
+	r, f, digest := newTestPart(t, tr, make([]byte, maxBufferedPartBytes+1<<20))
 	return r.sendPart(t.Context(), f, 1, digest)
 }
 
@@ -149,7 +158,7 @@ func TestPartRetryWindowRestartsAfterSlowAttempts(t *testing.T) {
 			drops:       3,
 			calls:       0,
 		}
-		result, err := sendTestPart(t, tr)
+		result, err := sendLargeTestPart(t, tr)
 		if err != nil || result.Ack != testAck || tr.calls != 4 {
 			t.Errorf("ack = %q, error = %v, attempts = %d; want three retries, the last acknowledged", result.Ack, err, tr.calls)
 		}
@@ -165,8 +174,65 @@ func TestPartFastFailuresStopAtTheAttemptLimit(t *testing.T) {
 			drops:       2 * maxUploadAttempts,
 			calls:       0,
 		}
-		if _, err := sendTestPart(t, tr); !errors.Is(err, errUploadRetriesExhausted) || tr.calls != maxUploadAttempts {
+		if _, err := sendLargeTestPart(t, tr); !errors.Is(err, errUploadRetriesExhausted) || tr.calls != maxUploadAttempts {
 			t.Errorf("error = %v after %d attempts, want retry exhaustion after %d", err, tr.calls, maxUploadAttempts)
 		}
 	})
+}
+
+// bufferedStallTransport fails the first attempt after reading its body in full, then reads buffered
+// bytes of each later body and stalls, as a link that stops moving data does while the client's
+// buffers still take the start of every attempt.
+type bufferedStallTransport struct {
+	buffered int64
+	stall    time.Duration
+	starts   []time.Time
+	ends     []time.Time
+}
+
+func (b *bufferedStallTransport) PutPart(ctx context.Context, _ Target, body io.Reader, _ int64) (Secret, error) {
+	b.starts = append(b.starts, time.Now())
+	defer func() { b.ends = append(b.ends, time.Now()) }()
+	if len(b.starts) == 1 {
+		if _, err := io.Copy(io.Discard, body); err != nil {
+			return "", err
+		}
+		return "", errConnectionDropped
+	}
+	if _, err := io.CopyN(io.Discard, body, b.buffered); err != nil {
+		return "", err
+	}
+	if err := sleepContext(ctx, b.stall); err != nil {
+		return "", err
+	}
+	return "", errPartStalled
+}
+
+// TestPartStalledRetriesStopAtTheRetryWindow: after an attempt that sends the part and fails, attempts
+// that stall having sent no more than the buffers hold do not restart the retry window, so the part
+// stops within it rather than at the attempt limit.
+func TestPartStalledRetriesStopAtTheRetryWindow(t *testing.T) {
+	for _, buffered := range []int64{0, maxBufferedPartBytes} {
+		t.Run(fmt.Sprintf("%d bytes buffered", buffered), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				tr := &bufferedStallTransport{
+					buffered: buffered,
+					stall:    2 * time.Minute,
+					starts:   nil,
+					ends:     nil,
+				}
+				if _, err := sendLargeTestPart(t, tr); !errors.Is(err, errUploadRetriesExhausted) {
+					t.Fatalf("error = %v, want retry exhaustion", err)
+				}
+				if len(tr.starts) < 3 {
+					t.Errorf("%d attempts, want the sent one and at least two stalled ones", len(tr.starts))
+				}
+				for _, start := range tr.starts[1:] {
+					if late := start.Sub(tr.ends[0]); late > 5*time.Minute {
+						t.Errorf("started an attempt %v after the first one ended, want at most 5 minutes", late)
+					}
+				}
+			})
+		})
+	}
 }
