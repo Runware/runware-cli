@@ -2,14 +2,20 @@ package put
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/runware/runware-cli/pkg/volumeformat"
 )
+
+// testAck is the acknowledgement the test transports answer a part with.
+const testAck = "test-ack"
 
 type stalledPartTransport struct {
 	stall  time.Duration
@@ -26,19 +32,30 @@ func (s *stalledPartTransport) PutPart(ctx context.Context, _ Target, _ io.Reade
 
 func sendTestPart(t *testing.T, tr Transport) (partResult, error) {
 	t.Helper()
-	plain := []byte("test part")
+	r, f, digest := newTestPart(t, tr, []byte("test part"))
+	return r.sendPart(t.Context(), f, 1, digest)
+}
+
+// newTestPart is a runner sending through tr and a one-part file of plain, with the part's digest.
+func newTestPart(t *testing.T, tr Transport, plain []byte) (*runner, *fileState, [32]byte) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "part.bin")
+	if err := os.WriteFile(path, plain, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	layout, err := volumeformat.PlanLayout(int64(len(plain)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	expires := time.Now().Add(time.Hour)
-	r := runner{
+	r := &runner{
 		tr:        tr,
 		now:       time.Now,
 		sleep:     sleepContext,
 		expiresAt: expires,
 	}
-	f := fileState{
+	f := &fileState{
+		src:      &Source{Abs: path},
 		key:      &fakeFileKey{dataKey: make([]byte, 32)},
 		layout:   layout,
 		identity: volumeformat.FileIdentity{Size: uint64(len(plain))},
@@ -46,7 +63,7 @@ func sendTestPart(t *testing.T, tr Transport) (partResult, error) {
 			1: {ExpiresAt: expires},
 		},
 	}
-	return r.sendPart(t.Context(), &f, 1, plain)
+	return r, f, sha256.Sum256(plain)
 }
 
 func TestPartRetryTimeBudget(t *testing.T) {
@@ -86,14 +103,14 @@ func (s *slowSuccessfulRetry) PutPart(ctx context.Context, _ Target, body io.Rea
 	if _, err := io.Copy(io.Discard, body); err != nil {
 		return "", err
 	}
-	return "test-ack", nil
+	return testAck, nil
 }
 
 func TestPartRetryCanFinishAfterRetryWindow(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tr := &slowSuccessfulRetry{}
 		result, err := sendTestPart(t, tr)
-		if err != nil || result.Ack != "test-ack" || tr.calls != 2 {
+		if err != nil || result.Ack != testAck || tr.calls != 2 {
 			t.Errorf("ack = %q, error = %v, attempts = %d; want one successful slow retry", result.Ack, err, tr.calls)
 		}
 	})

@@ -23,9 +23,16 @@ import (
 	"github.com/runware/runware-cli/pkg/volumeformat"
 )
 
+// Parts in flight. Each one streams its plaintext from the file one segment at a
+// time, so it holds about 1 MiB of memory however large the part is, and the
+// default holds about 32 MiB of part data. The most is set by the connections
+// it opens, one per part in flight, not by memory.
 const (
-	defaultParallelism  = 4
-	maxParallelism      = 16
+	DefaultParallelism = 32
+	MaxParallelism     = 64
+)
+
+const (
 	maxDeclarationBatch = 100
 	keyPairAttempts     = 5
 	maxUploadAttempts   = 18
@@ -52,7 +59,7 @@ type Options struct {
 	API          API
 	Keys         Keys
 	Transport    Transport
-	Parallelism  int // parts in flight; zero means four, and sixteen is the most
+	Parallelism  int // parts in flight; zero means DefaultParallelism, and MaxParallelism is the most
 	Progress     io.Writer
 	ProgressTTY  bool         // Progress is a terminal
 	Logger       *slog.Logger // debug events, such as a resumed or discarded session; nil logs nothing
@@ -61,6 +68,7 @@ type Options struct {
 	sleep         func(context.Context, time.Duration) error
 	tick          <-chan time.Time
 	onHash        func(path string)
+	openSource    func(path string) (sourceFile, error)
 	progressEvery time.Duration
 	newSealer     sealerFactory
 }
@@ -121,9 +129,9 @@ func newRunner(o Options) (*runner, error) {
 		parallel:   o.Parallelism,
 	}
 	if r.parallel <= 0 {
-		r.parallel = defaultParallelism
+		r.parallel = DefaultParallelism
 	}
-	r.parallel = min(r.parallel, maxParallelism)
+	r.parallel = min(r.parallel, MaxParallelism)
 	if r.now == nil {
 		r.now = time.Now
 	}
@@ -164,7 +172,7 @@ func parseOrganization(s string) ([16]byte, error) {
 }
 
 func organizationHelp() string {
-	return fmt.Sprintf("set organization in %s or the %s environment variable, and copy the id from the Runware console (%s)",
+	return fmt.Sprintf("add the line \"organization: <id>\" at the top level of %s (config set cannot set it), or set the %s environment variable; copy the id from the Runware console (%s)",
 		config.ConfigPath(), config.OrganizationFromEnvVar, config.GetDashboardURL())
 }
 
@@ -203,7 +211,7 @@ func (r *runner) run(ctx context.Context) (Summary, error) {
 	}
 	defer sess.Clear()
 	cache := loadHashCache(r.stateDir)
-	err = hashSources(ctx, sources, cache, r.progress, r.o.onHash)
+	err = r.hashSources(ctx, sources, cache)
 	r.saveCache(cache)
 	if err != nil {
 		return Summary{}, err

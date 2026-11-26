@@ -1,15 +1,14 @@
 package put
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,10 +82,12 @@ func (f *fileState) acknowledgedBytes() int64 {
 	return n
 }
 
+// partJob is a part to send and the digest of its plaintext, taken when the file was hashed and
+// journalled before the part goes out.
 type partJob struct {
-	file *fileState
-	part int
-	buf  *partBuffer
+	file   *fileState
+	part   int
+	digest [32]byte
 }
 
 // failure keeps the first error of a group of goroutines and cancels the rest.
@@ -102,40 +103,6 @@ func (f *failure) set(err error, cancel context.CancelFunc) {
 	})
 }
 
-// partBuffer holds one part's plaintext from the read to the acknowledgement.
-type partBuffer struct {
-	data []byte
-}
-
-// bufferPool bounds the plaintext held in memory to a fixed number of part buffers.
-type bufferPool struct {
-	free chan *partBuffer
-}
-
-func newBufferPool(n int) *bufferPool {
-	p := &bufferPool{free: make(chan *partBuffer, n)}
-	for range n {
-		p.free <- &partBuffer{}
-	}
-	return p
-}
-
-// get waits for a free buffer and sizes it to n bytes.
-func (p *bufferPool) get(ctx context.Context, n int) (*partBuffer, error) {
-	select {
-	case b := <-p.free:
-		if cap(b.data) < n {
-			b.data = make([]byte, n)
-		}
-		b.data = b.data[:n]
-		return b, nil
-	case <-ctx.Done():
-		return nil, context.Cause(ctx)
-	}
-}
-
-func (p *bufferPool) put(b *partBuffer) { p.free <- b }
-
 // uploadFiles sends the files' parts in parallel and completes each file after its last ack.
 func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 	if len(todo) == 0 {
@@ -150,7 +117,7 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var fail failure
-	pool := newBufferPool(r.parallel + 1)
+	// Unbuffered, so the reader stays at most one part ahead of the senders.
 	jobs := make(chan partJob)
 	var wg sync.WaitGroup
 	for range r.parallel {
@@ -159,12 +126,11 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 				if err := r.transferPart(ctx, j); err != nil {
 					fail.set(err, cancel)
 				}
-				pool.put(j.buf)
 			}
 		})
 	}
 	for _, f := range todo {
-		if err := r.feedFile(ctx, f, pool, jobs); err != nil {
+		if err := r.feedFile(ctx, f, jobs); err != nil {
 			fail.set(err, cancel)
 			break
 		}
@@ -180,42 +146,35 @@ func (r *runner) uploadFiles(ctx context.Context, todo []*fileState) error {
 	return fail.err
 }
 
-// feedFile reads a file part by part and checks its digest before the last part goes out.
-func (r *runner) feedFile(ctx context.Context, f *fileState, pool *bufferPool, jobs chan<- partJob) error {
-	file, err := os.Open(f.src.Abs)
-	if err != nil {
-		return fileErr(f.src.Abs, fmt.Errorf("%w: %w", ErrSourceChanged, err))
-	}
-	defer func() { _ = file.Close() }()
-	whole := sha256.New()
+// feedFile journals each part's digest before the part is sent. The digests come from hashing, which
+// read the file once and computed the file's digest from the same bytes, so feedFile reads nothing:
+// the sender reads each part from the file and must find the bytes hashed for it, and a part whose
+// bytes differ is never acknowledged. Before the last part it checks the file's size and times have
+// not moved since hashing.
+func (r *runner) feedFile(ctx context.Context, f *fileState, jobs chan<- partJob) error {
 	last := int(f.layout.PartCount)
+	if len(f.src.Parts) != last {
+		return fileErr(f.src.Abs, fmt.Errorf("%d part digests for %d parts", len(f.src.Parts), last))
+	}
 	for part := 1; part <= last; part++ {
-		offset, n, err := f.layout.PlaintextRange(int64(part))
+		if err := context.Cause(ctx); err != nil {
+			return err
+		}
+		_, n, err := f.layout.PlaintextRange(int64(part))
 		if err != nil {
 			return fileErr(f.src.Abs, err)
 		}
-		buf, err := pool.get(ctx, int(n))
+		if part == last {
+			if err := unchanged(f.src); err != nil {
+				return err
+			}
+		}
+		digest := f.src.Parts[part-1]
+		send, err := r.resumePart(f, part, digest)
 		if err != nil {
 			return err
 		}
-		if err := readPart(file, offset, buf.data); err != nil {
-			pool.put(buf)
-			return fileErr(f.src.Abs, err)
-		}
-		whole.Write(buf.data)
-		if part == last {
-			if err := f.verifySource(whole.Sum(nil)); err != nil {
-				pool.put(buf)
-				return err
-			}
-		}
-		digest := sha256.Sum256(buf.data)
-		send, err := r.resumePart(f, part, digest)
-		if err != nil || !send {
-			pool.put(buf)
-			if err != nil {
-				return err
-			}
+		if !send {
 			continue
 		}
 		if err := r.journal.logSync(partRecord{
@@ -225,46 +184,91 @@ func (r *runner) feedFile(ctx context.Context, f *fileState, pool *bufferPool, j
 			SHA256: hex.EncodeToString(digest[:]),
 			Length: n,
 		}); err != nil {
-			pool.put(buf)
 			return err
 		}
 		select {
 		case jobs <- partJob{
-			file: f,
-			part: part,
-			buf:  buf,
+			file:   f,
+			part:   part,
+			digest: digest,
 		}:
 		case <-ctx.Done():
-			pool.put(buf)
 			return context.Cause(ctx)
 		}
 	}
 	return r.resumeVerified(ctx, f)
 }
 
-// readPart fills buf from the file at offset; a file that ends early has changed.
-func readPart(file *os.File, offset int64, buf []byte) error {
-	_, err := io.ReadFull(io.NewSectionReader(file, offset, int64(len(buf))), buf)
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return fmt.Errorf("%w: it ended before byte %d", ErrSourceChanged, offset+int64(len(buf)))
-	}
-	return err
+// partSource reads a part's plaintext from the file for one send and hashes it on the way. Where the
+// part ends it returns io.EOF only when the bytes match the digest journalled for the part, and
+// ErrSourceChanged otherwise. The sealer seals the part's last segment only after that io.EOF, so a
+// part whose bytes changed since they were journalled stops short and is never acknowledged.
+type partSource struct {
+	r      *io.SectionReader
+	h      hash.Hash
+	digest [32]byte
+	part   int
+	end    int64 // the file offset where the part ends
+	left   int64 // bytes of the part not yet read
+	err    error // io.EOF once the part is read and matches, or what stopped it
 }
 
-// verifySource checks the digest of what was read and the file's size and time since hashing.
-func (f *fileState) verifySource(sum []byte) error {
-	if !bytes.Equal(sum, f.src.SHA256[:]) {
-		return fileErr(f.src.Abs, ErrSourceChanged)
+func newPartSource(file io.ReaderAt, part int, offset, n int64, digest [32]byte) *partSource {
+	return &partSource{
+		r:      io.NewSectionReader(file, offset, n),
+		h:      sha256.New(),
+		digest: digest,
+		part:   part,
+		end:    offset + n,
+		left:   n,
 	}
-	return unchanged(f.src)
+}
+
+func (s *partSource) Read(p []byte) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	if s.left == 0 {
+		s.err = io.EOF
+		if [32]byte(s.h.Sum(nil)) != s.digest {
+			s.err = sourceChangedError{
+				cause: fmt.Sprintf("part %d no longer matches what was hashed", s.part),
+			}
+		}
+		return 0, s.err
+	}
+	n, err := s.r.Read(p[:min(int64(len(p)), s.left)])
+	s.h.Write(p[:n])
+	s.left -= int64(n)
+	switch {
+	case errors.Is(err, io.EOF) && s.left > 0:
+		s.err = sourceChangedError{
+			cause: fmt.Sprintf("the file is shorter than when it was hashed: part %d ends before byte %d", s.part, s.end),
+		}
+	case err != nil && !errors.Is(err, io.EOF):
+		s.err = err
+	}
+	return n, s.err
+}
+
+// failure is the error that stopped the part's plaintext, or nil when none did.
+func (s *partSource) failure() error {
+	if errors.Is(s.err, io.EOF) {
+		return nil
+	}
+	return s.err
 }
 
 // transferPart sends one part, records its ack and completes the file after its last part.
 func (r *runner) transferPart(ctx context.Context, j partJob) error {
 	f := j.file
-	res, err := r.sendPart(ctx, f, j.part, j.buf.data)
+	res, err := r.sendPart(ctx, f, j.part, j.digest)
 	if err != nil {
-		return fileErr(f.src.Abs, fmt.Errorf("part %d: %w", j.part, err))
+		// A changed part names itself.
+		if _, ok := errors.AsType[sourceChangedError](err); !ok {
+			err = fmt.Errorf("part %d: %w", j.part, err)
+		}
+		return fileErr(f.src.Abs, err)
 	}
 	f.results[j.part-1] = res
 	r.progress.addBytes(res.Len)
@@ -284,8 +288,19 @@ func (r *runner) transferPart(ctx context.Context, j partJob) error {
 	return nil
 }
 
-// sendPart seals and sends one part: under a fresh salt on retry, with a renewed token when it expired.
-func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []byte) (partResult, error) {
+// sendPart seals and sends one part, streaming its plaintext from the file: every attempt reads the
+// part again from its offset and seals it under a fresh salt, with a renewed token when it expired.
+// Bytes that differ from digest stop the attempt before the part's last segment and end the send.
+func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [32]byte) (partResult, error) {
+	offset, n, err := f.layout.PlaintextRange(int64(part))
+	if err != nil {
+		return partResult{}, err
+	}
+	file, err := r.openSource(f.src.Abs)
+	if err != nil {
+		return partResult{}, fmt.Errorf("%w: %w", ErrSourceChanged, err)
+	}
+	defer func() { _ = file.Close() }()
 	var failed Secret
 	// The retry window limits when another attempt can start.
 	retryCtx := ctx
@@ -308,7 +323,8 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 		if err != nil {
 			return partResult{}, fmt.Errorf("seal the part: %w", err)
 		}
-		body, err := sealer.Reader(plain)
+		src := newPartSource(file, part, offset, n, digest)
+		body, err := sealer.StreamReader(src)
 		if err != nil {
 			return partResult{}, fmt.Errorf("seal the part: %w", err)
 		}
@@ -321,6 +337,9 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, plain []b
 			progress: r.progress,
 		}
 		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, io.MultiWriter(crc, traffic)), sealer.Len())
+		if srcErr := src.failure(); srcErr != nil {
+			return partResult{}, srcErr
+		}
 		tokenExpired := errors.Is(err, ErrPartTokenExpired)
 		switch {
 		case err == nil:

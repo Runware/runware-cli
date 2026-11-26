@@ -70,7 +70,7 @@ func NewHTTPTransport(client *http.Client) *HTTPTransport {
 				}).DialContext,
 				// HTTP/2 would carry the parallel parts on one connection.
 				ForceAttemptHTTP2:   false,
-				MaxIdleConnsPerHost: maxParallelism,
+				MaxIdleConnsPerHost: MaxParallelism,
 				TLSHandshakeTimeout: 15 * time.Second,
 				// The endpoint answers once storage holds the part; a stalled answer is retried.
 				ResponseHeaderTimeout: 2 * time.Minute,

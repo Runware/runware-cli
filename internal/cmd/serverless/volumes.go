@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	toFlag = "to"
+	toFlag          = "to"
+	concurrencyFlag = "concurrency"
 	// volumesStateDir is the directory under the CLI config directory that
 	// holds the statement sequence record, the hash cache and the upload
 	// journals.
@@ -79,7 +80,10 @@ func newVolumesCmd(logger *log.Logger) *cobra.Command {
 }
 
 func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
-	var to string
+	var (
+		to          string
+		concurrency int
+	)
 	cmd := &cobra.Command{
 		Use:     "put <name> <local path>...",
 		Short:   put.HelpShort,
@@ -87,6 +91,9 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 		Example: put.HelpExample,
 		Args:    cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePutConcurrency(concurrency); err != nil {
+				return err
+			}
 			// Before anything that could hold key material exists.
 			if err := coredump.Disable(); err != nil {
 				return err
@@ -118,6 +125,7 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 				API:          client.VolumeUploads(),
 				Keys:         keys,
 				Transport:    newPartTransport(baseURL, debug),
+				Parallelism:  concurrency,
 				Progress:     stderr,
 				ProgressTTY:  isTerminal(stderr),
 				Logger:       debug,
@@ -129,8 +137,18 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&to, toFlag, "", "Directory in the Volume the paths land under (default the Volume root)")
+	cmd.Flags().IntVar(&concurrency, concurrencyFlag, put.DefaultParallelism,
+		fmt.Sprintf("Parts to upload at once (1-%d); each part in flight holds about 1 MiB of memory", put.MaxParallelism))
 	addEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment the Volume belongs to "+environmentFlagDefault)
 	return cmd
+}
+
+// validatePutConcurrency checks --concurrency against the range the upload engine runs.
+func validatePutConcurrency(n int) error {
+	if n < 1 || n > put.MaxParallelism {
+		return fmt.Errorf("--%s must be between 1 and %d", concurrencyFlag, put.MaxParallelism)
+	}
+	return nil
 }
 
 // printPutSummary writes the summary as JSON or YAML, or as text with one line

@@ -284,7 +284,8 @@ func saveLegacyDeclarations(t *testing.T, opts Options) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := hashSources(ctx, sources, loadHashCache(r.stateDir), r.progress, nil); err != nil {
+	r.o.onHash = nil
+	if err := r.hashSources(ctx, sources, loadHashCache(r.stateDir)); err != nil {
 		t.Fatal(err)
 	}
 	sess, err := r.openKeys(ctx)

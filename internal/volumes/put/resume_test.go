@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -14,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,6 +56,7 @@ func (s *sealRecorder) factory(dataKey []byte, id volumeformat.FileIdentity, l v
 		rec:     s,
 		inner:   inner,
 		dataKey: bytes.Clone(dataKey),
+		layout:  l,
 		part:    part,
 	}, nil
 }
@@ -61,42 +65,110 @@ type recordingSealer struct {
 	rec     *sealRecorder
 	inner   *volumeformat.PartSealer
 	dataKey []byte
+	layout  volumeformat.Layout
 	part    int64
 }
 
 func (r *recordingSealer) Len() int64 { return r.inner.Len() }
 
-// Reader records the sealing before any ciphertext exists, so a body that never fully goes out still counts.
-func (r *recordingSealer) Reader(plaintext []byte) (io.Reader, error) {
-	body, err := r.inner.Reader(plaintext)
+// StreamReader records the sealing when it starts, and each segment as soon as the format would seal
+// it: once its plaintext is whole, and for the part's last segment once the plaintext has also ended.
+// A segment the format refuses to seal, because its plaintext failed or changed, is not recorded.
+func (r *recordingSealer) StreamReader(plaintext io.Reader) (io.Reader, error) {
+	_, n, err := r.layout.PlaintextRange(r.part)
 	if err != nil {
 		return nil, err
 	}
-	var segments [][32]byte
-	for off := 0; off == 0 || off < len(plaintext); off += volumeformat.SegmentPlaintextBytes {
-		end := min(off+volumeformat.SegmentPlaintextBytes, len(plaintext))
-		segments = append(segments, sha256.Sum256(plaintext[off:end]))
+	count, err := r.layout.SegmentsInPart(r.part)
+	if err != nil {
+		return nil, err
 	}
-	r.rec.add(sealRecord{
-		dataKey:  r.dataKey,
-		salt:     r.inner.Salt(),
-		part:     r.part,
-		size:     len(plaintext),
-		segments: segments,
+	index := r.rec.add(sealRecord{
+		dataKey: r.dataKey,
+		salt:    r.inner.Salt(),
+		part:    r.part,
+		size:    int(n),
 	})
-	return body, nil
+	return r.inner.StreamReader(&recordingPlaintext{
+		r:     plaintext,
+		rec:   r.rec,
+		index: index,
+		size:  n,
+		count: count,
+		h:     sha256.New(),
+	})
 }
 
-func (s *sealRecorder) add(rec sealRecord) {
+// recordingPlaintext hashes the plaintext a sealer reads, segment by segment, into its sealing's record.
+type recordingPlaintext struct {
+	r     io.Reader
+	rec   *sealRecorder
+	index int
+	size  int64 // the part's plaintext bytes
+	count int64 // the part's segments
+	read  int64
+	seg   int64 // the segment being read
+	h     hash.Hash
+	last  *[32]byte // the last segment's digest, recorded when the plaintext ends
+}
+
+func (p *recordingPlaintext) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	for chunk := b[:n]; len(chunk) > 0 && p.seg < p.count; {
+		end := min(p.size, (p.seg+1)*volumeformat.SegmentPlaintextBytes)
+		k := min(int64(len(chunk)), end-p.read)
+		p.h.Write(chunk[:k])
+		p.read += k
+		chunk = chunk[k:]
+		if p.read == end {
+			p.segmentRead()
+		}
+	}
+	if p.size == 0 && p.seg == 0 && p.last == nil {
+		p.segmentRead()
+	}
+	if errors.Is(err, io.EOF) && p.last != nil {
+		p.rec.addSegment(p.index, *p.last)
+		p.last = nil
+	}
+	return n, err
+}
+
+// segmentRead closes the segment being read: a segment before the last is sealed at once, the last
+// only once the plaintext ends.
+func (p *recordingPlaintext) segmentRead() {
+	sum := [32]byte(p.h.Sum(nil))
+	p.h.Reset()
+	if p.seg == p.count-1 {
+		p.last = &sum
+	} else {
+		p.rec.addSegment(p.index, sum)
+	}
+	p.seg++
+}
+
+func (s *sealRecorder) add(rec sealRecord) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seals = append(s.seals, rec)
+	return len(s.seals) - 1
+}
+
+func (s *sealRecorder) addSegment(index int, digest [32]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seals[index].segments = append(s.seals[index].segments, digest)
 }
 
 func (s *sealRecorder) all() []sealRecord {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]sealRecord(nil), s.seals...)
+	out := make([]sealRecord, len(s.seals))
+	for i, rec := range s.seals {
+		rec.segments = slices.Clone(rec.segments)
+		out[i] = rec
+	}
+	return out
 }
 
 // violations lists every (key, nonce) pair that sealed two different plaintexts, and every part key used
@@ -415,9 +487,10 @@ func TestResumeAbortsAChangedFileAndStartsOver(t *testing.T) {
 	rec.requireSafe(t)
 }
 
-// AC 2: a file changed between a failed send and its retry is not sealed again: the resumed put finds
-// the part's bytes differ from the digest journalled before the send, and aborts the session. Nothing
-// reaches the Volume, the state is gone, and the next put starts over.
+// AC 2: a file changed between a failed send and its retry is never acknowledged: the resumed put's
+// send finds the part's bytes differ from the digest journalled before the first send and stops before
+// the part's last segment, or the size and time check before the last part stops it first. The session
+// aborts, nothing reaches the Volume, the state is gone, and the next put starts over.
 func TestResumeAbortsWhenAPartChangedBeforeItsRetry(t *testing.T) {
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
@@ -425,7 +498,9 @@ func TestResumeAbortsWhenAPartChangedBeforeItsRetry(t *testing.T) {
 	var rec sealRecorder
 	interruptedPut(t, e, resumeOptions(e, &rec, vol, dir), 1)
 	big := filepath.Join(dir, bigName)
-	// A new file makes the resume declare, which happens after hashing and before any part is read.
+	interrupted := len(rec.firstParts(firstPartSize))
+	accepted := okPuts(e, bigName, 1)
+	// A new file makes the resume declare, which happens after hashing and before any part is sent.
 	writeFile(t, filepath.Join(dir, "new.txt"), patterned(100, 9))
 	e.cloud.mu.Lock()
 	e.cloud.onDeclare = func(FileDeclarations) { patchFile(t, big, 10, []byte("changed")) }
@@ -433,8 +508,12 @@ func TestResumeAbortsWhenAPartChangedBeforeItsRetry(t *testing.T) {
 
 	_, err := Run(t.Context(), resumeOptions(e, &rec, vol, dir))
 
-	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), "part 1 differs") {
-		t.Fatalf("error = %v, want the changed part", err)
+	resolved, evalErr := filepath.EvalSymlinks(big)
+	if evalErr != nil {
+		t.Fatal(evalErr)
+	}
+	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), resolved) {
+		t.Fatalf("error = %v, want the changed file", err)
 	}
 	if e.cloud.uploadState() != fakeAborted {
 		t.Errorf("session state = %q, want aborted", e.cloud.uploadState())
@@ -445,8 +524,13 @@ func TestResumeAbortsWhenAPartChangedBeforeItsRetry(t *testing.T) {
 	if dirs := e.uploadDirs(); len(dirs) != 0 {
 		t.Errorf("resume state left after the abort: %v", dirs)
 	}
-	if got := len(rec.firstParts(firstPartSize)); got != 1 {
-		t.Errorf("the first part was sealed %d times, want once: the changed bytes must not be sealed", got)
+	if okPuts(e, bigName, 1) != accepted {
+		t.Error("the changed first part was acknowledged")
+	}
+	for _, seal := range rec.firstParts(firstPartSize)[interrupted:] {
+		if int64(len(seal.segments)) == volumeformat.MinSegmentsPerPart {
+			t.Error("the changed first part's last segment was sealed")
+		}
 	}
 
 	e.cloud.mu.Lock()
@@ -459,8 +543,104 @@ func TestResumeAbortsWhenAPartChangedBeforeItsRetry(t *testing.T) {
 	rec.requireSafe(t)
 }
 
-// AC 2: a retry inside one put seals the bytes it read, not the file as it is now.
-func TestRetryResealsTheSameBytes(t *testing.T) {
+// AC 2: a resume reads every file again rather than trusting the hash cache, so a write inside an
+// acknowledged part that moves neither the size, the modification time nor the change time still aborts
+// the saved session, and the stale part never reaches the Volume.
+func TestResumeRehashesAFileTheCacheWouldTrust(t *testing.T) {
+	// A filesystem where a write does not move the change time.
+	defer func(saved func(string, fs.FileInfo) int64) { fileChangeTime = saved }(fileChangeTime)
+	fileChangeTime = func(string, fs.FileInfo) int64 { return 1 }
+	e := newTestEnv(t)
+	dir := resumeTree(t, e)
+	vol := e.cloud.newVolume("model-weights", "")
+	var rec sealRecorder
+	interruptedPut(t, e, resumeOptions(e, &rec, vol, dir), 2)
+	if okPuts(e, bigName, 1) != 1 {
+		t.Fatalf("before the resume: puts = %+v, want the first part acknowledged", e.cloud.putLog())
+	}
+	big := filepath.Join(dir, bigName)
+	info, err := os.Stat(big)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchFile(t, big, 10, []byte("changed"))
+	if err := os.Chtimes(big, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(big)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := resumeOptions(e, &rec, vol, dir)
+	var hashed []string
+	opts.onHash = func(p string) { hashed = append(hashed, p) }
+
+	_, err = Run(t.Context(), opts)
+
+	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), resolved) {
+		t.Fatalf("resume returned %v, want a source-change error naming %s", err, resolved)
+	}
+	if !slices.Contains(hashed, resolved) {
+		t.Errorf("hashed %v: the resume trusted the cached digest of %s", hashed, resolved)
+	}
+	if e.cloud.uploadState() != fakeAborted {
+		t.Errorf("session state = %q, want aborted", e.cloud.uploadState())
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 0 {
+		t.Errorf("files = %v, want no publication after a source change", files)
+	}
+	if okPuts(e, bigName, 1) != 1 {
+		t.Errorf("puts = %+v, want the first part acknowledged once", e.cloud.putLog())
+	}
+}
+
+// AC 2: a resume compares each part's digest from hashing with the digest journalled before the part
+// first went out, so a journalled digest that differs aborts the saved session before any part is sent
+// again, even when the file's own digest still matches.
+func TestResumeAbortsWhenAJournalledPartDigestDiffers(t *testing.T) {
+	e := newTestEnv(t)
+	dir := resumeTree(t, e)
+	vol := e.cloud.newVolume("model-weights", "")
+	var rec sealRecorder
+	interruptedPut(t, e, resumeOptions(e, &rec, vol, dir), 2)
+	other := sha256.Sum256([]byte("other bytes"))
+	edited := 0
+	editJournal(t, e.configDir, func(r map[string]any) map[string]any {
+		if r["type"] == recordPart && r["part"] == float64(1) && r["length"] == float64(firstPartSize) {
+			r["sha256"] = hex.EncodeToString(other[:])
+			edited++
+		}
+		return r
+	})
+	if edited != 1 {
+		t.Fatalf("edited %d part records, want the first part of %s", edited, bigName)
+	}
+	puts := len(e.cloud.putLog())
+	resolved, err := filepath.EvalSymlinks(filepath.Join(dir, bigName))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Run(t.Context(), resumeOptions(e, &rec, vol, dir))
+
+	want := resolved + ": part 1 no longer matches what was hashed, so nothing from this upload was published; run put again"
+	if !errors.Is(err, ErrSourceChanged) || err.Error() != want {
+		t.Fatalf("resume returned %q, want %q", err, want)
+	}
+	if e.cloud.uploadState() != fakeAborted {
+		t.Errorf("session state = %q, want aborted", e.cloud.uploadState())
+	}
+	if files, _ := e.cloud.latest(vol); len(files) != 0 {
+		t.Errorf("files = %v, want no publication", files)
+	}
+	if sent := e.cloud.putLog()[puts:]; len(sent) != 0 {
+		t.Errorf("the resume sent %+v before it aborted", sent)
+	}
+}
+
+// AC 2: a retry reads the part from the file again, and a part whose bytes changed since they were
+// journalled stops before its last segment is sealed: the put fails and the changed bytes never go out.
+func TestRetryOfAChangedPartFailsBeforeItCompletes(t *testing.T) {
 	e := newTestEnv(t)
 	content := patterned(5000, 1)
 	file := singleFile(t, e, "weights.bin", content)
@@ -479,21 +659,57 @@ func TestRetryResealsTheSameBytes(t *testing.T) {
 	opts := e.options(vol, file)
 	opts.newSealer = rec.factory
 
-	// The retry seals the bytes it read before; the check before publishing then sees the change.
-	if _, err := Run(t.Context(), opts); !errors.Is(err, ErrSourceChanged) {
-		t.Fatalf("error = %v, want the changed file refused before publishing", err)
-	}
+	_, err := Run(t.Context(), opts)
 
-	seals := rec.firstParts(5000)
-	if len(seals) != 2 || bytes.Equal(seals[0].salt, seals[1].salt) || seals[0].segments[0] != seals[1].segments[0] {
-		t.Errorf("the retry must seal the same plaintext under a fresh salt")
+	assertAborted(t, e, err, file, vol, 0)
+	if errors.Is(err, errUploadRetriesExhausted) {
+		t.Errorf("error = %v, want the change, not exhausted retries", err)
 	}
-	if files, _ := e.cloud.latest(vol); len(files) != 0 {
-		t.Errorf("published %+v, want nothing from an upload whose file changed", files)
+	seals := rec.firstParts(5000)
+	if len(seals) != 2 || bytes.Equal(seals[0].salt, seals[1].salt) {
+		t.Fatalf("%d sealings, want the first send and one retry under a fresh salt", len(seals))
+	}
+	if len(seals[0].segments) != 1 || seals[0].segments[0] != sha256.Sum256(content) || len(seals[1].segments) != 0 {
+		t.Errorf("sealed %d and %d segments, want the original bytes once and nothing of the changed part", len(seals[0].segments), len(seals[1].segments))
+	}
+	if okPuts(e, "weights.bin", 1) != 0 {
+		t.Error("a part was acknowledged")
 	}
 	if naive := rec.requireSafe(t); naive != 0 {
 		t.Errorf("%d segments sealed other plaintext under the same data key", naive)
 	}
+}
+
+// AC 2: a retry of an unchanged part reads it from the file again and seals the same plaintext, every
+// segment of it, under a fresh salt.
+func TestRetryResealsTheSameBytes(t *testing.T) {
+	e := newTestEnv(t)
+	size := 3*volumeformat.SegmentPlaintextBytes + 7
+	file := singleFile(t, e, "weights.bin", patterned(size, 1))
+	vol := e.cloud.newVolume("model-weights", "")
+	var rec sealRecorder
+	e.cloud.fault = func(rq partRequest) *fakeFault {
+		if rq.Attempt == 1 {
+			return &fakeFault{
+				Status: 503,
+				Slug:   slugPartStorageUnavailable,
+			}
+		}
+		return nil
+	}
+	opts := e.options(vol, file)
+	opts.newSealer = rec.factory
+
+	if _, err := Run(t.Context(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	seals := rec.firstParts(int64(size))
+	if len(seals) != 2 || bytes.Equal(seals[0].salt, seals[1].salt) || len(seals[0].segments) != 4 || !slices.Equal(seals[0].segments, seals[1].segments) {
+		t.Fatal("the retry must seal every segment of the same plaintext under a fresh salt")
+	}
+	requireFiles(t, e, vol, expectedFiles(t, e.srcDir, ""))
+	rec.requireSafe(t)
 }
 
 // AC 3: resuming from a snapshot taken before a part was acknowledged seals that part again under a

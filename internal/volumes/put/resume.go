@@ -18,7 +18,7 @@ import (
 const unreadableStateAge = 25 * time.Hour
 
 // resumeFile is what feedFile needs to resume a file: the part digests journalled before, and whether
-// the file's completion waits for feedFile's whole-file check.
+// the file's completion waits for feedFile to check every part's digest against them.
 type resumeFile struct {
 	digests map[int]string
 	held    bool
@@ -45,8 +45,8 @@ func (p *resumePlan) clear() {
 // resumeCandidates releases locks on sessions that address other source paths.
 func (r *runner) resumeCandidates(saved []*savedSession, sources []Source) []*savedSession {
 	targets := make(map[string]struct{}, len(sources))
-	for _, src := range sources {
-		targets[src.Target] = struct{}{}
+	for i := range sources {
+		targets[sources[i].Target] = struct{}{}
 	}
 	var candidates []*savedSession
 	for _, s := range saved {
@@ -89,8 +89,11 @@ func (r *runner) resume(ctx context.Context, saved []*savedSession, sources []So
 	if len(saved) == 0 {
 		return false, Summary{}, nil
 	}
+	// The resume trusts the digests of acknowledged parts without reading them, so every file is read
+	// once here: a cached digest could hide a write that moved neither the size nor the times.
 	cache := loadHashCache(r.stateDir)
-	err := hashSources(ctx, sources, cache, r.progress, r.o.onHash)
+	cache.bypassLookup = true
+	err := r.hashSources(ctx, sources, cache)
 	r.saveCache(cache)
 	if err != nil {
 		if file, ok := errors.AsType[*FileError](err); ok && errors.Is(err, os.ErrNotExist) {
@@ -464,7 +467,7 @@ func (r *runner) continueSession(ctx context.Context, p *resumePlan, sources []S
 
 // restoreFile rebuilds an uploading file from its saved layout and acknowledgements and returns how many
 // parts were acknowledged. Its targets are renewed when its parts go out, and its completion waits for
-// the whole-file check, since its last part may already be acknowledged.
+// feedFile to check every part's digest, since its last part may already be acknowledged.
 func (r *runner) restoreFile(f *fileState, sf *savedFile) (int, error) {
 	layout, err := checkLayout(f.src.Size, sf.declared.Layout)
 	if err != nil {
@@ -491,16 +494,18 @@ func (r *runner) restoreFile(f *fileState, sf *savedFile) (int, error) {
 	return acked, nil
 }
 
-// resumePart checks a part read for a resumed file against the digest journalled for it before: other
-// bytes abort the session, since the file changed between a send and its retry. An acknowledged
-// part with the same bytes is not sent again.
+// resumePart checks a part's digest from hashing against the digest journalled for it before: another
+// digest aborts the session, since the file changed between a send and its retry. An acknowledged
+// part with the same digest is not sent again.
 func (r *runner) resumePart(f *fileState, part int, digest [32]byte) (bool, error) {
 	rf := r.resumed[f.index]
 	if rf == nil {
 		return true, nil
 	}
 	if want, ok := rf.digests[part]; ok && want != hex.EncodeToString(digest[:]) {
-		return false, fileErr(f.src.Abs, fmt.Errorf("%w: part %d differs from the bytes read for it before", ErrSourceChanged, part))
+		return false, fileErr(f.src.Abs, sourceChangedError{
+			cause: fmt.Sprintf("part %d no longer matches what was hashed", part),
+		})
 	}
 	if res := f.results[part-1]; res.Ack != "" {
 		return false, nil
@@ -508,8 +513,8 @@ func (r *runner) resumePart(f *fileState, part int, digest [32]byte) (bool, erro
 	return true, nil
 }
 
-// resumeVerified releases a resumed file's completion once feedFile has read all of it and its digest
-// matched.
+// resumeVerified releases a resumed file's completion once feedFile has checked every part's digest
+// against the journal.
 func (r *runner) resumeVerified(ctx context.Context, f *fileState) error {
 	rf := r.resumed[f.index]
 	if rf == nil || !rf.held {

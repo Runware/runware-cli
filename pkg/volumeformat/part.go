@@ -194,7 +194,14 @@ func (s *PartSealer) start(plaintext []byte) error {
 func (s *PartSealer) sealSegment(dst []byte, i int64, plaintext []byte, scratch *[segmentAADBytes + 12]byte) []byte {
 	off := i * SegmentPlaintextBytes
 	n, _ := s.c.segmentLength(i) // cannot fail: callers pass 0 <= i < count
-	return s.c.aead.Seal(dst, nonce(scratch[segmentAADBytes:segmentAADBytes], i), plaintext[off:off+n], s.c.aad(scratch[:0], i))
+	return s.sealOne(dst, i, plaintext[off:off+n], scratch)
+}
+
+// sealOne appends sealed segment i, whose plaintext is segment. Every way of sealing a
+// part ends here, so they all produce the same bytes. dst may be segment[:0], which
+// seals in place.
+func (s *PartSealer) sealOne(dst []byte, i int64, segment []byte, scratch *[segmentAADBytes + 12]byte) []byte {
+	return s.c.aead.Seal(dst, nonce(scratch[segmentAADBytes:segmentAADBytes], i), segment, s.c.aad(scratch[:0], i))
 }
 
 // Seal returns the whole sealed part: the salt, then the part's sealed segments. The
@@ -249,6 +256,90 @@ func (r *sealedPartReader) Read(p []byte) (int, error) {
 	n := copy(p, r.pending)
 	r.pending = r.pending[n:]
 	return n, nil
+}
+
+// StreamReader returns the sealed part as a stream of exactly Len bytes, as Reader
+// does, but reads the plaintext from plaintext as it goes, one segment at a time, so a
+// part costs one segment of memory however large it is. The output is byte for byte
+// what Seal and Reader return for the same plaintext and salt.
+//
+// plaintext must yield the part's range of the file (Layout.PlaintextRange) and then
+// io.EOF. A segment is sealed only once its whole plaintext has been read, and the
+// part's last segment only once plaintext has also returned io.EOF right after the
+// part's last byte. A source that ends early stops the stream with
+// io.ErrUnexpectedEOF, one that continues past the part with ErrLayout, one that keeps
+// returning nothing with io.ErrNoProgress, and any other error from plaintext, even one
+// returned with the part's last bytes, is returned as is; in every case the failing segment and those
+// after it are never sealed, and every later Read returns the same error. A caller
+// that checks the plaintext as it streams, such as its digest, can return its verdict
+// in place of the final io.EOF, so a part whose plaintext changed is never complete.
+//
+// The sealer is spent when StreamReader returns, whatever plaintext then yields.
+func (s *PartSealer) StreamReader(plaintext io.Reader) (io.Reader, error) {
+	if !s.used.CompareAndSwap(false, true) {
+		return nil, ErrSealerUsed
+	}
+	buf := make([]byte, 0, SegmentBytes)
+	return &streamedPartReader{
+		s:       s,
+		src:     plaintext,
+		pending: append(buf, s.salt[:]...),
+		buf:     buf,
+	}, nil
+}
+
+type streamedPartReader struct {
+	s       *PartSealer
+	src     io.Reader
+	pending []byte // sealed bytes not yet read
+	buf     []byte // backing array reused for every segment, sealed in place
+	next    int64  // next segment to seal
+	err     error  // the error that stopped the stream, returned by every later Read
+	scratch [segmentAADBytes + 12]byte
+}
+
+func (r *streamedPartReader) Read(p []byte) (int, error) {
+	if len(r.pending) == 0 {
+		if r.err != nil {
+			return 0, r.err
+		}
+		if r.next == r.s.c.count {
+			return 0, io.EOF
+		}
+		if err := r.seal(); err != nil {
+			r.err = err
+			return 0, err
+		}
+	}
+	n := copy(p, r.pending)
+	r.pending = r.pending[n:]
+	return n, nil
+}
+
+// seal reads the next segment's plaintext, and seals it in place once it is whole
+// (and, for the part's last segment, once the source has ended).
+func (r *streamedPartReader) seal() error {
+	i := r.next
+	n, _ := r.s.c.segmentLength(i) // cannot fail: i < count
+	segment := r.buf[:n]
+	if err := readSegment(r.src, segment); err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return fmt.Errorf("volume format: part %d plaintext ends inside segment %d: %w", r.s.c.part, i, io.ErrUnexpectedEOF)
+		}
+		return err
+	}
+	if i == r.s.c.count-1 {
+		more, err := atEOF(r.src)
+		if err != nil {
+			return err
+		}
+		if more {
+			return fmt.Errorf("%w: part %d plaintext continues past the part", ErrLayout, r.s.c.part)
+		}
+	}
+	r.pending = r.s.sealOne(segment[:0], i, segment, &r.scratch)
+	r.next++
+	return nil
 }
 
 // SealPart seals one 1-based part under a fresh random salt: NewPartSealer, then Seal.
@@ -394,20 +485,59 @@ func readExact(r io.Reader, b []byte, part, segment int64) error {
 
 // expectEOF refuses bytes after a part's last segment.
 func expectEOF(r io.Reader, part int64) error {
+	more, err := atEOF(r)
+	if more {
+		return fmt.Errorf("%w: part %d continues after its last segment", ErrAuthentication, part)
+	}
+	return err
+}
+
+// readSegment fills segment from r as io.ReadFull does, with one difference: an error
+// other than io.EOF that arrives in the same Read as the bytes completing segment is
+// returned, where io.ReadFull drops it, so a verdict returned with the part's last
+// bytes still stops the stream. A source that ends before segment is full returns
+// io.ErrUnexpectedEOF.
+func readSegment(r io.Reader, segment []byte) error {
+	got, empty := 0, 0
+	for got < len(segment) {
+		n, err := r.Read(segment[got:])
+		got += n
+		switch {
+		case errors.Is(err, io.EOF):
+			if got < len(segment) {
+				return io.ErrUnexpectedEOF
+			}
+			return nil
+		case err != nil:
+			return err
+		case n > 0:
+			empty = 0
+		default:
+			if empty++; empty == maxEmptyReads {
+				return io.ErrNoProgress
+			}
+		}
+	}
+	return nil
+}
+
+// atEOF reads one byte more from r: more is true when r has one, and err is nil when r
+// reports io.EOF instead. Any other error is returned as is.
+func atEOF(r io.Reader) (more bool, err error) {
 	var one [1]byte
 	for range maxEmptyReads {
 		n, err := r.Read(one[:])
 		if n > 0 {
-			return fmt.Errorf("%w: part %d continues after its last segment", ErrAuthentication, part)
+			return true, nil
 		}
 		switch {
 		case errors.Is(err, io.EOF):
-			return nil
+			return false, nil
 		case err != nil:
-			return err
+			return false, err
 		}
 	}
-	return io.ErrNoProgress
+	return false, io.ErrNoProgress
 }
 
 // maxEmptyReads bounds how often a reader may return nothing and no error, as

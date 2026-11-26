@@ -233,7 +233,7 @@ type roundGate struct {
 // TestDefaultTransportKeepsAnHTTP1ConnectionPerPart sends the most parts the engine runs at once, twice, to a server that offers HTTP/2.
 func TestDefaultTransportKeepsAnHTTP1ConnectionPerPart(t *testing.T) {
 	const rounds = 2
-	parts := maxParallelism
+	parts := MaxParallelism
 	seen := &connections{
 		protos: map[string]int{},
 		conns:  map[string]struct{}{},
