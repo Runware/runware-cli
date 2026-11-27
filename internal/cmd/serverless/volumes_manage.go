@@ -646,7 +646,7 @@ func volumeError(cmd *cobra.Command, client *serverlessapi.Client, err error, op
 // organization has production; any other environment is read, and a failed
 // read counts as unknown, so the caller keeps the API's own answer.
 func environmentExists(cmd *cobra.Command, client *serverlessapi.Client, env string) bool {
-	if env == serverlessapi.ProductionEnvironment {
+	if isProductionEnvironment(env) {
 		return true
 	}
 	_, err := client.GetEnvironment(cmd.Context(), env)
