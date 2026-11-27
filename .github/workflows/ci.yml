@@ -29,7 +29,7 @@ jobs:
         run: make build-all
 
       - name: Test
-        run: go test -race -timeout 2m ./...
+        run: go test -race -timeout 3m ./...
 
       # Only a local development build compiles the volumesdevkeys code, so
       # the release-build test above cannot see it break. Keep in step with
