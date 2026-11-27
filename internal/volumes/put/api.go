@@ -158,6 +158,17 @@ func (e *FileError) Error() string { return e.Path + ": " + e.Err.Error() }
 
 func (e *FileError) Unwrap() error { return e.Err }
 
+// sourceChangedError is ErrSourceChanged with its cause first: what no longer matches, then the advice.
+type sourceChangedError struct {
+	cause string
+}
+
+func (e sourceChangedError) Error() string {
+	return e.cause + ", so nothing from this upload was published; run put again"
+}
+
+func (e sourceChangedError) Is(target error) bool { return target == ErrSourceChanged }
+
 func fileErr(path string, err error) error {
 	return &FileError{
 		Path: path,

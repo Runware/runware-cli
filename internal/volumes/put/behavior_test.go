@@ -284,15 +284,15 @@ func TestParallelismBoundsPartRequestsAcrossFiles(t *testing.T) {
 	}
 }
 
-// TestParallelismIsBounded: zero or less runs four parts at once, and no more than sixteen run however many are asked for.
+// TestParallelismIsBounded: zero or less runs the default number of parts at once, and no more than the most run however many are asked for.
 func TestParallelismIsBounded(t *testing.T) {
 	for asked, want := range map[int]int{
-		-3:   4,
-		0:    4,
-		1:    1,
-		16:   16,
-		17:   16,
-		1000: 16,
+		-3:                 DefaultParallelism,
+		0:                  DefaultParallelism,
+		1:                  1,
+		MaxParallelism:     MaxParallelism,
+		MaxParallelism + 1: MaxParallelism,
+		1000:               MaxParallelism,
 	} {
 		r, err := newRunner(Options{
 			Organization: uuid.NewString(),

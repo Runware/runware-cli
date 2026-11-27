@@ -7,17 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/runware/runware-cli/internal/cmdutil"
+	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/runware/runware-cli/internal/volumes/put"
 	"gopkg.in/yaml.v3"
@@ -89,13 +93,148 @@ func TestVolumesPutIsRegisteredInTheHiddenVolumesGroup(t *testing.T) {
 	if !put.Parent().Hidden {
 		t.Error("the volumes group is not hidden")
 	}
-	for _, flag := range []string{toFlag, environmentFlag} {
+	for _, flag := range []string{toFlag, concurrencyFlag, environmentFlag} {
 		if put.Flags().Lookup(flag) == nil {
 			t.Errorf("volumes put has no --%s", flag)
 		}
 	}
 	if put.Flags().ShorthandLookup(environmentShorthand) == nil {
 		t.Errorf("volumes put has no -%s", environmentShorthand)
+	}
+}
+
+func TestVolumesPutConcurrencyDefaultsToTheEngineDefault(t *testing.T) {
+	root := NewCmd(log.New(io.Discard))
+	cmd, _, err := root.Find([]string{segVolumes, putUse})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flag := cmd.Flags().Lookup(concurrencyFlag)
+	if flag == nil {
+		t.Fatalf("volumes put has no --%s", concurrencyFlag)
+	}
+	if want := strconv.Itoa(put.DefaultParallelism); flag.DefValue != want {
+		t.Errorf("--%s defaults to %s, want %s", concurrencyFlag, flag.DefValue, want)
+	}
+	if err := cmd.Flags().Set(concurrencyFlag, "not-a-number"); err == nil {
+		t.Errorf("--%s accepted a value that is not a number", concurrencyFlag)
+	}
+}
+
+func TestValidatePutConcurrency(t *testing.T) {
+	for _, n := range []int{1, 2, put.DefaultParallelism, put.MaxParallelism} {
+		if err := validatePutConcurrency(n); err != nil {
+			t.Errorf("--%s %d: %v", concurrencyFlag, n, err)
+		}
+	}
+	want := fmt.Sprintf("--%s must be between 1 and %d", concurrencyFlag, put.MaxParallelism)
+	for _, n := range []int{-1, 0, put.MaxParallelism + 1, 1000} {
+		err := validatePutConcurrency(n)
+		if err == nil || err.Error() != want {
+			t.Errorf("--%s %d: error %v, want %q", concurrencyFlag, n, err, want)
+		}
+	}
+}
+
+func TestVolumesPutRefusesConcurrencyOutOfRangeBeforeAnyRequest(t *testing.T) {
+	f := newPutFake(t)
+	f.newVolume("", testVolume)
+	dir := newTree(t, testTree)
+	for _, value := range []string{"0", strconv.Itoa(put.MaxParallelism + 1)} {
+		r := f.run(formatJSON, false, testVolume, dir, "--"+concurrencyFlag, value)
+		requireOneLine(t, r.err, "--"+concurrencyFlag, "between 1 and")
+	}
+	if calls := f.callLog(); len(calls) != 0 {
+		t.Errorf("a refused --%s made requests: %v", concurrencyFlag, calls)
+	}
+}
+
+// overlapTransport counts the parts in flight. The first part waits until a second one starts, or
+// until wait passes, so a put that may send two parts at once does.
+type overlapTransport struct {
+	inner    put.Transport
+	wait     time.Duration
+	mu       sync.Mutex
+	inFlight int
+	most     int
+	calls    int
+	second   chan struct{}
+	closed   bool // second is closed; in flight can reach 2 again after dropping to 1
+}
+
+func (o *overlapTransport) PutPart(ctx context.Context, target put.Target, body io.Reader, length int64) (put.Secret, error) {
+	o.mu.Lock()
+	o.calls++
+	first := o.calls == 1
+	o.inFlight++
+	o.most = max(o.most, o.inFlight)
+	if o.inFlight > 1 && !o.closed {
+		close(o.second)
+		o.closed = true
+	}
+	o.mu.Unlock()
+	if first {
+		select {
+		case <-o.second:
+		case <-time.After(o.wait):
+		}
+	}
+	defer func() {
+		o.mu.Lock()
+		o.inFlight--
+		o.mu.Unlock()
+	}()
+	return o.inner.PutPart(ctx, target, body, length)
+}
+
+// concurrencyCase is a --concurrency value, whether two parts may be in flight at once, and how long
+// the first part waits for a second. Where a second must start, the wait only bounds a failing run, so
+// it is long enough for a slow runner. Where none may start, every run spends the whole wait, so it is
+// short: long enough for a second part to start when the flag does not reach the engine.
+type concurrencyCase struct {
+	concurrency string
+	overlap     bool
+	wait        time.Duration
+}
+
+// TestVolumesPutConcurrencyBoundsThePartsInFlight: --concurrency reaches the upload engine, so with 1
+// no second part starts while the first is in flight, and with more than 1 a second one does.
+func TestVolumesPutConcurrencyBoundsThePartsInFlight(t *testing.T) {
+	for _, tc := range []concurrencyCase{
+		{
+			concurrency: "1",
+			overlap:     false,
+			wait:        100 * time.Millisecond,
+		},
+		{
+			concurrency: "4",
+			overlap:     true,
+			wait:        5 * time.Second,
+		},
+	} {
+		t.Run(tc.concurrency, func(t *testing.T) {
+			f := newPutFake(t)
+			f.newVolume("", testVolume)
+			dir := newTree(t, testTree)
+			gate := &overlapTransport{
+				wait:   tc.wait,
+				second: make(chan struct{}),
+			}
+			inner := newPartTransport
+			newPartTransport = func(baseURL string, logger *slog.Logger) put.Transport {
+				gate.inner = inner(baseURL, logger)
+				return gate
+			}
+
+			got := mustPut(t, f.run(formatJSON, false, testVolume, dir, "--"+concurrencyFlag, tc.concurrency))
+
+			if got.Added != len(testTree) || gate.calls != len(testTree) {
+				t.Fatalf("summary = %+v after %d part uploads, want %d files", got, gate.calls, len(testTree))
+			}
+			if overlap := gate.most > 1; overlap != tc.overlap {
+				t.Errorf("with --%s %s, at most %d parts were in flight", concurrencyFlag, tc.concurrency, gate.most)
+			}
+		})
 	}
 }
 
@@ -106,7 +245,7 @@ func TestVolumesPutHelpDescribesAdditiveUploads(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := strings.ToLower(cmd.Long)
-	for _, want := range []string{"additive", "workers that start after an upload get the new files", "rolling an app back", "create a new volume", "run the same command again to continue the upload"} {
+	for _, want := range []string{"additive", "workers that start after an upload get the new files", "rolling an app back", "create a new volume", "run the same command again to continue the upload", "organization id", `"organization: <id>"`, "top level of ~/.runware/config.yaml (config set cannot set it)", strings.ToLower(config.OrganizationFromEnvVar), "--" + concurrencyFlag} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help does not say %q", want)
 		}

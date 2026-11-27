@@ -36,13 +36,14 @@ var (
 
 // Source is one local file to upload.
 type Source struct {
-	Abs     string    // the absolute path the file is read from, symlinks resolved
-	Target  string    // the file's path in the Volume
-	Size    int64     // the size when it was hashed
-	ModTime time.Time // the modification time when it was hashed
-	Change  int64     // the change time when it was hashed, in Unix nanoseconds; zero when it cannot be read
-	Mode    uint32    // the Volume mode: the file's read and execute bits
-	SHA256  [32]byte  // the plaintext digest, set by hashing
+	Abs     string     // the absolute path the file is read from, symlinks resolved
+	Target  string     // the file's path in the Volume
+	Size    int64      // the size when it was hashed
+	ModTime time.Time  // the modification time when it was hashed
+	Change  int64      // the change time when it was hashed, in Unix nanoseconds; zero when it cannot be read
+	Mode    uint32     // the Volume mode: the file's read and execute bits
+	SHA256  [32]byte   // the plaintext digest, set by hashing
+	Parts   [][32]byte // the plaintext digest of each part of the format's layout for Size, set by hashing
 }
 
 // Walk lists the files the paths name, sorted by Volume path, under the directory to when it is set.
@@ -176,7 +177,7 @@ func newSource(abs, target string, info fs.FileInfo) (Source, error) {
 		Target:  target,
 		Size:    info.Size(),
 		ModTime: info.ModTime(),
-		Change:  changeTime(abs, info),
+		Change:  fileChangeTime(abs, info),
 		Mode:    uint32(info.Mode().Perm() & modeMask),
 	}, nil
 }

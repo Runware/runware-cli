@@ -17,30 +17,30 @@ func TestHashCacheKey(t *testing.T) {
 	c := loadHashCache(t.TempDir())
 	mod := time.Date(2026, time.November, 16, 9, 0, 0, 123, time.UTC)
 	sum := sha256.Sum256([]byte("content"))
-	c.store("/data/a.bin", 7, mod, 42, sum)
+	c.store("/data/a.bin", 7, mod, 42, sum, nil)
 
-	if got, ok := c.lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
+	if got, _, ok := c.lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
 		t.Errorf("lookup of the same path, size and times = %x, %v", got, ok)
 	}
 	for name, miss := range map[string]func() bool{
-		"another size":        func() bool { _, ok := c.lookup("/data/a.bin", 8, mod, 42); return ok },
-		"a later time":        func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(time.Nanosecond), 42); return ok },
-		"an earlier one":      func() bool { _, ok := c.lookup("/data/a.bin", 7, mod.Add(-time.Second), 42); return ok },
-		"another change time": func() bool { _, ok := c.lookup("/data/a.bin", 7, mod, 43); return ok },
-		"another path":        func() bool { _, ok := c.lookup("/data/b.bin", 7, mod, 42); return ok },
+		"another size":        func() bool { _, _, ok := c.lookup("/data/a.bin", 8, mod, 42); return ok },
+		"a later time":        func() bool { _, _, ok := c.lookup("/data/a.bin", 7, mod.Add(time.Nanosecond), 42); return ok },
+		"an earlier one":      func() bool { _, _, ok := c.lookup("/data/a.bin", 7, mod.Add(-time.Second), 42); return ok },
+		"another change time": func() bool { _, _, ok := c.lookup("/data/a.bin", 7, mod, 43); return ok },
+		"another path":        func() bool { _, _, ok := c.lookup("/data/b.bin", 7, mod, 42); return ok },
 	} {
 		if miss() {
 			t.Errorf("the cache answered for %s", name)
 		}
 	}
 
-	c.store("/data/c.bin", 7, mod, 0, sum)
-	if _, ok := c.lookup("/data/c.bin", 7, mod, 0); ok {
+	c.store("/data/c.bin", 7, mod, 0, sum, nil)
+	if _, _, ok := c.lookup("/data/c.bin", 7, mod, 0); ok {
 		t.Error("the cache answered for a file with no change time")
 	}
 
 	c.forget("/data/a.bin")
-	if _, ok := c.lookup("/data/a.bin", 7, mod, 42); ok {
+	if _, _, ok := c.lookup("/data/a.bin", 7, mod, 42); ok {
 		t.Error("the cache answered for a forgotten file")
 	}
 }
@@ -50,13 +50,45 @@ func TestHashCacheRoundTrip(t *testing.T) {
 	c := loadHashCache(dir)
 	mod := time.Date(2026, time.November, 16, 9, 0, 0, 0, time.UTC)
 	sum := sha256.Sum256([]byte("content"))
-	c.store("/data/a.bin", 7, mod, 42, sum)
+	c.store("/data/a.bin", 7, mod, 42, sum, nil)
 	if err := c.save(); err != nil {
 		t.Fatal(err)
 	}
 
-	if got, ok := loadHashCache(dir).lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
+	if got, _, ok := loadHashCache(dir).lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
 		t.Errorf("a saved entry reads back as %x, %v", got, ok)
+	}
+}
+
+// TestHashCacheBypassLookup: a cache that bypasses lookups answers for no file, but still records
+// fresh entries and keeps the others.
+func TestHashCacheBypassLookup(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "volumes")
+	c := loadHashCache(dir)
+	mod := time.Date(2026, time.November, 16, 9, 0, 0, 0, time.UTC)
+	sum := sha256.Sum256([]byte("content"))
+	c.store("/data/a.bin", 7, mod, 42, sum, nil)
+	if err := c.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	c = loadHashCache(dir)
+	c.bypassLookup = true
+	if _, _, ok := c.lookup("/data/a.bin", 7, mod, 42); ok {
+		t.Error("a cache that bypasses lookups answered")
+	}
+	fresh := sha256.Sum256([]byte("other content"))
+	c.store("/data/b.bin", 9, mod, 42, fresh, nil)
+	if err := c.save(); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := loadHashCache(dir)
+	if got, _, ok := reloaded.lookup("/data/a.bin", 7, mod, 42); !ok || got != sum {
+		t.Errorf("the earlier entry reads back as %x, %v", got, ok)
+	}
+	if got, _, ok := reloaded.lookup("/data/b.bin", 9, mod, 42); !ok || got != fresh {
+		t.Errorf("the fresh entry reads back as %x, %v", got, ok)
 	}
 }
 
@@ -68,7 +100,7 @@ func TestHashCacheKeepsNewestEntriesWithinLimit(t *testing.T) {
 	}
 	mod := time.Unix(1, 0)
 	want := sha256.Sum256([]byte("new content"))
-	c.store("/data/new.bin", 11, mod, 42, want)
+	c.store("/data/new.bin", 11, mod, 42, want, nil)
 	if err := c.save(); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +112,7 @@ func TestHashCacheKeepsNewestEntriesWithinLimit(t *testing.T) {
 	if _, ok := reloaded.entries["0"]; ok {
 		t.Error("the oldest entry was not evicted")
 	}
-	if got, ok := reloaded.lookup("/data/new.bin", 11, mod, 42); !ok || got != want {
+	if got, _, ok := reloaded.lookup("/data/new.bin", 11, mod, 42); !ok || got != want {
 		t.Error("the most recently cached hash was lost")
 	}
 }
@@ -94,7 +126,7 @@ func TestHashCacheCorruptFileIsEmpty(t *testing.T) {
 	if len(c.entries) != 0 {
 		t.Fatalf("a corrupt cache holds %d entries", len(c.entries))
 	}
-	c.store("/data/a.bin", 1, time.Unix(1, 0), 1, [32]byte{1})
+	c.store("/data/a.bin", 1, time.Unix(1, 0), 1, [32]byte{1}, nil)
 	if err := c.save(); err != nil {
 		t.Errorf("a corrupt cache could not be replaced: %v", err)
 	}
@@ -113,7 +145,7 @@ func TestPutChecksContentWhenSourceMetadataMatches(t *testing.T) {
 		t.Skip("this filesystem does not report a change time for cache hits")
 	}
 	cache := loadHashCache(e.stateDir())
-	cache.store(src.Abs, src.Size, src.ModTime, src.Change, sha256.Sum256([]byte("old bytes")))
+	cache.store(src.Abs, src.Size, src.ModTime, src.Change, sha256.Sum256([]byte("old bytes")), nil)
 	if err := cache.save(); err != nil {
 		t.Fatal(err)
 	}
@@ -122,8 +154,8 @@ func TestPutChecksContentWhenSourceMetadataMatches(t *testing.T) {
 	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), name) {
 		t.Fatalf("put error = %v, want ErrSourceChanged naming %s", err, name)
 	}
-	if e.hashedCount() != 0 || len(e.cloud.putLog()) != 0 {
-		t.Error("put should use the cached hash and reject the changed content before sending the part")
+	if e.hashedCount() != 0 || okPuts(e, name, 1) != 0 {
+		t.Error("put should use the cached hash and reject the changed content before the part is acknowledged")
 	}
 }
 
@@ -133,7 +165,7 @@ func TestHashCacheFilePerms(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "volumes")
 	c := loadHashCache(dir)
-	c.store("/data/a.bin", 1, time.Unix(1, 0), 1, [32]byte{1})
+	c.store("/data/a.bin", 1, time.Unix(1, 0), 1, [32]byte{1}, nil)
 	if err := c.save(); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +196,7 @@ func TestHashFileSetsDigestAndIdentity(t *testing.T) {
 		Size: 1,
 	}
 
-	if err := hashFile(t.Context(), &src, make([]byte, hashBufBytes), nil); err != nil {
+	if err := hashFile(t.Context(), &src, make([]byte, hashBufBytes), nil, openFile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -183,7 +215,7 @@ func TestHashFileHonorsContext(t *testing.T) {
 	cancel()
 	src := Source{Abs: file}
 
-	err := hashFile(ctx, &src, make([]byte, hashBufBytes), nil)
+	err := hashFile(ctx, &src, make([]byte, hashBufBytes), nil, openFile)
 
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("error = %v, want the cancellation", err)
@@ -263,7 +295,7 @@ func TestHashFileRefusesAFileThatChangesWhileItIsRead(t *testing.T) {
 			}
 			src := Source{Abs: file}
 
-			err := hashFile(ctx, &src, make([]byte, hashBufBytes), nil)
+			err := hashFile(ctx, &src, make([]byte, hashBufBytes), nil, openFile)
 
 			if !errors.Is(err, ErrSourceChanged) {
 				t.Fatalf("error = %v, want ErrSourceChanged", err)

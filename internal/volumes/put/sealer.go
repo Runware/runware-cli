@@ -6,9 +6,9 @@ import (
 	"github.com/runware/runware-cli/pkg/volumeformat"
 )
 
-// partSealer seals one plaintext of one part, as volumeformat.PartSealer does.
+// partSealer seals one plaintext of one part, streamed from a reader, as volumeformat.PartSealer does.
 type partSealer interface {
-	Reader(plaintext []byte) (io.Reader, error)
+	StreamReader(plaintext io.Reader) (io.Reader, error)
 	Len() int64
 }
 

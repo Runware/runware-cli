@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/runware/runware-cli/internal/config"
 	"github.com/runware/runware-cli/internal/output"
 	"github.com/runware/runware-cli/internal/volumes/keypair"
+	"github.com/runware/runware-cli/pkg/volumeformat"
 )
 
 const testServerlessURL = "https://api.example.com"
@@ -382,7 +385,7 @@ func TestPutRequiresOrganization(t *testing.T) {
 			if strings.TrimSpace(org) == "" && !errors.Is(err, ErrNoOrganization) {
 				t.Errorf("error = %v, want ErrNoOrganization", err)
 			}
-			for _, want := range []string{config.OrganizationFromEnvVar, "organization", config.DefaultDashboardURL} {
+			for _, want := range []string{config.OrganizationFromEnvVar, `"organization: <id>" at the top level of`, "config set cannot set it", config.DefaultDashboardURL} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q does not mention %q", err, want)
 				}
@@ -727,21 +730,91 @@ func TestPutReusedFileChangedAborts(t *testing.T) {
 	assertAborted(t, e, err, file, second, since)
 }
 
-// AC 7: a file truncated during the upload is a changed file.
+// truncationCase is when a file is truncated during the upload, and the cause its error gives.
+type truncationCase struct {
+	name string
+	// whilePartSends truncates the file while its first part streams; otherwise it is truncated once
+	// the files are declared, before any part is sent.
+	whilePartSends bool
+	cause          string
+}
+
+// AC 7: a file truncated during the upload is a changed file. Truncated before its parts are sent,
+// the check of its size finds it; truncated while a part streams, that part finds it short.
 func TestPutTruncatedDuringUploadAborts(t *testing.T) {
-	e := newTestEnv(t)
-	file := filepath.Join(e.srcDir, "big.bin")
-	writeTwoPartFile(t, file)
-	vol := e.cloud.newVolume("model-weights", "")
-	e.cloud.onDeclare = func(FileDeclarations) {
-		if err := os.Truncate(file, 1000); err != nil {
-			t.Error(err)
-		}
+	for _, tc := range []truncationCase{
+		{
+			name:           "before its parts are sent",
+			whilePartSends: false,
+			cause:          "the file changed after it was hashed",
+		},
+		{
+			name:           "while a part is sent",
+			whilePartSends: true,
+			cause:          fmt.Sprintf("the file is shorter than when it was hashed: part 1 ends before byte %d", firstPartSize),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEnv(t)
+			file := filepath.Join(e.srcDir, "big.bin")
+			writeTwoPartFile(t, file)
+			vol := e.cloud.newVolume("model-weights", "")
+			truncate := func() {
+				if err := os.Truncate(file, 1000); err != nil {
+					t.Error(err)
+				}
+			}
+			opts := e.options(vol, file)
+			// One part at a time, so the last part's size check cannot find the file first.
+			opts.Parallelism = 1
+			if tc.whilePartSends {
+				var once sync.Once
+				opts.Transport = &partHook{
+					Transport: opts.Transport,
+					after:     volumeformat.SaltBytes + 2*volumeformat.SegmentBytes,
+					hook: func(part int) {
+						if part == 1 {
+							once.Do(truncate)
+						}
+					},
+				}
+			} else {
+				e.cloud.onDeclare = func(FileDeclarations) { truncate() }
+				// The part 1 worker could find the short file before the feeder checks the size for
+				// part 2, so part 1 waits until that check has failed and cancelled the put.
+				opts.Transport = &heldPart{
+					Transport: opts.Transport,
+					part:      1,
+				}
+			}
+
+			_, err := Run(t.Context(), opts)
+
+			assertAborted(t, e, err, file, vol, 0)
+			resolved, evalErr := filepath.EvalSymlinks(file)
+			if evalErr != nil {
+				t.Fatal(evalErr)
+			}
+			want := resolved + ": " + tc.cause + ", so nothing from this upload was published; run put again"
+			if err.Error() != want {
+				t.Errorf("error = %q, want %q", err, want)
+			}
+		})
 	}
+}
 
-	_, err := e.put(vol, file)
+// heldPart holds the send of part until the put is cancelled, without reading its body.
+type heldPart struct {
+	Transport
+	part int
+}
 
-	assertAborted(t, e, err, file, vol, 0)
+func (h *heldPart) PutPart(ctx context.Context, target Target, body io.Reader, length int64) (Secret, error) {
+	if target.PartNumber != h.part {
+		return h.Transport.PutPart(ctx, target, body, length)
+	}
+	<-ctx.Done()
+	return "", context.Cause(ctx)
 }
 
 func TestPutRechecksEverySourceBeforePublish(t *testing.T) {
