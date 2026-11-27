@@ -280,6 +280,7 @@ func (c *Client) GetVolumeSettings(ctx context.Context) (*VolumeSettings, error)
 const volumePageSize Limit = 100
 
 // AllVolumes follows every page of the Volumes in the client's environment.
+// On an error it returns no Volumes, never the pages read before it.
 func (c *Client) AllVolumes(ctx context.Context) ([]Volume, error) {
 	volumes := []Volume{}
 	limit := volumePageSize
@@ -295,15 +296,19 @@ func (c *Client) AllVolumes(ctx context.Context) ([]Volume, error) {
 		}
 		volumes = append(volumes, page.Data...)
 		next, err := nextVolumeCursor(page.NextCursor, seen)
-		if err != nil || next == nil {
-			return volumes, err
+		if err != nil {
+			return nil, err
+		}
+		if next == nil {
+			return volumes, nil
 		}
 		cursor = next
 	}
 }
 
 // AllVolumeReferences follows every page of the uses of one Volume of the
-// client's environment. The result has no next cursor.
+// client's environment. The result has no next cursor. On an error it returns
+// no uses, never the pages read before it, which would omit some.
 func (c *Client) AllVolumeReferences(ctx context.Context, name string) (*VolumeReferences, error) {
 	all := &VolumeReferences{
 		Blocking:        []VolumeReference{},
@@ -323,8 +328,11 @@ func (c *Client) AllVolumeReferences(ctx context.Context, name string) (*VolumeR
 		all.Blocking = append(all.Blocking, page.Blocking...)
 		all.RollbackTargets = append(all.RollbackTargets, page.RollbackTargets...)
 		next, err := nextVolumeCursor(page.NextCursor, seen)
-		if err != nil || next == nil {
-			return all, err
+		if err != nil {
+			return nil, err
+		}
+		if next == nil {
+			return all, nil
 		}
 		cursor = next
 	}
@@ -360,7 +368,7 @@ func (c *Client) LatestVolumeFiles(ctx context.Context, name string) (VolumeFile
 		return ok && re.StatusCode == http.StatusBadRequest
 	})
 	if err != nil {
-		return VolumeFilePage{}, err
+		return VolumeFilePage{}, keepRetryAdvice(err)
 	}
 	out := VolumeFilePage{
 		Data: files,
@@ -372,6 +380,36 @@ func (c *Client) LatestVolumeFiles(ctx context.Context, name string) (VolumeFile
 		out.ManifestSha256 = &digest
 	}
 	return out, nil
+}
+
+// keepRetryAdvice puts the advice of a listing that kept changing into the
+// API answer it ended on: the CLI prints that answer's message, which alone
+// would read as an unexplained 400. Any other error is returned as it is.
+func keepRetryAdvice(err error) error {
+	if !errors.Is(err, errVolumeFilesKeptChanging) {
+		return err
+	}
+	re, ok := errors.AsType[*transport.RunwareError](err)
+	if !ok {
+		return err
+	}
+	api := *re
+	api.Message = fmt.Sprintf("%v (the last answer: %s)", errVolumeFilesKeptChanging, re.Message)
+	return &filesKeptChangingError{
+		api: &api,
+	}
+}
+
+// filesKeptChangingError is a listing that ran out of attempts on a later
+// page's 400, whose message carries the advice to retry.
+type filesKeptChangingError struct {
+	api *transport.RunwareError
+}
+
+func (e *filesKeptChangingError) Error() string { return e.api.Message }
+
+func (e *filesKeptChangingError) Unwrap() []error {
+	return []error{errVolumeFilesKeptChanging, e.api}
 }
 
 // volumeFilesPage is one page of a Volume's latest files, as latestFiles

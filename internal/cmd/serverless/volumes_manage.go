@@ -183,9 +183,13 @@ prints the uses on their own.`,
 			}
 			if cmdutil.FormatFor(cmd) == output.FormatTable {
 				result.withUses = true
-				result.references, err = client.AllVolumeReferences(cmd.Context(), name)
+				// A failed read shows the uses as unavailable, never as
+				// the pages read before it failed.
+				refs, err := client.AllVolumeReferences(cmd.Context(), name)
 				if err != nil {
 					result.referencesErr = referencesUnavailable(err)
+				} else {
+					result.references = refs
 				}
 			}
 			spin.Stop()
@@ -280,14 +284,19 @@ func newVolumesDeleteCmd(logger *log.Logger) *cobra.Command {
 		Long: `Delete a whole Volume: its latest files and any upload still open on it.
 Individual files cannot be deleted.
 
+The API currently deletes only a Volume that has never had files published
+and that no app version uses. For any other Volume that passes the checks
+below, including one that only older app versions use once that is confirmed,
+it answers 501 Not Implemented and nothing is deleted.
+
 The command reads the Volume and its references first. A Volume that a
 current app version, a deploy in progress or a running worker uses is not
-deleted: the command prints those uses and fails. A Volume that only older app
-versions use can be deleted, and those versions lose their rollback; the
-command names them and asks before it goes ahead, and asks again if they
-change while it waits. The API checks the uses again when the delete commits,
-and confirming never overrides a current use. The delete names the Volume by
-the id it read, so it never deletes a new Volume that took the name meanwhile.
+deleted: the command prints those uses and fails. When only older app
+versions use it, a deletion takes their rollback, so the command names them
+and asks before it goes ahead, and asks again if they change while it waits.
+The API checks the uses again when the delete commits, and confirming never
+overrides a current use. The delete names the Volume by the id it read, so it
+never deletes a new Volume that took the name meanwhile.
 
 The deletion is logical. New mounts of the Volume stop at once, and the
 platform may reclaim its stored bytes later. A new Volume with the same name
@@ -424,9 +433,14 @@ func sameVolumeReferences(a, b []serverlessapi.VolumeReference) bool {
 }
 
 // volumeDeleteError explains a refused delete. The references were read
-// before the delete, so a conflict means a use appeared in between.
+// before the delete, so a conflict means a use appeared in between. A 501 is
+// the API's answer to a delete it does not perform, so it says which Volumes
+// the API deletes rather than suggesting a retry.
 func volumeDeleteError(cmd *cobra.Command, client *serverlessapi.Client, err error, name string) error {
 	re, ok := errors.AsType[*transport.RunwareError](err)
+	if ok && re.StatusCode == http.StatusNotImplemented {
+		return withMessage(re, fmt.Sprintf("the API answered 501 Not Implemented, so Volume %s was not deleted: it currently deletes only a Volume that has never had files published and that no app version uses", name))
+	}
 	if ok && re.StatusCode == http.StatusConflict {
 		refsCommand := serverlessCommand(volumeEnvironment(cmd), defaultEnvironment(cmd), "volumes", "references", name)
 		switch re.ProblemType {
@@ -608,12 +622,14 @@ func volumeError(cmd *cobra.Command, client *serverlessapi.Client, err error, op
 	case http.StatusNotFound:
 		// An organization without beta access gets the 404 of an unknown
 		// path on every Volume route but the settings, so the settings tell
-		// the two apart. Without them the 404 stays as the API said it.
+		// the two apart. An unknown environment is a 404 too, so a missing
+		// Volume is named only once its environment is known to exist.
+		// Otherwise the 404 stays as the API said it.
 		settings, settingsErr := client.GetVolumeSettings(cmd.Context())
 		switch {
 		case settingsErr == nil && !settings.Available:
 			return withMessage(re, "Shared Volumes are not enabled for this organization"+unchanged+"; ask Runware for beta access, and check it with '"+volumeSettingsCommand+"'")
-		case settingsErr == nil && op.name != "" && !op.creates:
+		case settingsErr == nil && op.name != "" && !op.creates && environmentExists(cmd, client, env):
 			return withMessage(re, fmt.Sprintf("no Volume named %s in environment %s%s; list them with '%s'", op.name, env, unchanged, serverlessCommand(env, defaultEnvironment(cmd), "volumes", "list")))
 		}
 	case http.StatusNotImplemented:
@@ -624,6 +640,17 @@ func volumeError(cmd *cobra.Command, client *serverlessapi.Client, err error, op
 		}
 	}
 	return err
+}
+
+// environmentExists reports whether the API knows environment env. Every
+// organization has production; any other environment is read, and a failed
+// read counts as unknown, so the caller keeps the API's own answer.
+func environmentExists(cmd *cobra.Command, client *serverlessapi.Client, env string) bool {
+	if env == serverlessapi.ProductionEnvironment {
+		return true
+	}
+	_, err := client.GetEnvironment(cmd.Context(), env)
+	return err == nil
 }
 
 // withMessage is a copy of re that says message instead.

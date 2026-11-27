@@ -17,6 +17,8 @@ import (
 
 	"github.com/charmbracelet/log"
 	serverlessapi "github.com/runware/runware-cli/internal/api/serverless"
+	"github.com/runware/runware-cli/internal/api/transport"
+	"github.com/runware/runware-cli/internal/cmdutil"
 	"github.com/runware/runware-cli/internal/output"
 	"gopkg.in/yaml.v3"
 )
@@ -74,6 +76,7 @@ const (
 	testSettingsDisabled             = `{"available":false,"limits":{"maxStoredBytes":1099511627776,"maxFileBytes":268435456000,"maxFilesPerVolume":100000,"maxMountedBytesPerAppVersion":268435456000,"uploadSessionTtlSeconds":86400}}`
 	testNotImplemented               = `{"type":"https://docs.runware.ai/serverless/errors#not-implemented","title":"Not Implemented","status":501,"detail":"Not Implemented"}`
 	testNoRoute                      = `{"type":"https://docs.runware.ai/serverless/errors#not-found","title":"Not Found","status":404,"detail":"no route matches the request path"}`
+	testEnvironmentNotFound          = `{"type":"https://docs.runware.ai/serverless/errors#not-found","title":"Not Found","status":404,"detail":"environment not found"}`
 	testVolumeNotFound               = `{"type":"https://docs.runware.ai/serverless/errors#not-found","title":"Not Found","status":404,"detail":"volume not found"}`
 	testVolumeInUse                  = `{"type":"https://docs.runware.ai/serverless/errors#volume-in-use","title":"Conflict","status":409,"detail":"the Volume is in use; list its references to see where"}`
 	testNameTaken                    = `{"type":"https://docs.runware.ai/serverless/errors#volume-name-taken","title":"Conflict","status":409,"detail":"a Volume named 'model-weights' already exists in this environment"}`
@@ -483,6 +486,33 @@ func TestVolumesShowSurvivesUnimplementedReferences(t *testing.T) {
 	requireOutput(t, run.stdout, testVolumeDigest, "not implemented by the API yet")
 }
 
+func TestVolumesShowMarksTheUsesUnavailableWhenPagingFails(t *testing.T) {
+	api := newVolumeAPI(t, map[string][]stubResponse{
+		"GET " + testSharedVolumePath: ok(testVolumeBody),
+		"GET " + testVolumeRefsPath: {
+			{
+				status: http.StatusOK,
+				body:   `{"blocking":[{"appId":"img-gen","appVersionNumber":7,"kind":"current-app-version"}],"rollbackTargets":[],"nextCursor":"r1"}`,
+			},
+			{
+				status: http.StatusOK,
+				body:   `{"blocking":[],"rollbackTargets":[{"appId":"img-gen","appVersionNumber":3,"kind":"rollback-target"}],"nextCursor":"r1"}`,
+			},
+		},
+	})
+
+	run := runVolumesTable(t, api, appHealthShowCommand, testVolume)
+
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	requireRow(t, run.stdout, colUsedBy, "unavailable", "same page cursor twice")
+	requireRow(t, run.stdout, colRollbackFor, "unavailable", "same page cursor twice")
+	if strings.Contains(run.stdout, "img-gen") {
+		t.Fatalf("show printed some uses of an incomplete read:\n%s", run.stdout)
+	}
+}
+
 func TestVolumesCreateSendsNameAndDescription(t *testing.T) {
 	api := newVolumeAPI(t, map[string][]stubResponse{
 		"POST " + testVolumesPath: answer(http.StatusCreated, testVolumeBody),
@@ -798,7 +828,13 @@ func TestVolumesDeleteNeverReportsARefusalAsDeleted(t *testing.T) {
 			name:   "delete not implemented",
 			refs:   ok(testNoReferences),
 			delete: answer(http.StatusNotImplemented, testNotImplemented),
-			want:   []string{"not available yet", "501", "the Volume was not deleted", testRetryAfterRelease},
+			want:   []string{"501 Not Implemented", "Volume model-weights was not deleted", "never had files published", "no app version uses"},
+		},
+		{
+			name:   "confirmed rollback loss not implemented",
+			refs:   ok(testRollbackReferences),
+			delete: answer(http.StatusNotImplemented, testNotImplemented),
+			want:   []string{"501 Not Implemented", "Volume model-weights was not deleted", "never had files published"},
 		},
 		{
 			name: "references not implemented",
@@ -912,6 +948,44 @@ func TestVolumesFilesGivesUpWhenTheFilesKeepChanging(t *testing.T) {
 
 	if run.err == nil || !strings.Contains(run.err.Error(), "kept changing") {
 		t.Fatalf("err = %v, want the files kept changing", run.err)
+	}
+}
+
+func TestVolumesFilesKeepsTheRetryAdviceAfterStaleCursors(t *testing.T) {
+	var responses []stubResponse
+	for range testVolumeFileListAttempts {
+		responses = append(responses,
+			stubResponse{
+				status: http.StatusOK,
+				body:   `{"manifestSha256":"` + testVolumeDigest + `","data":[],"nextCursor":"c1"}`,
+			},
+			stubResponse{
+				status: http.StatusBadRequest,
+				body:   `{"type":"https://docs.runware.ai/serverless/errors#bad-request","title":"Bad Request","status":400,"detail":"stale cursor"}`,
+			},
+		)
+	}
+	api := newVolumeAPI(t, map[string][]stubResponse{
+		"GET " + testVolumeFilesPath: responses,
+	})
+
+	run := runVolumesTable(t, api, testFilesCommand, testVolume)
+
+	requireErr(t, run, "kept changing", "retry once uploads to it finish", "stale cursor")
+	var text bytes.Buffer
+	cmdutil.PrintErrorTo(log.New(&text), io.Discard, output.FormatTable, run.err)
+	requireOutput(t, text.String(), "kept changing", "retry once uploads to it finish", "stale cursor")
+	re, ok := errors.AsType[*transport.RunwareError](run.err)
+	if !ok || re.StatusCode != http.StatusBadRequest {
+		t.Fatalf("err = %v, want the API's 400 kept for structured output", run.err)
+	}
+}
+
+func TestVolumesDeleteHelpSaysWhichVolumesTheAPIDeletes(t *testing.T) {
+	long := newVolumesDeleteCmd(log.New(io.Discard)).Long
+	requireOutput(t, long, "never had files published", "no app version uses", "501 Not Implemented")
+	if strings.Contains(long, "can be deleted") {
+		t.Fatalf("help still says a Volume older versions use can be deleted:\n%s", long)
 	}
 }
 
@@ -1088,10 +1162,21 @@ func TestVolumesErrorsSayWhatToDoNext(t *testing.T) {
 			name: "not found",
 			args: []string{appHealthShowCommand, testVolume, testEnvFlag, testEnvironment},
 			responses: map[string][]stubResponse{
-				"GET " + testSharedVolumePath: answer(http.StatusNotFound, testVolumeNotFound),
-				"GET " + testVolumeSettings:   ok(testSettingsEnabled),
+				"GET " + testSharedVolumePath:                         answer(http.StatusNotFound, testVolumeNotFound),
+				"GET " + testVolumeSettings:                           ok(testSettingsEnabled),
+				"GET " + testEnvironmentsPath + "/" + testEnvironment: ok(testEnvironmentBody),
 			},
 			want: []string{"no Volume named model-weights in environment staging", "volumes list --env staging"},
+		},
+		{
+			name: "unknown environment",
+			args: []string{appHealthShowCommand, testVolume, testEnvFlag, testEnvironment},
+			responses: map[string][]stubResponse{
+				"GET " + testSharedVolumePath:                         answer(http.StatusNotFound, testEnvironmentNotFound),
+				"GET " + testVolumeSettings:                           ok(testSettingsEnabled),
+				"GET " + testEnvironmentsPath + "/" + testEnvironment: answer(http.StatusNotFound, testEnvironmentNotFound),
+			},
+			want: []string{"environment not found"},
 		},
 		{
 			name: "create refused with 404 while enabled",
