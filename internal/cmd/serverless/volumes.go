@@ -73,9 +73,20 @@ func newVerifiedVolumeKeys(serverlessBaseURL, stateDir string) (put.Keys, error)
 // hidden until the production verification keys ship (see
 // newVerifiedVolumeKeys).
 func newVolumesCmd(logger *log.Logger) *cobra.Command {
-	cmd := stubGroup("volumes", "Manage Shared Volumes")
+	cmd := stubGroup("volumes", "Manage Shared Volumes (beta)")
 	cmd.Hidden = true
-	cmd.AddCommand(newVolumesPutCmd(logger))
+	cmd.Long = volumesHelpLong
+	cmd.AddCommand(
+		newVolumesListCmd(logger),
+		newVolumesCreateCmd(logger),
+		newVolumesShowCmd(logger),
+		newVolumesUpdateCmd(logger),
+		newVolumesDeleteCmd(logger),
+		newVolumesReferencesCmd(logger),
+		newVolumesFilesCmd(logger),
+		newVolumesPutCmd(logger),
+		newVolumesSettingsCmd(logger),
+	)
 	return cmd
 }
 
@@ -139,7 +150,7 @@ func newVolumesPutCmd(logger *log.Logger) *cobra.Command {
 	cmd.Flags().StringVar(&to, toFlag, "", "Directory in the Volume the paths land under (default the Volume root)")
 	cmd.Flags().IntVar(&concurrency, concurrencyFlag, put.DefaultParallelism,
 		fmt.Sprintf("Parts to upload at once (1-%d); each part in flight holds about 1 MiB of memory", put.MaxParallelism))
-	addEnvironmentFlag(cmd, cmd.Flags(), logger, "Environment the Volume belongs to "+environmentFlagDefault)
+	addVolumeEnvironmentFlag(cmd, logger)
 	return cmd
 }
 

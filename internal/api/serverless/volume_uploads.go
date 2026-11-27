@@ -81,31 +81,9 @@ type volumeFilePage struct {
 }
 
 // LatestFiles reads every page of the Volume's latest files, starting again
-// when the list changes between two pages. When the attempts run out on a
-// later page's 400, the error keeps that problem, since the 400 may be about
-// something other than a stale cursor.
+// when the list changes between two pages (see latestFiles).
 func (v *VolumeUploads) LatestFiles(ctx context.Context, volume put.VolumeRef) (put.FileList, error) {
-	var last error
-	for range volumeFileListAttempts {
-		list, changed, err := v.readFiles(ctx, volume)
-		if !changed {
-			if err != nil {
-				return put.FileList{}, err
-			}
-			return list, nil
-		}
-		last = err
-	}
-	return put.FileList{}, errors.Join(errVolumeFilesKeptChanging, last)
-}
-
-// readFiles reads the pages once; changed reports that the list may have
-// changed under it, with the later page's 400 problem as err when that is why.
-func (v *VolumeUploads) readFiles(ctx context.Context, volume put.VolumeRef) (put.FileList, bool, error) {
-	var list put.FileList
-	seen := make(map[string]struct{})
-	cursor := ""
-	for first := true; ; first = false {
+	digest, files, err := latestFiles(ctx, func(ctx context.Context, cursor string) (volumeFilesPage[put.VolumeFile], error) {
 		query := url.Values{}
 		query.Set("limit", strconv.Itoa(volumeFilesPageSize))
 		if cursor != "" {
@@ -113,29 +91,22 @@ func (v *VolumeUploads) readFiles(ctx context.Context, volume put.VolumeRef) (pu
 		}
 		var page volumeFilePage
 		err := v.do(ctx, http.MethodGet, volumePath(volume.Name, "files"), volume.Environment, query, nil, http.StatusOK, &page)
-		if err != nil {
-			// A cursor issued before an upload completed answers 400: the
-			// list changed, so start again from the first page.
-			if p, ok := errors.AsType[*put.ProblemError](err); ok && !first && p.Status == http.StatusBadRequest {
-				return put.FileList{}, true, err
-			}
-			return put.FileList{}, false, err
-		}
-		if first {
-			list.ManifestSHA256 = page.ManifestSHA256
-		} else if page.ManifestSHA256 != list.ManifestSHA256 {
-			return put.FileList{}, true, nil
-		}
-		list.Files = append(list.Files, page.Data...)
-		if page.NextCursor == nil || *page.NextCursor == "" {
-			return list, false, nil
-		}
-		cursor = *page.NextCursor
-		if _, dup := seen[cursor]; dup {
-			return put.FileList{}, false, errRepeatedVolumeCursor
-		}
-		seen[cursor] = struct{}{}
+		return volumeFilesPage[put.VolumeFile]{
+			digest: page.ManifestSHA256,
+			data:   page.Data,
+			next:   page.NextCursor,
+		}, err
+	}, func(err error) bool {
+		p, ok := errors.AsType[*put.ProblemError](err)
+		return ok && p.Status == http.StatusBadRequest
+	})
+	if err != nil {
+		return put.FileList{}, err
 	}
+	return put.FileList{
+		ManifestSHA256: digest,
+		Files:          files,
+	}, nil
 }
 
 // KeyPairStatement reads the organization's signed key-pair statement.

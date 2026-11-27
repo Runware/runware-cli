@@ -146,3 +146,42 @@ func TestProblemToError_ProblemTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestProblemToError_VolumeLimitStaysOnTheHeadline(t *testing.T) {
+	detail := "maxStoredBytes exceeds its limit"
+	pointer := "/files/0/size"
+	limit := "maxStoredBytes"
+	limitCap, current, requested := int64(1099511627776), int64(1095000000000), int64(10270000000)
+	increment := true
+	p := &gen.ProblemDetails{
+		Type:   "https://docs.runware.ai/serverless/errors#volume-limit-exceeded",
+		Title:  "Conflict",
+		Status: http.StatusConflict,
+		Detail: &detail,
+		Errors: &[]gen.ProblemError{
+			{
+				Detail:  detail,
+				Pointer: &pointer,
+			},
+		},
+		Limit:                &limit,
+		Cap:                  &limitCap,
+		Current:              &current,
+		Requested:            &requested,
+		RequestedIsIncrement: &increment,
+	}
+
+	err := problemToError(p, http.StatusConflict)
+	re, ok := errors.AsType[*transport.RunwareError](err)
+	if !ok {
+		t.Fatalf("expected *transport.RunwareError, got %T: %v", err, err)
+	}
+	headline, rest, _ := strings.Cut(re.Message, "\n")
+	want := detail + ": limit maxStoredBytes, cap 1099511627776, current 1095000000000, requested increase 10270000000"
+	if headline != want {
+		t.Errorf("headline = %q, want %q", headline, want)
+	}
+	if rest != "  "+pointer+": "+detail {
+		t.Errorf("errors lines = %q, want the pointer line alone", rest)
+	}
+}

@@ -36,6 +36,11 @@ func problemToError(p *gen.ProblemDetails, statusCode int) error {
 		case p.Title != "":
 			msg = p.Title
 		}
+		// The limit belongs to the headline: it is the organization's, not
+		// one of the fields the errors lines point at.
+		if limit := formatVolumeLimit(p); limit != "" {
+			msg = msg + ": " + limit
+		}
 		if extra := formatProblemErrors(p.Errors); extra != "" {
 			msg = msg + "\n" + extra
 		}
@@ -75,6 +80,30 @@ func formatProblemErrors(errors *[]gen.ProblemError) string {
 		lines = append(lines, "  "+line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// formatVolumeLimit names the Shared Volume limit a volume-limit-exceeded
+// conflict reports, with its cap and the requested value, or "" when the
+// problem names none.
+func formatVolumeLimit(p *gen.ProblemDetails) string {
+	if p.Limit == nil || *p.Limit == "" {
+		return ""
+	}
+	out := "limit " + *p.Limit
+	if p.Cap != nil {
+		out += fmt.Sprintf(", cap %d", *p.Cap)
+	}
+	if p.Current != nil {
+		out += fmt.Sprintf(", current %d", *p.Current)
+	}
+	if p.Requested != nil {
+		label := "requested"
+		if p.RequestedIsIncrement != nil && *p.RequestedIsIncrement {
+			label = "requested increase"
+		}
+		out += fmt.Sprintf(", %s %d", label, *p.Requested)
+	}
+	return out
 }
 
 func formatShortfall(amount *gen.MoneyAmount) string {

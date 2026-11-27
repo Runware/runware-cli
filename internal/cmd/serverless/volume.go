@@ -1,6 +1,7 @@
 package serverless
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
@@ -32,6 +33,9 @@ const (
 
 // volumeNamePattern is the server's VolumeName rule.
 var volumeNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
+
+// errVolumeName rejects a name volumeNamePattern does not match.
+var errVolumeName = errors.New("volume name must be 1-63 lowercase letters, digits, hyphens, underscores or periods, starting with a letter or digit")
 
 // sandboxPath is one requested path inside the sandbox, with the flag that asked
 // for it, so an error can name the flag the person has to change.
