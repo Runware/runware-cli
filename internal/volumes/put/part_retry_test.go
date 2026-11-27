@@ -283,17 +283,17 @@ func TestPartStalledRetriesStopAtTheRetryWindow(t *testing.T) {
 	}
 }
 
-// tricklingTransport reads each failing attempt's body a KiB at a time, waiting every between
-// reads, then waits tail and drops the connection; after drops attempts it reads the body in full
-// and acknowledges it. It is one part among many on a slow uplink.
-type tricklingTransport struct {
-	every time.Duration
+// pacedTransport fails its first drops attempts: each reads a KiB of the body, then waits each of
+// gaps in turn and reads another KiB after it, then waits tail and drops the connection. Later
+// attempts read the body in full and acknowledge it. It is one part among many on a slow uplink.
+type pacedTransport struct {
+	gaps  []time.Duration
 	tail  time.Duration
 	drops int
 	calls int
 }
 
-func (d *tricklingTransport) PutPart(ctx context.Context, _ Target, body io.Reader, _ int64) (Secret, error) {
+func (d *pacedTransport) PutPart(ctx context.Context, _ Target, body io.Reader, _ int64) (Secret, error) {
 	d.calls++
 	if d.calls > d.drops {
 		if _, err := io.Copy(io.Discard, body); err != nil {
@@ -301,15 +301,14 @@ func (d *tricklingTransport) PutPart(ctx context.Context, _ Target, body io.Read
 		}
 		return testAck, nil
 	}
-	for {
-		n, err := io.CopyN(io.Discard, body, 1<<10)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return "", err
+	for i := 0; ; i++ {
+		if _, err := io.CopyN(io.Discard, body, 1<<10); err != nil {
+			return "", fmt.Errorf("the test part is too short for its reads: %w", err)
 		}
-		if n < 1<<10 {
+		if i == len(d.gaps) {
 			break
 		}
-		if err := sleepContext(ctx, d.every); err != nil {
+		if err := sleepContext(ctx, d.gaps[i]); err != nil {
 			return "", err
 		}
 	}
@@ -319,32 +318,52 @@ func (d *tricklingTransport) PutPart(ctx context.Context, _ Target, body io.Read
 	return "", errConnectionDropped
 }
 
-// TestPartRetryWindowRestartsAfterSlowReads: a part far below the byte threshold, read slowly for
-// about 6 minutes per attempt before the connection drops, restarts the retry window on each drop
-// and gets through. Attempts whose reads span under a minute and then wait as long prove nothing,
-// and the part stops at the window.
+// steadyGaps is n gaps of every between reads.
+func steadyGaps(n int, every time.Duration) []time.Duration {
+	gaps := make([]time.Duration, n)
+	for i := range gaps {
+		gaps[i] = every
+	}
+	return gaps
+}
+
+// TestPartRetryWindowRestartsAfterSlowReads: a part far below the byte threshold restarts the retry
+// window on each drop when its attempts kept reading the body steadily for minProgressReadTime,
+// counting only gaps of at most maxReadGap between reads. Each failing attempt lasts longer than
+// the window, so an attempt that proves nothing stops the part after two attempts, and one that
+// proves progress lets it retry until it gets through or reaches the attempt limit.
 func TestPartRetryWindowRestartsAfterSlowReads(t *testing.T) {
+	const tick = time.Nanosecond
 	cases := []struct {
-		name        string
-		every, tail time.Duration
-		wantErr     error
+		name      string
+		gaps      []time.Duration
+		tail      time.Duration
+		drops     int
+		wantErr   error
+		wantCalls int
 	}{
-		{name: "reads for minutes", every: 40 * time.Second, tail: 0, wantErr: nil},
-		{name: "reads for seconds", every: 3 * time.Second, tail: 6 * time.Minute, wantErr: errUploadRetriesExhausted},
+		{name: "steady reads for minutes", gaps: steadyGaps(360, time.Second), drops: 3, wantCalls: 4},
+		{name: "reads for seconds", gaps: steadyGaps(8, 3*time.Second), tail: 6 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
+		{name: "reads for exactly the minimum", gaps: steadyGaps(60, time.Second), tail: 5 * time.Minute, drops: 3, wantCalls: 4},
+		{name: "reads for a tick under the minimum", gaps: append(steadyGaps(59, time.Second), time.Second-tick), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
+		{name: "gaps of the longest counted length", gaps: steadyGaps(6, maxReadGap), tail: 5 * time.Minute, drops: 3, wantCalls: 4},
+		{name: "gaps a tick over the longest counted length", gaps: steadyGaps(7, maxReadGap+tick), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
+		{name: "burst, silence and a late read", gaps: []time.Duration{90 * time.Second}, tail: 4 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
+		{name: "more slow drops than the attempt limit", gaps: steadyGaps(90, time.Second), drops: maxUploadAttempts + 2, wantErr: errUploadRetriesExhausted, wantCalls: maxUploadAttempts},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				tr := &tricklingTransport{every: c.every, tail: c.tail, drops: 3, calls: 0}
-				result, err := sendSizedTestPart(t, tr, 8<<10, 0)
+				tr := &pacedTransport{gaps: c.gaps, tail: c.tail, drops: c.drops, calls: 0}
+				result, err := sendSizedTestPart(t, tr, (len(c.gaps)+2)<<10, 0)
 				if c.wantErr != nil {
-					if !errors.Is(err, c.wantErr) || tr.calls != 2 {
-						t.Errorf("error = %v after %d attempts, want %v after 2", err, tr.calls, c.wantErr)
+					if !errors.Is(err, c.wantErr) || tr.calls != c.wantCalls {
+						t.Errorf("error = %v after %d attempts, want %v after %d", err, tr.calls, c.wantErr, c.wantCalls)
 					}
 					return
 				}
-				if err != nil || result.Ack != testAck || tr.calls != 4 {
-					t.Errorf("ack = %q, error = %v, attempts = %d; want three retries, the last acknowledged", result.Ack, err, tr.calls)
+				if err != nil || result.Ack != testAck || tr.calls != c.wantCalls {
+					t.Errorf("ack = %q, error = %v, attempts = %d; want %d attempts, the last acknowledged", result.Ack, err, tr.calls, c.wantCalls)
 				}
 			})
 		})

@@ -24,8 +24,8 @@ const (
 	// maxPartRetryTime bounds how long a part may keep failing without moving data: no attempt
 	// starts once it has passed since the end of the part's last failed attempt that made progress,
 	// or since its first failure when none did. A failed attempt made progress when it sent more than
-	// maxBufferedPartBytes of the part's body, or kept reading the body for minProgressReadTime from
-	// its first read to its last. One attempt on a slow link can take longer than the window, so a
+	// maxBufferedPartBytes of the part's body, or kept reading the body steadily for
+	// minProgressReadTime. One attempt on a slow link can take longer than the window, so a
 	// window that ran from the first failure would stop a part after one or two connection drops.
 	// Every retryable failure counts towards maxUploadAttempts, which stops a part whose attempts
 	// move data and then fail, such as an endpoint that reads the body and answers an error.
@@ -40,12 +40,19 @@ const (
 	// maxUploadAttempts, about 40 minutes. An attempt that sends less, as every attempt of a part no
 	// larger than this does, proves progress by its reading time instead.
 	maxBufferedPartBytes = 16 << 20
-	// minProgressReadTime is how long an attempt must keep reading a part's body, from its first
-	// read to its last, to prove progress whatever it sent. A stalled link fills the buffers in one
-	// burst, a fraction of a second from a local disk, and then the client stops reading; a part
-	// sharing a slow uplink keeps reading for minutes, about 7 to send 16 MiB at 10 Mbit/s with 32
-	// parts in flight.
+	// minProgressReadTime is how long an attempt must keep reading a part's body to prove progress
+	// whatever it sent. Reading time is the sum of the gaps between consecutive reads of the body,
+	// counting only gaps of at most maxReadGap. A stalled link fills the buffers in one burst, a
+	// fraction of a second from a local disk, and then the client stops reading, so its attempts
+	// add up almost nothing, even when a lone read arrives long after the burst. A part sharing a
+	// slow uplink keeps reading for minutes, about 7 to send 16 MiB at 10 Mbit/s with 32 parts in
+	// flight.
 	minProgressReadTime = time.Minute
+	// maxReadGap is the longest gap between two reads of a part's body that still counts as
+	// reading. The client reads the body only as the connection takes it, in chunks of up to tens
+	// of KiB, so a link that moves data reads every second or so; a read every 10 seconds is a few
+	// KB/s per part, about 1 Mbit/s shared by 32 parts.
+	maxReadGap = 10 * time.Second
 )
 
 // partResult is an acknowledged part: its ack, ciphertext CRC and length.
@@ -410,22 +417,23 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 }
 
 // partTraffic counts ciphertext consumed by the transport on one attempt, and adds it to the file's
-// and the upload's totals. It also records when the attempt first and last read the body.
+// and the upload's totals. It also adds up how long the attempt kept reading the body.
 type partTraffic struct {
 	file     *fileState
 	progress *progress
 	now      func() time.Time
 	sent     atomic.Int64
 
-	mu          sync.Mutex
-	first, last time.Time
+	mu      sync.Mutex
+	last    time.Time     // the latest read of the body
+	reading time.Duration // the gaps between reads of at most maxReadGap, summed
 }
 
 func (p *partTraffic) Write(b []byte) (int, error) {
 	at := p.now()
 	p.mu.Lock()
-	if p.first.IsZero() {
-		p.first = at
+	if gap := at.Sub(p.last); !p.last.IsZero() && gap <= maxReadGap {
+		p.reading += gap
 	}
 	p.last = at
 	p.mu.Unlock()
@@ -436,11 +444,11 @@ func (p *partTraffic) Write(b []byte) (int, error) {
 }
 
 // madeProgress reports whether the attempt sent more than buffered bytes of the body or kept
-// reading it for minProgressReadTime.
+// reading it for minProgressReadTime, as minProgressReadTime defines it.
 func (p *partTraffic) madeProgress(buffered int64) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.sent.Load() > buffered || (!p.first.IsZero() && p.last.Sub(p.first) >= minProgressReadTime)
+	return p.sent.Load() > buffered || p.reading >= minProgressReadTime
 }
 
 // retryable reports whether the request can benefit from a retry.
