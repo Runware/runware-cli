@@ -355,6 +355,8 @@ func TestPartRetryWindowRestartsAfterSlowReads(t *testing.T) {
 		{name: "reads for a tick under the minimum", gaps: append(steadyGaps(59, time.Second), time.Second-tick), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
 		{name: "gaps of the longest counted length", gaps: steadyGaps(6, maxReadGap), tail: 5 * time.Minute, drops: 3, wantCalls: 4},
 		{name: "gaps a tick over the longest counted length", gaps: steadyGaps(7, maxReadGap+tick), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
+		{name: "reading summed across a pause", gaps: append(append(steadyGaps(35, time.Second), 20*time.Second), steadyGaps(35, time.Second)...), tail: 5 * time.Minute, drops: 3, wantCalls: 4},
+		{name: "gaps of eleven seconds", gaps: steadyGaps(7, 11*time.Second), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
 		{name: "burst, silence and a late read", gaps: []time.Duration{90 * time.Second}, tail: 4 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
 		{name: "more slow drops than the attempt limit", gaps: steadyGaps(90, time.Second), drops: maxUploadAttempts + 2, wantErr: errUploadRetriesExhausted, wantCalls: maxUploadAttempts},
 	}
