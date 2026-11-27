@@ -87,6 +87,7 @@ func newTestPart(t *testing.T, tr Transport, plain []byte) (*runner, *fileState,
 }
 
 func TestPartRetryTimeBudget(t *testing.T) {
+	t.Parallel()
 	for _, stall := range []time.Duration{0, 2 * time.Minute} {
 		t.Run(stall.String(), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -127,6 +128,7 @@ func (s *slowSuccessfulRetry) PutPart(ctx context.Context, _ Target, body io.Rea
 }
 
 func TestPartRetryCanFinishAfterRetryWindow(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		tr := &slowSuccessfulRetry{}
 		result, err := sendTestPart(t, tr)
@@ -168,6 +170,7 @@ func (d *droppingTransport) PutPart(ctx context.Context, _ Target, body io.Reade
 // TestPartRetryWindowRestartsAfterSlowAttempts: attempts that each send for longer than the retry
 // window, as one part does among many on a slow link, keep getting retries.
 func TestPartRetryWindowRestartsAfterSlowAttempts(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		tr := &droppingTransport{
 			attemptTime: 14 * time.Minute,
@@ -185,6 +188,7 @@ func TestPartRetryWindowRestartsAfterSlowAttempts(t *testing.T) {
 // part, after sending 17 MiB of 18, more than the production threshold but less than the part,
 // restarts the retry window, so slow attempts that each drop before the end keep getting retries.
 func TestPartRetryWindowRestartsAfterAPartialSend(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		tr := &droppingTransport{
 			attemptTime: 6 * time.Minute,
@@ -202,6 +206,7 @@ func TestPartRetryWindowRestartsAfterAPartialSend(t *testing.T) {
 // TestPartFastFailuresStopAtTheAttemptLimit: attempts that send the body and fail at once restart
 // the retry window every time, and still stop at the attempt limit.
 func TestPartFastFailuresStopAtTheAttemptLimit(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		tr := &droppingTransport{
 			attemptTime: 0,
@@ -249,6 +254,7 @@ func (b *bufferedStallTransport) PutPart(ctx context.Context, _ Target, body io.
 // The last case keeps the production threshold and stalls after 16 MiB, written as a literal so
 // that lowering maxBufferedPartBytes below the send buffers it is sized for fails the test.
 func TestPartStalledRetriesStopAtTheRetryWindow(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		threshold int64 // the runner's threshold; zero is maxBufferedPartBytes
 		buffered  int64 // bytes each stalled attempt sends
@@ -333,6 +339,7 @@ func steadyGaps(n int, every time.Duration) []time.Duration {
 // the window, so an attempt that proves nothing stops the part after two attempts, and one that
 // proves progress lets it retry until it gets through or reaches the attempt limit.
 func TestPartRetryWindowRestartsAfterSlowReads(t *testing.T) {
+	t.Parallel()
 	const tick = time.Nanosecond
 	cases := []struct {
 		name      string
@@ -348,6 +355,8 @@ func TestPartRetryWindowRestartsAfterSlowReads(t *testing.T) {
 		{name: "reads for a tick under the minimum", gaps: append(steadyGaps(59, time.Second), time.Second-tick), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
 		{name: "gaps of the longest counted length", gaps: steadyGaps(6, maxReadGap), tail: 5 * time.Minute, drops: 3, wantCalls: 4},
 		{name: "gaps a tick over the longest counted length", gaps: steadyGaps(7, maxReadGap+tick), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
+		{name: "reading summed across a pause", gaps: append(append(steadyGaps(35, time.Second), 20*time.Second), steadyGaps(35, time.Second)...), tail: 5 * time.Minute, drops: 3, wantCalls: 4},
+		{name: "gaps of eleven seconds", gaps: steadyGaps(7, 11*time.Second), tail: 5 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
 		{name: "burst, silence and a late read", gaps: []time.Duration{90 * time.Second}, tail: 4 * time.Minute, drops: 3, wantErr: errUploadRetriesExhausted, wantCalls: 2},
 		{name: "more slow drops than the attempt limit", gaps: steadyGaps(90, time.Second), drops: maxUploadAttempts + 2, wantErr: errUploadRetriesExhausted, wantCalls: maxUploadAttempts},
 	}

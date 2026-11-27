@@ -58,6 +58,7 @@ func requireFiles(t *testing.T, e *testEnv, vol VolumeRef, want []VolumeFile) st
 
 // AC 1: a directory put twice leaves the digest unchanged and sends nothing the second time.
 func TestPutNewVolumeThenRepeat(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -107,6 +108,7 @@ func TestPutNewVolumeThenRepeat(t *testing.T) {
 }
 
 func TestPutUnderDestinationDirectory(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -127,6 +129,7 @@ func TestPutUnderDestinationDirectory(t *testing.T) {
 }
 
 func TestPutAddressesTheEnvironment(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	staging := e.cloud.newVolume("model-weights", "staging")
@@ -144,6 +147,7 @@ func TestPutAddressesTheEnvironment(t *testing.T) {
 
 // AC 2: one new file uploads alone.
 func TestPutAddsOneFile(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -170,6 +174,7 @@ func TestPutAddsOneFile(t *testing.T) {
 
 // AC 2: the same files in another Volume send no file bytes.
 func TestPutReuseAcrossVolumes(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	first := e.cloud.newVolume("first", "")
@@ -195,6 +200,7 @@ func TestPutReuseAcrossVolumes(t *testing.T) {
 }
 
 func TestPutModeChangeReplacesThePathAndReusesItsContent(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "example.sh", []byte("example"))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -221,6 +227,7 @@ func TestPutModeChangeReplacesThePathAndReusesItsContent(t *testing.T) {
 
 // AC 3: a changed file uploads whole and nothing else does.
 func TestPutChangedFile(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -253,6 +260,7 @@ func TestPutChangedFile(t *testing.T) {
 
 // AC 3: a file rewritten at the same size with its modification time put back uploads its new content.
 func TestPutReusedFileWithRestoredMtimeUploadsNewContent(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := filepath.Join(e.srcDir, "weights")
 	file := filepath.Join(dir, "model.bin")
@@ -346,6 +354,7 @@ func (r *recordedOpen) OpenUpload(ctx context.Context, vol VolumeRef, open Uploa
 
 // AC 4: the engine passes the configured organization to Keys and uses the returned key pair to open the upload.
 func TestPutUsesConfiguredOrganizationAndReturnedKeyPair(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	rec := &recordedOpen{API: e.cloud}
@@ -399,6 +408,7 @@ func TestPutRequiresOrganization(t *testing.T) {
 
 // AC 5: the text summary.
 func TestPutSummaryText(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -465,6 +475,7 @@ func requireSummaryKeys(t *testing.T, raw []byte) {
 
 // AC 5: the JSON summary matches the Volume's latest files.
 func TestPutSummaryJSON(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -507,6 +518,7 @@ func TestPutSummaryJSON(t *testing.T) {
 
 // AC 6: the help states the additive rules and promises no deletion.
 func TestPutHelpText(t *testing.T) {
+	t.Parallel()
 	help := strings.Join(strings.Fields(HelpShort+" "+HelpLong+" "+HelpExample), " ")
 	const localLinkAdvice = "If a link points outside the local directory, remove the link or replace it with a copy of its target."
 	for _, want := range []string{
@@ -600,6 +612,7 @@ type answerCase struct {
 }
 
 func TestPutAbortsOnBrokenAnswers(t *testing.T) {
+	t.Parallel()
 	cases := []answerCase{
 		{
 			name: "fewer answers than files",
@@ -662,6 +675,7 @@ func TestPutAbortsOnBrokenAnswers(t *testing.T) {
 
 // AC 7: a file changed after hashing aborts the session and the error names it.
 func TestPutSourceChangedAborts(t *testing.T) {
+	t.Parallel()
 	cases := []changeCase{
 		{
 			name: "after hashing, before it is declared",
@@ -717,6 +731,7 @@ func TestPutSourceChangedAborts(t *testing.T) {
 
 // AC 7: a reused file is checked by size and time too.
 func TestPutReusedFileChangedAborts(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := filepath.Join(e.srcDir, "model", "weights.bin")
 	writeFile(t, file, patterned(64, 1))
@@ -742,6 +757,7 @@ type truncationCase struct {
 // AC 7: a file truncated during the upload is a changed file. Truncated before its parts are sent,
 // the check of its size finds it; truncated while a part streams, that part finds it short.
 func TestPutTruncatedDuringUploadAborts(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []truncationCase{
 		{
 			name:           "before its parts are sent",
@@ -818,6 +834,7 @@ func (h *heldPart) PutPart(ctx context.Context, target Target, body io.Reader, l
 }
 
 func TestPutRechecksEverySourceBeforePublish(t *testing.T) {
+	t.Parallel()
 	for _, firstReused := range []bool{false, true} {
 		name := "uploaded"
 		if firstReused {

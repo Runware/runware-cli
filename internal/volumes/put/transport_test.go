@@ -41,6 +41,7 @@ func problemHandler(status int, body string) http.HandlerFunc {
 }
 
 func TestHTTPTransportPutsPart(t *testing.T) {
+	t.Parallel()
 	var gotMethod, gotAuth, gotType, gotAgent string
 	var gotLength int64
 	var gotBody []byte
@@ -69,6 +70,7 @@ func TestHTTPTransportPutsPart(t *testing.T) {
 }
 
 func TestHTTPTransportDoesNotInheritClientTimeout(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.Copy(io.Discard, r.Body); err != nil {
 			return
@@ -98,6 +100,7 @@ type problemCase struct {
 }
 
 func TestHTTPTransportMapsProblems(t *testing.T) {
+	t.Parallel()
 	const base = `{"type":"https://docs.runware.ai/serverless/errors#`
 	cases := []problemCase{
 		{
@@ -166,6 +169,7 @@ type badAckCase struct {
 }
 
 func TestHTTPTransportRefusesBadAcks(t *testing.T) {
+	t.Parallel()
 	cases := []badAckCase{
 		{
 			name: "another part",
@@ -198,6 +202,7 @@ func TestHTTPTransportRefusesBadAcks(t *testing.T) {
 }
 
 func TestHTTPTransportAcceptsAnAckAtTheBound(t *testing.T) {
+	t.Parallel()
 	ack := strings.Repeat("a", 1024)
 	tr, target := newWorker(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"partNumber":3,"ack":"`+ack+`"}`)
@@ -232,6 +237,7 @@ type roundGate struct {
 
 // TestDefaultTransportKeepsAnHTTP1ConnectionPerPart sends the most parts the engine runs at once, twice, to a server that offers HTTP/2.
 func TestDefaultTransportKeepsAnHTTP1ConnectionPerPart(t *testing.T) {
+	t.Parallel()
 	const rounds = 2
 	parts := MaxParallelism
 	seen := &connections{
@@ -291,6 +297,7 @@ func TestDefaultTransportKeepsAnHTTP1ConnectionPerPart(t *testing.T) {
 }
 
 func TestHTTPTransportRefusesCleartext(t *testing.T) {
+	t.Parallel()
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
 	t.Cleanup(srv.Close)
@@ -316,6 +323,7 @@ func TestHTTPTransportRefusesCleartext(t *testing.T) {
 }
 
 func TestHTTPTransportDoesNotFollowRedirects(t *testing.T) {
+	t.Parallel()
 	var elsewhere atomic.Int32
 	other := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { elsewhere.Add(1) }))
 	t.Cleanup(other.Close)
@@ -332,6 +340,7 @@ func TestHTTPTransportDoesNotFollowRedirects(t *testing.T) {
 }
 
 func TestHTTPTransportErrorsHoldNoAddress(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewTLSServer(http.NotFoundHandler())
 	tr := NewHTTPTransport(srv.Client())
 	target := Target{
@@ -358,6 +367,7 @@ type retryableCase struct {
 }
 
 func TestRetryable(t *testing.T) {
+	t.Parallel()
 	cases := []retryableCase{
 		{
 			name: "a broken connection",
@@ -413,6 +423,7 @@ func TestRetryable(t *testing.T) {
 }
 
 func TestDefaultTransportBoundsAStalledAnswer(t *testing.T) {
+	t.Parallel()
 	tr, ok := NewHTTPTransport(nil).client.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("the default client has no *http.Transport")
@@ -424,6 +435,7 @@ func TestDefaultTransportBoundsAStalledAnswer(t *testing.T) {
 
 // TestHTTPTransportStopsReadingTheBodyOnReturn: a refusal that comes before the body is sent leaves no read of it running.
 func TestHTTPTransportStopsReadingTheBodyOnReturn(t *testing.T) {
+	t.Parallel()
 	tr, target := newWorker(t, problemHandler(http.StatusRequestEntityTooLarge, "<html>too large</html>"))
 	body := &inFlightReader{r: bytes.NewReader(patterned(1<<20, 1))}
 
@@ -444,6 +456,7 @@ type stallCase struct {
 }
 
 func TestHTTPTransportEndsAStalledPart(t *testing.T) {
+	t.Parallel()
 	cases := []stallCase{
 		{
 			name: "an answer that stops after its headers",
@@ -462,6 +475,7 @@ func TestHTTPTransportEndsAStalledPart(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			release := make(chan struct{})
 			tr, target := newWorker(t, func(w http.ResponseWriter, r *http.Request) {
 				tc.handler(w, r)
@@ -483,6 +497,7 @@ func TestHTTPTransportEndsAStalledPart(t *testing.T) {
 }
 
 func TestPartBodyEndsReadsOnStop(t *testing.T) {
+	t.Parallel()
 	b := &partBody{
 		r:     unreadReader{t: t},
 		timer: time.AfterFunc(time.Hour, func() {}),
@@ -552,6 +567,7 @@ func TestHTTPTransportKeepsASlowPartThatMoves(t *testing.T) {
 // part's number, status and byte count, and never the upload address, the part
 // token or the acknowledgement.
 func TestHTTPTransportDebugLogShowsNoSecret(t *testing.T) {
+	t.Parallel()
 	const secretAck = "SECRET-ACK"
 	for _, status := range []int{http.StatusOK, http.StatusForbidden} {
 		var logged bytes.Buffer
@@ -583,6 +599,7 @@ func TestHTTPTransportDebugLogShowsNoSecret(t *testing.T) {
 // TestHTTPTransportRefusesATargetTheCheckRefuses: an upload address the target check refuses
 // is a protocol error, and nothing is sent to it.
 func TestHTTPTransportRefusesATargetTheCheckRefuses(t *testing.T) {
+	t.Parallel()
 	var sent atomic.Int32
 	tr, target := newWorker(t, func(w http.ResponseWriter, _ *http.Request) {
 		sent.Add(1)
@@ -612,6 +629,7 @@ func TestHTTPTransportRefusesATargetTheCheckRefuses(t *testing.T) {
 
 // TestHTTPTransportSendsToATargetTheCheckAccepts: an accepted upload address is used as given.
 func TestHTTPTransportSendsToATargetTheCheckAccepts(t *testing.T) {
+	t.Parallel()
 	tr, target := newWorker(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"partNumber":3,"ack":"kid1.sealed-tag"}`)
 	})

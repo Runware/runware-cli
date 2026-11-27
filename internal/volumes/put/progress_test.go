@@ -8,6 +8,7 @@ import (
 )
 
 func TestFormatBytes(t *testing.T) {
+	t.Parallel()
 	for n, want := range map[int64]string{
 		0:               "0 B",
 		1023:            "1023 B",
@@ -28,6 +29,7 @@ func TestFormatBytes(t *testing.T) {
 }
 
 func TestProgressLine(t *testing.T) {
+	t.Parallel()
 	start := time.Unix(1000, 0)
 	p := &progress{
 		label:    "uploading",
@@ -51,6 +53,7 @@ func TestProgressLine(t *testing.T) {
 }
 
 func TestNilProgressIsSilent(t *testing.T) {
+	t.Parallel()
 	var p *progress
 	p.begin("hashing", 1, 1)
 	p.addBytes(1)
@@ -63,6 +66,7 @@ func TestNilProgressIsSilent(t *testing.T) {
 
 // TestProgressIntervals: a line every few seconds off a terminal, and a rewrite each second on one.
 func TestProgressIntervals(t *testing.T) {
+	t.Parallel()
 	if p := newProgress(io.Discard, false, 0, time.Now, nil); p.every < time.Second || p.every > 10*time.Second {
 		t.Errorf("the default interval off a terminal is %v, want a few seconds", p.every)
 	}
@@ -90,6 +94,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 }
 
 func TestProgressTerminalRewritesOneLine(t *testing.T) {
+	t.Parallel()
 	var buf lockedBuffer
 	tick := make(chan time.Time)
 	now := time.Unix(1000, 0)
@@ -114,6 +119,7 @@ func TestProgressTerminalRewritesOneLine(t *testing.T) {
 }
 
 func TestProgressPrintsLinesWithoutATerminal(t *testing.T) {
+	t.Parallel()
 	var buf lockedBuffer
 	tick := make(chan time.Time)
 	now := time.Unix(1000, 0)
@@ -137,6 +143,7 @@ func TestProgressPrintsLinesWithoutATerminal(t *testing.T) {
 }
 
 func TestProgressPhasesEndEachOther(t *testing.T) {
+	t.Parallel()
 	var buf lockedBuffer
 	p := newProgress(&buf, false, time.Minute, time.Now, nil)
 

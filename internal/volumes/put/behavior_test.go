@@ -44,6 +44,7 @@ func statuses(puts []putRecord) []int {
 
 // TestPutTwoPartFile completes a two-part file with the CRC of the whole ciphertext.
 func TestPutTwoPartFile(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := filepath.Join(e.srcDir, "big.bin")
 	writeTwoPartFile(t, file)
@@ -75,6 +76,7 @@ func TestPutTwoPartFile(t *testing.T) {
 
 // TestZeroLengthFileOnePart: an empty file is one part of a salt and a tag.
 func TestZeroLengthFileOnePart(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "empty.txt", nil)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -95,6 +97,7 @@ func TestZeroLengthFileOnePart(t *testing.T) {
 
 // TestRetryUsesNewSealer: a retried part is sealed again under a fresh salt from the same buffer.
 func TestRetryUsesNewSealer(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -123,6 +126,7 @@ func TestRetryUsesNewSealer(t *testing.T) {
 }
 
 func TestStorageFailureKeepsSessionAfterRetries(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -153,6 +157,7 @@ func TestStorageFailureKeepsSessionAfterRetries(t *testing.T) {
 }
 
 func TestPartRecoversAfterExtendedOutage(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -192,6 +197,7 @@ func TestPartRecoversAfterExtendedOutage(t *testing.T) {
 }
 
 func TestPartsUploadInParallel(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := filepath.Join(e.srcDir, "big.bin")
 	writeTwoPartFile(t, file)
@@ -222,6 +228,7 @@ func TestPartsUploadInParallel(t *testing.T) {
 }
 
 func TestParallelismBoundsPartRequestsAcrossFiles(t *testing.T) {
+	t.Parallel()
 	const parallel = 2
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -286,6 +293,7 @@ func TestParallelismBoundsPartRequestsAcrossFiles(t *testing.T) {
 
 // TestParallelismIsBounded: zero or less runs the default number of parts at once, and no more than the most run however many are asked for.
 func TestParallelismIsBounded(t *testing.T) {
+	t.Parallel()
 	for asked, want := range map[int]int{
 		-3:                 DefaultParallelism,
 		0:                  DefaultParallelism,
@@ -320,6 +328,7 @@ func (u unverifiedCompletion) CompleteFile(ctx context.Context, up UploadRef, fi
 }
 
 func TestPutRefusesAnUnverifiedCompletion(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -366,6 +375,7 @@ type refusedCompletionCase struct {
 
 // TestPutAbortsWhenACompletionIsRefused: a refused completion names the limit or the file, aborts the session and publishes nothing.
 func TestPutAbortsWhenACompletionIsRefused(t *testing.T) {
+	t.Parallel()
 	cases := []refusedCompletionCase{
 		{
 			name: "the Volume would hold too many files",
@@ -434,6 +444,7 @@ func TestPutAbortsWhenACompletionIsRefused(t *testing.T) {
 }
 
 func TestFileKeyClearedWhenItsFileCompletes(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := filepath.Join(e.srcDir, "pair")
 	writeTree(t, dir, map[string][]byte{
@@ -461,6 +472,7 @@ func TestFileKeyClearedWhenItsFileCompletes(t *testing.T) {
 }
 
 func TestRenewsExpiredTokenBeforeSending(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -477,6 +489,7 @@ func TestRenewsExpiredTokenBeforeSending(t *testing.T) {
 }
 
 func TestRenewsTokenRefusedByEndpoint(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -494,6 +507,7 @@ func TestRenewsTokenRefusedByEndpoint(t *testing.T) {
 }
 
 func TestRenewalGivesUp(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -515,6 +529,7 @@ func TestRenewalGivesUp(t *testing.T) {
 }
 
 func TestRejectsAlreadyExpiredRenewal(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -529,6 +544,7 @@ func TestRejectsAlreadyExpiredRenewal(t *testing.T) {
 
 // TestPutDeclaresInBatches: files are declared at most 100 at a time.
 func TestPutDeclaresInBatches(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := filepath.Join(e.srcDir, "many")
 	files := make(map[string][]byte, 105)
@@ -561,6 +577,7 @@ func TestPutDeclaresInBatches(t *testing.T) {
 }
 
 func TestRenewsMissingTargets(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := filepath.Join(e.srcDir, "big.bin")
 	writeTwoPartFile(t, file)
@@ -628,6 +645,7 @@ func renewalRunner(t *testing.T, api API) (*runner, *fileState) {
 
 // TestRenewalAsksForAtMost128Parts: a renewal names the part that needs a target and the parts after it, 128 at the most.
 func TestRenewalAsksForAtMost128Parts(t *testing.T) {
+	t.Parallel()
 	api := &renewalAPI{answer: func(parts []int) ([]Target, error) { return targetsFor(parts), nil }}
 	r, f := renewalRunner(t, api)
 
@@ -657,6 +675,7 @@ type renewalAnswerCase struct {
 
 // TestRenewalChecksTheAnswer: a short, reordered or misnumbered answer breaks the contract, and a quota refusal names the limit.
 func TestRenewalChecksTheAnswer(t *testing.T) {
+	t.Parallel()
 	cases := []renewalAnswerCase{
 		{
 			name:   "one target short",
@@ -715,6 +734,7 @@ func TestRenewalChecksTheAnswer(t *testing.T) {
 }
 
 func TestNeverRenewsPastSessionDeadline(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -740,6 +760,7 @@ type fatalPartCase struct {
 }
 
 func TestAbortsOnFatalPartRefusal(t *testing.T) {
+	t.Parallel()
 	cases := []fatalPartCase{
 		{
 			name: "volume-part-token-invalid",
@@ -813,6 +834,7 @@ func (a observedAbort) AbortUpload(ctx context.Context, ref UploadRef) error {
 
 // TestInterruptKeepsSession: an interrupt leaves the session open and its resume state on disk, for put to resume.
 func TestInterruptKeepsSession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	first := singleFile(t, e, "first.bin", patterned(5000, 1))
 	second := singleFile(t, e, "second.bin", patterned(5000, 2))
@@ -881,6 +903,7 @@ type abortCase struct {
 }
 
 func TestAbortFailureStillRemovesJournal(t *testing.T) {
+	t.Parallel()
 	cases := []abortCase{
 		{
 			name: "the API is unreachable",
@@ -933,6 +956,7 @@ func TestAbortFailureStillRemovesJournal(t *testing.T) {
 }
 
 func TestJournalDropsReusedFileKeys(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	reused := singleFile(t, e, "known.bin", []byte("already stored"))
 	missing := singleFile(t, e, "missing.bin", []byte("needs transfer"))
@@ -975,6 +999,7 @@ func keyForms(b []byte) []string {
 
 // TestNoSecretsInLogs: no token, ack, key or upload URL reaches progress output, summaries or errors.
 func TestNoSecretsInLogs(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	var out strings.Builder
@@ -1027,6 +1052,7 @@ func TestNoSecretsInLogs(t *testing.T) {
 }
 
 func TestDeclareLimitErrorNamesFile(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := filepath.Join(e.srcDir, "data")
 	writeTree(t, dir, map[string][]byte{
@@ -1051,6 +1077,7 @@ func TestDeclareLimitErrorNamesFile(t *testing.T) {
 }
 
 func TestKeyPairNotReadyRetries(t *testing.T) {
+	t.Parallel()
 	var (
 		mu     sync.Mutex
 		pauses []time.Duration
@@ -1106,6 +1133,7 @@ func TestKeyPairNotReadyRetries(t *testing.T) {
 
 // TestVolumeNotFoundStopsEarly: a missing Volume is reported before any file is hashed.
 func TestVolumeNotFoundStopsEarly(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 
@@ -1121,6 +1149,7 @@ func TestVolumeNotFoundStopsEarly(t *testing.T) {
 }
 
 func TestPutNothingToUpload(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	empty := filepath.Join(e.srcDir, "empty")
 	if err := os.MkdirAll(filepath.Join(empty, "sub"), 0o700); err != nil {
@@ -1139,6 +1168,7 @@ func TestPutNothingToUpload(t *testing.T) {
 }
 
 func TestPutReportsProgress(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	e.mustPut(e.cloud.newVolume("model-weights", ""), dir)
@@ -1176,6 +1206,7 @@ func decodeStd(t *testing.T, v any) []byte {
 
 // TestJournalSavedBeforeDeclare: the session key and each file's keys are saved before the declaration.
 func TestJournalSavedBeforeDeclare(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := standardTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -1227,6 +1258,7 @@ func TestJournalSavedBeforeDeclare(t *testing.T) {
 
 // TestJournalPartDigestBeforeSeal: a part's plaintext digest is saved before the part is sealed.
 func TestJournalPartDigestBeforeSeal(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	content := patterned(5000, 1)
 	file := singleFile(t, e, "weights.bin", content)
@@ -1248,6 +1280,7 @@ func TestJournalPartDigestBeforeSeal(t *testing.T) {
 
 // TestJournalHoldsAcks: a completed file's layout, acks and CRCs are in the resume state.
 func TestJournalHoldsAcks(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(5000, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -1271,6 +1304,7 @@ func TestJournalHoldsAcks(t *testing.T) {
 }
 
 func TestJournalFilePermissions(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no permission bits")
 	}

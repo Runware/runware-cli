@@ -256,6 +256,7 @@ func (s *sealRecorder) dataKeys() [][]byte {
 
 // TestSealRecorderCatchesReuse: the instrument reports a key and nonce pair that seals two plaintexts.
 func TestSealRecorderCatchesReuse(t *testing.T) {
+	t.Parallel()
 	var rec sealRecorder
 	key, salt := bytes.Repeat([]byte{1}, 32), bytes.Repeat([]byte{2}, 16)
 	rec.add(sealRecord{
@@ -408,6 +409,7 @@ func patchFile(t *testing.T, p string, off int64, b []byte) {
 
 // AC 1: an interrupted put resumes from its acknowledged parts, sends none of them again and completes once.
 func TestResumeSendsOnlyUnacknowledgedParts(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -449,6 +451,7 @@ func TestResumeSendsOnlyUnacknowledgedParts(t *testing.T) {
 // AC 1 and 2: a file that changed since the interrupt aborts the saved session, changes nothing in the
 // Volume, and the next put opens a new session with fresh keys.
 func TestResumeAbortsAChangedFileAndStartsOver(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -492,6 +495,7 @@ func TestResumeAbortsAChangedFileAndStartsOver(t *testing.T) {
 // the part's last segment, or the size and time check before the last part stops it first. The session
 // aborts, nothing reaches the Volume, the state is gone, and the next put starts over.
 func TestResumeAbortsWhenAPartChangedBeforeItsRetry(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -598,6 +602,7 @@ func TestResumeRehashesAFileTheCacheWouldTrust(t *testing.T) {
 // first went out, so a journalled digest that differs aborts the saved session before any part is sent
 // again, even when the file's own digest still matches.
 func TestResumeAbortsWhenAJournalledPartDigestDiffers(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -641,6 +646,7 @@ func TestResumeAbortsWhenAJournalledPartDigestDiffers(t *testing.T) {
 // AC 2: a retry reads the part from the file again, and a part whose bytes changed since they were
 // journalled stops before its last segment is sealed: the put fails and the changed bytes never go out.
 func TestRetryOfAChangedPartFailsBeforeItCompletes(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	content := patterned(5000, 1)
 	file := singleFile(t, e, "weights.bin", content)
@@ -683,6 +689,7 @@ func TestRetryOfAChangedPartFailsBeforeItCompletes(t *testing.T) {
 // AC 2: a retry of an unchanged part reads it from the file again and seals the same plaintext, every
 // segment of it, under a fresh salt.
 func TestRetryResealsTheSameBytes(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	size := 3*volumeformat.SegmentPlaintextBytes + 7
 	file := singleFile(t, e, "weights.bin", patterned(size, 1))
@@ -715,6 +722,7 @@ func TestRetryResealsTheSameBytes(t *testing.T) {
 // AC 3: resuming from a snapshot taken before a part was acknowledged seals that part again under a
 // fresh salt, so no key and nonce pair repeats, and the session still completes.
 func TestResumeFromRolledBackState(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -752,6 +760,7 @@ func TestResumeFromRolledBackState(t *testing.T) {
 // before the part was read again. The part is sealed with other plaintext under the same data key, and
 // only the per-part salt keeps every key and nonce pair unique; the whole-file check then aborts.
 func TestRolledBackStateNeverRepeatsAKeyAndNonce(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	big := filepath.Join(dir, bigName)
@@ -791,6 +800,7 @@ func TestRolledBackStateNeverRepeatsAKeyAndNonce(t *testing.T) {
 // AC 3: two copies of the same state resume one session; the second finds it completed, seals nothing
 // new and removes its state.
 func TestResumeFromCopiedState(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -825,6 +835,7 @@ func TestResumeFromCopiedState(t *testing.T) {
 
 // AC 4: resume state is 0700 and 0600, a resume narrows modes a copy widened, and completion removes it.
 func TestResumeStateModes(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == goosWindows {
 		t.Skip("POSIX modes")
 	}
@@ -871,6 +882,7 @@ func TestResumeStateModes(t *testing.T) {
 
 // AC 4: expired state is removed, for every Volume, and unreadable state once it is older than any session.
 func TestExpiredStateIsRemoved(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -909,6 +921,7 @@ func TestExpiredStateIsRemoved(t *testing.T) {
 // A saved key that no longer opens under the session sealing key is lost: the session is aborted and the
 // put starts over.
 func TestLostKeyAbortsTheSavedSession(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(t *testing.T, snap journalSnapshot, index int){
 		"a key that does not open": func(t *testing.T, snap journalSnapshot, index int) {
 			keys := snap.Keys[index]
@@ -929,6 +942,7 @@ func TestLostKeyAbortsTheSavedSession(t *testing.T) {
 	}
 	for name, lose := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			e := newTestEnv(t)
 			dir := resumeTree(t, e)
 			vol := e.cloud.newVolume("model-weights", "")
@@ -964,6 +978,7 @@ func TestLostKeyAbortsTheSavedSession(t *testing.T) {
 
 // A file whose content the session reused has no saved keys left; the resume still continues the session.
 func TestResumeWithAReusedFile(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	small := singleFile(t, e, "small.txt", patterned(3000, 7))
@@ -996,6 +1011,7 @@ func TestResumeWithAReusedFile(t *testing.T) {
 
 // State saved in another journal format is not resumed: the session is aborted and the put starts over.
 func TestOtherJournalVersionAbortsTheSavedSession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -1023,6 +1039,7 @@ func TestOtherJournalVersionAbortsTheSavedSession(t *testing.T) {
 
 // A crash during a journal write leaves a torn last line; the resume drops it and carries on.
 func TestResumeDropsATornLastLine(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -1053,6 +1070,7 @@ func TestResumeDropsATornLastLine(t *testing.T) {
 // AC 5: an interrupted and resumed upload at debug level writes no data key, session sealing key,
 // sealed key, part token or acknowledgement to its output, its errors or its log.
 func TestResumeCanaryHoldsNoSecrets(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -1097,6 +1115,7 @@ func TestResumeCanaryHoldsNoSecrets(t *testing.T) {
 
 // A resumed put that is interrupted again keeps the session for the next resume, as a fresh put does.
 func TestInterruptedResumeKeepsTheSession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -1135,6 +1154,7 @@ func TestInterruptedResumeKeepsTheSession(t *testing.T) {
 
 // A resumed put that runs out of part retries keeps its acknowledged parts for the next run.
 func TestResumeOutOfRetriesKeepsSession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -1176,6 +1196,7 @@ func TestResumeOutOfRetriesKeepsSession(t *testing.T) {
 
 // A resumed put retries its completion through an outage, as a fresh put does.
 func TestResumedCompletionRecoversAfterExtendedOutage(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")

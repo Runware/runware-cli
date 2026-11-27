@@ -9,6 +9,7 @@ import (
 )
 
 func TestLoadSavedRejectsInvalidJournal(t *testing.T) {
+	t.Parallel()
 	type journalCase struct {
 		name string
 		data string

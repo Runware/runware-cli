@@ -52,6 +52,7 @@ func (c *changingTransport) PutPart(_ context.Context, _ Target, body io.Reader,
 // TestChangeInsideAStreamingPartStopsBeforeItsLastSegment: bytes that change in a part while it
 // streams fail the send before the part's last segment goes out, without a retry.
 func TestChangeInsideAStreamingPartStopsBeforeItsLastSegment(t *testing.T) {
+	t.Parallel()
 	segments := int64(volumeformat.MinSegmentsPerPart)
 	plain := patterned(int(segments*volumeformat.SegmentPlaintextBytes), 3)
 	tr := &changingTransport{after: volumeformat.SaltBytes + 2*volumeformat.SegmentBytes}
@@ -72,6 +73,7 @@ func TestChangeInsideAStreamingPartStopsBeforeItsLastSegment(t *testing.T) {
 // TestChangeInsideAStreamingPartAbortsThePut: a file changed while one of its parts streams is never
 // acknowledged, and the put aborts and publishes nothing.
 func TestChangeInsideAStreamingPartAbortsThePut(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := filepath.Join(e.srcDir, "big.bin")
 	writeTwoPartFile(t, file)
@@ -226,6 +228,7 @@ func (c *countingTransport) PutPart(ctx context.Context, target Target, body io.
 // TestPutStopsAtAReadErrorOfAStreamingPart: an I/O error reading a part while it streams stops the
 // put at once with that error, rather than being retried as a failure of the network.
 func TestPutStopsAtAReadErrorOfAStreamingPart(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := filepath.Join(e.srcDir, "data.bin")
 	writeFile(t, file, patterned(3*volumeformat.SegmentPlaintextBytes, 5))

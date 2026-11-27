@@ -27,6 +27,7 @@ func (b blockedPart) PutPart(ctx context.Context, target Target, body io.Reader,
 }
 
 func TestConcurrentPutLeavesActiveSessionAlone(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("first"))
@@ -64,6 +65,7 @@ func TestConcurrentPutLeavesActiveSessionAlone(t *testing.T) {
 }
 
 func TestResumeRecoversVerifiedFileFromOlderSnapshot(t *testing.T) {
+	t.Parallel()
 	for _, when := range []string{"before declaration answer", "before part acknowledgement"} {
 		t.Run(when, func(t *testing.T) {
 			e := newTestEnv(t)
@@ -104,6 +106,7 @@ func TestResumeRecoversVerifiedFileFromOlderSnapshot(t *testing.T) {
 }
 
 func TestIndependentPutLeavesSavedSessionAvailable(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := filepath.Join(t.TempDir(), "model.bin")
@@ -165,6 +168,7 @@ func TestIndependentPutLeavesSavedSessionAvailable(t *testing.T) {
 }
 
 func TestIndependentPutPreservesOverlappingLegacySession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("first"))
@@ -187,6 +191,7 @@ func TestIndependentPutPreservesOverlappingLegacySession(t *testing.T) {
 }
 
 func TestEmptyLegacySessionDoesNotMatchTargets(t *testing.T) {
+	t.Parallel()
 	r := runner{invocation: "current"}
 	targets := map[string]struct{}{
 		"first.txt": {},
@@ -197,6 +202,7 @@ func TestEmptyLegacySessionDoesNotMatchTargets(t *testing.T) {
 }
 
 func TestResumeRefusesFreshPutAfterUnconfirmedPublication(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	singleFile(t, e, "model.bin", []byte("original"))
@@ -228,6 +234,7 @@ func TestResumeRefusesFreshPutAfterUnconfirmedPublication(t *testing.T) {
 }
 
 func TestPutKeepsSavedSessionsScopedToAPI(t *testing.T) {
+	t.Parallel()
 	first := newTestEnv(t)
 	second := newTestEnv(t)
 	second.configDir = first.configDir
@@ -266,6 +273,7 @@ func TestPutKeepsSavedSessionsScopedToAPI(t *testing.T) {
 }
 
 func TestOnlyDefaultAPIResumesJournalWithoutAnEndpoint(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	file := singleFile(t, e, "model.bin", []byte("original"))
@@ -289,6 +297,7 @@ func TestOnlyDefaultAPIResumesJournalWithoutAnEndpoint(t *testing.T) {
 }
 
 func TestResumeRefusesChangeAfterUnappliedPublication(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	file := singleFile(t, e, "model.bin", []byte("original"))
@@ -311,6 +320,7 @@ func TestResumeRefusesChangeAfterUnappliedPublication(t *testing.T) {
 }
 
 func TestResumeReportsUncertainPublicationIfSourceDisappearsDuringHash(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	file := singleFile(t, e, "model.bin", []byte("original"))

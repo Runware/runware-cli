@@ -26,6 +26,7 @@ func symlinkOrSkip(t *testing.T, oldname, newname string) {
 }
 
 func TestWalkDirectoryKeepsRelativePaths(t *testing.T) {
+	t.Parallel()
 	root := filepath.Join(t.TempDir(), "weights")
 	writeTree(t, root, map[string][]byte{
 		"a.bin":        patterned(3, 1),
@@ -56,6 +57,7 @@ func TestWalkDirectoryKeepsRelativePaths(t *testing.T) {
 }
 
 func TestWalkSingleFileLandsUnderTo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	file := filepath.Join(dir, "tokenizer.json")
 	writeFile(t, file, patterned(9, 1))
@@ -71,6 +73,7 @@ func TestWalkSingleFileLandsUnderTo(t *testing.T) {
 }
 
 func TestWalkModeKeepsReadAndExecuteBits(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no execute bit")
 	}
@@ -95,6 +98,7 @@ func TestWalkModeKeepsReadAndExecuteBits(t *testing.T) {
 }
 
 func TestWalkSymlinks(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	outside := filepath.Join(base, "outside.bin")
 	writeFile(t, outside, patterned(3, 1))
@@ -164,6 +168,7 @@ func TestWalkSymlinks(t *testing.T) {
 }
 
 func TestWalkRefusesDuplicateTargets(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	first, second := filepath.Join(base, "one"), filepath.Join(base, "two")
 	writeFile(t, filepath.Join(first, "x.bin"), patterned(3, 1))
@@ -192,6 +197,7 @@ type targetCase struct {
 }
 
 func TestCheckTarget(t *testing.T) {
+	t.Parallel()
 	cases := []targetCase{
 		{
 			name:   "plain",
@@ -283,6 +289,7 @@ func TestCheckTarget(t *testing.T) {
 }
 
 func TestWalkRefusesInvalidDestination(t *testing.T) {
+	t.Parallel()
 	file := filepath.Join(t.TempDir(), "a.bin")
 	writeFile(t, file, patterned(3, 1))
 
@@ -294,6 +301,7 @@ func TestWalkRefusesInvalidDestination(t *testing.T) {
 }
 
 func TestWalkMissingPath(t *testing.T) {
+	t.Parallel()
 	missing := filepath.Join(t.TempDir(), "nope")
 
 	_, err := Walk([]string{missing}, "")
