@@ -1,6 +1,7 @@
 package put
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -38,9 +39,6 @@ const (
 	// never proves progress and keeps the window from its first failure.
 	maxBufferedPartBytes = 16 << 20
 )
-
-// bufferedPartBytes is maxBufferedPartBytes; tests lower it so their parts stay small.
-var bufferedPartBytes = int64(maxBufferedPartBytes)
 
 // partResult is an acknowledged part: its ack, ciphertext CRC and length.
 type partResult struct {
@@ -370,7 +368,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 		if ctx.Err() != nil {
 			return partResult{}, context.Cause(ctx)
 		}
-		if stopRetryTimer == nil || traffic.sent.Load() > bufferedPartBytes {
+		if stopRetryTimer == nil || traffic.sent.Load() > cmp.Or(r.bufferedPartBytes, maxBufferedPartBytes) {
 			if stopRetryTimer != nil {
 				stopRetryTimer()
 			}

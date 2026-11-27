@@ -101,6 +101,7 @@ type runner struct {
 	completionAttempted bool
 	publishActions      map[int]string
 	resumed             map[int]*resumeFile // resumed files by journal index; nil unless a saved session is resumed
+	bufferedPartBytes   int64               // stands in for maxBufferedPartBytes when set, so tests can send small parts
 }
 
 func newRunner(o Options) (*runner, error) {
