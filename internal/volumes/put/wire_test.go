@@ -40,6 +40,7 @@ func decodeStrict(t *testing.T, data []byte, into any) {
 }
 
 func TestWireTypesMatchUploadFixture(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(filepath.Join("testdata", "upload-exchange.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +105,7 @@ const specResult = `{"upload":{"id":"4b6d8f0a-2c4e-4f6a-8b0d-2f4a6c8e0b33","volu
 const specCompletion = `{"crc64nvme":"1f2e3d4c5b6a7980","parts":[{"partNumber":1,"ack":"YWNrLWV4YW1wbGUtcGFydC0x"},{"partNumber":2,"ack":"YWNrLWV4YW1wbGUtcGFydC0y"}]}`
 
 func TestWireTypesTakeSpecExamples(t *testing.T) {
+	t.Parallel()
 	var answer DeclarationResult
 	decodeStrict(t, []byte(specDeclareAnswer), &answer)
 	if len(answer.Files) != 2 || answer.Files[0].File.State != stateUploading || len(answer.Files[0].UploadTargets) != 2 {
@@ -152,6 +154,7 @@ func TestWireTypesTakeSpecExamples(t *testing.T) {
 }
 
 func TestCheckLayout(t *testing.T) {
+	t.Parallel()
 	size := int64(10270000000)
 	plan, err := volumeformat.PlanLayout(size)
 	if err != nil {
@@ -189,6 +192,7 @@ func TestCheckLayout(t *testing.T) {
 }
 
 func TestSecretIsRedacted(t *testing.T) {
+	t.Parallel()
 	const value = "eyJ2IjoxfQ.c2lnbmF0dXJl"
 	target := Target{
 		PartNumber: 1,
@@ -227,6 +231,7 @@ type pointerCase struct {
 }
 
 func TestPointerFile(t *testing.T) {
+	t.Parallel()
 	cases := []pointerCase{
 		{
 			pointer: "/files/0/size",
@@ -256,6 +261,7 @@ func TestPointerFile(t *testing.T) {
 }
 
 func TestParseProblem(t *testing.T) {
+	t.Parallel()
 	body := `{"type":"https://docs.runware.ai/serverless/errors#volume-limit-exceeded","title":"Conflict","status":409,
 	  "detail":"maxFileBytes exceeds its limit","limit":"maxFileBytes","cap":268435456000,
 	  "errors":[{"detail":"maxFileBytes exceeds its limit","pointer":"/files/2/size"}]}`
@@ -282,6 +288,7 @@ func TestParseProblem(t *testing.T) {
 }
 
 func TestLimitErrorsNameTheLimit(t *testing.T) {
+	t.Parallel()
 	for limit, want := range map[string]string{
 		limitFileBytes:      "file size",
 		limitStoredBytes:    "storage quota",

@@ -3,6 +3,7 @@ package put
 import "testing"
 
 func TestEndpointIdentityNormalizesEquivalentURLs(t *testing.T) {
+	t.Parallel()
 	want, err := endpointIdentity("https://example.test/volumes")
 	if err != nil {
 		t.Fatal(err)
@@ -25,6 +26,7 @@ func TestEndpointIdentityNormalizesEquivalentURLs(t *testing.T) {
 }
 
 func TestEndpointIdentityRejectsSecretBearingURLs(t *testing.T) {
+	t.Parallel()
 	for _, url := range []string{
 		"https://user:sample@example.test",
 		"https://example.test/?key=sample",

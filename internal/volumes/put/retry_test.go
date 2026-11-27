@@ -76,6 +76,7 @@ func (a *transientUploadAPI) CompleteUpload(ctx context.Context, ref UploadRef) 
 }
 
 func TestPutRetriesTransientUploadAPICalls(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"declare", retryRenewOperation, "complete-file", "complete"} {
 		t.Run(operation, func(t *testing.T) {
 			e := newTestEnv(t)
@@ -128,6 +129,7 @@ func (a *unavailableCompletion) CompleteUpload(ctx context.Context, ref UploadRe
 }
 
 func TestUploadCompletionRecoversAfterExtendedOutage(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(20, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -150,6 +152,7 @@ func TestUploadCompletionRecoversAfterExtendedOutage(t *testing.T) {
 }
 
 func TestPublicationRetryRefusesChangedSource(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", []byte("original"))
 	vol := e.cloud.newVolume("weights", "")
@@ -189,6 +192,7 @@ func (a *transientAbort) AbortUpload(ctx context.Context, ref UploadRef) error {
 }
 
 func TestSourceChangeRetriesAbort(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(20, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -211,6 +215,7 @@ func TestSourceChangeRetriesAbort(t *testing.T) {
 }
 
 func TestRenewalBackoffDoesNotPassSessionDeadline(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	file := singleFile(t, e, "weights.bin", patterned(20, 1))
 	vol := e.cloud.newVolume("model-weights", "")
@@ -233,6 +238,7 @@ func TestRenewalBackoffDoesNotPassSessionDeadline(t *testing.T) {
 }
 
 func TestUploadAPIStopsRetriesOnCancellation(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	calls, pauses := 0, 0
@@ -250,6 +256,7 @@ func TestUploadAPIStopsRetriesOnCancellation(t *testing.T) {
 }
 
 func TestAbortDeadlinePreservesLastServerError(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		unavailable := &ProblemError{Status: http.StatusServiceUnavailable}
 		api := &failingAbort{err: unavailable}
@@ -284,6 +291,7 @@ func (a *lostCompletionResponse) CompleteUpload(ctx context.Context, ref UploadR
 }
 
 func TestLostCompletionCanBeRecovered(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"cancelled during backoff", "retry limit reached"} {
 		t.Run(name, func(t *testing.T) {
 			e := newTestEnv(t)
@@ -327,6 +335,7 @@ func TestLostCompletionCanBeRecovered(t *testing.T) {
 }
 
 func TestUploadAPIPreservesAuthErrorsWithoutRetrying(t *testing.T) {
+	t.Parallel()
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			authErr := transport.CreateRunwareError("forbidden", http.StatusText(status), transport.RunwareErrorDetails{
@@ -376,6 +385,7 @@ func (s *stalledCompletion) CompleteUpload(ctx context.Context, _ UploadRef) (Up
 // request limit, put stops retrying after maxCompletionRetryTime, not after
 // maxUploadAttempts stalls.
 func TestCompletionRetryTimeBudget(t *testing.T) {
+	t.Parallel()
 	calls := map[string]func(ctx context.Context, r *runner) error{
 		"file": func(ctx context.Context, r *runner) error {
 			return r.completeFile(ctx, &fileState{src: &Source{Abs: "weights.bin"}})

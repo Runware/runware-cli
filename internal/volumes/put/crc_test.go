@@ -15,6 +15,7 @@ func crcOf(b []byte) uint64 {
 }
 
 func TestCRC64NVMEPolynomial(t *testing.T) {
+	t.Parallel()
 	if got := crcOf([]byte("123456789")); got != 0xae8b14860a799888 {
 		t.Errorf("CRC-64/NVME of 123456789 = %016x, want ae8b14860a799888", got)
 	}
@@ -25,6 +26,7 @@ func TestCRC64NVMEPolynomial(t *testing.T) {
 }
 
 func TestCRC64Combine(t *testing.T) {
+	t.Parallel()
 	for _, size := range []int{1, 2, 7, 16, 31, 32, 4096, 1<<20 + 13} {
 		data := patterned(size, byte(size))
 		for _, cut := range []int{0, 1, size / 3, size / 2, size - 1, size} {
@@ -40,6 +42,7 @@ func TestCRC64Combine(t *testing.T) {
 }
 
 func TestFileCRCFoldsParts(t *testing.T) {
+	t.Parallel()
 	var object []byte
 	var parts []partResult
 	for i, size := range []int{32, 5000, 1 << 20, 77} {

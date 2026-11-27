@@ -89,6 +89,7 @@ var treeSizes = map[string]int64{
 // TestPutReadsEachFileTwice: hashing reads a file once for its digest and every part's digest, and
 // the send reads each part once more; nothing else reads it.
 func TestPutReadsEachFileTwice(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -111,6 +112,7 @@ func TestPutReadsEachFileTwice(t *testing.T) {
 // TestPutCacheHitReadsEachFileOnce: a cache entry with the part digests stands for the hashing read,
 // so the file is read only to send it.
 func TestPutCacheHitReadsEachFileOnce(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -148,6 +150,7 @@ func TestPutCacheHitReadsEachFileOnce(t *testing.T) {
 // TestPutOldCacheEntryIsAMiss: an entry saved before part digests were cached is a miss, so the file is
 // hashed again rather than read a third time to find its part digests.
 func TestPutOldCacheEntryIsAMiss(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	dir := resumeTree(t, e)
 	vol := e.cloud.newVolume("model-weights", "")
@@ -221,6 +224,7 @@ func cachedTree(t *testing.T, opts Options) []Source {
 // TestHashCacheNeedsEveryPartDigest: an entry for a file of several parts is a hit only with a digest
 // for each part, and an entry for a one-part file answers the file's digest as its part's.
 func TestHashCacheNeedsEveryPartDigest(t *testing.T) {
+	t.Parallel()
 	c := loadHashCache(t.TempDir())
 	mod := time.Unix(1, 0)
 	sum := [32]byte{1}
@@ -251,6 +255,7 @@ func TestHashCacheNeedsEveryPartDigest(t *testing.T) {
 
 // TestHashFileDigestsEveryPart: hashing gives each part of the layout the digest of its bytes.
 func TestHashFileDigestsEveryPart(t *testing.T) {
+	t.Parallel()
 	file := filepath.Join(t.TempDir(), bigName)
 	writeTwoPartFile(t, file)
 	src := Source{Abs: file}
@@ -282,6 +287,7 @@ type partChange struct {
 // part is sent, with the file's size and times unchanged, stop the part before its last segment is
 // sealed: it is never acknowledged and the put aborts.
 func TestChangeBetweenHashingAndSendNeverCompletesThePart(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []partChange{
 		{
 			name: "in the first part",
@@ -295,6 +301,7 @@ func TestChangeBetweenHashingAndSendNeverCompletesThePart(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			e := newTestEnv(t)
 			file := filepath.Join(e.srcDir, bigName)
 			writeTwoPartFile(t, file)
@@ -360,6 +367,7 @@ type statChange struct {
 // file's size and times are checked against hashing, so a file that grew, or whose modification time
 // moved, after it was hashed never sends its last part, even when every part's bytes still match.
 func TestChangeBeforeTheLastPartStopsItBeforeItIsSent(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []statChange{
 		{
 			name:   "it grows by a byte",
@@ -376,6 +384,7 @@ func TestChangeBeforeTheLastPartStopsItBeforeItIsSent(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			e := newTestEnv(t)
 			file := filepath.Join(e.srcDir, bigName)
 			writeTwoPartFile(t, file)

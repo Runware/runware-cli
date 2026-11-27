@@ -14,6 +14,7 @@ import (
 )
 
 func TestHashCacheKey(t *testing.T) {
+	t.Parallel()
 	c := loadHashCache(t.TempDir())
 	mod := time.Date(2026, time.November, 16, 9, 0, 0, 123, time.UTC)
 	sum := sha256.Sum256([]byte("content"))
@@ -46,6 +47,7 @@ func TestHashCacheKey(t *testing.T) {
 }
 
 func TestHashCacheRoundTrip(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "volumes")
 	c := loadHashCache(dir)
 	mod := time.Date(2026, time.November, 16, 9, 0, 0, 0, time.UTC)
@@ -63,6 +65,7 @@ func TestHashCacheRoundTrip(t *testing.T) {
 // TestHashCacheBypassLookup: a cache that bypasses lookups answers for no file, but still records
 // fresh entries and keeps the others.
 func TestHashCacheBypassLookup(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "volumes")
 	c := loadHashCache(dir)
 	mod := time.Date(2026, time.November, 16, 9, 0, 0, 0, time.UTC)
@@ -93,6 +96,7 @@ func TestHashCacheBypassLookup(t *testing.T) {
 }
 
 func TestHashCacheKeepsNewestEntriesWithinLimit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	c := loadHashCache(dir)
 	for i := range maxCachedHashes {
@@ -118,6 +122,7 @@ func TestHashCacheKeepsNewestEntriesWithinLimit(t *testing.T) {
 }
 
 func TestHashCacheCorruptFileIsEmpty(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, hashCacheFile), []byte("{not json"))
 
@@ -133,6 +138,7 @@ func TestHashCacheCorruptFileIsEmpty(t *testing.T) {
 }
 
 func TestPutChecksContentWhenSourceMetadataMatches(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	const name = "changed.bin"
 	file := singleFile(t, e, name, []byte("new bytes"))
@@ -160,6 +166,7 @@ func TestPutChecksContentWhenSourceMetadataMatches(t *testing.T) {
 }
 
 func TestHashCacheFilePerms(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no permission bits")
 	}
@@ -188,6 +195,7 @@ func TestHashCacheFilePerms(t *testing.T) {
 }
 
 func TestHashFileSetsDigestAndIdentity(t *testing.T) {
+	t.Parallel()
 	content := patterned(3<<20+5, 1)
 	file := filepath.Join(t.TempDir(), "a.bin")
 	writeFile(t, file, content)
@@ -209,6 +217,7 @@ func TestHashFileSetsDigestAndIdentity(t *testing.T) {
 }
 
 func TestHashFileHonorsContext(t *testing.T) {
+	t.Parallel()
 	file := filepath.Join(t.TempDir(), "a.bin")
 	writeFile(t, file, patterned(1<<20, 1))
 	ctx, cancel := context.WithCancel(t.Context())
@@ -244,6 +253,7 @@ type changedWhileReadCase struct {
 
 // TestHashFileRefusesAFileThatChangesWhileItIsRead: a file that grows, shrinks or is touched during the read is not hashed.
 func TestHashFileRefusesAFileThatChangesWhileItIsRead(t *testing.T) {
+	t.Parallel()
 	cases := []changedWhileReadCase{
 		{
 			name:   "grows",
@@ -311,6 +321,7 @@ func TestHashFileRefusesAFileThatChangesWhileItIsRead(t *testing.T) {
 }
 
 func TestUnchanged(t *testing.T) {
+	t.Parallel()
 	file := filepath.Join(t.TempDir(), "a.bin")
 	writeFile(t, file, patterned(10, 1))
 	info, err := os.Stat(file)

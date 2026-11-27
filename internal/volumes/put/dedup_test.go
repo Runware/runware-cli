@@ -20,6 +20,7 @@ import (
 )
 
 func TestPutDeduplicatesAcrossDeclarationBatches(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	content := []byte("common")
@@ -74,6 +75,7 @@ func TestPutDeduplicatesAcrossDeclarationBatches(t *testing.T) {
 }
 
 func TestDeduplicatedPutRefusesChangedDuplicate(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("common"))
@@ -93,6 +95,7 @@ func TestDeduplicatedPutRefusesChangedDuplicate(t *testing.T) {
 }
 
 func TestDeduplicatedPutDoesNotDeclareDuplicateIfRepresentativeFails(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("common"))
@@ -130,6 +133,7 @@ func (a interruptFileCompletion) CompleteFile(ctx context.Context, ref UploadRef
 }
 
 func TestDeduplicatedPutResumesBeforeDeclaringDuplicate(t *testing.T) {
+	t.Parallel()
 	for _, drop := range []bool{false, true} {
 		t.Run(fmt.Sprintf("drop response %v", drop), func(t *testing.T) {
 			e := newTestEnv(t)
@@ -173,6 +177,7 @@ func TestDeduplicatedPutResumesBeforeDeclaringDuplicate(t *testing.T) {
 }
 
 func TestDeduplicatedPutFallsBackWhenBlobBecomesIneligible(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("common"))
@@ -194,6 +199,7 @@ func TestDeduplicatedPutFallsBackWhenBlobBecomesIneligible(t *testing.T) {
 }
 
 func TestDeduplicatedResumeRefusesChangedUndeclaredSource(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("common"))
@@ -238,6 +244,7 @@ func (a lostDeclarations) DeclareFiles(ctx context.Context, ref UploadRef, batch
 }
 
 func TestDeduplicatedPutReplaysBothDeclarations(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("common"))
@@ -257,6 +264,7 @@ func TestDeduplicatedPutReplaysBothDeclarations(t *testing.T) {
 }
 
 func TestDeduplicatedPutPreservesLegacyDeclaredAttempts(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t)
 	vol := e.cloud.newVolume("weights", "")
 	first := singleFile(t, e, "first.txt", []byte("common"))
