@@ -282,3 +282,71 @@ func TestPartStalledRetriesStopAtTheRetryWindow(t *testing.T) {
 		})
 	}
 }
+
+// tricklingTransport reads each failing attempt's body a KiB at a time, waiting every between
+// reads, then waits tail and drops the connection; after drops attempts it reads the body in full
+// and acknowledges it. It is one part among many on a slow uplink.
+type tricklingTransport struct {
+	every time.Duration
+	tail  time.Duration
+	drops int
+	calls int
+}
+
+func (d *tricklingTransport) PutPart(ctx context.Context, _ Target, body io.Reader, _ int64) (Secret, error) {
+	d.calls++
+	if d.calls > d.drops {
+		if _, err := io.Copy(io.Discard, body); err != nil {
+			return "", err
+		}
+		return testAck, nil
+	}
+	for {
+		n, err := io.CopyN(io.Discard, body, 1<<10)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+		if n < 1<<10 {
+			break
+		}
+		if err := sleepContext(ctx, d.every); err != nil {
+			return "", err
+		}
+	}
+	if err := sleepContext(ctx, d.tail); err != nil {
+		return "", err
+	}
+	return "", errConnectionDropped
+}
+
+// TestPartRetryWindowRestartsAfterSlowReads: a part far below the byte threshold, read slowly for
+// about 6 minutes per attempt before the connection drops, restarts the retry window on each drop
+// and gets through. Attempts whose reads span under a minute and then wait as long prove nothing,
+// and the part stops at the window.
+func TestPartRetryWindowRestartsAfterSlowReads(t *testing.T) {
+	cases := []struct {
+		name        string
+		every, tail time.Duration
+		wantErr     error
+	}{
+		{name: "reads for minutes", every: 40 * time.Second, tail: 0, wantErr: nil},
+		{name: "reads for seconds", every: 3 * time.Second, tail: 6 * time.Minute, wantErr: errUploadRetriesExhausted},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				tr := &tricklingTransport{every: c.every, tail: c.tail, drops: 3, calls: 0}
+				result, err := sendSizedTestPart(t, tr, 8<<10, 0)
+				if c.wantErr != nil {
+					if !errors.Is(err, c.wantErr) || tr.calls != 2 {
+						t.Errorf("error = %v after %d attempts, want %v after 2", err, tr.calls, c.wantErr)
+					}
+					return
+				}
+				if err != nil || result.Ack != testAck || tr.calls != 4 {
+					t.Errorf("ack = %q, error = %v, attempts = %d; want three retries, the last acknowledged", result.Ack, err, tr.calls)
+				}
+			})
+		})
+	}
+}

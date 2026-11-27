@@ -22,11 +22,13 @@ const (
 	maxRenewals   = 3
 	maxRenewParts = 128
 	// maxPartRetryTime bounds how long a part may keep failing without moving data: no attempt
-	// starts once it has passed since the end of the part's last failed attempt that sent more than
-	// maxBufferedPartBytes, or since its first failure when none did. One attempt on a slow link can
-	// take longer than the window, so a window that ran from the first failure would stop a part
-	// after one or two connection drops. Attempts that send a lot and fail at once still stop at
-	// maxUploadAttempts.
+	// starts once it has passed since the end of the part's last failed attempt that made progress,
+	// or since its first failure when none did. A failed attempt made progress when it sent more than
+	// maxBufferedPartBytes of the part's body, or kept reading the body for minProgressReadTime from
+	// its first read to its last. One attempt on a slow link can take longer than the window, so a
+	// window that ran from the first failure would stop a part after one or two connection drops.
+	// Every retryable failure counts towards maxUploadAttempts, which stops a part whose attempts
+	// move data and then fail, such as an endpoint that reads the body and answers an error.
 	maxPartRetryTime = 5 * time.Minute
 	// maxBufferedPartBytes is how much of a part's body an attempt may hand to the connection without
 	// proving that any of it left the machine. The transport counts the bytes the HTTP client reads,
@@ -35,9 +37,15 @@ const (
 	// autotuning stops at 4 MiB by default on Linux and macOS, and macOS caps any socket buffer at
 	// 8 MiB; the client's own buffers add tens of KiB. 16 MiB leaves room for a host tuned above
 	// those defaults. Restarting the window on any byte sent would let a stalled link retry until
-	// maxUploadAttempts, about 40 minutes. A part no larger than this, the last part of a file,
-	// never proves progress and keeps the window from its first failure.
+	// maxUploadAttempts, about 40 minutes. An attempt that sends less, as every attempt of a part no
+	// larger than this does, proves progress by its reading time instead.
 	maxBufferedPartBytes = 16 << 20
+	// minProgressReadTime is how long an attempt must keep reading a part's body, from its first
+	// read to its last, to prove progress whatever it sent. A stalled link fills the buffers in one
+	// burst, a fraction of a second from a local disk, and then the client stops reading; a part
+	// sharing a slow uplink keeps reading for minutes, about 7 to send 16 MiB at 10 Mbit/s with 32
+	// parts in flight.
+	minProgressReadTime = time.Minute
 )
 
 // partResult is an acknowledged part: its ack, ciphertext CRC and length.
@@ -320,7 +328,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 	defer func() { _ = file.Close() }()
 	var failed Secret
 	// The retry window limits when another attempt can start. It starts at the first failure and
-	// again after every failed attempt that sent more than maxBufferedPartBytes.
+	// again after every failed attempt that made progress, as maxPartRetryTime defines it.
 	retryCtx := ctx
 	var stopRetryTimer context.CancelFunc
 	defer func() {
@@ -353,6 +361,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 		traffic := &partTraffic{
 			file:     f,
 			progress: r.progress,
+			now:      r.now,
 		}
 		ack, err := r.tr.PutPart(ctx, target, io.TeeReader(body, io.MultiWriter(crc, traffic)), sealer.Len())
 		if srcErr := src.failure(); srcErr != nil {
@@ -368,7 +377,7 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 		if ctx.Err() != nil {
 			return partResult{}, context.Cause(ctx)
 		}
-		if stopRetryTimer == nil || traffic.sent.Load() > cmp.Or(r.bufferedPartBytes, maxBufferedPartBytes) {
+		if stopRetryTimer == nil || traffic.madeProgress(cmp.Or(r.bufferedPartBytes, maxBufferedPartBytes)) {
 			if stopRetryTimer != nil {
 				stopRetryTimer()
 			}
@@ -401,18 +410,37 @@ func (r *runner) sendPart(ctx context.Context, f *fileState, part int, digest [3
 }
 
 // partTraffic counts ciphertext consumed by the transport on one attempt, and adds it to the file's
-// and the upload's totals.
+// and the upload's totals. It also records when the attempt first and last read the body.
 type partTraffic struct {
 	file     *fileState
 	progress *progress
+	now      func() time.Time
 	sent     atomic.Int64
+
+	mu          sync.Mutex
+	first, last time.Time
 }
 
 func (p *partTraffic) Write(b []byte) (int, error) {
+	at := p.now()
+	p.mu.Lock()
+	if p.first.IsZero() {
+		p.first = at
+	}
+	p.last = at
+	p.mu.Unlock()
 	p.sent.Add(int64(len(b)))
 	p.file.sent.Add(int64(len(b)))
 	p.progress.addSent(int64(len(b)))
 	return len(b), nil
+}
+
+// madeProgress reports whether the attempt sent more than buffered bytes of the body or kept
+// reading it for minProgressReadTime.
+func (p *partTraffic) madeProgress(buffered int64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.sent.Load() > buffered || (!p.first.IsZero() && p.last.Sub(p.first) >= minProgressReadTime)
 }
 
 // retryable reports whether the request can benefit from a retry.
